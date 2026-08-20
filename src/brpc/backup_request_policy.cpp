@@ -144,22 +144,22 @@ BackupRequestPolicy* CreateRateLimitedBackupPolicy(
     if (options.backup_request_ms < -1) {
         LOG(ERROR) << "Invalid backup_request_ms=" << options.backup_request_ms
                    << ", must be >= -1 (-1 means inherit from ChannelOptions)";
-        return NULL;
+        return nullptr;
     }
     if (options.max_backup_ratio <= 0 || options.max_backup_ratio > 1.0) {
         LOG(ERROR) << "Invalid max_backup_ratio=" << options.max_backup_ratio
                    << ", must be in (0, 1]";
-        return NULL;
+        return nullptr;
     }
     if (options.window_size_seconds < 1 || options.window_size_seconds > 3600) {
         LOG(ERROR) << "Invalid window_size_seconds=" << options.window_size_seconds
                    << ", must be in [1, 3600]";
-        return NULL;
+        return nullptr;
     }
     if (options.update_interval_seconds < 1) {
         LOG(ERROR) << "Invalid update_interval_seconds="
                    << options.update_interval_seconds << ", must be >= 1";
-        return NULL;
+        return nullptr;
     }
     if (options.update_interval_seconds > options.window_size_seconds) {
         LOG(WARNING) << "update_interval_seconds=" << options.update_interval_seconds
@@ -167,7 +167,7 @@ BackupRequestPolicy* CreateRateLimitedBackupPolicy(
                      << "; the ratio window will rarely refresh within its own period";
     }
     // Plain new (without std::nothrow): brpc follows the project-wide convention
-    // of letting OOM throw/abort rather than returning NULL. NULL return from
+    // of letting OOM throw/abort rather than returning nullptr. nullptr return from
     // this factory already signals invalid parameters, not allocation failure.
     return new RateLimitedBackupPolicy(
         options.backup_request_ms, options.max_backup_ratio,

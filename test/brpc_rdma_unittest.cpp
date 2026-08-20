@@ -148,13 +148,13 @@ protected:
         std::vector<SocketId> sids;
         _server._am->ListConnections(&sids);
         if (index >= sids.size()) {
-            return NULL;
+            return nullptr;
         }
         SocketUniquePtr s;
         if (Socket::Address(sids[index], &s) == 0) {
             return s.get();
         }
-        return NULL;
+        return nullptr;
     }
 
     butil::TempFile _server_list;
@@ -203,7 +203,7 @@ TEST_F(RdmaTest, client_close_before_hello_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     close(sockfd);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -242,7 +242,7 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
     bzero((char*)&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
-    Socket* s = NULL;
+    Socket* s = nullptr;
     uint8_t data[8];
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
@@ -260,7 +260,7 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     close(sockfd1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd2 >= 0);
@@ -274,7 +274,7 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     close(sockfd2);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     butil::fd_guard sockfd3(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd3 >= 0);
@@ -293,7 +293,7 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::S_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     close(sockfd3);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -305,7 +305,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     bzero((char*)&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
-    Socket* s = NULL;
+    Socket* s = nullptr;
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
 
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
@@ -321,7 +321,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     memset(data + 4, 0, 36);
     ASSERT_EQ(36, write(sockfd1, data + 4, 36));  // Write invalid length.
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd2 >= 0);
@@ -338,7 +338,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     memset(data + 6, 0, 34);
     ASSERT_EQ(36, write(sockfd2, data + 4, 36));  // write invalid length
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -350,7 +350,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     bzero((char*)&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
-    Socket* s = NULL;
+    Socket* s = nullptr;
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     uint16_t len = butil::HostToNet16(rdma::HELLO_V2_MSG_LEN_MIN);
     uint16_t ver = butil::HostToNet16(1);
@@ -385,7 +385,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     sockfd1.reset(-1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd2 >= 0);
@@ -411,7 +411,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     sockfd2.reset(-1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -423,7 +423,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     bzero((char*)&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
-    Socket* s = NULL;
+    Socket* s = nullptr;
     uint32_t flags = butil::HostToNet32(0);
     rdma::v2_wire::HelloMessage msg{};
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
@@ -454,7 +454,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     sockfd1.reset(-1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     msg.sq_size = 16;
     msg.rq_size = 10;
@@ -479,7 +479,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     sockfd2.reset(-1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     msg.sq_size = 16;
     msg.rq_size = 16;
@@ -504,7 +504,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     sockfd3.reset(-1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -516,7 +516,7 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
     bzero((char*)&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
-    Socket* s = NULL;
+    Socket* s = nullptr;
     rdma::v2_wire::HelloMessage msg{};
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
@@ -541,7 +541,7 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
     ASSERT_EQ(rdma::RdmaEndpoint::S_ACK_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     close(sockfd1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -553,7 +553,7 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
     bzero((char*)&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
-    Socket* s = NULL;
+    Socket* s = nullptr;
     rdma::v2_wire::HelloMessage msg{};
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
@@ -585,7 +585,7 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     close(sockfd1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -597,7 +597,7 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     bzero((char*)&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
-    Socket* s = NULL;
+    Socket* s = nullptr;
     rdma::v2_wire::HelloMessage msg{};
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
@@ -630,7 +630,7 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     ASSERT_EQ(RdmaTransport::RDMA_OFF, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_state);
     close(sockfd1);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd2 >= 0);
@@ -650,7 +650,7 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     close(sockfd2);
     usleep(100000);  // wait for server to handle the msg
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -662,7 +662,7 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     bzero((char*)&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);
-    Socket* s = NULL;
+    Socket* s = nullptr;
     rdma::v2_wire::HelloMessage msg{};
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
@@ -694,7 +694,7 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::FALLBACK_TCP, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     ASSERT_EQ(sizeof(flags), write(sockfd1, &flags, sizeof(flags)));
     usleep(100000);
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     butil::fd_guard sockfd2(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd2 >= 0);
@@ -714,7 +714,7 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
     ASSERT_EQ(sizeof(flags), write(sockfd2, &flags, sizeof(flags)));
     usleep(100000);
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -743,7 +743,7 @@ TEST_F(RdmaTest, server_miss_before_hello_send) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     bthread_id_join(cntl.call_id());
 
@@ -774,7 +774,7 @@ TEST_F(RdmaTest, server_close_before_hello_send) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -810,7 +810,7 @@ TEST_F(RdmaTest, server_miss_during_magic_str) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -845,7 +845,7 @@ TEST_F(RdmaTest, server_close_during_magic_str) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -883,7 +883,7 @@ TEST_F(RdmaTest, server_hello_invalid_magic_str) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -919,7 +919,7 @@ TEST_F(RdmaTest, server_miss_during_hello_msg) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -954,7 +954,7 @@ TEST_F(RdmaTest, server_close_during_hello_msg) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -992,7 +992,7 @@ TEST_F(RdmaTest, server_hello_invalid_msg_len) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -1032,7 +1032,7 @@ TEST_F(RdmaTest, server_hello_invalid_version) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -1075,7 +1075,7 @@ TEST_F(RdmaTest, server_hello_invalid_sq_rq_size) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -1127,7 +1127,7 @@ TEST_F(RdmaTest, server_miss_after_ack) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -1179,7 +1179,7 @@ TEST_F(RdmaTest, server_close_after_ack) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -1232,7 +1232,7 @@ TEST_F(RdmaTest, server_send_data_on_tcp_after_ack) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_EQ(rdma::RdmaEndpoint::C_HELLO_WAIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
@@ -1282,7 +1282,7 @@ TEST_F(RdmaTest, v2_client_hello_bytes_baseline) {
     SocketUniquePtr s;
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
 
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
@@ -1369,7 +1369,7 @@ TEST_F(RdmaTest, v2_server_hello_bytes_baseline) {
 
     sockfd.reset(-1);
     usleep(100000);
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -1386,7 +1386,7 @@ TEST_F(RdmaTest, v2_server_drains_tail_then_reads_ack) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
     // Build a v2 hello with msg_len = 48 (40 base + 8B zero tail).
@@ -1416,7 +1416,7 @@ TEST_F(RdmaTest, v2_server_drains_tail_then_reads_ack) {
 
     sockfd.reset(-1);
     usleep(100000);
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -1433,7 +1433,7 @@ TEST_F(RdmaTest, v2_server_rejects_oversized_msg_len) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
     // Build a v2 hello with msg_len = 4097 (HELLO_V2_MSG_LEN_MAX + 1).
@@ -1456,7 +1456,7 @@ TEST_F(RdmaTest, v2_server_rejects_oversized_msg_len) {
     usleep(100000);
 
 
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     sockfd.reset(-1);
     usleep(100000);
@@ -1535,7 +1535,7 @@ TEST_F(RdmaTest, v3_client_hello_bytes_baseline) {
     google::protobuf::Closure* done = DoNothing();
     ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
 
-    butil::fd_guard acc_fd(accept(sockfd, NULL, NULL));
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
     ASSERT_TRUE(acc_fd >= 0);
 
     // [0..4) magic "RDM3"
@@ -1626,7 +1626,7 @@ TEST_F(RdmaTest, v3_server_hello_bytes_baseline) {
 
     sockfd.reset(-1);
     usleep(100000);
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -1643,14 +1643,14 @@ TEST_F(RdmaTest, v3_server_rejects_zero_pb_size) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
 
     // "RDM3" + pb_size = 0 (4B big-endian zero).
     uint8_t buf[8] = {'R', 'D', 'M', '3', 0, 0, 0, 0};
     ASSERT_EQ(8, write(sockfd, buf, 8));
     usleep(100000);
 
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     sockfd.reset(-1);
     StopServer();
@@ -1668,7 +1668,7 @@ TEST_F(RdmaTest, v3_server_rejects_oversized_pb_size) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
 
     uint8_t buf[8];
     memcpy(buf, "RDM3", 4);
@@ -1679,7 +1679,7 @@ TEST_F(RdmaTest, v3_server_rejects_oversized_pb_size) {
     ASSERT_EQ(8, write(sockfd, buf, 8));
     usleep(100000);
 
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     sockfd.reset(-1);
     StopServer();
@@ -1697,7 +1697,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_pb_bytes) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
 
     // "RDM3" + pb_size = 8 + 8 bytes of 0xff (invalid protobuf body).
     uint8_t buf[16];
@@ -1708,7 +1708,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_pb_bytes) {
     ASSERT_EQ(16, write(sockfd, buf, 16));
     usleep(100000);
 
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     sockfd.reset(-1);
     StopServer();
@@ -1726,7 +1726,7 @@ TEST_F(RdmaTest, v3_server_invalid_sq_size_falls_back) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3Hello();
     msg.set_sq_size(0);  // invalid: < MIN_QP_SIZE (16)
@@ -1760,7 +1760,7 @@ TEST_F(RdmaTest, v3_server_invalid_sq_size_falls_back) {
 
     sockfd.reset(-1);
     usleep(100000);
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -1820,7 +1820,7 @@ TEST_F(RdmaTest, v3_server_accepts_client_hello_with_ece) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
     std::string packet = MakeV3Packet(msg);
@@ -1843,7 +1843,7 @@ TEST_F(RdmaTest, v3_server_accepts_client_hello_with_ece) {
 
     sockfd.reset(-1);
     usleep(100000);
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
     StopServer();
 }
 
@@ -1862,7 +1862,7 @@ TEST_F(RdmaTest, v3_server_reply_has_no_ece_when_disabled) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
     std::string packet = MakeV3Packet(msg);
@@ -1899,7 +1899,7 @@ TEST_F(RdmaTest, v3_server_reply_has_no_ece_without_hw_negotiation) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
     std::string packet = MakeV3Packet(msg);
@@ -1983,7 +1983,7 @@ TEST_F(RdmaTest, server_alloc_resource_fail_fallback_tcp) {
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
     usleep(100000);  // wait for server to handle the msg
     Socket* s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT,
               static_cast<RdmaTransport*>(s->_transport.get())->_rdma_ep->_state);
 
@@ -2021,7 +2021,7 @@ TEST_F(RdmaTest, server_alloc_resource_fail_fallback_tcp) {
 
     sockfd.reset(-1);
     usleep(100000);
-    ASSERT_EQ(NULL, GetSocketFromServer(0));
+    ASSERT_EQ(nullptr, GetSocketFromServer(0));
 
     StopServer();
 }
@@ -2335,17 +2335,17 @@ TEST_F(RdmaTest, server_option_invalid) {
     ASSERT_EQ(-1, server.Start(PORT, &options));
 
     // nshead and rdma are incompatible
-    options.rtmp_service = NULL;
+    options.rtmp_service = nullptr;
     options.nshead_service = (NsheadService*)1;
     ASSERT_EQ(-1, server.Start(PORT, &options));
 
     // mongo and rdma are incompatible
-    options.nshead_service = NULL;
+    options.nshead_service = nullptr;
     options.mongo_service_adaptor = (MongoServiceAdaptor*)1;
     ASSERT_EQ(-1, server.Start(PORT, &options));
 
     // ssl and rdma are incompatible
-    options.mongo_service_adaptor = NULL;
+    options.mongo_service_adaptor = nullptr;
     options.mutable_ssl_options()->default_cert.certificate = "test";
     ASSERT_EQ(-1, server.Start(PORT, &options));
 }
@@ -2907,7 +2907,7 @@ TEST_P(RdmaRpcTest, verbs_error_handling) {
     sge.lkey = 1;  // incorrect lkey
     wr.sg_list = &sge;
     wr.num_sge = 1;
-    ibv_send_wr* bad = NULL;
+    ibv_send_wr* bad = nullptr;
     auto rdma_transport = static_cast<RdmaTransport*>(s->_transport.get());
     ibv_post_send(rdma_transport->_rdma_ep->_resource->qp, &wr, &bad);
     bthread_id_join(cntl.call_id());
@@ -2933,15 +2933,15 @@ TEST_P(RdmaRpcTest, rdma_use_parallel_channel) {
         ASSERT_EQ(0, subchans[i].Init(_naming_url.c_str(), "rR", &opts));
         ASSERT_EQ(0, channel.AddChannel(
                     &subchans[i], DOESNT_OWN_CHANNEL,
-                    NULL, NULL));
+                    nullptr, nullptr));
     }
-    ASSERT_EQ(0, channel.Init(NULL));
+    ASSERT_EQ(0, channel.Init(nullptr));
 
     Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
     req.set_message(__FUNCTION__);
-    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, NULL);
+    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, nullptr);
 
     ASSERT_EQ(0, cntl.ErrorCode());
     ASSERT_EQ(NCHANS, (size_t)cntl.sub_count());
@@ -2964,14 +2964,14 @@ TEST_P(RdmaRpcTest, rdma_use_selective_channel) {
     for (size_t i = 0; i < NCHANS; ++i) {
         Channel* subchan = new Channel;
         ASSERT_EQ(0, subchan->Init(_naming_url.c_str(), "rR", &opts));
-        ASSERT_EQ(0, channel.AddChannel(subchan, NULL));
+        ASSERT_EQ(0, channel.AddChannel(subchan, nullptr));
     }
 
     Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
     req.set_message(__FUNCTION__);
-    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, NULL);
+    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, nullptr);
 
     ASSERT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
     ASSERT_EQ(1, cntl.sub_count());
@@ -3001,7 +3001,7 @@ TEST_P(RdmaRpcTest, send_rpcs_with_user_defined_iobuf) {
 
     butil::IOBuf attach;
     void* data = malloc(4096);;
-    attach.append_user_data(data, 4096, NULL);
+    attach.append_user_data(data, 4096, nullptr);
     req[0].set_message(__FUNCTION__);
     cntl[0].request_attachment().append(attach);
     google::protobuf::Closure* done = DoNothing();

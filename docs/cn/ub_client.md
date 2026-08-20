@@ -90,7 +90,7 @@ r31687后，brpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不
     
    request.set_message("hello world");
     
-   stub.Echo(&cntl, &request, &response, NULL);
+   stub.Echo(&cntl, &request, &response, nullptr);
         
    if (cntl.Failed()) {
        LOG(ERROR) << "Fail to send request, " << cntl.ErrorText();
@@ -126,7 +126,7 @@ r31687后，brpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不
    multi_requests.mutable_req1()->set_message("hello");
    multi_requests.mutable_req2()->set_message("world");
    cntl.set_idl_names(brpc::idl_multi_req_multi_res);
-   stub.EchoWithMultiArgs(&cntl, &multi_requests, &multi_responses, NULL);
+   stub.EchoWithMultiArgs(&cntl, &multi_requests, &multi_responses, nullptr);
         
    if (cntl.Failed()) {
        LOG(ERROR) << "Fail to send request, " << cntl.ErrorText();
@@ -203,7 +203,7 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
     
    // 发起RPC
    brpc::Controller cntl;
-   stub.Echo(&cntl, &request, &response, NULL);
+   stub.Echo(&cntl, &request, &response, nullptr);
        
    if (cntl.Failed()) {
        LOG(ERROR) << "Fail to Echo, " << cntl.ErrorText();
@@ -247,7 +247,7 @@ request.set_message("hello world");
 request.mutable_nshead()->version = 99;
  
 brpc::Controller cntl;
-channel.CallMethod(NULL, &cntl, &request, &response, NULL);    // 假设channel已经通过之前所述方法Init成功
+channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);    // 假设channel已经通过之前所述方法Init成功
  
 // Get `message' field of `EchoResponse'
 response.message();
@@ -293,7 +293,7 @@ if (ret != 0) {
 request.mutable_nshead()->version = 99;
  
 brpc::Controller cntl;
-channel.CallMethod(NULL, &cntl, &request, &response, NULL);    // 假设channel已经通过之前所述方法Init成功
+channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);    // 假设channel已经通过之前所述方法Init成功
  
 // Get response from response buffer
 const mc_pack_t* res_pack = response.McpackHandle();
@@ -328,7 +328,7 @@ request.head.version = 99;
  
  
 brpc::Controller cntl;
-channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
  
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access the server: " << cntl.ErrorText();
@@ -364,7 +364,7 @@ request.append("hello world");
 request.mutable_nshead()->version = 99;
  
 brpc::Controller cntl;
-channel.CallMethod(NULL, &cntl, &request, &response, NULL);    // 假设channel已经通过之前所述方法Init成功
+channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);    // 假设channel已经通过之前所述方法Init成功
  
 // Process response. response.data() is the buffer, response.size() is the length.
 ```

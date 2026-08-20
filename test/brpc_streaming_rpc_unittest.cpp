@@ -41,7 +41,7 @@ class MyServiceWithStream : public test::EchoService {
 public:
     MyServiceWithStream(const brpc::StreamOptions& options) 
         : _options(options)
-        , _after_accept_stream(NULL)
+        , _after_accept_stream(nullptr)
     {}
     MyServiceWithStream(const brpc::StreamOptions& options,
                         AfterAcceptStream* after_accept_stream) 
@@ -50,7 +50,7 @@ public:
     {}
     MyServiceWithStream()
         : _options()
-        , _after_accept_stream(NULL)
+        , _after_accept_stream(nullptr)
     {}
 
     void Echo(::google::protobuf::RpcController* controller,
@@ -150,7 +150,7 @@ static void* SendTwoMessagesOnServerExtraStream(void* arg) {
             // the remote settings are ready. Check the acquire flag first
             // before reading the non-atomic host pointer.
             if (s->_connected.load(butil::memory_order_acquire) &&
-                s->_host_socket != NULL) {
+                s->_host_socket != nullptr) {
                 connected = true;
                 break;
             }
@@ -162,7 +162,7 @@ static void* SendTwoMessagesOnServerExtraStream(void* arg) {
         state->server_first_write_rc.store(ETIMEDOUT, std::memory_order_relaxed);
         state->server_second_write_rc.store(ETIMEDOUT, std::memory_order_relaxed);
         state->server_write_done.store(true, std::memory_order_release);
-        return NULL;
+        return nullptr;
     }
 
     // 1) Send a payload exactly equal to max_buf_size(64).
@@ -192,7 +192,7 @@ static void* SendTwoMessagesOnServerExtraStream(void* arg) {
     }
     state->server_second_write_rc.store(rc, std::memory_order_relaxed);
     state->server_write_done.store(true, std::memory_order_release);
-    return NULL;
+    return nullptr;
 }
 
 class MyServiceWithBatchStream : public test::EchoService {
@@ -249,15 +249,15 @@ TEST_F(StreamingRpcTest, sanity) {
     brpc::Server server;
     MyServiceWithStream service;
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     brpc::Controller cntl;
     brpc::StreamId request_stream;
-    ASSERT_EQ(0, StreamCreate(&request_stream, cntl, NULL));
+    ASSERT_EQ(0, StreamCreate(&request_stream, cntl, nullptr));
     brpc::ScopedStream stream_guard(request_stream);
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
     usleep(10);
     brpc::StreamClose(request_stream);
@@ -276,10 +276,10 @@ TEST_F(StreamingRpcTest, batch_create_stream_feedback_race) {
     brpc::Server server;
     MyServiceWithBatchStream service(server_stream_opt, &state);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
 
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
 
     brpc::Controller cntl;
     brpc::StreamIds request_streams;
@@ -302,7 +302,7 @@ TEST_F(StreamingRpcTest, batch_create_stream_feedback_race) {
         }
 
         if (state.server_send_tid) {
-            bthread_join(state.server_send_tid, NULL);
+            bthread_join(state.server_send_tid, nullptr);
         }
         server.Stop(0);
         server.Join();
@@ -347,7 +347,7 @@ struct HandlerControl {
 
 class OrderedInputHandler : public brpc::StreamInputHandler {
 public:
-    explicit OrderedInputHandler(HandlerControl *cntl = NULL)
+    explicit OrderedInputHandler(HandlerControl *cntl = nullptr)
         : _expected_next_value(0)
         , _failed(false)
         , _stopped(false)
@@ -407,9 +407,9 @@ TEST_F(StreamingRpcTest, received_in_order) {
     brpc::Server server;
     MyServiceWithStream service(opt);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     brpc::Controller cntl;
     brpc::StreamId request_stream;
     brpc::StreamOptions request_stream_options;
@@ -417,7 +417,7 @@ TEST_F(StreamingRpcTest, received_in_order) {
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     brpc::ScopedStream stream_guard(request_stream);
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
     const int N = 10000;
     for (int i = 0; i < N; ++i) {
@@ -455,9 +455,9 @@ TEST_F(StreamingRpcTest, block) {
     brpc::Server server;
     MyServiceWithStream service(opt);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     brpc::Controller cntl;
     brpc::StreamId request_stream;
     brpc::ScopedStream stream_guard(request_stream);
@@ -465,7 +465,7 @@ TEST_F(StreamingRpcTest, block) {
     request_stream_options.max_buf_size = sizeof(uint32_t) * N;
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream="
                                 << request_stream;
     for (int i = 0; i < N; ++i) {
@@ -488,7 +488,7 @@ TEST_F(StreamingRpcTest, block) {
     hc.block = true;
     // async wait
     for (int i = N; i < N + N; ++i) {
-        ASSERT_EQ(0, brpc::StreamWait(request_stream, NULL));
+        ASSERT_EQ(0, brpc::StreamWait(request_stream, nullptr));
         int network = htonl(i);
         butil::IOBuf out;
         out.append(&network, sizeof(network));
@@ -500,7 +500,7 @@ TEST_F(StreamingRpcTest, block) {
     hc.block = false;
     std::pair<bool, int> p = std::make_pair(false, 0);
     usleep(10);
-    brpc::StreamWait(request_stream, NULL, on_writable, &p);
+    brpc::StreamWait(request_stream, nullptr, on_writable, &p);
     while (!p.first) {
         usleep(100);
     }
@@ -554,9 +554,9 @@ TEST_F(StreamingRpcTest, auto_close_if_host_socket_closed) {
     brpc::Server server;
     MyServiceWithStream service(opt);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     brpc::Controller cntl;
     brpc::StreamId request_stream;
     brpc::StreamOptions request_stream_options;
@@ -564,7 +564,7 @@ TEST_F(StreamingRpcTest, auto_close_if_host_socket_closed) {
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     brpc::ScopedStream stream_guard(request_stream);
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
 
     {
@@ -573,7 +573,7 @@ TEST_F(StreamingRpcTest, auto_close_if_host_socket_closed) {
         brpc::Stream* s = ptr.get();
         ASSERT_TRUE(s->_connected.load(butil::memory_order_acquire));
         brpc::Socket* host_socket = s->_host_socket;
-        ASSERT_TRUE(host_socket != NULL);
+        ASSERT_TRUE(host_socket != nullptr);
         host_socket->SetFailed();
     }
 
@@ -597,9 +597,9 @@ TEST_F(StreamingRpcTest, failed_when_rst) {
     brpc::Server server;
     MyServiceWithStream service(opt);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     brpc::Controller cntl;
     brpc::StreamId request_stream;
     brpc::StreamOptions request_stream_options;
@@ -607,7 +607,7 @@ TEST_F(StreamingRpcTest, failed_when_rst) {
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     brpc::ScopedStream stream_guard(request_stream);
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
     const int N = 10000;
     for (int i = 0; i < N; ++i) {
@@ -625,7 +625,7 @@ TEST_F(StreamingRpcTest, failed_when_rst) {
         ASSERT_EQ(0, brpc::Stream::Address(request_stream, &ptr));
         brpc::Stream* s = ptr.get();
         ASSERT_TRUE(s->_connected.load(butil::memory_order_acquire));
-        ASSERT_TRUE(s->_host_socket != NULL);
+        ASSERT_TRUE(s->_host_socket != nullptr);
         brpc::policy::SendStreamRst(s->_host_socket,
                                     s->_remote_settings.stream_id());
     }
@@ -652,9 +652,9 @@ TEST_F(StreamingRpcTest, idle_timeout) {
     brpc::Server server;
     MyServiceWithStream service(opt);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     brpc::Controller cntl;
     brpc::StreamId request_stream;
     brpc::StreamOptions request_stream_options;
@@ -662,7 +662,7 @@ TEST_F(StreamingRpcTest, idle_timeout) {
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     brpc::ScopedStream stream_guard(request_stream);
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
     usleep(10 * 1000 + 800);
     ASSERT_EQ(0, brpc::StreamClose(request_stream));
@@ -741,9 +741,9 @@ TEST_F(StreamingRpcTest, ping_pong) {
     brpc::Server server;
     MyServiceWithStream service(opt);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     brpc::Controller cntl;
     brpc::StreamId request_stream;
     brpc::StreamOptions request_stream_options;
@@ -754,7 +754,7 @@ TEST_F(StreamingRpcTest, ping_pong) {
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     brpc::ScopedStream stream_guard(request_stream);
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
     int send = 0;
     butil::IOBuf out;
@@ -795,9 +795,9 @@ TEST_F(StreamingRpcTest, server_send_data_before_run_done) {
     brpc::Server server;
     MyServiceWithStream service(opt, &after_accept);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     OrderedInputHandler handler;
     brpc::StreamOptions request_stream_options;
     request_stream_options.handler = &handler;
@@ -806,7 +806,7 @@ TEST_F(StreamingRpcTest, server_send_data_before_run_done) {
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     brpc::ScopedStream stream_guard(request_stream);
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
     // wait flushing all the pending messages
     while (handler._expected_next_value != N) {
@@ -829,16 +829,16 @@ TEST_F(StreamingRpcTest, segment_stream_data_automatically) {
     brpc::Server server;
     MyServiceWithStream service(opt);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
     brpc::Controller cntl;
     brpc::StreamId request_stream;
     brpc::StreamOptions request_stream_options;
     ASSERT_EQ(0, StreamCreate(&request_stream, cntl, &request_stream_options));
     brpc::ScopedStream stream_guard(request_stream);
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
     const int N = 1000;
     for (int i = 0; i < N; ++i) {
@@ -854,7 +854,7 @@ TEST_F(StreamingRpcTest, segment_stream_data_automatically) {
         ASSERT_EQ(0, brpc::Stream::Address(request_stream, &ptr));
         ASSERT_TRUE(ptr->_connected.load(butil::memory_order_acquire));
         brpc::Socket* host_socket = ptr->_host_socket;
-        ASSERT_TRUE(host_socket != NULL);
+        ASSERT_TRUE(host_socket != nullptr);
         host_socket->ReAddress(&host_socket_ptr);
     }
 
@@ -884,11 +884,11 @@ TEST_F(StreamingRpcTest, create_request_stream_twice_on_same_controller_returns_
     brpc::Controller cntl;
 
     brpc::StreamId first_stream = brpc::INVALID_STREAM_ID;
-    ASSERT_EQ(0, brpc::StreamCreate(&first_stream, cntl, NULL));
+    ASSERT_EQ(0, brpc::StreamCreate(&first_stream, cntl, nullptr));
     brpc::ScopedStream stream_guard(first_stream);
 
     brpc::StreamId second_stream = brpc::INVALID_STREAM_ID;
-    ASSERT_EQ(-1, brpc::StreamCreate(&second_stream, cntl, NULL));
+    ASSERT_EQ(-1, brpc::StreamCreate(&second_stream, cntl, nullptr));
     ASSERT_EQ(brpc::INVALID_STREAM_ID, second_stream);
 }
 
@@ -1020,10 +1020,10 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream) {
     brpc::Server server;
     MyServiceWithExtraStream service(server_stream_opt, STREAM_COUNT, N);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
 
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
 
     brpc::Controller cntl;
     brpc::StreamOptions client_stream_opt;
@@ -1034,7 +1034,7 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream) {
     ASSERT_EQ(STREAM_COUNT, request_streams.size());
 
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
 
     // Every stream, including the extra streams, must end up connected with a valid host_socket.
@@ -1046,7 +1046,7 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream) {
                 return false;
             }
             brpc::Stream* s = ptr.get();
-            return s->_host_socket != NULL &&
+            return s->_host_socket != nullptr &&
                    s->_connected.load(butil::memory_order_acquire);
         }, 5000)) << "stream_index=" << i;
     }
@@ -1101,10 +1101,10 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream_upstream_only) {
     // n = 0: server never sends downstream data on any accepted stream.
     MyServiceWithExtraStream service(server_stream_opt, STREAM_COUNT, 0);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
 
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
 
     brpc::Controller cntl;
     // No downstream handler is needed on the client side.
@@ -1116,7 +1116,7 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream_upstream_only) {
     ASSERT_EQ(STREAM_COUNT, request_streams.size());
 
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
 
     // Without any downstream data, extra streams have no chance to get their
@@ -1131,7 +1131,7 @@ TEST_F(StreamingRpcTest, batch_create_extra_stream_upstream_only) {
                 return false;
             }
             brpc::Stream* s = ptr.get();
-            return s->_host_socket != NULL &&
+            return s->_host_socket != nullptr &&
                    s->_connected.load(butil::memory_order_acquire);
         }, 5000)) << "stream_index=" << i;
     }
@@ -1198,10 +1198,10 @@ TEST_F(StreamingRpcTest, unconsumed_bytes_reclaimed_on_stream_close) {
     brpc::Server server;
     MyServiceWithStream service(opt);
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(9007, NULL));
+    ASSERT_EQ(0, server.Start(9007, nullptr));
 
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", NULL));
+    ASSERT_EQ(0, channel.Init("127.0.0.1:9007", nullptr));
 
     brpc::Controller cntl;
     brpc::StreamId request_stream;
@@ -1211,7 +1211,7 @@ TEST_F(StreamingRpcTest, unconsumed_bytes_reclaimed_on_stream_close) {
     brpc::ScopedStream stream_guard(request_stream);
 
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &request, &response, NULL);
+    stub.Echo(&cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
 
     brpc::SocketUniquePtr host_socket;
@@ -1219,7 +1219,7 @@ TEST_F(StreamingRpcTest, unconsumed_bytes_reclaimed_on_stream_close) {
         brpc::StreamUniquePtr ptr;
         ASSERT_EQ(0, brpc::Stream::Address(request_stream, &ptr));
         ASSERT_TRUE(ptr->_connected.load(butil::memory_order_acquire));
-        ASSERT_TRUE(ptr->_host_socket != NULL);
+        ASSERT_TRUE(ptr->_host_socket != nullptr);
         ptr->_host_socket->ReAddress(&host_socket);
     }
     int64_t baseline = host_socket->_total_streams_unconsumed_size.load(

@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
                                brpc::SerializeRequestDefault, 
                                brpc::policy::PackHuluRequest,
                                EmptyProcessHuluRequest, EmptyProcessHuluRequest,
-                               NULL, NULL, NULL,
+                               nullptr, nullptr, nullptr,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
     EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
     return RUN_ALL_TESTS();
@@ -106,14 +106,14 @@ void* client_thread(void* arg) {
     butil::fd_guard fd(butil::unix_socket_connect(socket_name));
     if (fd < 0) {
         PLOG(FATAL) << "Fail to connect to " << socket_name;
-        return NULL;
+        return nullptr;
     }
 #else
     butil::EndPoint point(butil::IP_ANY, 7878);
-    butil::fd_guard fd(butil::tcp_connect(point, NULL));
+    butil::fd_guard fd(butil::tcp_connect(point, nullptr));
     if (fd < 0) {
         PLOG(FATAL) << "Fail to connect to " << point;
-        return NULL;
+        return nullptr;
     }
 #endif
 
@@ -132,7 +132,7 @@ void* client_thread(void* arg) {
         if (n < 0) {
             if (errno != EINTR) {
                 PLOG(FATAL) << "Fail to write fd=" << fd;
-                return NULL;
+                return nullptr;
             }
         } else {
             ++m->times;
@@ -144,7 +144,7 @@ void* client_thread(void* arg) {
         }
     }
     free(buf);
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(MessengerTest, dispatch_tasks) {
@@ -156,7 +156,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
 
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage, 
-          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu" }
+          EmptyProcessHuluRequest, nullptr, nullptr, "dummy_hulu" }
     };
 
     for (size_t i = 0; i < NEPOLL; ++i) {        
@@ -170,14 +170,14 @@ TEST_F(MessengerTest, dispatch_tasks) {
         ASSERT_TRUE(listening_fd > 0);
         butil::make_non_blocking(listening_fd);
         ASSERT_EQ(0, messenger[i].AddHandler(pairs[0]));
-        ASSERT_EQ(0, messenger[i].StartAccept(listening_fd, -1, NULL, false));
+        ASSERT_EQ(0, messenger[i].StartAccept(listening_fd, -1, nullptr, false));
     }
     
     for (size_t i = 0; i < NCLIENT; ++i) {
         cm[i] = new ClientMeta;
         cm[i]->times = 0;
         cm[i]->bytes = 0;
-        ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i]));
+        ASSERT_EQ(0, pthread_create(&cth[i], nullptr, client_thread, cm[i]));
     }
 
     sleep(1);
@@ -211,7 +211,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
               << "/s";
 
     for (size_t i = 0; i < NCLIENT; ++i) {
-        pthread_join(cth[i], NULL);
+        pthread_join(cth[i], nullptr);
         printf("joined client %lu\n", i);
     }
     for (size_t i = 0; i < NEPOLL; ++i) {

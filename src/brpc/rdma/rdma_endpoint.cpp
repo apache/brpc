@@ -89,23 +89,23 @@ extern const uint16_t MIN_QP_SIZE = 16;
 static const uint16_t MAX_QP_SIZE = 4096;
 extern const uint16_t MIN_BLOCK_SIZE = 1024;
 
-static butil::Mutex* g_rdma_resource_mutex = NULL;
-static RdmaResource* g_rdma_resource_list = NULL;
+static butil::Mutex* g_rdma_resource_mutex = nullptr;
+static RdmaResource* g_rdma_resource_list = nullptr;
 
 RdmaResource::~RdmaResource() {
-    if (NULL != qp) {
+    if (nullptr != qp) {
         IbvDestroyQp(qp);
     }
-    if (NULL != polling_cq) {
+    if (nullptr != polling_cq) {
         IbvDestroyCq(polling_cq);
     }
-    if (NULL != send_cq) {
+    if (nullptr != send_cq) {
         IbvDestroyCq(send_cq);
     }
-    if (NULL != recv_cq) {
+    if (nullptr != recv_cq) {
         IbvDestroyCq(recv_cq);
     }
-    if (NULL != comp_channel) {
+    if (nullptr != comp_channel) {
         IbvDestroyCompChannel(comp_channel);
     }
 }
@@ -114,7 +114,7 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     : _socket(s)
     , _state(UNINIT)
     , _handshake_version(0)
-    , _resource(NULL)
+    , _resource(nullptr)
     , _send_cq_events(0)
     , _recv_cq_events(0)
     , _cq_sid(INVALID_SOCKET_ID)
@@ -161,7 +161,7 @@ void RdmaEndpoint::Reset() {
     _state.store(UNINIT, butil::memory_order_relaxed);
     _handshake_version = 0;
     _outgoing_ece.reset();
-    _resource = NULL;
+    _resource = nullptr;
     _send_cq_events = 0;
     _recv_cq_events = 0;
     _cq_sid = INVALID_SOCKET_ID;
@@ -188,7 +188,7 @@ void RdmaConnect::StartConnect(const Socket* socket,
                                void (*done)(int err, void* data),
                                void* data) {
     auto* rdma_transport = static_cast<RdmaTransport*>(socket->_transport.get());
-    CHECK(rdma_transport->_rdma_ep != NULL);
+    CHECK(rdma_transport->_rdma_ep != nullptr);
     SocketUniquePtr s;
     if (Socket::Address(socket->id(), &s) != 0) {
         return;
@@ -224,7 +224,7 @@ void RdmaConnect::Run() {
 void RdmaEndpoint::OnNewDataFromTcp(Socket* m) {
     auto* rdma_transport = static_cast<RdmaTransport*>(m->_transport.get());
     RdmaEndpoint* ep = rdma_transport->GetRdmaEp();
-    CHECK(ep != NULL);
+    CHECK(ep != nullptr);
 
     int progress = Socket::PROGRESS_INIT;
     while (true) {
@@ -314,7 +314,7 @@ static int ReadFromFdLoop(butil::atomic<int>* read_butex,
 }
 
 int RdmaEndpoint::ReadFromFd(void* data, size_t len) {
-    CHECK(data != NULL);
+    CHECK(data != nullptr);
     const int fd = _socket->fd();
     return ReadFromFdLoop(_read_butex, len,
         [data, fd](size_t offset, size_t remaining) {
@@ -323,7 +323,7 @@ int RdmaEndpoint::ReadFromFd(void* data, size_t len) {
 }
 
 int RdmaEndpoint::ReadFromFd(butil::IOPortal* data, size_t len) {
-    CHECK(data != NULL);
+    CHECK(data != nullptr);
     const int fd = _socket->fd();
     return ReadFromFdLoop(_read_butex, len,
         [data, fd](size_t /*offset*/, size_t remaining) {
@@ -367,7 +367,7 @@ static int WriteToFdLoop(size_t len, WriteOnce&& write_once, WaitWritable&& wait
 }
 
 int RdmaEndpoint::WriteToFd(void* data, size_t len) {
-    CHECK(data != NULL);
+    CHECK(data != nullptr);
     Socket* s = _socket;
     const int fd = s->fd();
     return WriteToFdLoop(len,
@@ -380,7 +380,7 @@ int RdmaEndpoint::WriteToFd(void* data, size_t len) {
 }
 
 int RdmaEndpoint::WriteToFd(butil::IOBuf* data) {
-    CHECK(data != NULL);
+    CHECK(data != nullptr);
     Socket* s = _socket;
     const int fd = s->fd();
     return WriteToFdLoop(data->size(),
@@ -429,7 +429,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         << "Start handshake on " << s->description();
 
     std::unique_ptr<RdmaHandshake> handshake = CreateClientHandshake(ep);
-    CHECK(handshake != NULL);
+    CHECK(handshake != nullptr);
     ep->_handshake_version = handshake->ProtocolVersion();
 
     // First initialize CQ and QP resources.
@@ -440,7 +440,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         errno = 0;
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         ep->_state.store(FALLBACK_TCP, butil::memory_order_release);
-        return NULL;
+        return nullptr;
     }
 
     // Send hello message to server
@@ -452,7 +452,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                      s->description().c_str(), berror(saved_errno));
         ep->_state.store(FAILED, butil::memory_order_relaxed);
-        return NULL;
+        return nullptr;
     }
 
     // Receive and parse remote hello.
@@ -466,7 +466,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                      s->description().c_str(), berror(saved_errno));
         ep->_state.store(FAILED, butil::memory_order_relaxed);
-        return NULL;
+        return nullptr;
     }
 
     if (r != RemoteHelloResult::NEGOTIATED) {
@@ -497,7 +497,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
                      s->description().c_str(), berror(saved_errno));
         ep->_state.store(FAILED, butil::memory_order_relaxed);
-        return NULL;
+        return nullptr;
     }
 
     if (rdma_transport->_rdma_state == RdmaTransport::RDMA_ON) {
@@ -513,7 +513,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
 
     errno = 0;
 
-    return NULL;
+    return nullptr;
 }
 
 // Server-side handshake entry: the state machine.
@@ -534,9 +534,9 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
 ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s) {
     RdmaTransport* rdma_transport = static_cast<RdmaTransport*>(s->_transport.get());
     RdmaEndpoint* ep = rdma_transport->_rdma_ep;
-    CHECK(ep != NULL);
+    CHECK(ep != nullptr);
 
-    if (s->parsing_context() == NULL) {
+    if (s->parsing_context() == nullptr) {
         // Phase 1: read the client hello, negotiate, reply server hello.
         if (source->size() < HELLO_MAGIC_LEN) {
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
@@ -548,7 +548,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         // magic is NOT consumed; ReceiveAndParseRemoteHello() reads it again
         // from `source`).
         std::unique_ptr<RdmaHandshake> hs = CreateServerHandshakeByMagic(ep, source, magic);
-        if (hs == NULL) {
+        if (hs == nullptr) {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
         ep->_handshake_version = hs->ProtocolVersion();
@@ -612,7 +612,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         LOG(WARNING) << "Too many bytes in handshake ACK, drop connection: "
                      << s->description();
         ep->_state.store(FAILED, butil::memory_order_relaxed);
-        s->reset_parsing_context(NULL);
+        s->reset_parsing_context(nullptr);
         return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
 
@@ -625,7 +625,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
             << "Server handshake ends (use tcp) on " << s->description();
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         ep->_state.store(FALLBACK_TCP, butil::memory_order_release);
-        s->reset_parsing_context(NULL);
+        s->reset_parsing_context(nullptr);
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
 
@@ -633,7 +633,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         LOG(WARNING) << "Client wants RDMA in ACK but server fell back: "
                      << s->description();
         ep->_state.store(FAILED, butil::memory_order_relaxed);
-        s->reset_parsing_context(NULL);
+        s->reset_parsing_context(nullptr);
         return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
 
@@ -642,7 +642,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         << ") on " << s->description();
     rdma_transport->_rdma_state = RdmaTransport::RDMA_ON;
     ep->_state.store(ESTABLISHED, butil::memory_order_relaxed);
-    s->reset_parsing_context(NULL);
+    s->reset_parsing_context(nullptr);
     return MakeParseError(PARSE_ERROR_TRY_OTHERS);
 }
 
@@ -719,7 +719,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         return -1;
     }
 
-    CHECK(from != NULL);
+    CHECK(from != nullptr);
     CHECK(ndata > 0);
 
     size_t total_len = 0;
@@ -818,7 +818,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             _sq_unsignaled = 0;
         }
 
-        ibv_send_wr* bad = NULL;
+        ibv_send_wr* bad = nullptr;
         int err = ibv_post_send(_resource->qp, &wr, &bad);
         if (err != 0) {
             // We use other way to guarantee the Send Queue is not full.
@@ -868,7 +868,7 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
     wr.send_flags |= IBV_SEND_SOLICITED | IBV_SEND_SIGNALED;
     wr.wr_id = 0;
 
-    ibv_send_wr* bad = NULL;
+    ibv_send_wr* bad = nullptr;
     int err = ibv_post_send(_resource->qp, &wr, &bad);
     if (err != 0) {
         std::ostringstream oss;
@@ -971,7 +971,7 @@ int RdmaEndpoint::DoPostRecv(void* block, size_t block_size) {
     wr.num_sge = 1;
     wr.sg_list = &sge;
 
-    ibv_recv_wr* bad = NULL;
+    ibv_recv_wr* bad = nullptr;
     int err = ibv_post_recv(_resource->qp, &wr, &bad);
     if (err != 0) {
         LOG(WARNING) << "Fail to ibv_post_recv: " << berror(err);
@@ -1026,52 +1026,52 @@ static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
     std::unique_ptr<RdmaResource> resource(new RdmaResource);
     if (!FLAGS_rdma_use_polling) {
         resource->comp_channel = IbvCreateCompChannel(GetRdmaContext());
-        if (NULL == resource->comp_channel) {
+        if (nullptr == resource->comp_channel) {
             PLOG(WARNING) << "Fail to create comp channel for CQ";
-            return NULL;
+            return nullptr;
         }
 
         if (butil::make_close_on_exec(resource->comp_channel->fd) < 0) {
             PLOG(WARNING) << "Fail to set comp channel close-on-exec";
-            return NULL;
+            return nullptr;
         }
         if (butil::make_non_blocking(resource->comp_channel->fd) < 0) {
             PLOG(WARNING) << "Fail to set comp channel nonblocking";
-            return NULL;
+            return nullptr;
         }
 
         resource->send_cq = IbvCreateCq(GetRdmaContext(), FLAGS_rdma_prepared_qp_size,
-                                        NULL, resource->comp_channel, GetRdmaCompVector());
-        if (NULL == resource->send_cq) {
+                                        nullptr, resource->comp_channel, GetRdmaCompVector());
+        if (nullptr == resource->send_cq) {
             PLOG(WARNING) << "Fail to create send CQ";
-            return NULL;
+            return nullptr;
         }
 
         resource->recv_cq = IbvCreateCq(GetRdmaContext(), FLAGS_rdma_prepared_qp_size,
-                                        NULL, resource->comp_channel, GetRdmaCompVector());
-        if (NULL == resource->recv_cq) {
+                                        nullptr, resource->comp_channel, GetRdmaCompVector());
+        if (nullptr == resource->recv_cq) {
             PLOG(WARNING) << "Fail to create recv CQ";
-            return NULL;
+            return nullptr;
         }
 
         resource->qp = AllocateQp(resource->send_cq, resource->recv_cq, sq_size, rq_size);
-        if (NULL == resource->qp) {
+        if (nullptr == resource->qp) {
             PLOG(WARNING) << "Fail to create QP";
-            return NULL;
+            return nullptr;
         }
     } else {
         resource->polling_cq =
-            IbvCreateCq(GetRdmaContext(), 2 * FLAGS_rdma_prepared_qp_size, NULL, NULL, 0);
-        if (NULL == resource->polling_cq) {
+            IbvCreateCq(GetRdmaContext(), 2 * FLAGS_rdma_prepared_qp_size, nullptr, nullptr, 0);
+        if (nullptr == resource->polling_cq) {
             PLOG(WARNING) << "Fail to create polling CQ";
-            return NULL;
+            return nullptr;
         }
         resource->qp = AllocateQp(resource->polling_cq,
                                   resource->polling_cq,
                                   sq_size, rq_size);
-        if (NULL == resource->qp) {
+        if (nullptr == resource->qp) {
             PLOG(WARNING) << "Fail to create QP";
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -1102,7 +1102,7 @@ int RdmaEndpoint::DoAllocateResources() {
         return 0;
     }
 
-    CHECK(_resource == NULL);
+    CHECK(_resource == nullptr);
 
     if (_sq_size <= FLAGS_rdma_prepared_qp_size &&
         _rq_size <= FLAGS_rdma_prepared_qp_size) {
@@ -1115,7 +1115,7 @@ int RdmaEndpoint::DoAllocateResources() {
     if (!_resource) {
         _resource = AllocateQpCq(_sq_size, _rq_size);
     } else {
-        _resource->next = NULL;
+        _resource->next = nullptr;
     }
     if (!_resource) {
         return -1;
@@ -1157,7 +1157,7 @@ int RdmaEndpoint::DoAllocateResources() {
     if (_rbuf.size() != _rq_size) {
         return -1;
     }
-    _rbuf_data.resize(_rq_size, NULL);
+    _rbuf_data.resize(_rq_size, nullptr);
     if (_rbuf_data.size() != _rq_size) {
         return -1;
     }
@@ -1206,7 +1206,7 @@ int RdmaEndpoint::BringUpQp(const ParsedHello& remote, bool is_server) {
     //   Client: `remote->ece' is the server's reduced ECE;
     //           just set it here.
     bool use_ece = true;
-    if (IbvSetEce != NULL && remote.ece.has_value()) {
+    if (IbvSetEce != nullptr && remote.ece.has_value()) {
         ibv_ece ece = *remote.ece;
         int err = IbvSetEce(_resource->qp, &ece);
         if (err != 0) {
@@ -1284,7 +1284,7 @@ int RdmaEndpoint::BringUpQp(const ParsedHello& remote, bool is_server) {
     // On the server side, now that the QP reached RTS, query the reduced/negotiated
     // ECE (the subset of enhancements supported by both peers) so it can be returned
     // to the client in the server hello.
-    if (is_server && use_ece && IbvQueryEce != NULL && remote.ece.has_value()) {
+    if (is_server && use_ece && IbvQueryEce != nullptr && remote.ece.has_value()) {
         ibv_ece ece;
         int qerr = IbvQueryEce(_resource->qp, &ece);
         if (qerr == 0) {
@@ -1299,7 +1299,7 @@ int RdmaEndpoint::BringUpQp(const ParsedHello& remote, bool is_server) {
 }
 
 static void DeallocateCq(ibv_cq* cq) {
-    if (NULL == cq) {
+    if (nullptr == cq) {
         return;
     }
 
@@ -1308,7 +1308,7 @@ static void DeallocateCq(ibv_cq* cq) {
 }
 
 static int DrainCq(ibv_cq* cq) {
-    if (NULL == cq) {
+    if (nullptr == cq) {
         return 0;
     }
 
@@ -1340,27 +1340,27 @@ void RdmaEndpoint::DeallocateResources() {
         }
     }
 
-    if (NULL != _resource->send_cq) {
+    if (nullptr != _resource->send_cq) {
         IbvAckCqEvents(_resource->send_cq, _send_cq_events);
     }
-    if (NULL != _resource->recv_cq) {
+    if (nullptr != _resource->recv_cq) {
         IbvAckCqEvents(_resource->recv_cq, _recv_cq_events);
     }
 
     bool remove_consumer = true;
 _reclaim:
     if (!move_to_rdma_resource_list) {
-        if (NULL != _resource->qp) {
+        if (nullptr != _resource->qp) {
             int err = IbvDestroyQp(_resource->qp);
             LOG_IF(WARNING, 0 != err) << "Fail to destroy QP: " << berror(err);
-            _resource->qp = NULL;
+            _resource->qp = nullptr;
         }
 
         DeallocateCq(_resource->polling_cq);
         DeallocateCq(_resource->send_cq);
         DeallocateCq(_resource->recv_cq);
 
-        if (NULL != _resource->comp_channel) {
+        if (nullptr != _resource->comp_channel) {
             // Destroy send_comp_channel will destroy this fd,
             // so that we should remove it from epoll fd first
             int fd = _resource->comp_channel->fd;
@@ -1371,12 +1371,12 @@ _reclaim:
 
         }
 
-        _resource->polling_cq = NULL;
-        _resource->send_cq = NULL;
-        _resource->recv_cq = NULL;
-        _resource->comp_channel = NULL;
+        _resource->polling_cq = nullptr;
+        _resource->send_cq = nullptr;
+        _resource->recv_cq = nullptr;
+        _resource->comp_channel = nullptr;
         delete _resource;
-        _resource = NULL;
+        _resource = nullptr;
     }
 
     if (INVALID_SOCKET_ID != _cq_sid) {
@@ -1385,7 +1385,7 @@ _reclaim:
             if (remove_consumer) {
                 s->_io_event.RemoveConsumer(s->_fd);
             }
-            s->_user = NULL;  // Do not release user (this RdmaEndpoint).
+            s->_user = nullptr;  // Do not release user (this RdmaEndpoint).
             s->_fd = -1;  // Already remove fd from epoll fd.
             s->SetFailed();
         }
@@ -1415,7 +1415,7 @@ _reclaim:
             _resource->next = g_rdma_resource_list;
             g_rdma_resource_list = _resource;
         }
-        _resource = NULL;
+        _resource = nullptr;
     }
 
     // Detach everything from this endpoint so that the function is
@@ -1429,8 +1429,8 @@ _reclaim:
 static const int MAX_CQ_EVENTS = 128;
 
 int RdmaEndpoint::GetAndAckEvents(SocketUniquePtr& s) {
-    void* context = NULL;
-    ibv_cq* cq = NULL;
+    void* context = nullptr;
+    ibv_cq* cq = nullptr;
     while (true) {
         if (IbvGetCqEvent(_resource->comp_channel, &cq, &context) != 0) {
             if (errno != EAGAIN) {
@@ -1795,7 +1795,7 @@ void RdmaEndpoint::PollingModeRelease(bthread_tag_t tag) {
     auto& running = group.running;
     running.store(false, std::memory_order_relaxed);
     for (int i = 0; i < FLAGS_rdma_poller_num; ++i) {
-        bthread_join(pollers[i].tid, NULL);
+        bthread_join(pollers[i].tid, nullptr);
     }
 }
 

@@ -207,7 +207,7 @@ RedisResponse::RedisResponse(const RedisResponse& from)
 }
 
 void RedisResponse::SharedCtor() {
-    _other_replies = NULL;
+    _other_replies = nullptr;
     _cached_size_ = 0;
     _nreply = 0;
 }
@@ -225,7 +225,7 @@ void RedisResponse::SetCachedSize(int size) const {
 
 void RedisResponse::Clear() {
     _first_reply.Reset();
-    _other_replies = NULL;
+    _other_replies = nullptr;
     _arena.clear();
     _nreply = 0;
     _cached_size_ = 0;
@@ -303,10 +303,10 @@ ParseError RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count
         ++_nreply;
     }
     if (reply_count > 1) {
-        if (_other_replies == NULL) {
+        if (_other_replies == nullptr) {
             _other_replies = (RedisReply*)_arena.allocate(
                 sizeof(RedisReply) * (reply_count - 1));
-            if (_other_replies == NULL) {
+            if (_other_replies == nullptr) {
                 LOG(ERROR) << "Fail to allocate RedisReply[" << reply_count -1 << "]";
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
@@ -362,12 +362,12 @@ RedisCommandHandler* RedisService::FindCommandHandler(const butil::StringPiece& 
     if (it != _command_map.end()) {
         return it->second;
     }
-    return NULL;
+    return nullptr;
 }
 
 RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
     LOG(ERROR) << "NewTransactionHandler is not implemented";
-    return NULL;
+    return nullptr;
 }
 
 // ========== impl of RedisConnContext ==========

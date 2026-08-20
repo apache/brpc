@@ -108,12 +108,12 @@ bool PackRequest(butil::IOBuf* buf,
                  const butil::IOBuf& request) {
     if (accessor.pipelined_count() == MYSQL_PREPARED_STATEMENT) {
         Socket* sock = accessor.get_sending_socket();
-        if (sock == NULL) {
+        if (sock == nullptr) {
             LOG(ERROR) << "[MYSQL PACK] get sending socket with NULL";
             return false;
         }
         auto stub = static_cast<MysqlStatementStub*>(accessor.session_data());
-        if (stub == NULL) {
+        if (stub == nullptr) {
             LOG(ERROR) << "[MYSQL PACK] get prepare statement with NULL";
             return false;
         }
@@ -145,7 +145,7 @@ bool PackRequest(butil::IOBuf* buf,
 
 ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, PipelinedInfo* pi) {
     const bthread_id_t cid = pi->id_wait;
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     if (bthread_id_lock(cid, (void**)&cntl) != 0) {
         LOG(ERROR) << "[MYSQL PARSE] fail to lock controller";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -153,7 +153,7 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
 
     ParseError parseCode = PARSE_OK;
     const AuthContext* ctx = socket->auth_context();
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
         LOG(ERROR) << "[MYSQL PARSE] auth context is null";
         goto END_OF_AUTH;
@@ -286,7 +286,7 @@ ParseError HandlePrepareStatement(const InputResponse* msg,
     }
     const MysqlReply::PrepareOk& ok = msg->response.reply(0).prepare_ok();
     const bthread_id_t cid = pi->id_wait;
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     if (bthread_id_lock(cid, (void**)&cntl) != 0) {
         LOG(ERROR) << "[MYSQL PARSE] fail to lock controller";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -294,16 +294,16 @@ ParseError HandlePrepareStatement(const InputResponse* msg,
     ParseError parseCode = PARSE_OK;
     butil::IOBuf buf;
     butil::Status st;
-    MysqlStatementStub* stub = NULL;
-    MysqlStatement* stmt = NULL;
+    MysqlStatementStub* stub = nullptr;
+    MysqlStatement* stmt = nullptr;
     stub = static_cast<MysqlStatementStub*>(ControllerPrivateAccessor(cntl).session_data());
-    if (stub == NULL) {
+    if (stub == nullptr) {
         LOG(ERROR) << "[MYSQL PACK] get prepare statement with NULL";
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
         goto END_OF_PREPARE;
     }
     stmt = stub->stmt();
-    if (stmt == NULL || stmt->param_count() != ok.param_count()) {
+    if (stmt == nullptr || stmt->param_count() != ok.param_count()) {
         LOG(ERROR) << "[MYSQL PACK] stmt can't be NULL";
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
         goto END_OF_PREPARE;
@@ -356,7 +356,7 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
     }
 
     InputResponse* msg = static_cast<InputResponse*>(socket->parsing_context());
-    if (msg == NULL) {
+    if (msg == nullptr) {
         msg = new InputResponse;
         socket->reset_parsing_context(msg);
     }
@@ -413,7 +413,7 @@ void ProcessMysqlResponse(InputMessageBase* msg_base) {
     DestroyingPtr<InputResponse> msg(static_cast<InputResponse*>(msg_base));
 
     const bthread_id_t cid = msg->id_wait;
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -431,7 +431,7 @@ void ProcessMysqlResponse(InputMessageBase* msg_base) {
         span->set_start_parse_us(start_parse_us);
     }
     const int saved_error = cntl->ErrorCode();
-    if (cntl->response() != NULL) {
+    if (cntl->response() != nullptr) {
         if (cntl->response()->GetDescriptor() != MysqlResponse::descriptor()) {
             LOG(ERROR) << "[MYSQL PROCESS] response message is not a MysqlResponse";
             cntl->SetFailed(ERESPONSE, "Must be MysqlResponse");
@@ -450,7 +450,7 @@ void ProcessMysqlResponse(InputMessageBase* msg_base) {
 void SerializeMysqlRequest(butil::IOBuf* buf,
                            Controller* cntl,
                            const google::protobuf::Message* request) {
-    if (request == NULL) {
+    if (request == nullptr) {
         LOG(ERROR) << "[MYSQL SERIALIZE] request is NULL";
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
@@ -473,11 +473,11 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     accessor.set_mysql_statement_type(MYSQL_NORMAL_STATEMENT);
 
     auto tx = rr->tx();
-    if (tx != NULL) {
+    if (tx != nullptr) {
         accessor.use_bind_sock(tx->GetSocketId());
     }
     auto st = rr->stmt();
-    if (st != NULL) {
+    if (st != nullptr) {
         accessor.set_session_data(rr->stmt());
         accessor.set_mysql_statement_type(MYSQL_PREPARED_STATEMENT);
     }
@@ -496,12 +496,12 @@ void PackMysqlRequest(butil::IOBuf* buf,
     ControllerPrivateAccessor accessor(cntl);
     if (auth) {
         const MysqlAuthenticator* my_auth(dynamic_cast<const MysqlAuthenticator*>(auth));
-        if (my_auth == NULL) {
+        if (my_auth == nullptr) {
             LOG(ERROR) << "[MYSQL PACK] there is not MysqlAuthenticator";
             return;
         }
         Socket* sock = accessor.get_sending_socket();
-        if (sock == NULL) {
+        if (sock == nullptr) {
             LOG(ERROR) << "[MYSQL PACK] get sending socket with NULL";
             return;
         }

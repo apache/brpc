@@ -137,7 +137,7 @@ static std::string JeProfileDump() {
     }
 
     const char* p_prof_name = prof_name;
-    int ret = mallctl("prof.dump", NULL, NULL, (void*)&p_prof_name, sizeof(p_prof_name));
+    int ret = mallctl("prof.dump", nullptr, nullptr, (void*)&p_prof_name, sizeof(p_prof_name));
     if (ret != 0) {
         LOG(WARNING) << "mallctl set prof.dump:" << p_prof_name << " err, ret:" << ret;
         return "";

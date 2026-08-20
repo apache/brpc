@@ -91,10 +91,10 @@ RETURN_CODE IpcShmLocalMalloc(SHM *shm)
         return SHM_ERR;
     }
 
-    shm->addr = (uint8_t*)mmap(NULL, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    shm->addr = (uint8_t*)mmap(nullptr, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (shm->addr == (uint8_t*)MAP_FAILED) {
         LOG(ERROR) << "IPC map shm=" << shm->name << " length=" << shm->len << " failed, ret(" << errno << ").";
-        shm->addr = NULL;
+        shm->addr = nullptr;
         close(fd);
         shm_unlink(shm->name);
         return SHM_ERR;
@@ -106,7 +106,7 @@ RETURN_CODE IpcShmLocalMalloc(SHM *shm)
 
 RETURN_CODE IpcShmMunmap(SHM *shm)
 {
-    if (shm->addr == NULL) {
+    if (shm->addr == nullptr) {
         LOG(INFO) << "IPC unmap shm=" << shm->name << " already unmapped.";
         return UBRING_OK;
     }
@@ -117,7 +117,7 @@ RETURN_CODE IpcShmMunmap(SHM *shm)
         return SHM_ERR;
     }
 
-    shm->addr = NULL;
+    shm->addr = nullptr;
     LOG(INFO) << "IPC unmap shm=" << shm->name << " length=" << shm->len << " success.";
     return UBRING_OK;
 }
@@ -133,7 +133,7 @@ RETURN_CODE IpcShmFree(SHM *shm)
         }
         if (errno == ENOENT) {
             LOG(INFO) << "IPC free shm=" << shm->name << " already deleted.";
-            shm->addr = NULL;
+            shm->addr = nullptr;
             return SHM_ERR_NOT_FOUND;
         }
         LOG_EVERY_SECOND(ERROR) << "IPC free shm=" << shm->name << " failed, errno=" << errno;
@@ -144,7 +144,7 @@ RETURN_CODE IpcShmFree(SHM *shm)
 
 RETURN_CODE IpcShmLocalFree(SHM *shm)
 {
-    if (shm->addr == NULL) {
+    if (shm->addr == nullptr) {
         LOG(INFO) << "IPC free local shm=" << shm->name << " already freed.";
         return SHM_ERR_NOT_FOUND;
     }
@@ -153,7 +153,7 @@ RETURN_CODE IpcShmLocalFree(SHM *shm)
     if (ret != UBRING_OK) {
         LOG(WARNING) << "IPC unmap shm=" << shm->name << " failed, ret=" << ret;
     } else {
-        shm->addr = NULL;
+        shm->addr = nullptr;
     }
 
     ret = shm_unlink(shm->name);
@@ -164,13 +164,13 @@ RETURN_CODE IpcShmLocalFree(SHM *shm)
         }
         if (errno == ENOENT) {
             LOG(INFO) << "IPC delete shm=" << shm->name << " already deleted by peer.";
-            shm->addr = NULL;
+            shm->addr = nullptr;
             return SHM_ERR_NOT_FOUND;
         }
         LOG_EVERY_SECOND(ERROR) << "IPC delete shm=" << shm->name << " failed, ret=" << ret;
         return SHM_ERR;
     }
-    shm->addr = NULL;
+    shm->addr = nullptr;
     LOG(INFO) << "IPC free local shm=" << shm->name << " success.";
     return UBRING_OK;
 }
@@ -188,10 +188,10 @@ RETURN_CODE IpcShmRemoteMalloc(SHM *shm)
         return SHM_ERR;
     }
 
-    shm->addr = (uint8_t*)mmap(NULL, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    shm->addr = (uint8_t*)mmap(nullptr, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (shm->addr == (uint8_t*)MAP_FAILED) {
         LOG(ERROR) << "IPC map shm=" << shm->name << " failed, ret=" << errno;
-        shm->addr = NULL;
+        shm->addr = nullptr;
         close(fd);
         return SHM_ERR;
     }
@@ -213,10 +213,10 @@ RETURN_CODE IpcShmLocalMmap(SHM *shm, int prot)
         return SHM_ERR;
     }
 
-    shm->addr = (uint8_t*)mmap(NULL, shm->len, prot, MAP_SHARED, fd, 0);
+    shm->addr = (uint8_t*)mmap(nullptr, shm->len, prot, MAP_SHARED, fd, 0);
     if (shm->addr == (uint8_t*)MAP_FAILED) {
         LOG(ERROR) << "IPC map shm=" << shm->name << " failed, ret=" << errno;
-        shm->addr = NULL;
+        shm->addr = nullptr;
         close(fd);
         return SHM_ERR;
     }
@@ -228,7 +228,7 @@ RETURN_CODE IpcShmLocalMmap(SHM *shm, int prot)
 
 RETURN_CODE IpcShmRemoteFree(SHM *shm)
 {
-    if (shm->addr == NULL) {
+    if (shm->addr == nullptr) {
         LOG(INFO) << "IPC free remote shm=" << shm->name << " already freed.";
         return UBRING_OK;
     }
@@ -239,7 +239,7 @@ RETURN_CODE IpcShmRemoteFree(SHM *shm)
         return SHM_ERR;
     }
 
-    shm->addr = NULL;
+    shm->addr = nullptr;
     LOG(INFO) << "IPC free remote shm=" << shm->name << " success.";
     return UBRING_OK;
 }

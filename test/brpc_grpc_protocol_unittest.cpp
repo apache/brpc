@@ -88,11 +88,22 @@ public:
     }
 };
 
+class WindowGrpcService : public ::test::GrpcService {
+public:
+    void Method(::google::protobuf::RpcController*,
+                const ::test::GrpcRequest* req,
+                ::test::GrpcResponse* res,
+                ::google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        res->set_message(req->message());
+    }
+};
+
 class GrpcTest : public ::testing::Test {
 protected:
     GrpcTest() {
         EXPECT_EQ(0, _server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, _server.Start(g_server_addr.c_str(), NULL));
+        EXPECT_EQ(0, _server.Start(g_server_addr.c_str(), nullptr));
         brpc::ChannelOptions options;
         options.protocol = g_protocol;
         options.timeout_ms = g_timeout_ms;
@@ -115,7 +126,7 @@ protected:
         req.set_return_error(false);
 
         test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
+        stub.Method(&cntl, &req, &res, nullptr);
         EXPECT_FALSE(cntl.Failed()) << cntl.ErrorCode() << ": " << cntl.ErrorText();
         EXPECT_EQ(res.message(), g_prefix + g_req);
     }
@@ -169,7 +180,7 @@ TEST_F(GrpcTest, return_error) {
     req.set_gzip(false);
     req.set_return_error(true);
     test::GrpcService_Stub stub(&_channel);
-    stub.Method(&cntl, &req, &res, NULL);
+    stub.Method(&cntl, &req, &res, nullptr);
     EXPECT_TRUE(cntl.Failed());
     EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
     EXPECT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with(butil::string_printf("%s", g_prefix.c_str())));
@@ -189,7 +200,7 @@ TEST_F(GrpcTest, RpcTimedOut) {
     req.set_gzip(false);
     req.set_return_error(false);
     test::GrpcService_Stub stub(&_channel);
-    stub.MethodTimeOut(&cntl, &req, &res, NULL);
+    stub.MethodTimeOut(&cntl, &req, &res, nullptr);
     EXPECT_TRUE(cntl.Failed());
     EXPECT_EQ(cntl.ErrorCode(), brpc::ERPCTIMEDOUT);
 }
@@ -202,7 +213,7 @@ TEST_F(GrpcTest, MethodNotExist) {
     req.set_gzip(false);
     req.set_return_error(false);
     test::GrpcService_Stub stub(&_channel);
-    stub.MethodNotExist(&cntl, &req, &res, NULL);
+    stub.MethodNotExist(&cntl, &req, &res, nullptr);
     EXPECT_TRUE(cntl.Failed());
     EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
     ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method MethodNotExist() not implemented."));
@@ -234,11 +245,11 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         req.set_message(g_req);
         req.set_gzip(false);
         req.set_return_error(false);
-        req.set_timeout_us((int64_t)(strtol(timeouts[i+1], NULL, 10)));
+        req.set_timeout_us((int64_t)(strtol(timeouts[i+1], nullptr, 10)));
         cntl.set_timeout_ms(-1);
         cntl.http_request().SetHeader("grpc-timeout", timeouts[i]);
         test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
+        stub.Method(&cntl, &req, &res, nullptr);
         EXPECT_FALSE(cntl.Failed());
     }
 
@@ -253,7 +264,7 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         req.set_timeout_us(9876000);
         cntl.set_timeout_ms(9876);
         test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
+        stub.Method(&cntl, &req, &res, nullptr);
         EXPECT_FALSE(cntl.Failed());
     }
 
@@ -267,9 +278,48 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         req.set_return_error(false);
         req.set_timeout_us(g_timeout_ms * 1000);
         test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
+        stub.Method(&cntl, &req, &res, nullptr);
         EXPECT_FALSE(cntl.Failed());
     }
+}
+
+TEST(GrpcProtocol, client_sends_large_request_with_small_remote_window) {
+    WindowGrpcService service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions server_options;
+    server_options.h2_settings.stream_window_size = 32;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &server_options));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions channel_options;
+    channel_options.protocol = g_protocol;
+    channel_options.timeout_ms = 10000;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &channel_options));
+    test::GrpcService_Stub stub(&channel);
+
+    // Establish the H2 connection and receive the server SETTINGS first.
+    {
+        test::GrpcRequest request;
+        test::GrpcResponse response;
+        brpc::Controller cntl;
+        request.set_message("warmup");
+        request.set_gzip(false);
+        request.set_return_error(false);
+        stub.Method(&cntl, &request, &response, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(request.message(), response.message());
+    }
+
+    test::GrpcRequest request;
+    test::GrpcResponse response;
+    brpc::Controller cntl;
+    request.set_message(std::string(128 * 1024, 'x'));
+    request.set_gzip(false);
+    request.set_return_error(false);
+    stub.Method(&cntl, &request, &response, nullptr);
+    EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(request.message(), response.message());
 }
 
 } // namespace 

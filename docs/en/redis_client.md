@@ -42,7 +42,7 @@ brpc::RedisRequest set_request;
 brpc::RedisResponse response;
 brpc::Controller cntl;
 set_request.AddCommand("SET %s %d", my_key.c_str(), my_number);
-redis_channel.CallMethod(NULL, &cntl, &set_request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &set_request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -63,7 +63,7 @@ brpc::RedisRequest incr_request;
 incr_request.AddCommand("INCR %s", my_key.c_str());
 response.Clear();
 cntl.Reset();
-redis_channel.CallMethod(NULL, &cntl, &incr_request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &incr_request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -88,7 +88,7 @@ request.AddCommand("INCR counter1");
 request.AddCommand("DECR counter1");
 request.AddCommand("INCRBY counter1 10");
 request.AddCommand("DECRBY counter1 20");
-redis_channel.CallMethod(NULL, &cntl, &request, &response, NULL/*done*/);
+redis_channel.CallMethod(nullptr, &cntl, &request, &response, nullptr/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;

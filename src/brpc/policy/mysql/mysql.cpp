@@ -91,17 +91,17 @@ void MysqlRequest::SharedCtor() {
     _has_error = false;
     _cached_size_ = 0;
     _has_command = false;
-    _tx = NULL;
-    _stmt = NULL;
+    _tx = nullptr;
+    _stmt = nullptr;
     _param_index = 0;
 }
 
 MysqlRequest::~MysqlRequest() {
     SharedDtor();
-    if (_stmt != NULL) {
+    if (_stmt != nullptr) {
         delete _stmt;
     }
-    _stmt = NULL;
+    _stmt = nullptr;
 }
 
 void MysqlRequest::SharedDtor() {
@@ -115,10 +115,10 @@ void MysqlRequest::Clear() {
     _has_error = false;
     _buf.clear();
     _has_command = false;
-    _tx = NULL;
+    _tx = nullptr;
     if (_stmt) {
         delete _stmt;
-        _stmt = NULL;
+        _stmt = nullptr;
     }
     _param_index = 0;
 }
@@ -141,11 +141,11 @@ void MysqlRequest::MergeFrom(const MysqlRequest& from) {
     // _tx is a non-owning pointer (never deleted by MysqlRequest): shallow copy.
     _tx = from._tx;
     // _stmt is owned (deleted in the dtor): deep-copy to avoid double free.
-    if (_stmt != NULL) {
+    if (_stmt != nullptr) {
         delete _stmt;
-        _stmt = NULL;
+        _stmt = nullptr;
     }
-    if (from._stmt != NULL) {
+    if (from._stmt != nullptr) {
         _stmt = new MysqlStatementStub(*from._stmt);
     }
 }
@@ -196,7 +196,7 @@ bool MysqlRequest::AddParam(int8_t p) {
     if (_has_error) {
         return false;
     }
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(int8_t): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -212,7 +212,7 @@ bool MysqlRequest::AddParam(int8_t p) {
     }
 }
 bool MysqlRequest::AddParam(uint8_t p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(uint8_t): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -229,7 +229,7 @@ bool MysqlRequest::AddParam(uint8_t p) {
     }
 }
 bool MysqlRequest::AddParam(int16_t p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(int16_t): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -245,7 +245,7 @@ bool MysqlRequest::AddParam(int16_t p) {
     }
 }
 bool MysqlRequest::AddParam(uint16_t p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(uint16_t): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -262,7 +262,7 @@ bool MysqlRequest::AddParam(uint16_t p) {
     }
 }
 bool MysqlRequest::AddParam(int32_t p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(int32_t): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -278,7 +278,7 @@ bool MysqlRequest::AddParam(int32_t p) {
     }
 }
 bool MysqlRequest::AddParam(uint32_t p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(uint32_t): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -295,7 +295,7 @@ bool MysqlRequest::AddParam(uint32_t p) {
     }
 }
 bool MysqlRequest::AddParam(int64_t p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(int64_t): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -312,7 +312,7 @@ bool MysqlRequest::AddParam(int64_t p) {
     }
 }
 bool MysqlRequest::AddParam(uint64_t p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(uint64_t): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -329,7 +329,7 @@ bool MysqlRequest::AddParam(uint64_t p) {
     }
 }
 bool MysqlRequest::AddParam(float p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(float): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -345,7 +345,7 @@ bool MysqlRequest::AddParam(float p) {
     }
 }
 bool MysqlRequest::AddParam(double p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(double): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -361,7 +361,7 @@ bool MysqlRequest::AddParam(double p) {
     }
 }
 bool MysqlRequest::AddParam(const butil::StringPiece& p) {
-    if (_stmt == NULL || _stmt->stmt() == NULL) {
+    if (_stmt == nullptr || _stmt->stmt() == nullptr) {
         LOG(WARNING) << "MysqlRequest::AddParam(StringPiece): no prepared statement bound to request";
         _has_error = true;
         return false;
@@ -473,7 +473,7 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
             if (_other_replies.size() < reply_size()) {
                 MysqlReply* replies =
                     (MysqlReply*)_arena.allocate(sizeof(MysqlReply) * (replies_size - 1));
-                if (replies == NULL) {
+                if (replies == nullptr) {
                     LOG(ERROR) << "Fail to allocate MysqlReply[" << replies_size - 1 << "]";
                     return PARSE_ERROR_ABSOLUTELY_WRONG;
                 }

@@ -23,7 +23,7 @@
 // raw socket; here we drive the actual client stack a user would use.
 //
 // Each fat test chains several prepared-statement behaviors (param counting,
-// binding, typed fetch, re-execution, NULL handling, error paths) so the
+// binding, typed fetch, re-execution, nullptr handling, error paths) so the
 // test boundaries reflect our own grouping of the client surface.
 //
 // HARNESS: Reuses the self-spawned / already-running mysqld pattern
@@ -104,7 +104,7 @@ static bool g_schema_ready = false;
 
 static std::string TestDataDir() {
     char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    if (getcwd(cwd, sizeof(cwd)) == nullptr) {
         return std::string("/tmp/mysql_ps_data_for_test");
     }
     return std::string(cwd) + "/mysql_ps_data_for_test";
@@ -212,7 +212,7 @@ static void StartServerOnce() {
                               (char*)logerr_arg.c_str(),
                               (char*)"--mysqlx=OFF",
                               (char*)"--bind-address=127.0.0.1",
-                              NULL};
+                              nullptr};
         if (execvp(MYSQLD_BIN, argv) < 0) {
             puts("Fail to run " MYSQLD_BIN);
             exit(1);
@@ -265,7 +265,7 @@ static bool RunPlainQuery(brpc::Channel* channel, const std::string& sql) {
     }
     brpc::MysqlResponse response;
     brpc::Controller cntl;
-    channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
     if (cntl.Failed()) {
         return false;
     }
@@ -361,7 +361,7 @@ TEST_F(MysqlPreparedTest, ParamCountsAndNoParamSelect) {
     brpc::MysqlRequest request(s.get());
     brpc::MysqlResponse response;
     brpc::Controller cntl;
-    channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_GE(response.reply_size(), 1u);
     const brpc::MysqlReply& r = response.reply(0);
@@ -384,7 +384,7 @@ TEST_F(MysqlPreparedTest, BindAndExecuteIntStringAndArithmetic) {
         ASSERT_TRUE(request.AddParam((int32_t)417));
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_GE(response.reply_size(), 1u);
         const brpc::MysqlReply& r = response.reply(0);
@@ -403,7 +403,7 @@ TEST_F(MysqlPreparedTest, BindAndExecuteIntStringAndArithmetic) {
         ASSERT_TRUE(request.AddParam(butil::StringPiece("cobalt")));
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_GE(response.reply_size(), 1u);
         const brpc::MysqlReply& r = response.reply(0);
@@ -429,7 +429,7 @@ TEST_F(MysqlPreparedTest, BindAndExecuteIntStringAndArithmetic) {
         ASSERT_TRUE(request.AddParam((int32_t)28));
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_GE(response.reply_size(), 1u);
         const brpc::MysqlReply& r = response.reply(0);
@@ -465,7 +465,7 @@ TEST_F(MysqlPreparedTest, ReExecuteAndTypedColumnFetch) {
             ASSERT_TRUE(request.AddParam(c.id));
             brpc::MysqlResponse response;
             brpc::Controller cntl;
-            channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+            channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             ASSERT_GE(response.reply_size(), 1u);
             const brpc::MysqlReply& r = response.reply(0);
@@ -484,7 +484,7 @@ TEST_F(MysqlPreparedTest, ReExecuteAndTypedColumnFetch) {
         ASSERT_TRUE(request.AddParam((int32_t)528));
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_GE(response.reply_size(), 1u);
         const brpc::MysqlReply& r = response.reply(0);
@@ -529,7 +529,7 @@ TEST_F(MysqlPreparedTest, NullColumnAndLiteralNullAreNil) {
         ASSERT_TRUE(request.AddParam((int32_t)639));
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_GE(response.reply_size(), 1u);
         const brpc::MysqlReply& r = response.reply(0);
@@ -538,14 +538,14 @@ TEST_F(MysqlPreparedTest, NullColumnAndLiteralNullAreNil) {
         EXPECT_TRUE(r.next().field(0).is_nil());
     }
 
-    // A literal NULL in the SELECT list also comes back nil.
+    // A literal nullptr in the SELECT list also comes back nil.
     {
         PREPARE_OR_FAIL(s, "SELECT NULL");
         EXPECT_EQ(0u, s->param_count());
         brpc::MysqlRequest request(s.get());
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_GE(response.reply_size(), 1u);
         const brpc::MysqlReply& r = response.reply(0);
@@ -573,7 +573,7 @@ TEST_F(MysqlPreparedTest, MalformedAndParamMismatchSurfaceErrors) {
             brpc::MysqlRequest request(s.get());
             brpc::MysqlResponse response;
             brpc::Controller cntl;
-            channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+            channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
             if (cntl.Failed()) {
                 SUCCEED() << "execute of malformed statement failed as expected: "
                           << cntl.ErrorText();
@@ -592,7 +592,7 @@ TEST_F(MysqlPreparedTest, MalformedAndParamMismatchSurfaceErrors) {
         brpc::MysqlRequest request(s.get());
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         if (cntl.Failed()) {
             SUCCEED() << "mismatched param count failed the RPC as expected: "
                       << cntl.ErrorText();
@@ -618,7 +618,7 @@ TEST_F(MysqlPreparedTest, StatementReuseAndIndependentStatement) {
         brpc::MysqlRequest request(s1.get());
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_GE(response.reply_size(), 1u);
         const brpc::MysqlReply& r = response.reply(0);
@@ -644,7 +644,7 @@ TEST_F(MysqlPreparedTest, StatementReuseAndIndependentStatement) {
     ASSERT_TRUE(request.AddParam((int32_t)417));
     brpc::MysqlResponse response;
     brpc::Controller cntl;
-    channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_GE(response.reply_size(), 1u);
     ASSERT_TRUE(response.reply(0).is_resultset());
@@ -704,7 +704,7 @@ TEST_F(MysqlPreparedTest, BinaryTimeAndDateTimeParsing) {
         // DATE column: only the date part on the wire (len==4) -> "YYYY-MM-DD".
         {"SELECT CAST('2021-03-04' AS DATE)", "2021-03-04"},
         // TIME zero value: encoded with len==0 (no field bytes on the wire).
-        // This must surface as the zero string "00:00:00", NOT as NULL.
+        // This must surface as the zero string "00:00:00", NOT as nullptr.
         {"SELECT CAST('00:00:00' AS TIME)", "00:00:00"},
     };
 
@@ -715,7 +715,7 @@ TEST_F(MysqlPreparedTest, BinaryTimeAndDateTimeParsing) {
         brpc::MysqlRequest request(s.get());
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel_.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel_.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_GE(response.reply_size(), 1u);
         const brpc::MysqlReply& r = response.reply(0);

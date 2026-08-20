@@ -123,7 +123,7 @@ option.nshead_service = new brpc::policy::UbrpcCompackAdaptor; // mcpack2用Ubrp
 
 # 使用nshead+blob的服务
 
-[NsheadService](https://github.com/apache/brpc/blob/master/src/brpc/nshead_service.h)是brpc中所有处理nshead打头协议的基类，实现好的NsheadService实例得赋值给ServerOptions.nshead_service才能发挥作用。不赋值的话，默认是NULL，代表不支持任何nshead开头的协议，这个server被nshead开头的数据包访问时会报错。明显地，**一个Server只能处理一种以nshead开头的协议。**
+[NsheadService](https://github.com/apache/brpc/blob/master/src/brpc/nshead_service.h)是brpc中所有处理nshead打头协议的基类，实现好的NsheadService实例得赋值给ServerOptions.nshead_service才能发挥作用。不赋值的话，默认是nullptr，代表不支持任何nshead开头的协议，这个server被nshead开头的数据包访问时会报错。明显地，**一个Server只能处理一种以nshead开头的协议。**
 
 NsheadService的接口如下，基本上用户只需要实现`ProcessNsheadRequest`这个函数。
 
@@ -218,7 +218,7 @@ public:
     //   meta: was set by ParseNsheadMeta()
     //   controller: If something goes wrong, call controller->SetFailed()
     //   pb_res: the pb response that returned by pb method. [NOTE] `pb_res'
-    //           can be NULL or uninitialized when RPC failed (indicated by
+    //           can be nullptr or uninitialized when RPC failed (indicated by
     //           Controller::Failed()), in which case you may put error
     //           information into `nshead_res'.
     //   nshead_res: the nshead response that will be sent back to client.

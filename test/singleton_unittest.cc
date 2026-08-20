@@ -59,7 +59,7 @@ struct CallbackTrait : public DefaultSingletonTraits<Type> {
 
 class CallbackSingleton {
  public:
-  CallbackSingleton() : callback_(NULL) { }
+  CallbackSingleton() : callback_(nullptr) { }
   CallbackFunc callback_;
 };
 
@@ -238,7 +238,7 @@ TEST_F(SingletonTest, Basic) {
   DeleteLeakySingleton();
 
   // The static singleton can't be acquired post-atexit.
-  EXPECT_EQ(NULL, GetStaticSingleton());
+  EXPECT_EQ(nullptr, GetStaticSingleton());
 
   {
     butil::ShadowingAtExitManager sem;

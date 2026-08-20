@@ -32,7 +32,7 @@ void* rdlocker(void* arg) {
                                       butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_rwlock_unlock(rw);
-    return NULL;
+    return nullptr;
 }
 
 void* wrlocker(void* arg) {
@@ -43,12 +43,12 @@ void* wrlocker(void* arg) {
                                       butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_rwlock_unlock(rw);
-    return NULL;
+    return nullptr;
 }
 
 TEST(RWLockTest, sanity) {
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
     ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
     ASSERT_EQ(0, bthread_rwlock_wrlock(&rw));
@@ -56,31 +56,31 @@ TEST(RWLockTest, sanity) {
 
     bthread_t rdth;
     bthread_t rwth;
-    ASSERT_EQ(0, bthread_start_urgent(&rdth, NULL, rdlocker, &rw));
-    ASSERT_EQ(0, bthread_start_urgent(&rwth, NULL, wrlocker, &rw));
+    ASSERT_EQ(0, bthread_start_urgent(&rdth, nullptr, rdlocker, &rw));
+    ASSERT_EQ(0, bthread_start_urgent(&rwth, nullptr, wrlocker, &rw));
 
-    ASSERT_EQ(0, bthread_join(rdth, NULL));
-    ASSERT_EQ(0, bthread_join(rwth, NULL));
+    ASSERT_EQ(0, bthread_join(rdth, nullptr));
+    ASSERT_EQ(0, bthread_join(rwth, nullptr));
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
 }
 
 TEST(RWLockTest, used_in_pthread) {
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
     pthread_t rdth[8];
     pthread_t wrth[8];
     for (size_t i = 0; i < ARRAY_SIZE(rdth); ++i) {
-        ASSERT_EQ(0, pthread_create(&rdth[i], NULL, rdlocker, &rw));
+        ASSERT_EQ(0, pthread_create(&rdth[i], nullptr, rdlocker, &rw));
     }
     for (size_t i = 0; i < ARRAY_SIZE(wrth); ++i) {
-        ASSERT_EQ(0, pthread_create(&wrth[i], NULL, wrlocker, &rw));
+        ASSERT_EQ(0, pthread_create(&wrth[i], nullptr, wrlocker, &rw));
     }
 
     for (size_t i = 0; i < ARRAY_SIZE(rdth); ++i) {
-        pthread_join(rdth[i], NULL);
+        pthread_join(rdth[i], nullptr);
     }
     for (size_t i = 0; i < ARRAY_SIZE(rdth); ++i) {
-        pthread_join(wrth[i], NULL);
+        pthread_join(wrth[i], nullptr);
     }
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
 }
@@ -88,31 +88,31 @@ TEST(RWLockTest, used_in_pthread) {
 void* do_timedrdlock(void *arg) {
     struct timespec t = { -2, 0 };
     EXPECT_EQ(ETIMEDOUT, bthread_rwlock_timedrdlock((bthread_rwlock_t*)arg, &t));
-    return NULL;
+    return nullptr;
 }
 
 void* do_timedwrlock(void *arg) {
     struct timespec t = { -2, 0 };
     EXPECT_EQ(ETIMEDOUT, bthread_rwlock_timedwrlock((bthread_rwlock_t*)arg, &t));
     LOG(INFO) << 10;
-    return NULL;
+    return nullptr;
 }
 
 TEST(RWLockTest, timedlock) {
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
 
     ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
     bthread_t th;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedwrlock, &rw));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_timedwrlock, &rw));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
 
     ASSERT_EQ(0, bthread_rwlock_wrlock(&rw));
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedwrlock, &rw));
-    ASSERT_EQ(0, bthread_join(th, NULL));
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedrdlock, &rw));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_timedwrlock, &rw));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_timedrdlock, &rw));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
 }
@@ -126,45 +126,45 @@ void* do_tryrdlock(void *arg) {
     auto trylock_args = (TrylockArgs*)arg;
     EXPECT_EQ(trylock_args->rc, bthread_rwlock_tryrdlock(trylock_args->rw));
     if (0 != trylock_args->rc) {
-        return NULL;
+        return nullptr;
     }
     EXPECT_EQ(trylock_args->rc, bthread_rwlock_unlock(trylock_args->rw));
-    return NULL;
+    return nullptr;
 }
 
 void* do_trywrlock(void *arg) {
     auto trylock_args = (TrylockArgs*)arg;
     EXPECT_EQ(trylock_args->rc, bthread_rwlock_trywrlock(trylock_args->rw));
     if (0 != trylock_args->rc) {
-        return NULL;
+        return nullptr;
     }
     EXPECT_EQ(trylock_args->rc, bthread_rwlock_unlock(trylock_args->rw));
-    return NULL;
+    return nullptr;
 }
 
 TEST(RWLockTest, trylock) {
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
 
     ASSERT_EQ(0, bthread_rwlock_tryrdlock(&rw));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
     ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
     bthread_t th;
     TrylockArgs args{&rw, 0};
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_tryrdlock, &args));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_tryrdlock, &args));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
     args.rc = EBUSY;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_trywrlock, &args));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_trywrlock, &args));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
 
     ASSERT_EQ(0, bthread_rwlock_trywrlock(&rw));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
     ASSERT_EQ(0, bthread_rwlock_wrlock(&rw));
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_tryrdlock, &args));
-    ASSERT_EQ(0, bthread_join(th, NULL));
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_trywrlock, &args));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_tryrdlock, &args));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_trywrlock, &args));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
 
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
@@ -238,13 +238,13 @@ void* loop_until_stopped(void* arg) {
     while (!g_stopped) {
         args->op(args->rw, 20);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(RWLockTest, mix_thread_types) {
     g_stopped = false;
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
 
     const int N = 16;
     const int M = N * 2;
@@ -263,7 +263,7 @@ TEST(RWLockTest, mix_thread_types) {
         } else {
             args.push_back({&rw, write_op});
         }
-        ASSERT_EQ(0, pthread_create(&pthreads[i], NULL, loop_until_stopped, &args.back()));
+        ASSERT_EQ(0, pthread_create(&pthreads[i], nullptr, loop_until_stopped, &args.back()));
     }
 
     for (int i = 0; i < M; ++i) {
@@ -272,16 +272,16 @@ TEST(RWLockTest, mix_thread_types) {
         } else {
             args.push_back({&rw, write_op});
         }
-        const bthread_attr_t* attr = i % 2 ? NULL : &BTHREAD_ATTR_PTHREAD;
+        const bthread_attr_t* attr = i % 2 ? nullptr : &BTHREAD_ATTR_PTHREAD;
         ASSERT_EQ(0, bthread_start_urgent(&bthreads[i], attr, loop_until_stopped, &args.back()));
     }
     bthread_usleep(1000L * 1000);
     g_stopped = true;
     for (int i = 0; i < M; ++i) {
-        bthread_join(bthreads[i], NULL);
+        bthread_join(bthreads[i], nullptr);
     }
     for (int i = 0; i < N; ++i) {
-        pthread_join(pthreads[i], NULL);
+        pthread_join(pthreads[i], nullptr);
     }
 
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
@@ -302,7 +302,7 @@ void* wp_writer_fn(void* arg) {
     a->my_order = a->order->fetch_add(1, butil::memory_order_relaxed);
     bthread_usleep(a->hold_us);
     EXPECT_EQ(0, bthread_rwlock_unlock(a->rw));
-    return NULL;
+    return nullptr;
 }
 
 void* wp_reader_fn(void* arg) {
@@ -311,7 +311,7 @@ void* wp_reader_fn(void* arg) {
     a->my_order = a->order->fetch_add(1, butil::memory_order_relaxed);
     bthread_usleep(a->hold_us);
     EXPECT_EQ(0, bthread_rwlock_unlock(a->rw));
-    return NULL;
+    return nullptr;
 }
 
 // Verifies the writer-priority invariant guarded by the order
@@ -321,7 +321,7 @@ void* wp_reader_fn(void* arg) {
 TEST(RWLockTest, writer_priority) {
     bthread_setconcurrency(8);
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
 
     // (1) Main thread holds the read lock first.
     ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
@@ -334,22 +334,22 @@ TEST(RWLockTest, writer_priority) {
     //     lock is held. Sleep long enough for it to fetch_add into
     //     writer_wait_count and reach the butex_wait on `lock_word'.
     bthread_t wth;
-    ASSERT_EQ(0, bthread_start_urgent(&wth, NULL, wp_writer_fn, &warg));
+    ASSERT_EQ(0, bthread_start_urgent(&wth, nullptr, wp_writer_fn, &warg));
     bthread_usleep(50 * 1000);
 
     // (3) Now spawn a fresh reader. By writer-priority it MUST observe
     //     writer_wait_count > 0 and park on it (NOT join the active read
     //     lock).
     bthread_t r2th;
-    ASSERT_EQ(0, bthread_start_urgent(&r2th, NULL, wp_reader_fn, &r2arg));
+    ASSERT_EQ(0, bthread_start_urgent(&r2th, nullptr, wp_reader_fn, &r2arg));
     bthread_usleep(50 * 1000);
 
     // (4) Release the original read lock. The writer should win the race
     //     and complete BEFORE the queued reader.
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
 
-    bthread_join(wth, NULL);
-    bthread_join(r2th, NULL);
+    bthread_join(wth, nullptr);
+    bthread_join(r2th, nullptr);
 
     EXPECT_GE(warg.my_order, 0);
     EXPECT_GE(r2arg.my_order, 0);
@@ -365,7 +365,7 @@ void* wp_timed_wrlock_short(void* arg) {
     auto* rw = (bthread_rwlock_t*)arg;
     timespec ts = butil::milliseconds_from_now(50);
     EXPECT_EQ(ETIMEDOUT, bthread_rwlock_timedwrlock(rw, &ts));
-    return NULL;
+    return nullptr;
 }
 
 // Verifies the cleanup path of rwlock_wrlock_cleanup(): after multiple
@@ -374,7 +374,7 @@ void* wp_timed_wrlock_short(void* arg) {
 TEST(RWLockTest, wrlock_failure_does_not_leak_writer_count) {
     bthread_setconcurrency(8);
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
 
     // Hold the read lock so every wrlock attempt must block on `lock_word'.
     ASSERT_EQ(0, bthread_rwlock_rdlock(&rw));
@@ -382,11 +382,11 @@ TEST(RWLockTest, wrlock_failure_does_not_leak_writer_count) {
     const int N = 8;
     bthread_t wth[N];
     for (int i = 0; i < N; ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&wth[i], NULL, wp_timed_wrlock_short, &rw));
+        ASSERT_EQ(0, bthread_start_urgent(&wth[i], nullptr, wp_timed_wrlock_short, &rw));
     }
     // Wait for all timed wrlock attempts to time out and run cleanup.
     for (int i = 0; i < N; ++i) {
-        bthread_join(wth[i], NULL);
+        bthread_join(wth[i], nullptr);
     }
 
     // Release the read lock; from this point on no writer is in flight,
@@ -431,7 +431,7 @@ void* dc_worker(void* arg) {
             EXPECT_EQ(0, bthread_rwlock_unlock(a->rw));
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 // Verifies the release/acquire memory ordering pair on `lock_word'.
@@ -441,7 +441,7 @@ void* dc_worker(void* arg) {
 // threads, causing the final counter to disagree with total writer ops.
 TEST(RWLockTest, data_consistency) {
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
 
     g_stopped = false;
     const int W = 4;
@@ -457,7 +457,7 @@ TEST(RWLockTest, data_consistency) {
         args[i].local_inc = 0;
         args[i].observed_max = -1;
         args[i].is_writer = (i < W);
-        ASSERT_EQ(0, bthread_start_urgent(&threads[i], NULL, dc_worker, &args[i]));
+        ASSERT_EQ(0, bthread_start_urgent(&threads[i], nullptr, dc_worker, &args[i]));
     }
 
     bthread_usleep(500 * 1000);
@@ -465,7 +465,7 @@ TEST(RWLockTest, data_consistency) {
 
     int64_t total_inc = 0;
     for (int i = 0; i < W + R; ++i) {
-        bthread_join(threads[i], NULL);
+        bthread_join(threads[i], nullptr);
         if (args[i].is_writer) {
             total_inc += args[i].local_inc;
         }
@@ -493,7 +493,7 @@ void* ws_reader_loop(void* arg) {
         bthread_usleep(100);
         EXPECT_EQ(0, bthread_rwlock_unlock(rw));
     }
-    return NULL;
+    return nullptr;
 }
 
 // Verifies that under a continuous read load, a writer can still acquire
@@ -502,14 +502,14 @@ void* ws_reader_loop(void* arg) {
 // wrlock() must yield, ensuring the writer never starves.
 TEST(RWLockTest, no_writer_starvation) {
     bthread_rwlock_t rw;
-    ASSERT_EQ(0, bthread_rwlock_init(&rw, NULL));
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
 
     g_stopped = false;
     const int R = 16;
     bthread_setconcurrency(R + 4);
     bthread_t rth[R];
     for (int i = 0; i < R; ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&rth[i], NULL, ws_reader_loop, &rw));
+        ASSERT_EQ(0, bthread_start_urgent(&rth[i], nullptr, ws_reader_loop, &rw));
     }
 
     // Let the readers ramp up and saturate the lock.
@@ -529,7 +529,7 @@ TEST(RWLockTest, no_writer_starvation) {
 
     g_stopped = true;
     for (int i = 0; i < R; ++i) {
-        bthread_join(rth[i], NULL);
+        bthread_join(rth[i], nullptr);
     }
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
 }
@@ -540,7 +540,7 @@ struct BAIDU_CACHELINE_ALIGNMENT PerfArgs {
     int64_t elapse_ns;
     bool ready;
 
-    PerfArgs() : rw(NULL), counter(0), elapse_ns(0), ready(false) {}
+    PerfArgs() : rw(nullptr), counter(0), elapse_ns(0), ready(false) {}
 };
 
 template <bool Reader>
@@ -566,7 +566,7 @@ void* add_with_mutex(void* void_arg) {
     }
     t.stop();
     args->elapse_ns = t.n_elapsed();
-    return NULL;
+    return nullptr;
 }
 
 int g_prof_name_counter = 0;
@@ -582,15 +582,15 @@ void PerfTest(uint32_t writer_ratio, ThreadId* /*dummy*/, int thread_num,
     std::vector<ThreadId> threads(thread_num);
     std::vector<PerfArgs> args(thread_num);
     bthread_rwlock_t rw;
-    bthread_rwlock_init(&rw, NULL);
+    bthread_rwlock_init(&rw, nullptr);
     int writer_num = thread_num * writer_ratio / 100;
     int reader_num = thread_num - writer_num;
     for (int i = 0; i < thread_num; ++i) {
         args[i].rw = &rw;
         if (i < writer_num) {
-            ASSERT_EQ(0, create_fn(&threads[i], NULL, add_with_mutex<false>, &args[i]));
+            ASSERT_EQ(0, create_fn(&threads[i], nullptr, add_with_mutex<false>, &args[i]));
         } else {
-            ASSERT_EQ(0, create_fn(&threads[i], NULL, add_with_mutex<true>, &args[i]));
+            ASSERT_EQ(0, create_fn(&threads[i], nullptr, add_with_mutex<true>, &args[i]));
         }
     }
     while (true) {
@@ -619,7 +619,7 @@ void PerfTest(uint32_t writer_ratio, ThreadId* /*dummy*/, int thread_num,
     int64_t write_wait_time = 0;
     int64_t write_count = 0;
     for (int i = 0; i < thread_num; ++i) {
-        ASSERT_EQ(0, join_fn(threads[i], NULL));
+        ASSERT_EQ(0, join_fn(threads[i], nullptr));
         if (i < writer_num) {
             write_wait_time += args[i].elapse_ns;
             write_count += args[i].counter;
@@ -643,12 +643,12 @@ void PerfTest(uint32_t writer_ratio, ThreadId* /*dummy*/, int thread_num,
 TEST(RWLockTest, performance) {
     bthread_setconcurrency(16);
     const int thread_num = 12;
-    PerfTest(0, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
-    PerfTest(0, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
-    PerfTest(10, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
-    PerfTest(20, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
-    PerfTest(100, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
-    PerfTest(100, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+    PerfTest(0, (pthread_t*)nullptr, thread_num, pthread_create, pthread_join);
+    PerfTest(0, (bthread_t*)nullptr, thread_num, bthread_start_background, bthread_join);
+    PerfTest(10, (pthread_t*)nullptr, thread_num, pthread_create, pthread_join);
+    PerfTest(20, (bthread_t*)nullptr, thread_num, bthread_start_background, bthread_join);
+    PerfTest(100, (pthread_t*)nullptr, thread_num, pthread_create, pthread_join);
+    PerfTest(100, (bthread_t*)nullptr, thread_num, bthread_start_background, bthread_join);
 }
 
 
@@ -674,31 +674,31 @@ void* read_thread(void* arg) {
 }
 
 void* write_thread(void*) {
-    return NULL;
+    return nullptr;
 }
 
 TEST(RWLockTest, pthread_rdlock_performance) {
 #ifdef CHECK_RWLOCK
     pthread_rwlock_t lock1;
-    ASSERT_EQ(0, pthread_rwlock_init(&lock1, NULL));
+    ASSERT_EQ(0, pthread_rwlock_init(&lock1, nullptr));
 #else
     pthread_mutex_t lock1;
-    ASSERT_EQ(0, pthread_mutex_init(&lock1, NULL));
+    ASSERT_EQ(0, pthread_mutex_init(&lock1, nullptr));
 #endif
     pthread_t rth[16];
     pthread_t wth;
     for (size_t i = 0; i < ARRAY_SIZE(rth); ++i) {
-        ASSERT_EQ(0, pthread_create(&rth[i], NULL, read_thread, &lock1));
+        ASSERT_EQ(0, pthread_create(&rth[i], nullptr, read_thread, &lock1));
     }
-    ASSERT_EQ(0, pthread_create(&wth, NULL, write_thread, &lock1));
+    ASSERT_EQ(0, pthread_create(&wth, nullptr, write_thread, &lock1));
     
     for (size_t i = 0; i < ARRAY_SIZE(rth); ++i) {
-        long* res = NULL;
+        long* res = nullptr;
         pthread_join(rth[i], (void**)&res);
         printf("read thread %lu = %ldns\n", i, *res);
         delete res;
     }
-    pthread_join(wth, NULL);
+    pthread_join(wth, nullptr);
 #ifdef CHECK_RWLOCK
     pthread_rwlock_destroy(&lock1);
 #else

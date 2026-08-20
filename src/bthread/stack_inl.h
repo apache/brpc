@@ -32,7 +32,7 @@ namespace bthread {
 namespace internal {
 
 BUTIL_FORCE_INLINE void ASanPoisonMemoryRegion(const StackStorage& storage) {
-    if (NULL == storage.bottom) {
+    if (nullptr == storage.bottom) {
         return;
     }
 
@@ -43,7 +43,7 @@ BUTIL_FORCE_INLINE void ASanPoisonMemoryRegion(const StackStorage& storage) {
 }
 
 BUTIL_FORCE_INLINE void ASanUnpoisonMemoryRegion(const StackStorage& storage) {
-    if (NULL == storage.bottom) {
+    if (nullptr == storage.bottom) {
         return;
     }
     CHECK_GT(storage.bottom,
@@ -54,7 +54,7 @@ BUTIL_FORCE_INLINE void ASanUnpoisonMemoryRegion(const StackStorage& storage) {
 
 
 BUTIL_FORCE_INLINE void StartSwitchFiber(void** fake_stack_save, StackStorage& storage) {
-    if (NULL == storage.bottom) {
+    if (nullptr == storage.bottom) {
         return;
     }
     RELEASE_ASSERT(storage.bottom >
@@ -65,7 +65,7 @@ BUTIL_FORCE_INLINE void StartSwitchFiber(void** fake_stack_save, StackStorage& s
 }
 
 BUTIL_FORCE_INLINE void FinishSwitchFiber(void* fake_stack_save) {
-    BUTIL_ASAN_FINISH_SWITCH_FIBER(fake_stack_save, NULL, NULL);
+    BUTIL_ASAN_FINISH_SWITCH_FIBER(fake_stack_save, nullptr, nullptr);
 }
 
 class ScopedASanFiberSwitcher {
@@ -81,7 +81,7 @@ public:
     DISALLOW_COPY_AND_ASSIGN(ScopedASanFiberSwitcher);
 
 private:
-    void* _fake_stack{NULL};
+    void* _fake_stack{nullptr};
 };
 
 #define BTHREAD_ASAN_POISON_MEMORY_REGION(storage) \
@@ -127,7 +127,7 @@ template <typename StackClass> struct StackFactory {
             if (allocate_stack_storage(&storage, *StackClass::stack_size_flag,
                                        FLAGS_guard_page_size) != 0) {
                 storage.zeroize();
-                context = NULL;
+                context = nullptr;
                 return;
             }
             context = bthread_make_fcontext(storage.bottom, storage.stacksize, entry);
@@ -137,7 +137,7 @@ template <typename StackClass> struct StackFactory {
         }
         ~Wrapper() {
             if (context) {
-                context = NULL;
+                context = nullptr;
                 // Unpoison to avoid affecting other allocator.
                 BTHREAD_ASAN_UNPOISON_MEMORY_REGION(storage);
                 deallocate_stack_storage(&storage);
@@ -162,11 +162,8 @@ template <typename StackClass> struct StackFactory {
 
 template <> struct StackFactory<MainStackClass> {
     static ContextualStack* get_stack(void (*)(intptr_t)) {
-        ContextualStack* s = new (std::nothrow) ContextualStack;
-        if (NULL == s) {
-            return NULL;
-        }
-        s->context = NULL;
+        ContextualStack* s = new ContextualStack;
+        s->context = nullptr;
         s->stacktype = STACK_TYPE_MAIN;
         s->storage.zeroize();
         return s;
@@ -180,7 +177,7 @@ template <> struct StackFactory<MainStackClass> {
 inline ContextualStack* get_stack(StackType type, void (*entry)(intptr_t)) {
     switch (type) {
     case STACK_TYPE_PTHREAD:
-        return NULL;
+        return nullptr;
     case STACK_TYPE_SMALL:
         return StackFactory<SmallStackClass>::get_stack(entry);
     case STACK_TYPE_NORMAL:
@@ -190,11 +187,11 @@ inline ContextualStack* get_stack(StackType type, void (*entry)(intptr_t)) {
     case STACK_TYPE_MAIN:
         return StackFactory<MainStackClass>::get_stack(entry);
     }
-    return NULL;
+    return nullptr;
 }
 
 inline void return_stack(ContextualStack* s) {
-    if (NULL == s) {
+    if (nullptr == s) {
         return;
     }
     switch (s->stacktype) {
@@ -257,7 +254,7 @@ template <> struct ObjectPoolValidator<
     bthread::StackFactory<bthread::LargeStackClass>::Wrapper> {
     inline static bool validate(
         const bthread::StackFactory<bthread::LargeStackClass>::Wrapper* w) {
-        return w->context != NULL;
+        return w->context != nullptr;
     }
 };
 
@@ -265,7 +262,7 @@ template <> struct ObjectPoolValidator<
     bthread::StackFactory<bthread::NormalStackClass>::Wrapper> {
     inline static bool validate(
         const bthread::StackFactory<bthread::NormalStackClass>::Wrapper* w) {
-        return w->context != NULL;
+        return w->context != nullptr;
     }
 };
 
@@ -273,7 +270,7 @@ template <> struct ObjectPoolValidator<
     bthread::StackFactory<bthread::SmallStackClass>::Wrapper> {
     inline static bool validate(
         const bthread::StackFactory<bthread::SmallStackClass>::Wrapper* w) {
-        return w->context != NULL;
+        return w->context != nullptr;
     }
 };
     

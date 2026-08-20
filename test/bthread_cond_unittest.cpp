@@ -46,7 +46,7 @@ void* signaler(void* void_arg) {
         bthread_usleep(SIGNAL_INTERVAL_US);
         bthread_cond_signal(&a->c);
     }
-    return NULL;
+    return nullptr;
 }
 
 void* waiter(void* void_arg) {
@@ -60,13 +60,13 @@ void* waiter(void* void_arg) {
         wake_time.push_back(butil::gettimeofday_us());
     }
     bthread_mutex_unlock(&a->m);
-    return NULL;
+    return nullptr;
 }
 
 TEST(CondTest, sanity) {
     Arg a;
-    ASSERT_EQ(0, bthread_mutex_init(&a.m, NULL));
-    ASSERT_EQ(0, bthread_cond_init(&a.c, NULL));
+    ASSERT_EQ(0, bthread_mutex_init(&a.m, nullptr));
+    ASSERT_EQ(0, bthread_cond_init(&a.c, nullptr));
     // has no effect
     ASSERT_EQ(0, bthread_cond_signal(&a.c));
 
@@ -79,11 +79,11 @@ TEST(CondTest, sanity) {
     bthread_t wth[8];
     const size_t NW = ARRAY_SIZE(wth);
     for (size_t i = 0; i < NW; ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&wth[i], NULL, waiter, &a));
+        ASSERT_EQ(0, bthread_start_urgent(&wth[i], nullptr, waiter, &a));
     }
     
     bthread_t sth;
-    ASSERT_EQ(0, bthread_start_urgent(&sth, NULL, signaler, &a));
+    ASSERT_EQ(0, bthread_start_urgent(&sth, nullptr, signaler, &a));
 
     bthread_usleep(SIGNAL_INTERVAL_US * 200);
 
@@ -96,9 +96,9 @@ TEST(CondTest, sanity) {
         bthread_cond_signal(&a.c);
     }
     
-    bthread_join(sth, NULL);
+    bthread_join(sth, nullptr);
     for (size_t i = 0; i < NW; ++i) {
-        bthread_join(wth[i], NULL);
+        bthread_join(wth[i], nullptr);
     }
 
     printf("wake up for %lu times\n", wake_tid.size());
@@ -150,7 +150,7 @@ void* cv_signaler(void* void_arg) {
         bthread_usleep(SIGNAL_INTERVAL_US);
         a->cond.notify_one();
     }
-    return NULL;
+    return nullptr;
 }
 
 void* cv_bmutex_waiter(void* void_arg) {
@@ -159,7 +159,7 @@ void* cv_bmutex_waiter(void* void_arg) {
     while (!stop) {
         a->cond.wait(lck);
     }
-    return NULL;
+    return nullptr;
 }
 
 void* cv_mutex_waiter(void* void_arg) {
@@ -168,7 +168,7 @@ void* cv_mutex_waiter(void* void_arg) {
     while (!stop) {
         a->cond.wait(lck);
     }
-    return NULL;
+    return nullptr;
 }
 
 
@@ -177,7 +177,7 @@ void* cv_bmutex_waiter_with_pred(void* void_arg) {
     std::unique_lock<bthread_mutex_t> lck(*a->mutex.native_handler());
     a->cond.wait(lck, [&] { return a->ready; });
     WrapperArg::wake_time.fetch_add(1);
-    return NULL;
+    return nullptr;
 }
 
 void* cv_mutex_waiter_with_pred(void* void_arg) {
@@ -185,7 +185,7 @@ void* cv_mutex_waiter_with_pred(void* void_arg) {
     std::unique_lock<bthread::Mutex> lck(a->mutex);
     a->cond.wait(lck, [&] { return a->ready; });
     WrapperArg::wake_time.fetch_add(1);
-    return NULL;
+    return nullptr;
 }
 
 #define COND_IN_PTHREAD
@@ -203,22 +203,22 @@ TEST(CondTest, cpp_wrapper) {
     pthread_t signal_thread;
     WrapperArg a;
     for (size_t i = 0; i < ARRAY_SIZE(bmutex_waiter_threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&bmutex_waiter_threads[i], NULL,
+        ASSERT_EQ(0, pthread_create(&bmutex_waiter_threads[i], nullptr,
                                     cv_bmutex_waiter, &a));
-        ASSERT_EQ(0, pthread_create(&mutex_waiter_threads[i], NULL,
+        ASSERT_EQ(0, pthread_create(&mutex_waiter_threads[i], nullptr,
                                     cv_mutex_waiter, &a));
     }
-    ASSERT_EQ(0, pthread_create(&signal_thread, NULL, cv_signaler, &a));
+    ASSERT_EQ(0, pthread_create(&signal_thread, nullptr, cv_signaler, &a));
     bthread_usleep(100L * 1000);
     {
         BAIDU_SCOPED_LOCK(a.mutex);
         stop = true;
     }
-    pthread_join(signal_thread, NULL);
+    pthread_join(signal_thread, nullptr);
     a.cond.notify_all();
     for (size_t i = 0; i < ARRAY_SIZE(bmutex_waiter_threads); ++i) {
-        pthread_join(bmutex_waiter_threads[i], NULL);
-        pthread_join(mutex_waiter_threads[i], NULL);
+        pthread_join(bmutex_waiter_threads[i], nullptr);
+        pthread_join(mutex_waiter_threads[i], nullptr);
     }
 }
 
@@ -230,12 +230,12 @@ TEST(CondTest, cpp_wrapper2) {
     pthread_t signal_thread;
     WrapperArg a;
     for (size_t i = 0; i < ARRAY_SIZE(bmutex_waiter_threads); ++i) {
-        ASSERT_EQ(0, pthread_create(&bmutex_waiter_threads[i], NULL,
+        ASSERT_EQ(0, pthread_create(&bmutex_waiter_threads[i], nullptr,
                                     cv_bmutex_waiter_with_pred, &a));
-        ASSERT_EQ(0, pthread_create(&mutex_waiter_threads[i], NULL,
+        ASSERT_EQ(0, pthread_create(&mutex_waiter_threads[i], nullptr,
                                     cv_mutex_waiter_with_pred, &a));
     }
-    ASSERT_EQ(0, pthread_create(&signal_thread, NULL, cv_signaler, &a));
+    ASSERT_EQ(0, pthread_create(&signal_thread, nullptr, cv_signaler, &a));
     bthread_usleep(100L * 1000);
     ASSERT_EQ(WrapperArg::wake_time, 0);
     {
@@ -244,11 +244,11 @@ TEST(CondTest, cpp_wrapper2) {
         a.ready = true;
 
     }
-    pthread_join(signal_thread, NULL);
+    pthread_join(signal_thread, nullptr);
     a.cond.notify_all();
     for (size_t i = 0; i < ARRAY_SIZE(bmutex_waiter_threads); ++i) {
-        pthread_join(bmutex_waiter_threads[i], NULL);
-        pthread_join(mutex_waiter_threads[i], NULL);
+        pthread_join(bmutex_waiter_threads[i], nullptr);
+        pthread_join(mutex_waiter_threads[i], nullptr);
     }
     ASSERT_EQ(WrapperArg::wake_time, 16);
 }
@@ -305,7 +305,7 @@ void *ping_pong_thread(void* arg) {
         ++local_count;
     }
     a->total_count.fetch_add(local_count);
-    return NULL;
+    return nullptr;
 }
 
 TEST(CondTest, ping_pong) {
@@ -315,14 +315,14 @@ TEST(CondTest, ping_pong) {
     bthread_t threads[2];
     ProfilerStart("cond.prof");
     for (int i = 0; i < 2; ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&threads[i], NULL, ping_pong_thread, &arg));
+        ASSERT_EQ(0, bthread_start_urgent(&threads[i], nullptr, ping_pong_thread, &arg));
     }
     usleep(1000 * 1000);
     arg.stopped = true;
     arg.sig1.notify();
     arg.sig2.notify();
     for (int i = 0; i < 2; ++i) {
-        ASSERT_EQ(0, bthread_join(threads[i], NULL));
+        ASSERT_EQ(0, bthread_join(threads[i], nullptr));
     }
     ProfilerStop();
     LOG(INFO) << "total_count=" << arg.total_count.load();
@@ -351,7 +351,7 @@ void* wait_thread(void* arg) {
             ba->wait_cond.wait(lck);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 void* broadcast_thread(void* arg) {
@@ -366,7 +366,7 @@ void* broadcast_thread(void* arg) {
         --ba->rounds;
         ba->wait_cond.notify_all();
     }
-    return NULL;
+    return nullptr;
 }
 
 void* disturb_thread(void* arg) {
@@ -376,7 +376,7 @@ void* disturb_thread(void* arg) {
         lck.unlock();
         lck.lock();
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(CondTest, mixed_usage) {
@@ -389,30 +389,30 @@ TEST(CondTest, mixed_usage) {
 
     bthread_t normal_threads[NTHREADS];
     for (int i = 0; i < NTHREADS; ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&normal_threads[i], NULL, wait_thread, &ba));
+        ASSERT_EQ(0, bthread_start_urgent(&normal_threads[i], nullptr, wait_thread, &ba));
     }
     pthread_t pthreads[NTHREADS];
     for (int i = 0; i < NTHREADS; ++i) {
-        ASSERT_EQ(0, pthread_create(&pthreads[i], NULL,
+        ASSERT_EQ(0, pthread_create(&pthreads[i], nullptr,
                                     wait_thread, &ba));
     }
     pthread_t broadcast;
     pthread_t disturb;
-    ASSERT_EQ(0, pthread_create(&broadcast, NULL, broadcast_thread, &ba));
-    ASSERT_EQ(0, pthread_create(&disturb, NULL, disturb_thread, &ba));
+    ASSERT_EQ(0, pthread_create(&broadcast, nullptr, broadcast_thread, &ba));
+    ASSERT_EQ(0, pthread_create(&disturb, nullptr, disturb_thread, &ba));
     for (int i = 0; i < NTHREADS; ++i) {
-        bthread_join(normal_threads[i], NULL);
-        pthread_join(pthreads[i], NULL);
+        bthread_join(normal_threads[i], nullptr);
+        pthread_join(pthreads[i], nullptr);
     }
-    pthread_join(broadcast, NULL);
-    pthread_join(disturb, NULL);
+    pthread_join(broadcast, nullptr);
+    pthread_join(disturb, nullptr);
 }
 
 class BthreadCond {
 public:
     BthreadCond() {
-        bthread_cond_init(&_cond, NULL);
-        bthread_mutex_init(&_mutex, NULL);
+        bthread_cond_init(&_cond, nullptr);
+        bthread_mutex_init(&_mutex, nullptr);
         _count = 1;
     }
     ~BthreadCond() {
@@ -457,7 +457,7 @@ void* usleep_thread(void *) {
     while (!g_stop) {
         bthread_usleep(1000L * 1000L);
     }
-    return NULL;
+    return nullptr;
 }
 
 void* wait_cond_thread(void* arg) {
@@ -465,7 +465,7 @@ void* wait_cond_thread(void* arg) {
     started_wait = true;
     c->Wait();
     ended_wait = true;
-    return NULL;
+    return nullptr;
 }
 
 static void launch_many_bthreads() {
@@ -480,7 +480,7 @@ static void launch_many_bthreads() {
     tm.start();
     for (size_t i = 0; i < 32768; ++i) {
         bthread_t t0;
-        ASSERT_EQ(0, bthread_start_background(&t0, NULL, usleep_thread, NULL));
+        ASSERT_EQ(0, bthread_start_background(&t0, nullptr, usleep_thread, nullptr));
         tids.push_back(t0);
     }
     tm.stop();
@@ -488,10 +488,10 @@ static void launch_many_bthreads() {
     usleep(3 * 1000 * 1000L);
     c.Signal();
     g_stop = true;
-    bthread_join(tid, NULL);
+    bthread_join(tid, nullptr);
     for (size_t i = 0; i < tids.size(); ++i) {
         LOG_EVERY_SECOND(INFO) << "Joined " << i << " threads";
-        bthread_join(tids[i], NULL);
+        bthread_join(tids[i], nullptr);
     }
     LOG_EVERY_SECOND(INFO) << "Joined " << tids.size() << " threads";
 }
@@ -503,14 +503,14 @@ TEST(CondTest, too_many_bthreads_from_pthread) {
 
 static void* run_launch_many_bthreads(void*) {
     launch_many_bthreads();
-    return NULL;
+    return nullptr;
 }
 
 TEST(CondTest, too_many_bthreads_from_bthread) {
     bthread_setconcurrency(16);
     bthread_t th;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, run_launch_many_bthreads, NULL));
-    bthread_join(th, NULL);
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, run_launch_many_bthreads, nullptr));
+    bthread_join(th, nullptr);
 }
 #endif // BUTIL_USE_ASAN
 } // namespace

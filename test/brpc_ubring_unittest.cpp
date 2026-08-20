@@ -182,14 +182,14 @@ TEST_F(UBShmEndpointTest, construct_initial_state) {
 
 TEST_F(UBShmEndpointTest, allocate_client_resources_real_shm) {
     brpc::ubring::SHM local_trx_shm =
-        {NULL, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
     int ret = _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_client");
     EXPECT_EQ(0, ret);
 }
 
 TEST_F(UBShmEndpointTest, reset_cleans_up_resources) {
     brpc::ubring::SHM local_trx_shm =
-        {NULL, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
     _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_reset");
     _ep->Reset();
 }

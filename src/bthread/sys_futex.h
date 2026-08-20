@@ -38,17 +38,17 @@ namespace bthread {
 inline int futex_wait_private(
     void* addr1, int expected, const timespec* timeout) {
     return syscall(SYS_futex, addr1, (FUTEX_WAIT | FUTEX_PRIVATE_FLAG),
-                   expected, timeout, NULL, 0);
+                   expected, timeout, nullptr, 0);
 }
 
 inline int futex_wake_private(void* addr1, int nwake) {
     return syscall(SYS_futex, addr1, (FUTEX_WAKE | FUTEX_PRIVATE_FLAG),
-                   nwake, NULL, NULL, 0);
+                   nwake, nullptr, nullptr, 0);
 }
 
 inline int futex_requeue_private(void* addr1, int nwake, void* addr2) {
     return syscall(SYS_futex, addr1, (FUTEX_REQUEUE | FUTEX_PRIVATE_FLAG),
-                   nwake, NULL, addr2, 0);
+                   nwake, nullptr, addr2, 0);
 }
 
 }  // namespace bthread

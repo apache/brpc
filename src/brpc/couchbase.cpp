@@ -259,8 +259,8 @@ bool CouchbaseManifestManager::refreshCollectionManifest(
   CouchbaseOperations::CouchbaseResponse temp_get_manifest_response;
   brpc::Controller temp_cntl;
   temp_get_manifest_request.getCollectionManifest();
-  channel->CallMethod(NULL, &temp_cntl, &temp_get_manifest_request,
-                      &temp_get_manifest_response, NULL);
+  channel->CallMethod(nullptr, &temp_cntl, &temp_get_manifest_request,
+                      &temp_get_manifest_response, nullptr);
   if (temp_cntl.Failed()) {
     DEBUG_PRINT("Failed to get collection manifest: bRPC controller error "
                 << temp_cntl.ErrorText());
@@ -1068,7 +1068,7 @@ bool CouchbaseOperations::CouchbaseResponse::popGet(std::string* value,
 // MUST NOT have key
 // MUST NOT have value
 bool CouchbaseOperations::CouchbaseResponse::popDelete() {
-  return popStore(policy::CB_BINARY_DELETE, NULL);
+  return popStore(policy::CB_BINARY_DELETE, nullptr);
 }
 
 struct StoreHeaderWithExtras {
@@ -1891,7 +1891,7 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const std::string&
                                  // that indicates the collectionID is not found
     return false;
   }
-  channel->CallMethod(NULL, &cntl, request, response, NULL);
+  channel->CallMethod(nullptr, &cntl, request, response, nullptr);
   if (cntl.Failed()) {
     DEBUG_PRINT("Failed to perform operation on key: "
                 << key << " to Couchbase: " << cntl.ErrorText());
@@ -1944,7 +1944,7 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const std::string&
                        // indicates the collectionID is not found
             return false;
           }
-          channel->CallMethod(NULL, &cntl, request, response, NULL);
+          channel->CallMethod(nullptr, &cntl, request, response, nullptr);
           if (cntl.Failed()) {
             DEBUG_PRINT("Failed to perform operation on key: "
                         << key << " to Couchbase: " << cntl.ErrorText());
@@ -2055,7 +2055,7 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const std::string&
                 "Unsupported operation type in response pop";
             return false;
         }
-        channel->CallMethod(NULL, &cntl, request, response, NULL);
+        channel->CallMethod(nullptr, &cntl, request, response, nullptr);
         if (cntl.Failed()) {
           DEBUG_PRINT("Failed to perform operation on key: "
                       << key << " to Couchbase: " << cntl.ErrorText());
@@ -2254,7 +2254,7 @@ CouchbaseOperations::Result CouchbaseOperations::authenticateAll(
     result.success = false;
     return result;
   }
-  new_channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+  new_channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
   if (cntl.Failed()) {
     DEBUG_PRINT("Failed to access Couchbase: " << cntl.ErrorText());
     delete new_channel;
@@ -2311,7 +2311,7 @@ CouchbaseOperations::Result CouchbaseOperations::selectBucket(
     result.value = "";
     return result;
   }
-  channel_->CallMethod(NULL, &cntl, &request, &response, NULL);
+  channel_->CallMethod(nullptr, &cntl, &request, &response, nullptr);
   if (cntl.Failed()) {
     DEBUG_PRINT("Failed to select bucket: "
                 << bucket_name << " from Couchbase: " << cntl.ErrorText());
@@ -2320,7 +2320,7 @@ CouchbaseOperations::Result CouchbaseOperations::selectBucket(
     result.error_message = cntl.ErrorText();
     return result;
   }
-  if (response.popSelectBucket(NULL) == false) {
+  if (response.popSelectBucket(nullptr) == false) {
     result.success = false;
     result.value = "";
     result.error_message = response.lastError();
@@ -2402,7 +2402,7 @@ CouchbaseOperations::Result CouchbaseOperations::version() {
     result.value = "";
     return result;
   }
-  channel_->CallMethod(NULL, &cntl, &request, &response, NULL);
+  channel_->CallMethod(nullptr, &cntl, &request, &response, nullptr);
   if (cntl.Failed()) {
     DEBUG_PRINT("Failed to get version from Couchbase: " << cntl.ErrorText());
     result.success = false;
@@ -2514,8 +2514,8 @@ std::vector<CouchbaseOperations::Result> CouchbaseOperations::executePipeline() 
   }
 
   brpc::Controller cntl;
-  channel_->CallMethod(NULL, &cntl, &pipeline_request_couchbase_req,
-                       &pipeline_response_couchbase_resp, NULL);
+  channel_->CallMethod(nullptr, &cntl, &pipeline_request_couchbase_req,
+                       &pipeline_response_couchbase_resp, nullptr);
 
   if (cntl.Failed()) {
     DEBUG_PRINT("Pipeline execution failed: " << cntl.ErrorText());
@@ -2560,7 +2560,7 @@ std::vector<CouchbaseOperations::Result> CouchbaseOperations::executePipeline() 
         break;
       }
       case UPSERT: {
-        if (response->popUpsert(NULL) == false) {
+        if (response->popUpsert(nullptr) == false) {
           result.success = false;
           result.value = "";
           result.error_message = response->lastError();
@@ -2573,7 +2573,7 @@ std::vector<CouchbaseOperations::Result> CouchbaseOperations::executePipeline() 
         break;
       }
       case ADD: {
-        if (response->popAdd(NULL) == false) {
+        if (response->popAdd(nullptr) == false) {
           result.success = false;
           result.value = "";
           result.error_message = response->lastError();

@@ -20,7 +20,6 @@
 #define BRPC_PROGRESSIVE_READER_H
 
 #include "brpc/shared_object.h"
-#include "brpc/socket_id.h"
 
 
 namespace brpc {
@@ -30,7 +29,7 @@ namespace brpc {
 // Client-side usage:
 //   cntl.response_will_be_read_progressively();                // before RPC
 //   ...
-//   channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
+//   channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr/*done*/);
 //   ...
 //   cntl.ReadProgressiveAttachmentBy(new MyProgressiveReader); // after RPC
 //   ...
@@ -85,7 +84,6 @@ public:
     // Any error occurred should destroy the reader by calling r->Destroy().
     // r->Destroy() should be guaranteed to be called once and only once.
     virtual void ReadProgressiveAttachmentBy(ProgressiveReader* r) = 0;
-    virtual SocketId GetSocketId() = 0;
 };
 
 } // namespace brpc

@@ -86,11 +86,11 @@ void* process_thread(void* arg) {
                     continue;
                 } else {
                     PLOG(FATAL) << "Fail to read fd=" << m->fd;
-                    return NULL;
+                    return nullptr;
                 }
             } else {
                 LOG(FATAL) << "Another end closed fd=" << m->fd;
-                return NULL;
+                return nullptr;
             }
         } while (1);
         
@@ -103,7 +103,7 @@ void* process_thread(void* arg) {
             break;
         }
     } while (1);
-    return NULL;
+    return nullptr;
 }
 
 void* epoll_thread(void* arg) {    
@@ -126,7 +126,7 @@ void* epoll_thread(void* arg) {
         }
 #elif defined(OS_MACOSX)
         timespec ts = { 0, 100L * 1000L * 1000L };
-        const int n = kevent(em->epfd, NULL, 0, e, ARRAY_SIZE(e), &ts);
+        const int n = kevent(em->epfd, nullptr, 0, e, ARRAY_SIZE(e), &ts);
         if (n == 0) {
             continue;
         }
@@ -162,7 +162,7 @@ void* epoll_thread(void* arg) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 void* client_thread(void* arg) {
@@ -190,7 +190,7 @@ void* client_thread(void* arg) {
         if (n < 0) {
             if (errno != EINTR) {
                 PLOG(FATAL) << "Fail to write fd=" << m->fd;
-                return NULL;
+                return nullptr;
             }
         } else {
             ++m->times;
@@ -202,7 +202,7 @@ void* client_thread(void* arg) {
         }
     }
     free(buf);
-    return NULL;
+    return nullptr;
 }
 
 inline uint32_t fmix32 ( uint32_t h ) {
@@ -257,14 +257,14 @@ TEST(DispatcherTest, dispatch_tasks) {
 #elif defined(OS_MACOSX)
         struct kevent kqueue_event;
         EV_SET(&kqueue_event, m->fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR, 0, 0, m);
-        ASSERT_EQ(0, kevent(m->epfd, &kqueue_event, 1, NULL, 0, NULL));
+        ASSERT_EQ(0, kevent(m->epfd, &kqueue_event, 1, nullptr, 0, nullptr));
 #endif
 
         cm[i] = new ClientMeta;
         cm[i]->fd = fds[i * 2 + 1];
         cm[i]->times = 0;
         cm[i]->bytes = 0;
-        ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i]));
+        ASSERT_EQ(0, pthread_create(&cth[i], nullptr, client_thread, cm[i]));
     }
 
     ProfilerStart("dispatcher.prof");
@@ -276,9 +276,9 @@ TEST(DispatcherTest, dispatch_tasks) {
         em[i] = m;
         m->epfd = epfd[i];
 #ifdef RUN_EPOLL_IN_BTHREAD
-        ASSERT_EQ(0, bthread_start_background(&eth[i], NULL, epoll_thread, m));
+        ASSERT_EQ(0, bthread_start_background(&eth[i], nullptr, epoll_thread, m));
 #else
-        ASSERT_EQ(0, pthread_create(&eth[i], NULL, epoll_thread, m));
+        ASSERT_EQ(0, pthread_create(&eth[i], nullptr, epoll_thread, m));
 #endif
     }
 
@@ -304,16 +304,16 @@ TEST(DispatcherTest, dispatch_tasks) {
 
     client_stop = true;
     for (size_t i = 0; i < NCLIENT; ++i) {
-        pthread_join(cth[i], NULL);
+        pthread_join(cth[i], nullptr);
     }
     server_stop = true;
     // epoll_thread polls server_stop with a finite timeout, so it exits on its
     // own without needing an external fd to wake up epoll_wait.
     for (size_t i = 0; i < NEPOLL; ++i) {
 #ifdef RUN_EPOLL_IN_BTHREAD
-        bthread_join(eth[i], NULL);
+        bthread_join(eth[i], nullptr);
 #else
-        pthread_join(eth[i], NULL);
+        pthread_join(eth[i], nullptr);
 #endif
     }
     bthread::stop_and_join_epoll_threads();

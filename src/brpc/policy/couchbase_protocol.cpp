@@ -84,7 +84,7 @@ ParseResult ParseCouchbaseMessage(butil::IOBuf* source, Socket* socket,
                                   bool /*read_eof*/, const void* /*arg*/) {
   while (1) {
     const uint8_t* p_cbmagic = (const uint8_t*)source->fetch1();
-    if (NULL == p_cbmagic) {
+    if (nullptr == p_cbmagic) {
       return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     if (*p_cbmagic != (uint8_t)CB_MAGIC_RESPONSE) {
@@ -92,7 +92,7 @@ ParseResult ParseCouchbaseMessage(butil::IOBuf* source, Socket* socket,
     }
     char buf[24];
     const uint8_t* p = (const uint8_t*)source->fetch(buf, sizeof(buf));
-    if (NULL == p) {
+    if (nullptr == p) {
       return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     const CouchbaseResponseHeader* header = (const CouchbaseResponseHeader*)p;
@@ -118,7 +118,7 @@ ParseResult ParseCouchbaseMessage(butil::IOBuf* source, Socket* socket,
     }
     MostCommonMessage* msg =
         static_cast<MostCommonMessage*>(socket->parsing_context());
-    if (msg == NULL) {
+    if (msg == nullptr) {
       msg = MostCommonMessage::Get();
       socket->reset_parsing_context(msg);
     }
@@ -155,7 +155,7 @@ void ProcessCouchbaseResponse(InputMessageBase* msg_base) {
       static_cast<MostCommonMessage*>(msg_base));
 
   const bthread_id_t cid = msg->pi.id_wait;
-  Controller* cntl = NULL;
+  Controller* cntl = nullptr;
   const int rc = bthread_id_lock(cid, (void**)&cntl);
   if (rc != 0) {
     LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -171,7 +171,7 @@ void ProcessCouchbaseResponse(InputMessageBase* msg_base) {
     span->set_start_parse_us(start_parse_us);
   }
   const int saved_error = cntl->ErrorCode();
-  if (cntl->response() == NULL) {
+  if (cntl->response() == nullptr) {
     cntl->SetFailed(ERESPONSE, "response is NULL!");
   } else if (cntl->response()->GetDescriptor() !=
              CouchbaseOperations::CouchbaseResponse::descriptor()) {
@@ -195,7 +195,7 @@ void ProcessCouchbaseResponse(InputMessageBase* msg_base) {
 
 void SerializeCouchbaseRequest(butil::IOBuf* buf, Controller* cntl,
                                const google::protobuf::Message* request) {
-  if (request == NULL) {
+  if (request == nullptr) {
     return cntl->SetFailed(EREQUEST, "request is NULL");
   }
   if (request->GetDescriptor() !=

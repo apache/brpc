@@ -47,13 +47,13 @@ TEST(ButexTest, wait_on_already_timedout_butex) {
 
 void* sleeper(void* arg) {
     bthread_usleep((uint64_t)arg);
-    return NULL;
+    return nullptr;
 }
 
 void* joiner(void* arg) {
     const long t1 = butil::gettimeofday_us();
     for (bthread_t* th = (bthread_t*)arg; *th; ++th) {
-        if (0 != bthread_join(*th, NULL)) {
+        if (0 != bthread_join(*th, nullptr)) {
             LOG(FATAL) << "fail to join thread_" << th - (bthread_t*)arg;
         }
         long elp = butil::gettimeofday_us() - t1;
@@ -63,9 +63,9 @@ void* joiner(void* arg) {
                   << bthread_self() << "]";
     }
     for (bthread_t* th = (bthread_t*)arg; *th; ++th) {
-        EXPECT_EQ(0, bthread_join(*th, NULL));
+        EXPECT_EQ(0, bthread_join(*th, nullptr));
     }
-    return NULL;
+    return nullptr;
 }
 
 struct A {
@@ -97,18 +97,18 @@ TEST(ButexTest, join) {
     }
     th[N] = 0;  // joiner will join tids in `th' until seeing 0.
     for (size_t i = 0; i < M; ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&jth[i], NULL, joiner, th));
+        ASSERT_EQ(0, bthread_start_urgent(&jth[i], nullptr, joiner, th));
     }
     for (size_t i = 0; i < M; ++i) {
-        ASSERT_EQ(0, pthread_create(&pth[i], NULL, joiner, th));
+        ASSERT_EQ(0, pthread_create(&pth[i], nullptr, joiner, th));
     }
     
     for (size_t i = 0; i < M; ++i) {
-        ASSERT_EQ(0, bthread_join(jth[i], NULL))
+        ASSERT_EQ(0, bthread_join(jth[i], nullptr))
             << "i=" << i << " error=" << berror();
     }
     for (size_t i = 0; i < M; ++i) {
-        ASSERT_EQ(0, pthread_join(pth[i], NULL));
+        ASSERT_EQ(0, pthread_join(pth[i], nullptr));
     }
 }
 
@@ -132,7 +132,7 @@ void* waiter(void* arg) {
         EXPECT_EQ(wa->expected_result, errno) << bthread_self();
     }
     LOG(INFO) << "after wait, time=" << (t2-t1) << "us";
-    return NULL;
+    return nullptr;
 }
 
 TEST(ButexTest, sanity) {
@@ -152,10 +152,10 @@ TEST(ButexTest, sanity) {
     unmatched_arg->expected_value = *b1 + 1;
     unmatched_arg->expected_result = EWOULDBLOCK;
     unmatched_arg->butex = b1;
-    unmatched_arg->ptimeout = NULL;
-    pthread_create(&t2, NULL, waiter, unmatched_arg);
+    unmatched_arg->ptimeout = nullptr;
+    pthread_create(&t2, nullptr, waiter, unmatched_arg);
     bthread_t th;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, waiter, unmatched_arg));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, waiter, unmatched_arg));
 
     const timespec abstime = butil::seconds_from_now(1);
     for (size_t i = 0; i < 4*N; ++i) {
@@ -163,15 +163,15 @@ TEST(ButexTest, sanity) {
         args[i].butex = b1;
         if ((i % 2) == 0) {
             args[i].expected_result = 0;
-            args[i].ptimeout = NULL;
+            args[i].ptimeout = nullptr;
         } else {
             args[i].expected_result = ETIMEDOUT;
             args[i].ptimeout = &abstime;
         }
         if (i < 2*N) { 
-            pthread_create(&t1, NULL, waiter, &args[i]);
+            pthread_create(&t1, nullptr, waiter, &args[i]);
         } else {
-            ASSERT_EQ(0, bthread_start_urgent(&th, NULL, waiter, &args[i]));
+            ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, waiter, &args[i]));
         }
     }
     
@@ -203,7 +203,7 @@ void* wait_butex(void* void_arg) {
     } else {
         EXPECT_EQ(0, rc);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(ButexTest, wait_without_stop) {
@@ -219,7 +219,7 @@ TEST(ButexTest, wait_without_stop) {
         
         tm.start();
         ASSERT_EQ(0, bthread_start_urgent(&th, &attr, wait_butex, &arg));
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
         tm.stop();
         
         ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 250);
@@ -243,7 +243,7 @@ TEST(ButexTest, stop_after_running) {
         ASSERT_EQ(0, bthread_start_urgent(&th, &attr, wait_butex, &arg));
         ASSERT_EQ(0, bthread_usleep(SLEEP_MSEC * 1000L));
         ASSERT_EQ(0, bthread_stop(th));
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
         tm.stop();
 
         ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 25);
@@ -270,7 +270,7 @@ TEST(ButexTest, stop_before_running) {
         ASSERT_EQ(0, bthread_start_background(&th, &attr, wait_butex, &arg));
         ASSERT_EQ(0, bthread_stop(th));
         bthread_flush();
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
         tm.stop();
         
         ASSERT_LT(tm.m_elapsed(), 5);
@@ -282,8 +282,8 @@ TEST(ButexTest, stop_before_running) {
 }
 
 void* join_the_waiter(void* arg) {
-    EXPECT_EQ(0, bthread_join((bthread_t)arg, NULL));
-    return NULL;
+    EXPECT_EQ(0, bthread_join((bthread_t)arg, nullptr));
+    return nullptr;
 }
 
 TEST(ButexTest, join_cant_be_wakeup) {
@@ -298,7 +298,7 @@ TEST(ButexTest, join_cant_be_wakeup) {
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
         tm.start();
         bthread_t th, th2;
-        ASSERT_EQ(0, bthread_start_urgent(&th, NULL, wait_butex, &arg));
+        ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, wait_butex, &arg));
         ASSERT_EQ(0, bthread_start_urgent(&th2, &attr, join_the_waiter, (void*)th));
         ASSERT_EQ(0, bthread_stop(th2));
         ASSERT_EQ(0, bthread_usleep(WAIT_MSEC / 2 * 1000L));
@@ -306,8 +306,8 @@ TEST(ButexTest, join_cant_be_wakeup) {
         ASSERT_TRUE(bthread::TaskGroup::exists(th2));
         ASSERT_EQ(0, bthread_usleep(WAIT_MSEC / 2 * 1000L));
         ASSERT_EQ(0, bthread_stop(th));
-        ASSERT_EQ(0, bthread_join(th2, NULL));
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th2, nullptr));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
         tm.stop();
         ASSERT_LT(tm.m_elapsed(), WAIT_MSEC + 15);
         ASSERT_EQ(EINVAL, bthread_stop(th));
@@ -330,7 +330,7 @@ TEST(ButexTest, stop_after_slept) {
                       &th, &attr, sleeper, (void*)(SLEEP_MSEC*1000L)));
         ASSERT_EQ(0, bthread_usleep(WAIT_MSEC * 1000L));
         ASSERT_EQ(0, bthread_stop(th));
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
         tm.stop();
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
             ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 15);
@@ -355,7 +355,7 @@ TEST(ButexTest, stop_just_when_sleeping) {
         ASSERT_EQ(0, bthread_start_urgent(
                       &th, &attr, sleeper, (void*)(SLEEP_MSEC*1000L)));
         ASSERT_EQ(0, bthread_stop(th));
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
         tm.stop();
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
             ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 15);
@@ -382,7 +382,7 @@ TEST(ButexTest, stop_before_sleeping) {
                                               (void*)(SLEEP_MSEC*1000L)));
         ASSERT_EQ(0, bthread_stop(th));
         bthread_flush();
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
         tm.stop();
 
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
@@ -408,7 +408,7 @@ void* trigger_signal(void* arg) {
     }
     const long t2 = butil::gettimeofday_us();
     LOG(INFO) << "trigger signal thread end, elapsed=" << (t2-t1) << "us";
-    return NULL;
+    return nullptr;
 }
 
 TEST(ButexTest, wait_with_signal_triggered) {
@@ -429,17 +429,17 @@ TEST(ButexTest, wait_with_signal_triggered) {
     waiter_args.expected_result = ETIMEDOUT;
     waiter_args.ptimeout = &abstime;
     tm.start();
-    pthread_create(&waiter_th, NULL, waiter, &waiter_args);
-    pthread_create(&tigger_th, NULL, trigger_signal, &waiter_th);
+    pthread_create(&waiter_th, nullptr, waiter, &waiter_args);
+    pthread_create(&tigger_th, nullptr, trigger_signal, &waiter_th);
     
-    ASSERT_EQ(0, pthread_join(waiter_th, NULL));
+    ASSERT_EQ(0, pthread_join(waiter_th, nullptr));
     tm.stop();
     auto wait_elapsed_ms = tm.m_elapsed();;
     LOG(INFO) << "waiter thread end, elapsed " << wait_elapsed_ms << " ms";
 
     ASSERT_LT(labs(wait_elapsed_ms - WAIT_MSEC), 250);
 
-    ASSERT_EQ(0, pthread_join(tigger_th, NULL));
+    ASSERT_EQ(0, pthread_join(tigger_th, nullptr));
     bthread::butex_destroy(butex);
 }
 

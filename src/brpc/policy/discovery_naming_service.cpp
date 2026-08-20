@@ -47,7 +47,7 @@ DEFINE_int32(discovery_reregister_threshold, 3, "The renew error threshold beyon
         " which Register would be called again");
 
 static pthread_once_t s_init_discovery_channel_once = PTHREAD_ONCE_INIT;
-static Channel* s_discovery_channel = NULL;
+static Channel* s_discovery_channel = nullptr;
 
 static int ListDiscoveryNodes(const char* discovery_api_addr, std::string* servers) {
     Channel api_channel;
@@ -61,7 +61,7 @@ static int ListDiscoveryNodes(const char* discovery_api_addr, std::string* serve
     }
     Controller cntl;
     cntl.http_request().uri() = discovery_api_addr;
-    api_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    api_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     if (cntl.Failed()) {
         LOG(FATAL) << "Fail to access " << cntl.http_request().uri()
                    << ": " << cntl.ErrorText();
@@ -143,7 +143,7 @@ DiscoveryClient::DiscoveryClient()
 DiscoveryClient::~DiscoveryClient() {
     if (_registered.load(butil::memory_order_acquire)) {
         bthread_stop(_th);
-        bthread_join(_th, NULL);
+        bthread_join(_th, nullptr);
         DoCancel();
     }
 }
@@ -193,7 +193,7 @@ int DiscoveryClient::DoRenew() const {
         << "&region=" << _params.region
         << "&zone=" << _params.zone;
     os.move_to(cntl.request_attachment());
-    chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    chan.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to post /discovery/renew: " << cntl.ErrorText();
         return -1;
@@ -214,7 +214,7 @@ void* DiscoveryClient::PeriodicRenew(void* arg) {
         butil::fast_rand_less_than(FLAGS_discovery_renew_interval_s / 2);
     if (bthread_usleep(init_sleep_s * 1000000) != 0) {
         if (errno == ESTOP) {
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -237,7 +237,7 @@ void* DiscoveryClient::PeriodicRenew(void* arg) {
         consecutive_renew_error = 0;
         bthread_usleep(FLAGS_discovery_renew_interval_s * 1000000);
     }
-    return NULL;
+    return nullptr;
 }
 
 int DiscoveryClient::Register(const DiscoveryRegisterParam& params) {
@@ -253,7 +253,7 @@ int DiscoveryClient::Register(const DiscoveryRegisterParam& params) {
     if (DoRegister() != 0) {
         return -1;
     }
-    if (bthread_start_background(&_th, NULL, PeriodicRenew, this) != 0) {
+    if (bthread_start_background(&_th, nullptr, PeriodicRenew, this) != 0) {
         LOG(ERROR) << "Fail to start background PeriodicRenew";
         return -1;
     }
@@ -262,7 +262,7 @@ int DiscoveryClient::Register(const DiscoveryRegisterParam& params) {
 
 int DiscoveryClient::DoRegister() {
     Channel* chan = GetOrNewDiscoveryChannel();
-    if (NULL == chan) {
+    if (nullptr == chan) {
         LOG(ERROR) << "Fail to create discovery channel";
         return -1;
     }
@@ -289,7 +289,7 @@ int DiscoveryClient::DoRegister() {
         << "&version=" << _params.version
         << "&metadata=" << _params.metadata;
     os.move_to(cntl.request_attachment());
-    chan->CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    chan->CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to register " << _params.appid << ": " << cntl.ErrorText();
         return -1;
@@ -327,7 +327,7 @@ int DiscoveryClient::DoCancel() const {
         << "&region=" << _params.region
         << "&zone=" << _params.zone;
     os.move_to(cntl.request_attachment());
-    chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    chan.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to post /discovery/cancel: " << cntl.ErrorText();
         return -1;
@@ -345,14 +345,14 @@ int DiscoveryClient::DoCancel() const {
 
 int DiscoveryNamingService::GetServers(const char* service_name,
                                        std::vector<ServerNode>* servers) {
-    if (service_name == NULL || *service_name == '\0' ||
+    if (service_name == nullptr || *service_name == '\0' ||
         FLAGS_discovery_env.empty() ||
         FLAGS_discovery_status.empty()) {
         LOG_ONCE(ERROR) << "Invalid parameters";
         return -1;
     }
     Channel* chan = GetOrNewDiscoveryChannel();
-    if (NULL == chan) {
+    if (nullptr == chan) {
         LOG(ERROR) << "Fail to create discovery channel";
         return -1;
     }
@@ -366,7 +366,7 @@ int DiscoveryNamingService::GetServers(const char* service_name,
         uri_str.append(FLAGS_discovery_zone);
     }
     cntl.http_request().uri() = uri_str;
-    chan->CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    chan->CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to get /discovery/fetchs: " << cntl.ErrorText();
         return -1;

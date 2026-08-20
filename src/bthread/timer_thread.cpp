@@ -100,7 +100,7 @@ class BAIDU_CACHELINE_ALIGNMENT TimerThread::Bucket {
 public:
     Bucket()
         : _nearest_run_time(std::numeric_limits<int64_t>::max())
-        , _task_head(NULL) {
+        , _task_head(nullptr) {
     }
 
     ~Bucket() {}
@@ -148,13 +148,13 @@ inline bool task_greater(const TimerThread::Task* a, const TimerThread::Task* b)
 void* TimerThread::run_this(void* arg) {
     butil::PlatformThread::SetNameSimple("brpc_timer");
     static_cast<TimerThread*>(arg)->run();
-    return NULL;
+    return nullptr;
 }
 
 TimerThread::TimerThread()
     : _started(false)
     , _stop(false)
-    , _buckets(NULL)
+    , _buckets(nullptr)
     , _nearest_run_time(std::numeric_limits<int64_t>::max())
     , _nsignals(0)
     , _npending(0)
@@ -164,7 +164,7 @@ TimerThread::TimerThread()
 TimerThread::~TimerThread() {
     stop_and_join();
     delete [] _buckets;
-    _buckets = NULL;
+    _buckets = nullptr;
 }
 
 int TimerThread::start(const TimerThreadOptions* options_in) {
@@ -182,12 +182,8 @@ int TimerThread::start(const TimerThreadOptions* options_in) {
         LOG(ERROR) << "num_buckets=" << _options.num_buckets << " is too big";
         return EINVAL;
     }
-    _buckets = new (std::nothrow) Bucket[_options.num_buckets];
-    if (NULL == _buckets) {
-        LOG(ERROR) << "Fail to new _buckets";
-        return ENOMEM;
-    }        
-    const int ret = pthread_create(&_thread, NULL, TimerThread::run_this, this);
+    _buckets = new Bucket[_options.num_buckets];
+    const int ret = pthread_create(&_thread, nullptr, TimerThread::run_this, this);
     if (ret) {
         return ret;
     }
@@ -196,7 +192,7 @@ int TimerThread::start(const TimerThreadOptions* options_in) {
 }
 
 TimerThread::Task* TimerThread::Bucket::consume_tasks() {
-    Task* head = NULL;
+    Task* head = nullptr;
     if (_task_head) { // NOTE: schedule() and consume_tasks() are sequenced
         // by TimerThread._nearest_run_time and fenced by TimerThread._mutex.
         // We can avoid touching the mutex and related cacheline when the
@@ -204,7 +200,7 @@ TimerThread::Task* TimerThread::Bucket::consume_tasks() {
         BAIDU_SCOPED_LOCK(_mutex);
         if (_task_head) {
             head = _task_head;
-            _task_head = NULL;
+            _task_head = nullptr;
             _nearest_run_time = std::numeric_limits<int64_t>::max();
         }
     }
@@ -216,11 +212,11 @@ TimerThread::Bucket::schedule(void (*fn)(void*), void* arg,
                               const timespec& abstime) {
     butil::ResourceId<Task> slot_id;
     Task* task = butil::get_resource<Task>(&slot_id);
-    if (task == NULL) {
+    if (task == nullptr) {
         ScheduleResult result = { INVALID_TASK_ID, false };
         return result;
     }
-    task->next = NULL;
+    task->next = nullptr;
     task->fn = fn;
     task->arg = arg;
     task->run_time = butil::timespec_to_microseconds(abstime);
@@ -285,7 +281,7 @@ TimerThread::TaskId TimerThread::schedule(
 int TimerThread::unschedule(TaskId task_id) {
     const butil::ResourceId<Task> slot_id = slot_of_task_id(task_id);
     Task* const task = butil::address_resource(slot_id);
-    if (task == NULL) {
+    if (task == nullptr) {
         LOG(ERROR) << "Invalid task_id=" << task_id;
         return -1;
     }
@@ -492,14 +488,14 @@ void TimerThread::run() {
                 expected_nsignals = _nsignals;
             }
         }
-        timespec* ptimeout = NULL;
+        timespec* ptimeout = nullptr;
         timespec next_timeout = { 0, 0 };
         const int64_t now = butil::gettimeofday_us();
         if (next_run_time != std::numeric_limits<int64_t>::max()) {
             int64_t wait_us = next_run_time - now;
             // Cap the sleep so we periodically wake up to drain buckets and
             // sweep the heap even when the nearest task is far in the future.
-            // Note: an empty heap keeps ptimeout NULL (sleep until woken by a
+            // Note: an empty heap keeps ptimeout nullptr (sleep until woken by a
             // schedule()), which is safe because the first task after the heap
             // empties is always earlier than _nearest_run_time and wakes us.
             const int64_t max_wakeup_us =
@@ -532,19 +528,15 @@ void TimerThread::stop_and_join() {
             // stop_and_join was not called from a running task.
             // wake up the timer thread in case it is sleeping.
             futex_wake_private(&_nsignals, 1);
-            pthread_join(_thread, NULL);
+            pthread_join(_thread, nullptr);
         }
     }
 }
 
 static pthread_once_t g_timer_thread_once = PTHREAD_ONCE_INIT;
-static TimerThread* g_timer_thread = NULL;
+static TimerThread* g_timer_thread = nullptr;
 static void init_global_timer_thread() {
-    g_timer_thread = new (std::nothrow) TimerThread;
-    if (g_timer_thread == NULL) {
-        LOG(FATAL) << "Fail to new g_timer_thread";
-        return;
-    }
+    g_timer_thread = new TimerThread;
     TimerThreadOptions options;
     options.bvar_prefix = "bthread_timer";
     options.num_buckets = FLAGS_brpc_timer_num_buckets;
@@ -552,7 +544,7 @@ static void init_global_timer_thread() {
     if (rc != 0) {
         LOG(FATAL) << "Fail to start timer_thread, " << berror(rc);
         delete g_timer_thread;
-        g_timer_thread = NULL;
+        g_timer_thread = nullptr;
         return;
     }
 }

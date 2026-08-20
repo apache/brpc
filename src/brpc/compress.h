@@ -33,7 +33,7 @@ class Serializer : public NonreflectableMessage<Serializer> {
 public:
     using Callback = std::function<bool(google::protobuf::io::ZeroCopyOutputStream*)>;
 
-    Serializer() :Serializer(NULL) {}
+    Serializer() :Serializer(nullptr) {}
 
     explicit Serializer(Callback callback)
         :_callback(std::move(callback)) {
@@ -100,7 +100,7 @@ public:
 public:
     using Callback = std::function<bool(google::protobuf::io::ZeroCopyInputStream*)>;
 
-    Deserializer() :Deserializer(NULL) {}
+    Deserializer() :Deserializer(nullptr) {}
 
     explicit Deserializer(Callback callback) : _callback(std::move(callback)) {
         SharedCtor();
@@ -175,7 +175,7 @@ struct CompressHandler {
 // Returns 0 on success, -1 otherwise
 int RegisterCompressHandler(CompressType type, CompressHandler handler);
 
-// Returns CompressHandler pointer of `type' if registered, NULL otherwise.
+// Returns CompressHandler pointer of `type' if registered, nullptr otherwise.
 const CompressHandler* FindCompressHandler(CompressType type);
 
 // Returns the `name' of the CompressType if registered

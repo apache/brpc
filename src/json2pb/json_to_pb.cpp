@@ -218,7 +218,7 @@ inline bool convert_enum_type(const BUTIL_RAPIDJSON_NAMESPACE::Value&item, bool 
                               const google::protobuf::FieldDescriptor* field,
                               const google::protobuf::Reflection* reflection,
                               std::string* err) {
-    const google::protobuf::EnumValueDescriptor * enum_value_descriptor = NULL; 
+    const google::protobuf::EnumValueDescriptor * enum_value_descriptor = nullptr; 
     if (item.IsInt()) {
         enum_value_descriptor = field->enum_type()->FindValueByNumber(item.GetInt()); 
     } else if (item.IsString()) {                                          
@@ -582,7 +582,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
     }
 
     std::string field_name_str_temp; 
-    const BUTIL_RAPIDJSON_NAMESPACE::Value* value_ptr = NULL;
+    const BUTIL_RAPIDJSON_NAMESPACE::Value* value_ptr = nullptr;
     for (size_t i = 0; i < fields.size(); ++i) {
         const google::protobuf::FieldDescriptor* field = fields[i];
         
@@ -604,7 +604,7 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
 #else 
         const BUTIL_RAPIDJSON_NAMESPACE::Value::Member* member =
                 json_value.FindMember(field_name_str.data());
-        if (member == NULL) {
+        if (member == nullptr) {
             if (field->is_required()) {
                 J2PERROR(err, "Missing required field: %s", butil::EnsureString(field->full_name()).c_str());
                 return false;
@@ -736,7 +736,7 @@ bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
 #if GOOGLE_PROTOBUF_VERSION >= 6031000
     auto st = google::protobuf::json::JsonStreamToMessage(json, message, options);
     bool ok = st.ok();
-    if (!ok && NULL != error) {
+    if (!ok && nullptr != error) {
         *error = st.ToString();
     }
     return ok;
@@ -748,7 +748,7 @@ bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
     auto st = google::protobuf::util::JsonToBinaryStream(
         type_resolver.get(), type_url, json, &output_stream, options);
     if (!st.ok()) {
-        if (NULL != error) {
+        if (nullptr != error) {
             *error = st.ToString();
         }
         return false;
@@ -757,7 +757,7 @@ bool ProtoJsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* json,
     butil::IOBufAsZeroCopyInputStream input_stream(buf);
     google::protobuf::io::CodedInputStream decoder(&input_stream);
     bool ok = message->ParseFromCodedStream(&decoder);
-    if (!ok && NULL != error) {
+    if (!ok && nullptr != error) {
         *error = "Fail to ParseFromCodedStream";
     }
     return ok;

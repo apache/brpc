@@ -67,14 +67,14 @@ void SerializeEspRequest(
         Controller* cntl,
         const google::protobuf::Message* req_base) {
 
-    if (req_base == NULL) {
+    if (req_base == nullptr) {
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
     ControllerPrivateAccessor accessor(cntl);
     if (req_base->GetDescriptor() != EspMessage::descriptor()) {
         return cntl->SetFailed(EINVAL, "Type of request must be EspMessage");
     }
-    if (cntl->response() != NULL &&
+    if (cntl->response() != nullptr &&
         cntl->response()->GetDescriptor() != EspMessage::descriptor()) {
         return cntl->SetFailed(EINVAL, "Type of response must be EspMessage");
     }
@@ -105,7 +105,7 @@ void PackEspRequest(butil::IOBuf* packet_buf,
         span->set_request_size(request.length());
     }
     
-    if (auth != NULL) {
+    if (auth != nullptr) {
         std::string auth_str;
         auth->GenerateCredential(&auth_str);
         //means first request in this connect, need to special head
@@ -121,7 +121,7 @@ void ProcessEspResponse(InputMessageBase* msg_base) {
     
     // Fetch correlation id that we saved before in `PackEspRequest'
     const CallId cid = { static_cast<uint64_t>(msg->socket()->correlation_id()) };
-    Controller* cntl = NULL;
+    Controller* cntl = nullptr;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
         LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
@@ -140,7 +140,7 @@ void ProcessEspResponse(InputMessageBase* msg_base) {
     EspMessage* response = (EspMessage*)cntl->response();
     const int saved_error = cntl->ErrorCode();
 
-    if (response != NULL) {
+    if (response != nullptr) {
         msg->meta.copy_to(&response->head, sizeof(EspHead));
         msg->payload.swap(response->body);
         if (response->head.msg != 0) {

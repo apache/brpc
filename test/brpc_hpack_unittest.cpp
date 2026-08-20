@@ -49,8 +49,8 @@ TEST_F(HPackTest, many_dynamic_table_size_updates) {
     const pid_t pid = fork();
     ASSERT_GE(pid, 0);
     if (pid == 0) {
-        if (freopen("/dev/null", "w", stdout) == NULL ||
-            freopen("/dev/null", "w", stderr) == NULL) {
+        if (freopen("/dev/null", "w", stdout) == nullptr ||
+            freopen("/dev/null", "w", stderr) == nullptr) {
             exit(1);
         }
 
@@ -62,15 +62,15 @@ TEST_F(HPackTest, many_dynamic_table_size_updates) {
             exit(3);
         }
         pthread_t tid;
-        if (pthread_create(&tid, &attr, DecodeManyDynamicTableSizeUpdates, NULL) != 0) {
+        if (pthread_create(&tid, &attr, DecodeManyDynamicTableSizeUpdates, nullptr) != 0) {
             exit(4);
         }
         pthread_attr_destroy(&attr);
-        void* ret = NULL;
+        void* ret = nullptr;
         if (pthread_join(tid, &ret) != 0) {
             exit(5);
         }
-        exit(ret == NULL ? 0 : 6);
+        exit(ret == nullptr ? 0 : 6);
     }
     int status = 0;
     ASSERT_EQ(pid, waitpid(pid, &status, 0));

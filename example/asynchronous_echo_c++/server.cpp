@@ -78,8 +78,8 @@ public:
         // at this time res is already sent to client, but cntl/req/res is not destructed
         std::string req_str;
         std::string res_str;
-        json2pb::ProtoMessageToJson(*req, &req_str, NULL);
-        json2pb::ProtoMessageToJson(*res, &res_str, NULL);
+        json2pb::ProtoMessageToJson(*req, &req_str, nullptr);
+        json2pb::ProtoMessageToJson(*res, &res_str, nullptr);
         LOG(INFO) << "req:" << req_str
                     << " res:" << res_str;
     }

@@ -191,9 +191,9 @@ static void test_listen_connect(const std::string& server_addr, const std::strin
     int listen_fd = butil::tcp_listen(point);
     ASSERT_GT(listen_fd, 0);
     pthread_t pid;
-    pthread_create(&pid, NULL, server_proc, (void*)(int64_t)listen_fd);
+    pthread_create(&pid, nullptr, server_proc, (void*)(int64_t)listen_fd);
 
-    int fd = butil::tcp_connect(point, NULL);
+    int fd = butil::tcp_connect(point, nullptr);
     ASSERT_GT(fd, 0);
 
     butil::EndPoint point2;
@@ -275,11 +275,11 @@ TEST(EndPointTest, unix_socket) {
 TEST(EndPointTest, original_endpoint) {
     butil::EndPoint ep;
     ASSERT_FALSE(ExtendedEndPoint::is_extended(ep));
-    ASSERT_EQ(NULL, ExtendedEndPoint::address(ep));
+    ASSERT_EQ(nullptr, ExtendedEndPoint::address(ep));
 
     ASSERT_EQ(0, butil::str2endpoint("1.2.3.4:5678", &ep));
     ASSERT_FALSE(ExtendedEndPoint::is_extended(ep));
-    ASSERT_EQ(NULL, ExtendedEndPoint::address(ep));
+    ASSERT_EQ(nullptr, ExtendedEndPoint::address(ep));
 
     // ctor & dtor
     {
@@ -504,15 +504,15 @@ TEST(EndPointTest, tcp_connect) {
     ASSERT_EQ(0, butil::hostname2endpoint(g_hostname1, 80, &ep1));
     ASSERT_EQ(0, butil::hostname2endpoint(g_hostname2, 80, &ep2));
     {
-        butil::fd_guard sockfd(butil::tcp_connect(ep1, NULL));
+        butil::fd_guard sockfd(butil::tcp_connect(ep1, nullptr));
         ASSERT_LE(0, sockfd) << "errno=" << errno;
     }
     {
-        butil::fd_guard sockfd(butil::tcp_connect(ep1, NULL, 1000));
+        butil::fd_guard sockfd(butil::tcp_connect(ep1, nullptr, 1000));
         ASSERT_LE(0, sockfd) << "errno=" << errno;
     }
     {
-        butil::fd_guard sockfd(butil::tcp_connect(ep2, NULL, 1));
+        butil::fd_guard sockfd(butil::tcp_connect(ep2, nullptr, 1));
         ASSERT_EQ(-1, sockfd) << "errno=" << errno;
         ASSERT_EQ(ETIMEDOUT, errno);
     }
@@ -525,7 +525,7 @@ TEST(EndPointTest, tcp_connect) {
         ASSERT_LE(0, sockfd);
         bool is_blocking = butil::is_blocking(sockfd);
         ASSERT_EQ(0, butil::pthread_timed_connect(
-            sockfd, (struct sockaddr*) &serv_addr, serv_addr_size, NULL));
+            sockfd, (struct sockaddr*) &serv_addr, serv_addr_size, nullptr));
         ASSERT_EQ(is_blocking, butil::is_blocking(sockfd));
     }
 
@@ -562,7 +562,7 @@ void TestConnectInterruptImpl(bool timed) {
     int rc;
     if (timed) {
         int64_t start_ms = butil::cpuwide_time_ms();
-        butil::tcp_connect(ep, NULL);
+        butil::tcp_connect(ep, nullptr);
         int64_t connect_ms = butil::cpuwide_time_ms() - start_ms;
         LOG(INFO) << "Connect to " << ep << ", cost " << connect_ms << "ms";
 
@@ -573,7 +573,7 @@ void TestConnectInterruptImpl(bool timed) {
     } else {
         rc = butil::pthread_timed_connect(
             sockfd, (struct sockaddr*) &serv_addr,
-            serv_addr_size, NULL);
+            serv_addr_size, nullptr);
     }
     ASSERT_EQ(0, rc) << "errno=" << errno;
     ASSERT_EQ(0, butil::is_connected(sockfd));
@@ -582,7 +582,7 @@ void TestConnectInterruptImpl(bool timed) {
 void* ConnectThread(void* arg) {
     bool timed = *(bool*)arg;
     TestConnectInterruptImpl(timed);
-    return NULL;
+    return nullptr;
 }
 
 void do_nothing_handler(int) {}
@@ -594,7 +594,7 @@ void register_sigurg() {
 void TestConnectInterrupt(bool timed) {
     g_connect_startd = false;
     pthread_t tid;
-    ASSERT_EQ(0, pthread_create(&tid, NULL, ConnectThread, &timed));
+    ASSERT_EQ(0, pthread_create(&tid, nullptr, ConnectThread, &timed));
 
     while (g_connect_startd) {
         usleep(1000);
@@ -602,7 +602,7 @@ void TestConnectInterrupt(bool timed) {
 
     ASSERT_EQ(0, pthread_kill(tid, SIGURG));
 
-    pthread_join(tid, NULL);
+    pthread_join(tid, nullptr);
 }
 
 TEST(EndPointTest, interrupt) {

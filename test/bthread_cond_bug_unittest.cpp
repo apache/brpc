@@ -123,10 +123,10 @@ void* consume_func(void* arg) {
 TEST(BthreadCondBugTest, test_bug) {
     bthread_t tids[PRODUCER_NUM];
     for (int i = 0; i < PRODUCER_NUM; i++) {
-        bthread_start_background(&tids[i], NULL, produce_func, (void*)(int64_t)i);
+        bthread_start_background(&tids[i], nullptr, produce_func, (void*)(int64_t)i);
     }
     bthread_t tid;
-    bthread_start_background(&tid, NULL, consume_func, NULL);
+    bthread_start_background(&tid, nullptr, consume_func, nullptr);
 
     int64_t ret = (int64_t)print_func(nullptr);
 

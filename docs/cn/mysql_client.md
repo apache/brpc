@@ -44,7 +44,7 @@ if (!request.Query(command)) {
 }
 brpc::MysqlResponse response;
 brpc::Controller cntl;
-channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
 if (!cntl.Failed()) {
     std::cout << response << std::endl;
 } else {
@@ -56,7 +56,7 @@ return true;
 
 上述代码的说明：
 
-- 请求类型必须为MysqlRequest，回复类型必须为MysqlResponse，否则CallMethod会失败。不需要stub，直接调用channel.CallMethod，method填NULL。
+- 请求类型必须为MysqlRequest，回复类型必须为MysqlResponse，否则CallMethod会失败。不需要stub，直接调用channel.CallMethod，method填nullptr。
 - 调用request.Query()传入要执行的命令，可以批量执行命令，多个命令用分号隔开。
 - 依次调用response.reply(X)弹出操作结果，根据返回类型的不同，选择不同的类型接收，如：MysqlReply::Ok，MysqlReply::Error，const MysqlReply::Columnconst MysqlReply::Row等。
 - 如果只有一条命令则reply为1个，如果为批量操作返回的reply为多个。
@@ -94,7 +94,7 @@ const MysqlReply::Field& MysqlReply::Row::field(const uint64_t index) const;
 
 ```c++
 rpc::Channel channel;
-// Initialize the channel, NULL means using default options.
+// Initialize the channel, nullptr means using default options.
 brpc::ChannelOptions options;
 options.protocol = brpc::PROTOCOL_MYSQL;
 options.connection_type = FLAGS_connection_type;
@@ -113,7 +113,7 @@ brpc::MysqlTransactionOptions options;
 options.readonly = FLAGS_readonly;
 options.isolation_level = brpc::MysqlIsolationLevel(FLAGS_isolation_level);
 auto tx(brpc::NewMysqlTransaction(channel, options));
-if (tx == NULL) {
+if (tx == nullptr) {
     LOG(ERROR) << "Fail to create transaction";
     return false;
 }
@@ -126,7 +126,7 @@ if (!request.Query(*it)) {
 }
 brpc::MysqlResponse response;
 brpc::Controller cntl;
-channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access mysql, " << cntl.ErrorText();
     tx->rollback();
@@ -143,7 +143,7 @@ Prepared statement对于一个需要执行很多次的SQL语句，它把这个SQ
 
 ```c++
 rpc::Channel channel;
-// Initialize the channel, NULL means using default options.
+// Initialize the channel, nullptr means using default options.
 brpc::ChannelOptions options;
 options.protocol = brpc::PROTOCOL_MYSQL;
 options.connection_type = FLAGS_connection_type;
@@ -158,7 +158,7 @@ if (channel.Init(FLAGS_server.c_str(), FLAGS_port, &options) != 0) {
 }
 
 auto stmt(brpc::NewMysqlStatement(channel, "select * from tb where name=?"));
-if (stmt == NULL) {
+if (stmt == nullptr) {
     LOG(ERROR) << "Fail to create mysql statement";
     return -1;
 }
@@ -166,15 +166,15 @@ if (stmt == NULL) {
 brpc::MysqlRequest request(stmt.get());
 if (!request.AddParam("lilei")) {
     LOG(ERROR) << "Fail to add name param";
-    return NULL;
+    return nullptr;
 }
 
 brpc::MysqlResponse response;
 brpc::Controller cntl;
-channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access mysql, " << cntl.ErrorText();
-    return NULL;
+    return nullptr;
 }
 
 std::cout << response << std::endl;

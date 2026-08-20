@@ -217,7 +217,7 @@ TEST(LenencStringTest, NonNull_SetsIsNullFalse) {
 }
 
 TEST(LenencStringTest, EmptyIsNotNull) {
-    // Empty string (lenenc 0x00) must NOT be reported as NULL.
+    // Empty string (lenenc 0x00) must NOT be reported as nullptr.
     std::string buf;
     EncodeLengthEncodedString(butil::StringPiece(""), &buf);
     std::string out = "stale";

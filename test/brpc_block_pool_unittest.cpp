@@ -60,30 +60,30 @@ TEST_F(BlockPoolTest, single_thread) {
     void* buf[num];
     for (size_t i = 0; i < num; ++i) {
         buf[i] = AllocBlock(GetBlockSize(0));
-        EXPECT_TRUE(buf[i] != NULL);
+        EXPECT_TRUE(buf[i] != nullptr);
         EXPECT_EQ(0, GetBlockType(buf[i]));
     }
     for (size_t i = 0; i < num; ++i) {
         DeallocBlock(buf[i]);
-        buf[i] = NULL;
+        buf[i] = nullptr;
     }
     for (size_t i = 0; i < num; ++i) {
         buf[i] = AllocBlock(GetBlockSize(0) + 1);
-        EXPECT_TRUE(buf[i] != NULL);
+        EXPECT_TRUE(buf[i] != nullptr);
         EXPECT_EQ(1, GetBlockType(buf[i]));
     }
     for (int i = num - 1; i >= 0; --i) {
         DeallocBlock(buf[i]);
-        buf[i] = NULL;
+        buf[i] = nullptr;
     }
     for (size_t i = 0; i < num; ++i) {
         buf[i] = AllocBlock(GetBlockSize(2));
-        EXPECT_TRUE(buf[i] != NULL);
+        EXPECT_TRUE(buf[i] != nullptr);
         EXPECT_EQ(2, GetBlockType(buf[i]));
     }
     for (int i = num - 1; i >= 0; --i) {
         DeallocBlock(buf[i]);
-        buf[i] = NULL;
+        buf[i] = nullptr;
     }
 
     DestroyBlockPool();
@@ -95,12 +95,12 @@ static void* AllocAndDealloc(void* arg) {
     int iterations = 1000;
     while (iterations > 0) {
         void* buf = AllocBlock(len);
-        EXPECT_TRUE(buf != NULL);
+        EXPECT_TRUE(buf != nullptr);
         EXPECT_EQ(i % 3, GetBlockType(buf));
         DeallocBlock(buf);
         --iterations;
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BlockPoolTest, multiple_thread) {
@@ -137,7 +137,7 @@ TEST_F(BlockPoolTest, extend) {
     void* buf[num];
     for (size_t i = 0; i < num; ++i) {
         buf[i] = AllocBlock(65537);
-        EXPECT_TRUE(buf[i] != NULL);
+        EXPECT_TRUE(buf[i] != nullptr);
     }
     EXPECT_EQ(16, GetRegionNum());
     for (size_t i = 0; i < num; ++i) {
@@ -160,7 +160,7 @@ TEST_F(BlockPoolTest, memory_not_enough) {
     void* buf[num];
     for (size_t i = 0; i < num; ++i) {
         buf[i] = AllocBlock(65537);
-        EXPECT_TRUE(buf[i] != NULL);
+        EXPECT_TRUE(buf[i] != nullptr);
     }
     EXPECT_EQ(2, GetRegionNum());
     void* tmp = AllocBlock(65536);
@@ -182,15 +182,15 @@ TEST_F(BlockPoolTest, invalid_use) {
     EXPECT_TRUE(InitBlockPool(DummyCallback));
 
     void* buf = AllocBlock(0);
-    EXPECT_EQ(NULL, buf);
+    EXPECT_EQ(nullptr, buf);
     EXPECT_EQ(EINVAL, errno);
 
     buf = AllocBlock(GetBlockSize(2) + 1);
-    EXPECT_EQ(NULL, buf);
+    EXPECT_EQ(nullptr, buf);
     EXPECT_EQ(EINVAL, errno);
 
     errno = 0;
-    DeallocBlock(NULL);
+    DeallocBlock(nullptr);
     EXPECT_EQ(EINVAL, errno);
 
     DestroyBlockPool();

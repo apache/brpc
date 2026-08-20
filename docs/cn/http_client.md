@@ -32,10 +32,10 @@ http/h2 channel也支持bns地址或其他NamingService。
 ```c++
 brpc::Controller cntl;
 cntl.http_request().uri() = "www.baidu.com/index.html";  // 设置为待访问的URL
-channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
+channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr/*done*/);
 ```
 
-HTTP/h2和protobuf关系不大，所以除了Controller和done，CallMethod的其他参数均为NULL。如果要异步操作，最后一个参数传入done。
+HTTP/h2和protobuf关系不大，所以除了Controller和done，CallMethod的其他参数均为nullptr。如果要异步操作，最后一个参数传入done。
 
 `cntl.response_attachment()`是回复的body，类型也是butil::IOBuf。IOBuf可通过to_string()转化为std::string，但是需要分配内存并拷贝所有内容，如果关注性能，处理过程应直接支持IOBuf，而不要求连续内存。
 
@@ -48,7 +48,7 @@ brpc::Controller cntl;
 cntl.http_request().uri() = "...";  // 设置为待访问的URL
 cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
 cntl.request_attachment().append("{\"message\":\"hello world!\"}");
-channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
+channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr/*done*/);
 ```
 
 需要大量打印过程的body建议使用butil::IOBufBuilder，它的用法和std::ostringstream是一样的。对于有大量对象要打印的场景，IOBufBuilder简化了代码，效率也可能比c-style printf更高。
@@ -60,7 +60,7 @@ cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
 butil::IOBufBuilder os;
 os << "A lot of printing" << printable_objects << ...;
 os.move_to(cntl.request_attachment());
-channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
+channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr/*done*/);
 ```
 # 控制HTTP版本
 
@@ -126,7 +126,7 @@ URL的一般形式如下图：
 
 访问名为Foo的header
 ```c++
-const std::string* value = cntl->http_request().GetHeader("Foo"); //不存在为NULL
+const std::string* value = cntl->http_request().GetHeader("Foo"); //不存在为nullptr
 ```
 设置名为Foo的header
 ```c++
@@ -134,7 +134,7 @@ cntl->http_request().SetHeader("Foo", "value");
 ```
 访问名为Foo的query
 ```c++
-const std::string* value = cntl->http_request().uri().GetQuery("Foo"); // 不存在为NULL
+const std::string* value = cntl->http_request().uri().GetQuery("Foo"); // 不存在为nullptr
 ```
 设置名为Foo的query
 ```c++
@@ -197,7 +197,7 @@ Notes on http header:
 #include <brpc/policy/gzip_compress.h>
 ...
 const std::string* encoding = cntl->http_response().GetHeader("Content-Encoding");
-if (encoding != NULL && *encoding == "gzip") {
+if (encoding != nullptr && *encoding == "gzip") {
     butil::IOBuf uncompressed;
     if (!brpc::policy::GzipDecompress(cntl->response_attachment(), &uncompressed)) {
         LOG(ERROR) << "Fail to un-gzip response body";

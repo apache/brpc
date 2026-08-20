@@ -269,7 +269,7 @@ public:
                       << " ms before responding play request";
             bthread_usleep(_sleep_ms * 1000L);
         }
-        int rc = bthread_start_background(&_play_thread, NULL,
+        int rc = bthread_start_background(&_play_thread, nullptr,
                                           RunSendData, this);
         if (rc) {
             status->set_error(rc, "Fail to create thread");
@@ -279,7 +279,7 @@ public:
         if (!_state.compare_exchange_strong(expected, STATE_PLAYING)) {
             if (expected == STATE_STOPPED) {
                 bthread_stop(_play_thread);
-                bthread_join(_play_thread, NULL);
+                bthread_join(_play_thread, nullptr);
             } else {
                 CHECK(false) << "Impossible";
             }
@@ -290,7 +290,7 @@ public:
         LOG(INFO) << "OnStop of PlayingDummyStream=" << this;
         if (_state.exchange(STATE_STOPPED) == STATE_PLAYING) {
             bthread_stop(_play_thread);
-            bthread_join(_play_thread, NULL);
+            bthread_join(_play_thread, nullptr);
         }
     }
 
@@ -299,7 +299,7 @@ public:
 private:
     static void* RunSendData(void* arg) {
         ((PlayingDummyStream*)arg)->SendData();
-        return NULL;
+        return nullptr;
     }
 
     butil::atomic<State> _state;
@@ -421,7 +421,7 @@ private:
 class PublishService : public brpc::RtmpService {
 public:
     PublishService(int64_t sleep_ms = 0) : _sleep_ms(sleep_ms) {
-        pthread_mutex_init(&_mutex, NULL);
+        pthread_mutex_init(&_mutex, nullptr);
     }
     ~PublishService() {
         pthread_mutex_destroy(&_mutex);
@@ -824,7 +824,7 @@ TEST(RtmpTest, abort_message_naming_own_chunk_stream) {
     brpc::SocketUniquePtr sock;
     ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
 
-    brpc::policy::RtmpContext ctx(NULL, NULL);
+    brpc::policy::RtmpContext ctx(nullptr, nullptr);
     ctx.SetState(sock->remote_side(),
                  brpc::policy::RtmpContext::STATE_RECEIVED_C2);
 

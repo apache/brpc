@@ -47,7 +47,7 @@ public:
     
     // The space required by subclass at NsheadServiceOptions. subclass may
     // utilizes this feature to save the cost of allocating closure separately.
-    // If subclass does not require space, this return value is NULL.
+    // If subclass does not require space, this return value is nullptr.
     void* additional_space() { return _additional_space; }
 
     int64_t received_us() const { return _received_us; }
