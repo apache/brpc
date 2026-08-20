@@ -17,6 +17,7 @@
 
 #if BRPC_WITH_RDMA
 
+#include <algorithm>                            // std::min
 #include <gflags/gflags.h>
 #include "butil/fd_utility.h"
 #include "butil/logging.h"                   // CHECK, LOG
@@ -1165,6 +1166,15 @@ int RdmaEndpoint::DoAllocateResources() {
 }
 
 int RdmaEndpoint::BringUpQp(const ParsedHello& remote, bool is_server) {
+    // MTU negotiation (server side): compute min(local, client) and store it
+    // so FillLocalRdmaHello can advertise the negotiated value in the server
+    // hello reply. This is done before the g_skip_rdma_init early-return so
+    // that UT (which skips real QP bring-up) still sets _outgoing_mtu.
+    if (is_server && remote.path_mtu.has_value()) {
+        uint32_t local_mtu = GetRdmaActiveMtu();
+        _outgoing_mtu = std::min(local_mtu, *remote.path_mtu);
+    }
+
     if (BAIDU_UNLIKELY(g_skip_rdma_init)) {
         // For UT
         return 0;
@@ -1212,7 +1222,19 @@ int RdmaEndpoint::BringUpQp(const ParsedHello& remote, bool is_server) {
     }
 
     attr.qp_state = IBV_QPS_RTR;
-    attr.path_mtu = IBV_MTU_1024;  // TODO: support more mtu in future
+    // MTU negotiation: use the peer-advertised MTU if available, otherwise
+    // fall back to the legacy default (IBV_MTU_1024).
+    //   Server side: _outgoing_mtu was already computed at function entry;
+    //     reuse it for the QP path_mtu attribute.
+    //   Client side: remote.path_mtu is already the server's negotiated
+    //     min(local, client) and we use it as-is.
+    uint32_t negotiated_mtu = IBV_MTU_1024;
+    if (is_server && _outgoing_mtu.has_value()) {
+        negotiated_mtu = *_outgoing_mtu;
+    } else if (!is_server && remote.path_mtu.has_value()) {
+        negotiated_mtu = *remote.path_mtu;
+    }
+    attr.path_mtu = static_cast<ibv_mtu>(negotiated_mtu);
     attr.ah_attr.grh.dgid = remote.gid;
     attr.ah_attr.grh.flow_label = 0;
     attr.ah_attr.grh.sgid_index = GetRdmaGidIndex();

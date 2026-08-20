@@ -287,6 +287,13 @@ private:
     //           QP reached RTS (filled in BringUpQp).
     butil::optional<ibv_ece> _outgoing_ece;
 
+    // MTU payload to advertise in the next local hello:
+    //   Client: the locally queried active MTU (filled
+    //           before C_HELLO_SEND);
+    //   Server: the negotiated MTU = min(local_active_mtu, client_mtu)
+    //           (filled in BringUpQp).
+    butil::optional<uint32_t> _outgoing_mtu;
+
     // rdma resource
     RdmaResource* _resource;
 
