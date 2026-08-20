@@ -108,6 +108,20 @@ Examples link brpc statically, if you need to link the shared version, remove `C
 $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
+### Compile brpc with Bazel
+
+bRPC also supports Bazel builds. The bzlmod example under
+`example/build_with_bazel_module` builds a server and a client against the local
+bRPC checkout:
+
+```shell
+$ cd example/build_with_bazel_module
+$ bazel build //:echo_c++_server //:echo_c++_client
+```
+
+For using bRPC as a Bazel dependency, including the required registries and
+`MODULE.bazel` setup, see [Bazel support](bazel_support.md).
+
 ### Compile brpc with vcpkg
 
 [vcpkg](https://github.com/microsoft/vcpkg) is a package manager that supports all platforms,

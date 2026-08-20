@@ -30,3 +30,14 @@ cc_binary(
         "@apache_brpc//:brpc",
     ],
 )
+
+cc_binary(
+    name = "echo_c++_client",
+    srcs = [
+        "client.cpp",
+    ],
+    deps = [
+        ":cc_echo_c++_proto",
+        "@apache_brpc//:brpc",
+    ],
+)
