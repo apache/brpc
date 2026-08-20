@@ -31,7 +31,7 @@ DECLARE_bool(usercode_in_pthread);
 extern SocketVarsCollector *g_vars;
 
 void RdmaTransport::DoInit(Socket *socket, const SocketOptions &options, bool use_gdr) {
-    CHECK(_rdma_ep == NULL);
+    CHECK(_rdma_ep == nullptr);
     // gdr mode is a special mode of rdma mode.
     // both rdma mode and gdr mode need init rdma::RdmaEndpoint.
     if (options.socket_mode == SOCKET_MODE_RDMA ||
@@ -51,7 +51,7 @@ void RdmaTransport::DoInit(Socket *socket, const SocketOptions &options, bool us
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
-    if (options.need_on_edge_trigger && _on_edge_trigger == NULL) {
+    if (options.need_on_edge_trigger && _on_edge_trigger == nullptr) {
         // Server-side RDMA sockets drive the handshake through the standard
         // InputMessenger path (ParseRdmaHandshake), so they use OnNewMessages
         // just like TCP sockets. Only client-side sockets, whose handshake
@@ -74,7 +74,7 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
 void RdmaTransport::Release() {
     if (_rdma_ep) {
         delete _rdma_ep;
-        _rdma_ep = NULL;
+        _rdma_ep = nullptr;
         _rdma_state = RDMA_UNKNOWN;
     }
 }
@@ -119,7 +119,7 @@ int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                                     bool pollin, const timespec duetime) {
     if (_rdma_state == RDMA_ON) {
         const int expected_val = _epollout_butex->load(butil::memory_order_acquire);
-        CHECK(_rdma_ep != NULL);
+        CHECK(_rdma_ep != nullptr);
         if (!_rdma_ep->IsWritable()) {
             g_vars->nwaitepollout << 1;
             if (bthread::butex_wait(_epollout_butex, expected_val, &duetime) < 0) {

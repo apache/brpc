@@ -46,7 +46,7 @@ extern int bthread_mutex_lock_contended(bthread_mutex_t*);
 
 int bthread_cond_init(bthread_cond_t* __restrict c,
                       const bthread_condattr_t*) {
-    c->m = NULL;
+    c->m = nullptr;
     c->seq = bthread::butex_create_checked<int>();
     *c->seq = 0;
     return 0;
@@ -54,7 +54,7 @@ int bthread_cond_init(bthread_cond_t* __restrict c,
 
 int bthread_cond_destroy(bthread_cond_t* c) {
     bthread::butex_destroy(c->seq);
-    c->seq = NULL;
+    c->seq = nullptr;
     return 0;
 }
 
@@ -89,7 +89,7 @@ int bthread_cond_wait(bthread_cond_t* __restrict c,
     const int expected_seq = ic->seq->load(butil::memory_order_relaxed);
     if (ic->m.load(butil::memory_order_relaxed) != m) {
         // bind m to c
-        bthread_mutex_t* expected_m = NULL;
+        bthread_mutex_t* expected_m = nullptr;
         if (!ic->m.compare_exchange_strong(
                 expected_m, m, butil::memory_order_relaxed)) {
             return EINVAL;
@@ -97,7 +97,7 @@ int bthread_cond_wait(bthread_cond_t* __restrict c,
     }
     bthread_mutex_unlock(m);
     int rc1 = 0;
-    if (bthread::butex_wait(ic->seq, expected_seq, NULL) < 0 &&
+    if (bthread::butex_wait(ic->seq, expected_seq, nullptr) < 0 &&
         errno != EWOULDBLOCK && errno != EINTR/*note*/) {
         // EINTR should not be returned by cond_*wait according to docs on
         // pthread, however spurious wake-up is OK, just as we do here
@@ -123,7 +123,7 @@ int bthread_cond_timedwait(bthread_cond_t* __restrict c,
     const int expected_seq = ic->seq->load(butil::memory_order_relaxed);
     if (ic->m.load(butil::memory_order_relaxed) != m) {
         // bind m to c
-        bthread_mutex_t* expected_m = NULL;
+        bthread_mutex_t* expected_m = nullptr;
         if (!ic->m.compare_exchange_strong(
                 expected_m, m, butil::memory_order_relaxed)) {
             return EINVAL;

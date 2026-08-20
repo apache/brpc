@@ -97,9 +97,9 @@ static void worker1_impl(Counters* cs) {
     for (size_t i = 0; i < arraysize(k); ++i) {
         ws[i] = new CountersWrapper(cs, k[i]);
     }
-    // Get just-created tls should return NULL.
+    // Get just-created tls should return nullptr.
     for (size_t i = 0; i < arraysize(k); ++i) {
-        ASSERT_EQ(NULL, bthread_getspecific(k[i]));
+        ASSERT_EQ(nullptr, bthread_getspecific(k[i]));
     }
     for (size_t i = 0; i < arraysize(k); ++i) {
         cs->ncreate.fetch_add(1, butil::memory_order_relaxed);
@@ -118,7 +118,7 @@ static void worker1_impl(Counters* cs) {
 
 static void* worker1(void* arg) {
     worker1_impl(static_cast<Counters*>(arg));
-    return NULL;
+    return nullptr;
 }
 
 TEST(KeyTest, creating_key_in_parallel) {
@@ -126,16 +126,16 @@ TEST(KeyTest, creating_key_in_parallel) {
     pthread_t th[8];
     bthread_t bth[8];
     for (size_t i = 0; i < arraysize(th); ++i) {
-        ASSERT_EQ(0, pthread_create(&th[i], NULL, worker1, &args));
+        ASSERT_EQ(0, pthread_create(&th[i], nullptr, worker1, &args));
     }
     for (size_t i = 0; i < arraysize(bth); ++i) {
-        ASSERT_EQ(0, bthread_start_background(&bth[i], NULL, worker1, &args));
+        ASSERT_EQ(0, bthread_start_background(&bth[i], nullptr, worker1, &args));
     }
     for (size_t i = 0; i < arraysize(th); ++i) {
-        ASSERT_EQ(0, pthread_join(th[i], NULL));
+        ASSERT_EQ(0, pthread_join(th[i], nullptr));
     }
     for (size_t i = 0; i < arraysize(bth); ++i) {
-        ASSERT_EQ(0, bthread_join(bth[i], NULL));
+        ASSERT_EQ(0, bthread_join(bth[i], nullptr));
     }
     ASSERT_EQ(arraysize(th) + arraysize(bth),
               args.nenterthread.load(butil::memory_order_relaxed));
@@ -158,13 +158,13 @@ void dtor2(void* arg) {
 
 // NOTE: returns void to use ASSERT
 static void worker2_impl(bthread_key_t k) {
-    ASSERT_EQ(NULL, bthread_getspecific(k));
+    ASSERT_EQ(nullptr, bthread_getspecific(k));
     ASSERT_EQ(0, bthread_setspecific(k, (void*)seq.fetch_add(1)));
 }
 
 static void* worker2(void* arg) {
     worker2_impl(*static_cast<bthread_key_t*>(arg));
-    return NULL;
+    return nullptr;
 }
 
 TEST(KeyTest, use_one_key_in_different_threads) {
@@ -174,17 +174,17 @@ TEST(KeyTest, use_one_key_in_different_threads) {
 
     pthread_t th[16];
     for (size_t i = 0; i < arraysize(th); ++i) {
-        ASSERT_EQ(0, pthread_create(&th[i], NULL, worker2, &k));
+        ASSERT_EQ(0, pthread_create(&th[i], nullptr, worker2, &k));
     }
     bthread_t bth[1];
     for (size_t i = 0; i < arraysize(bth); ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&bth[i], NULL, worker2, &k));
+        ASSERT_EQ(0, bthread_start_urgent(&bth[i], nullptr, worker2, &k));
     }
     for (size_t i = 0; i < arraysize(th); ++i) {
-        ASSERT_EQ(0, pthread_join(th[i], NULL));
+        ASSERT_EQ(0, pthread_join(th[i], nullptr));
     }
     for (size_t i = 0; i < arraysize(bth); ++i) {
-        ASSERT_EQ(0, bthread_join(bth[i], NULL));
+        ASSERT_EQ(0, bthread_join(bth[i], nullptr));
     }
     ASSERT_EQ(arraysize(th) + arraysize(bth), seqs.size());
     std::sort(seqs.begin(), seqs.end());
@@ -202,9 +202,9 @@ struct Keys {
 void* const DUMMY_PTR = (void*)1;
 
 void use_invalid_keys_impl(const Keys* keys) {
-    ASSERT_EQ(NULL, bthread_getspecific(keys->invalid_key));
-    // valid key returns NULL as well.
-    ASSERT_EQ(NULL, bthread_getspecific(keys->valid_key));
+    ASSERT_EQ(nullptr, bthread_getspecific(keys->invalid_key));
+    // valid key returns nullptr as well.
+    ASSERT_EQ(nullptr, bthread_getspecific(keys->valid_key));
 
     // both pthread_setspecific(of nptl) and bthread_setspecific should find
     // the key is invalid.
@@ -212,42 +212,42 @@ void use_invalid_keys_impl(const Keys* keys) {
     ASSERT_EQ(0, bthread_setspecific(keys->valid_key, DUMMY_PTR));
 
     // Print error again.
-    ASSERT_EQ(NULL, bthread_getspecific(keys->invalid_key));
+    ASSERT_EQ(nullptr, bthread_getspecific(keys->invalid_key));
     ASSERT_EQ(DUMMY_PTR, bthread_getspecific(keys->valid_key));
 }
 
 void* use_invalid_keys(void* args) {
     use_invalid_keys_impl(static_cast<const Keys*>(args));
-    return NULL;
+    return nullptr;
 }
 
 TEST(KeyTest, use_invalid_keys) {
     Keys keys;
-    ASSERT_EQ(0, bthread_key_create(&keys.valid_key, NULL));
+    ASSERT_EQ(0, bthread_key_create(&keys.valid_key, nullptr));
     // intended to be a created but invalid key.
     keys.invalid_key.index = keys.valid_key.index;
     keys.invalid_key.version = 123;
 
     pthread_t th;
     bthread_t bth;
-    ASSERT_EQ(0, pthread_create(&th, NULL, use_invalid_keys, &keys));
-    ASSERT_EQ(0, bthread_start_urgent(&bth, NULL, use_invalid_keys, &keys));
-    ASSERT_EQ(0, pthread_join(th, NULL));
-    ASSERT_EQ(0, bthread_join(bth, NULL));
+    ASSERT_EQ(0, pthread_create(&th, nullptr, use_invalid_keys, &keys));
+    ASSERT_EQ(0, bthread_start_urgent(&bth, nullptr, use_invalid_keys, &keys));
+    ASSERT_EQ(0, pthread_join(th, nullptr));
+    ASSERT_EQ(0, bthread_join(bth, nullptr));
     ASSERT_EQ(0, bthread_key_delete(keys.valid_key));
 }
 
 TEST(KeyTest, reuse_key) {
     bthread_key_t key;
-    ASSERT_EQ(0, bthread_key_create(&key, NULL));
-    ASSERT_EQ(NULL, bthread_getspecific(key));
+    ASSERT_EQ(0, bthread_key_create(&key, nullptr));
+    ASSERT_EQ(nullptr, bthread_getspecific(key));
     ASSERT_EQ(0, bthread_setspecific(key, (void*)1));
     ASSERT_EQ(0, bthread_key_delete(key)); // delete key before clearing TLS.
     bthread_key_t key2;
-    ASSERT_EQ(0, bthread_key_create(&key2, NULL));
+    ASSERT_EQ(0, bthread_key_create(&key2, nullptr));
     ASSERT_EQ(key.index, key2.index);
-    // The slot is not NULL, the impl must check version and return NULL.
-    ASSERT_EQ(NULL, bthread_getspecific(key2));
+    // The slot is not nullptr, the impl must check version and return nullptr.
+    ASSERT_EQ(nullptr, bthread_getspecific(key2));
 }
 
 // NOTE: sid is short for 'set in dtor'.
@@ -259,8 +259,8 @@ struct SidData {
 
 static void sid_dtor(void* tls){
     SidData* data = (SidData*)tls;
-    // Should already be set NULL.
-    ASSERT_EQ(NULL, bthread_getspecific(data->key));
+    // Should already be set nullptr.
+    ASSERT_EQ(nullptr, bthread_getspecific(data->key));
     if (++data->seq < data->end_seq){
         ASSERT_EQ(0, bthread_setspecific(data->key, data));
     }
@@ -272,7 +272,7 @@ static void sid_thread_impl(SidData* data) {
 
 static void* sid_thread(void* args) {
     sid_thread_impl((SidData*)args);
-    return NULL;
+    return nullptr;
 }
 
 TEST(KeyTest, set_in_dtor) {
@@ -286,14 +286,14 @@ TEST(KeyTest, set_in_dtor) {
     pthread_t pth;
     bthread_t bth;
     bthread_t bth2;
-    ASSERT_EQ(0, pthread_create(&pth, NULL, sid_thread, &pth_data));
-    ASSERT_EQ(0, bthread_start_urgent(&bth, NULL, sid_thread, &bth_data));
+    ASSERT_EQ(0, pthread_create(&pth, nullptr, sid_thread, &pth_data));
+    ASSERT_EQ(0, bthread_start_urgent(&bth, nullptr, sid_thread, &bth_data));
     ASSERT_EQ(0, bthread_start_urgent(&bth2, &BTHREAD_ATTR_PTHREAD,
                                       sid_thread, &bth2_data));
 
-    ASSERT_EQ(0, pthread_join(pth, NULL));
-    ASSERT_EQ(0, bthread_join(bth, NULL));
-    ASSERT_EQ(0, bthread_join(bth2, NULL));
+    ASSERT_EQ(0, pthread_join(pth, nullptr));
+    ASSERT_EQ(0, bthread_join(bth, nullptr));
+    ASSERT_EQ(0, bthread_join(bth2, nullptr));
         
     ASSERT_EQ(0, bthread_key_delete(key));
 
@@ -321,15 +321,15 @@ struct SBATLS {
 void* set_before_anybth(void* args);
 
 void set_before_anybth_impl(SBAData* data) {
-    ASSERT_EQ(NULL, bthread_getspecific(data->key));
+    ASSERT_EQ(nullptr, bthread_getspecific(data->key));
     SBATLS *tls = new SBATLS;
     tls->ndestroy = &data->ndestroy;
     ASSERT_EQ(0, bthread_setspecific(data->key, tls));
     ASSERT_EQ(tls, bthread_getspecific(data->key));
     if (data->level++ == 0) {
         bthread_t bth;
-        ASSERT_EQ(0, bthread_start_urgent(&bth, NULL, set_before_anybth, data));
-        ASSERT_EQ(0, bthread_join(bth, NULL));
+        ASSERT_EQ(0, bthread_start_urgent(&bth, nullptr, set_before_anybth, data));
+        ASSERT_EQ(0, bthread_join(bth, nullptr));
         ASSERT_EQ(1, data->ndestroy);
     } else {
         bthread_usleep(1000);
@@ -339,7 +339,7 @@ void set_before_anybth_impl(SBAData* data) {
 
 void* set_before_anybth(void* args) {
     set_before_anybth_impl((SBAData*)args);
-    return NULL;
+    return nullptr;
 }
 
 TEST(KeyTest, set_tls_before_creating_any_bthread) {
@@ -350,8 +350,8 @@ TEST(KeyTest, set_tls_before_creating_any_bthread) {
     data.key = key;
     data.level = 0;
     data.ndestroy = 0;
-    ASSERT_EQ(0, pthread_create(&th, NULL, set_before_anybth, &data));
-    ASSERT_EQ(0, pthread_join(th, NULL));
+    ASSERT_EQ(0, pthread_create(&th, nullptr, set_before_anybth, &data));
+    ASSERT_EQ(0, pthread_join(th, nullptr));
     ASSERT_EQ(0, bthread_key_delete(key));
     ASSERT_EQ(2, data.level);
     ASSERT_EQ(2, data.ndestroy);
@@ -367,7 +367,7 @@ struct PoolData {
 bool use_same_keytable = false;
 
 static void pool_thread_impl(PoolData* data) {
-    if (NULL == bthread_getspecific(data->key)) {
+    if (nullptr == bthread_getspecific(data->key)) {
         ASSERT_EQ(0, bthread_setspecific(data->key, data));
     } else {
         use_same_keytable = true;
@@ -376,13 +376,13 @@ static void pool_thread_impl(PoolData* data) {
 
 static void* pool_thread(void* args) {
     pool_thread_impl((PoolData*)args);
-    return NULL;
+    return nullptr;
 }
 
 static void pool_dtor(void* tls){
     PoolData* data = (PoolData*)tls;
-    // Should already be set NULL.
-    ASSERT_EQ(NULL, bthread_getspecific(data->key));
+    // Should already be set nullptr.
+    ASSERT_EQ(nullptr, bthread_getspecific(data->key));
     if (++data->seq < data->end_seq){
         ASSERT_EQ(0, bthread_setspecific(data->key, data));
     }
@@ -403,16 +403,16 @@ TEST(KeyTest, using_pool) {
     bthread_attr_t attr2 = attr;
     attr2.stack_type = BTHREAD_STACKTYPE_PTHREAD;
 
-    PoolData bth_data = { key, NULL, 0, 3 };
+    PoolData bth_data = { key, nullptr, 0, 3 };
     bthread_t bth;
     ASSERT_EQ(0, bthread_start_urgent(&bth, &attr, pool_thread, &bth_data));
-    ASSERT_EQ(0, bthread_join(bth, NULL));
+    ASSERT_EQ(0, bthread_join(bth, nullptr));
     ASSERT_EQ(0, bth_data.seq);
 
-    PoolData bth2_data = { key, NULL, 0, 3 };
+    PoolData bth2_data = { key, nullptr, 0, 3 };
     bthread_t bth2;
     ASSERT_EQ(0, bthread_start_urgent(&bth2, &attr2, pool_thread, &bth2_data));
-    ASSERT_EQ(0, bthread_join(bth2, NULL));
+    ASSERT_EQ(0, bthread_join(bth2, nullptr));
     ASSERT_EQ(0, bth2_data.seq);
         
     ASSERT_EQ(0, bthread_keytable_pool_destroy(&pool));
@@ -438,7 +438,7 @@ static void pool_dtor2(void* tls) {
 }
 
 static void usleep_thread_impl(PoolData2* data) {
-    if (NULL == bthread_getspecific(data->key)) {
+    if (nullptr == bthread_getspecific(data->key)) {
         PoolData2* data_new = new PoolData2();
         ASSERT_EQ(0, bthread_setspecific(data->key, data_new));
     }
@@ -450,7 +450,7 @@ static void usleep_thread_impl(PoolData2* data) {
 static void* usleep_thread(void* args) {
     std::unique_ptr<PoolData2> data((PoolData2*)args);
     usleep_thread_impl(data.get());
-    return NULL;
+    return nullptr;
 }
 
 static void launch_many_bthreads(PoolData2* data) {
@@ -466,14 +466,14 @@ static void launch_many_bthreads(PoolData2* data) {
 
     usleep(3 * 1000 * 1000L);
     for (size_t i = 0; i < tids.size(); ++i) {
-        bthread_join(tids[i], NULL);
+        bthread_join(tids[i], nullptr);
     }
 }
 
 static void* run_launch_many_bthreads(void* args) {
     PoolData2* data = (PoolData2*)args;
     launch_many_bthreads(data);
-    return NULL;
+    return nullptr;
 }
 
 TEST(KeyTest, frequently_borrow_keytable_when_using_pool) {
@@ -488,7 +488,7 @@ TEST(KeyTest, frequently_borrow_keytable_when_using_pool) {
 
     bthread_t bth;
     ASSERT_EQ(0, bthread_start_urgent(&bth, &data.attr, run_launch_many_bthreads, &data));
-    ASSERT_EQ(0, bthread_join(bth, NULL));
+    ASSERT_EQ(0, bthread_join(bth, nullptr));
     std::cout << "Free keytable size is "
               << bthread_keytable_pool_size(&test_pool)
               << " use keytable size is 25000" << std::endl;
@@ -516,7 +516,7 @@ static void return_thread_impl() {
 
 static void* return_thread(void*) {
     return_thread_impl();
-    return NULL;
+    return nullptr;
 }
 
 static void borrow_thread_impl() {
@@ -529,7 +529,7 @@ static void borrow_thread_impl() {
 
 static void* borrow_thread(void*) {
     borrow_thread_impl();
-    return NULL;
+    return nullptr;
 }
 
 TEST(KeyTest, borrow_and_return_keytable_when_using_pool) {
@@ -544,18 +544,18 @@ TEST(KeyTest, borrow_and_return_keytable_when_using_pool) {
     bthread_t return_bth[8];
     for (size_t i = 0; i < arraysize(borrow_bth); ++i) {
         ASSERT_EQ(0, bthread_start_background(&borrow_bth[i], &attr,
-                                              borrow_thread, NULL));
+                                              borrow_thread, nullptr));
     }
     for (size_t i = 0; i < arraysize(return_bth); ++i) {
         ASSERT_EQ(0, bthread_start_background(&return_bth[i], &attr,
-                                              return_thread, NULL));
+                                              return_thread, nullptr));
     }
 
     for (size_t i = 0; i < arraysize(borrow_bth); ++i) {
-        ASSERT_EQ(0, bthread_join(borrow_bth[i], NULL));
+        ASSERT_EQ(0, bthread_join(borrow_bth[i], nullptr));
     }
     for (size_t i = 0; i < arraysize(return_bth); ++i) {
-        ASSERT_EQ(0, bthread_join(return_bth[i], NULL));
+        ASSERT_EQ(0, bthread_join(return_bth[i], nullptr));
     }
 
     for (size_t i = 0; i < table_list.size(); i++) {
@@ -578,13 +578,13 @@ static void lid_dtor(void* tls) {
 }
 
 static void lid_worker_impl(bthread_key_t key) {
-    ASSERT_EQ(NULL, bthread_getspecific(key));
+    ASSERT_EQ(nullptr, bthread_getspecific(key));
     ASSERT_EQ(0, bthread_setspecific(key, (void*)lid_seq.fetch_add(1)));
 }
 
 static void* lid_worker(void* arg) {
     lid_worker_impl(*static_cast<bthread_key_t*>(arg));
-    return NULL;
+    return nullptr;
 }
 
 TEST(KeyTest, use_bthread_mutex_in_dtor) {
@@ -597,17 +597,17 @@ TEST(KeyTest, use_bthread_mutex_in_dtor) {
 
     bthread_t bth[8];
     for (size_t i = 0; i < arraysize(bth); ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&bth[i], NULL, lid_worker, &key));
+        ASSERT_EQ(0, bthread_start_urgent(&bth[i], nullptr, lid_worker, &key));
     }
     pthread_t th[8];
     for (size_t i = 0; i < arraysize(th); ++i) {
-        ASSERT_EQ(0, pthread_create(&th[i], NULL, lid_worker, &key));
+        ASSERT_EQ(0, pthread_create(&th[i], nullptr, lid_worker, &key));
     }
     for (size_t i = 0; i < arraysize(bth); ++i) {
-        ASSERT_EQ(0, bthread_join(bth[i], NULL));
+        ASSERT_EQ(0, bthread_join(bth[i], nullptr));
     }
     for (size_t i = 0; i < arraysize(th); ++i) {
-        ASSERT_EQ(0, pthread_join(th[i], NULL));
+        ASSERT_EQ(0, pthread_join(th[i], nullptr));
     }
     ASSERT_EQ(arraysize(th) + arraysize(bth), lid_seqs.size());
     std::sort(lid_seqs.begin(), lid_seqs.end());

@@ -25,15 +25,15 @@
 namespace butil {
 
 SingleIOBuf::SingleIOBuf()
-    : _cur_block(NULL)
+    : _cur_block(nullptr)
     , _block_size(0) {
     _cur_ref.offset = 0;
     _cur_ref.length = 0;
-    _cur_ref.block = NULL;
+    _cur_ref.block = nullptr;
 }
 
 SingleIOBuf::SingleIOBuf(const IOBuf::BlockRef& ref) {
-    _cur_block = NULL;
+    _cur_block = nullptr;
     _block_size = 0;
     if (ref.block) {
         _cur_ref = ref;
@@ -42,9 +42,9 @@ SingleIOBuf::SingleIOBuf(const IOBuf::BlockRef& ref) {
 }
 
 SingleIOBuf::SingleIOBuf(const SingleIOBuf& other) {
-    _cur_block = NULL;
+    _cur_block = nullptr;
     _block_size = 0;
-    if (other._cur_ref.block != NULL) {
+    if (other._cur_ref.block != nullptr) {
         _cur_ref = other._cur_ref;
         _cur_ref.block->inc_ref();
     }
@@ -57,7 +57,7 @@ SingleIOBuf::~SingleIOBuf() {
 SingleIOBuf& SingleIOBuf::operator=(const SingleIOBuf& rhs) {
     reset();
     _block_size = 0;
-    if (rhs._cur_ref.block != NULL) {
+    if (rhs._cur_ref.block != nullptr) {
         _cur_ref = rhs._cur_ref;
         _cur_ref.block->inc_ref();
     }
@@ -83,7 +83,7 @@ void SingleIOBuf::swap(SingleIOBuf& other) {
 void* SingleIOBuf::allocate(uint32_t size) {
     IOBuf::Block* b = alloc_block_by_size(size);
     if (!b) {
-        return NULL;
+        return nullptr;
     }
     _cur_ref.offset = b->size;
     _cur_ref.length = size;
@@ -102,23 +102,23 @@ void SingleIOBuf::deallocate(void* p) {
 }
 
 IOBuf::Block* SingleIOBuf::alloc_block_by_size(uint32_t data_size) {
-    if (_cur_block != NULL) {
+    if (_cur_block != nullptr) {
         if (_cur_block->left_space() >= data_size) {
             return _cur_block;
         } else {
             _cur_block->dec_ref();
-            _cur_block = NULL;
+            _cur_block = nullptr;
         }
     }
     uint32_t total_size = data_size + sizeof(IOBuf::Block);
     if (total_size <= butil::GetDefaultBlockSize()) {
         _cur_block = iobuf::acquire_tls_block();
-        if (_cur_block != NULL) {
+        if (_cur_block != nullptr) {
             if (_cur_block->left_space() >= data_size) {
                 return _cur_block;
             } else {
                 _cur_block->dec_ref();
-                _cur_block = NULL;
+                _cur_block = nullptr;
             }
         }
         _cur_block = iobuf::create_block();
@@ -129,7 +129,7 @@ IOBuf::Block* SingleIOBuf::alloc_block_by_size(uint32_t data_size) {
     if (BAIDU_UNLIKELY(!_cur_block)) {
         errno = ENOMEM;
         _block_size = 0;
-        return NULL;
+        return nullptr;
     }
     return _cur_block;
 }
@@ -148,18 +148,18 @@ void* SingleIOBuf::reallocate_downward(uint32_t new_size, uint32_t in_use_back,
     if (BAIDU_UNLIKELY(new_size <= ref.length)) {
         LOG(ERROR) << "invalid new size:" << new_size;
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
-    if (BAIDU_UNLIKELY(ref.block == NULL)) {
+    if (BAIDU_UNLIKELY(ref.block == nullptr)) {
         LOG(ERROR) << "SingleIOBuf reallocate_downward failed. Block cannot be null!";
         errno = EINVAL;
-        return NULL;
+        return nullptr;
     }
     char* old_p = ref.block->data + ref.offset;
     uint32_t old_size = ref.length;
     IOBuf::Block* b = alloc_block_by_size(new_size);
     if (!b) {
-        return NULL;
+        return nullptr;
     }
     char* new_p = b->data + b->size;
     memcpy_downward(old_p, old_size,
@@ -178,7 +178,7 @@ const void* SingleIOBuf::get_begin() const {
     if (_cur_ref.block) {
         return _cur_ref.block->data + _cur_ref.offset;
     }
-    return NULL;
+    return nullptr;
 }
 
 uint32_t SingleIOBuf::get_length() const {
@@ -193,14 +193,14 @@ void SingleIOBuf::reset() {
             _cur_block->dec_ref();
             _block_size = 0;
         }
-        _cur_block = NULL;
+        _cur_block = nullptr;
     }
-    if (_cur_ref.block != NULL) {
+    if (_cur_ref.block != nullptr) {
         _cur_ref.block->dec_ref();
     }
     _cur_ref.offset = 0;
     _cur_ref.length = 0;
-    _cur_ref.block = NULL;
+    _cur_ref.block = nullptr;
 }
 
 bool SingleIOBuf::assign(const IOBuf& buf, uint32_t msg_size) {
@@ -229,9 +229,9 @@ bool SingleIOBuf::assign(const IOBuf& buf, uint32_t msg_size) {
         // Only drop the reference to the previously assigned data here.
         // reset() would also release _cur_block, which alloc_block_by_size()
         // has just set to `b', leaving `b' dangling.
-        if (_cur_ref.block != NULL) {
+        if (_cur_ref.block != nullptr) {
             _cur_ref.block->dec_ref();
-            _cur_ref.block = NULL;
+            _cur_ref.block = nullptr;
         }
         char* out = b->data + b->size;
         const size_t nref = buf.backing_block_num();
@@ -264,10 +264,10 @@ int SingleIOBuf::assign_user_data(void* data, size_t size, std::function<void(vo
         return -1;
     }
     char* mem = (char*)malloc(sizeof(IOBuf::Block) + sizeof(UserDataExtension));
-    if (mem == NULL) {
+    if (mem == nullptr) {
         return -1;
     }
-    if (deleter == NULL) {
+    if (deleter == nullptr) {
         deleter = ::free;
     }
     reset();

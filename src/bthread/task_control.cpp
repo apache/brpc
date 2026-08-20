@@ -71,8 +71,8 @@ DECLARE_int32(bthread_parking_lot_of_each_tag);
 
 extern pthread_mutex_t g_task_control_mutex;
 EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
-void (*g_worker_startfn)() = NULL;
-void (*g_tagged_worker_startfn)(bthread_tag_t) = NULL;
+void (*g_worker_startfn)() = nullptr;
+void (*g_tagged_worker_startfn)(bthread_tag_t) = nullptr;
 
 // May be called in other modules to run startfn in non-worker pthreads.
 void run_worker_startfn() {
@@ -107,9 +107,9 @@ void* TaskControl::worker_thread(void* arg) {
 
     TaskGroup* g = c->create_group(tag);
     TaskStatistics stat;
-    if (NULL == g) {
+    if (nullptr == g) {
         LOG(ERROR) << "Fail to create TaskGroup in pthread=" << pthread_self();
-        return NULL;
+        return nullptr;
     }
 
     g->_tid = pthread_self();
@@ -138,27 +138,23 @@ void* TaskControl::worker_thread(void* arg) {
     BT_VLOG << "Destroying worker=" << pthread_self() << " bthread="
             << g->main_tid() << " idle=" << stat.cputime_ns / 1000000.0
             << "ms uptime=" << g->current_uptime_ns() / 1000000.0 << "ms";
-    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group, NULL);
+    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group, nullptr);
     g->destroy_self();
     c->_nworkers << -1;
     c->tag_nworkers(g->tag()) << -1;
-    return NULL;
+    return nullptr;
 }
 
 TaskGroup* TaskControl::create_group(bthread_tag_t tag) {
-    TaskGroup* g = new (std::nothrow) TaskGroup(this);
-    if (NULL == g) {
-        LOG(FATAL) << "Fail to new TaskGroup";
-        return NULL;
-    }
+    TaskGroup* g = new TaskGroup(this);
     if (g->init(FLAGS_task_group_runqueue_capacity) != 0) {
         LOG(ERROR) << "Fail to init TaskGroup";
         delete g;
-        return NULL;
+        return nullptr;
     }
     if (_add_group(g, tag) != 0) {
         delete g;
-        return NULL;
+        return nullptr;
     }
     return g;
 }
@@ -201,7 +197,7 @@ TaskControl::TaskControl()
     , _stop(false)
     , _concurrency(0)
     , _nworkers("bthread_worker_count")
-    , _pending_time(NULL)
+    , _pending_time(nullptr)
       // Delay exposure of following two vars because they rely on TC which
       // is not initialized yet.
     , _cumulated_worker_time(get_cumulated_worker_time_from_this, this)
@@ -275,7 +271,7 @@ int TaskControl::init(int concurrency) {
     }
 
     // Make sure TimerThread is ready.
-    if (get_or_create_global_timer_thread() == NULL) {
+    if (get_or_create_global_timer_thread() == nullptr) {
         LOG(ERROR) << "Fail to get global_timer_thread";
         return -1;
     }
@@ -290,7 +286,7 @@ int TaskControl::init(int concurrency) {
     _workers.resize(_concurrency);
     for (int i = 0; i < _concurrency; ++i) {
         auto arg = new WorkerThreadArgs(this, i % FLAGS_task_group_ntags);
-        const int rc = pthread_create(&_workers[i], NULL, worker_thread, arg);
+        const int rc = pthread_create(&_workers[i], nullptr, worker_thread, arg);
         if (rc) {
             delete arg;
             PLOG(ERROR) << "Fail to create _workers[" << i << "]";
@@ -303,7 +299,7 @@ int TaskControl::init(int concurrency) {
     _status.expose("bthread_group_status");
 
     // Wait for at least one group is added so that choose_one_group()
-    // never returns NULL.
+    // never returns nullptr.
     // TODO: Handle the case that worker quits before add_group
     for (int i = 0; i < FLAGS_task_group_ntags;) {
         if (_tagged_ngroup[i].load(std::memory_order_acquire) == 0) {
@@ -334,7 +330,7 @@ int TaskControl::add_workers(int num, bthread_tag_t tag) {
         _concurrency.fetch_add(1);
         auto arg = new WorkerThreadArgs(this, tag);
         const int rc = pthread_create(
-                &_workers[i + old_concurency], NULL, worker_thread, arg);
+                &_workers[i + old_concurency], nullptr, worker_thread, arg);
         if (rc) {
             delete arg;
             PLOG(WARNING) << "Fail to create _workers[" << i + old_concurency << "]";
@@ -355,7 +351,7 @@ TaskGroup* TaskControl::choose_one_group(bthread_tag_t tag) {
         return groups[butil::fast_rand_less_than(ngroup)];
     }
     CHECK(false) << "Impossible: ngroup is 0";
-    return NULL;
+    return nullptr;
 }
 
 // Parse a single cpu-range-list such as "0-3,5,7" into a sorted, deduplicated
@@ -526,14 +522,14 @@ void TaskControl::stop_and_join() {
     }
     // Join workers
     for (auto worker : _workers) {
-        pthread_join(worker, NULL);
+        pthread_join(worker, nullptr);
     }
 }
 
 TaskControl::~TaskControl() {
     // NOTE: g_task_control is not destructed now because the situation
     //       is extremely racy.
-    delete _pending_time.exchange(NULL, butil::memory_order_relaxed);
+    delete _pending_time.exchange(nullptr, butil::memory_order_relaxed);
     _worker_usage_second.hide();
     _switch_per_second.hide();
     _signal_per_second.hide();
@@ -543,7 +539,7 @@ TaskControl::~TaskControl() {
 }
 
 int TaskControl::_add_group(TaskGroup* g, bthread_tag_t tag) {
-    if (__builtin_expect(NULL == g, 0)) {
+    if (__builtin_expect(nullptr == g, 0)) {
         return -1;
     }
     std::unique_lock<butil::Mutex> mu(_modify_group_mutex);
@@ -569,7 +565,7 @@ void TaskControl::delete_task_group(void* arg) {
 }
 
 int TaskControl::_destroy_group(TaskGroup* g) {
-    if (NULL == g) {
+    if (nullptr == g) {
         LOG(ERROR) << "Param[g] is NULL";
         return -1;
     }
@@ -598,7 +594,7 @@ int TaskControl::_destroy_group(TaskGroup* g) {
                 //    we think the pending tasks of _groups[ngroup - 1] would
                 //    not miss.
                 tag_ngroup(tag).store(ngroup - 1, butil::memory_order_release);
-                //_groups[ngroup - 1] = NULL;
+                //_groups[ngroup - 1] = nullptr;
                 erased = true;
                 break;
             }
@@ -643,7 +639,7 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     auto& groups = tag_group(tag);
     for (size_t i = 0; i < ngroup; ++i, s += offset) {
         TaskGroup* g = groups[s % ngroup];
-        // g is possibly NULL because of concurrent _destroy_group
+        // g is possibly nullptr because of concurrent _destroy_group
         if (g) {
             if (g->_rq.steal(tid)) {
                 stolen = true;

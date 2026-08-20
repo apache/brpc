@@ -28,7 +28,7 @@ class ScopedRefPtrToSelf : public butil::RefCounted<ScopedRefPtrToSelf> {
 
   static bool was_destroyed() { return was_destroyed_; }
 
-  void SelfDestruct() { self_ptr_ = NULL; }
+  void SelfDestruct() { self_ptr_ = nullptr; }
 
  private:
   friend class butil::RefCounted<ScopedRefPtrToSelf>;

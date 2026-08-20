@@ -246,7 +246,7 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
 
 LoadBalancer* WeightedRoundRobinLoadBalancer::New(
     const butil::StringPiece&) const {
-    return new (std::nothrow) WeightedRoundRobinLoadBalancer;
+    return new WeightedRoundRobinLoadBalancer;
 }
 
 void WeightedRoundRobinLoadBalancer::Destroy() {

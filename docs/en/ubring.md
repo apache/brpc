@@ -70,10 +70,13 @@ To build brpc with UBRing support using Bazel:
 ```bash
 # Build brpc with UBRing support
 cd /path/to/brpc
-bazel build //... --define=with_ubring=true
+bazel build //:brpc --define=BRPC_WITH_UBRING=true
 
 # Build the ubring_performance example
-bazel build //example/ubring_performance/...
+bazel build \
+  //example:ubring_performance_server \
+  //example:ubring_performance_client \
+  --define=BRPC_WITH_UBRING=true
 ```
 
 ### Select Shared Memory Backend

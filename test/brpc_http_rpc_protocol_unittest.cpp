@@ -118,7 +118,7 @@ public:
         const std::string* sleep_ms_str =
             cntl->http_request().uri().GetQuery("sleep_ms");
         if (sleep_ms_str) {
-            bthread_usleep(strtol(sleep_ms_str->data(), NULL, 10) * 1000);
+            bthread_usleep(strtol(sleep_ms_str->data(), nullptr, 10) * 1000);
         }
         res->set_message(EXP_RESPONSE);
     }
@@ -157,7 +157,7 @@ protected:
     virtual void TearDown() {};
 
     void VerifyMessage(brpc::InputMessageBase* msg, bool expect) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;
@@ -183,7 +183,7 @@ protected:
 
     void ProcessMessage(void (*process)(brpc::InputMessageBase*),
                         brpc::InputMessageBase* msg, bool set_eof) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;
@@ -203,7 +203,7 @@ protected:
         test::EchoRequest req;
         req.set_message(EXP_REQUEST);
         butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
-        EXPECT_TRUE(json2pb::ProtoMessageToJson(req, &req_stream, NULL));
+        EXPECT_TRUE(json2pb::ProtoMessageToJson(req, &req_stream, nullptr));
         return msg;
     }
 
@@ -257,7 +257,7 @@ protected:
     void CallVersion(brpc::Channel* channel, brpc::Controller* cntl) {
         cntl->http_request().uri() = "/status";
         cntl->http_request().set_method(brpc::HTTP_METHOD_GET);
-        channel->CallMethod(NULL, cntl, NULL, NULL, NULL);
+        channel->CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
     }
 
     void CallHttpEcho(brpc::Channel* channel, brpc::Controller* cntl) {
@@ -267,7 +267,7 @@ protected:
         cntl->http_request().uri() = "/EchoService/Echo";
         cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
         cntl->http_request().set_content_type("application/json");
-        channel->CallMethod(NULL, cntl, &req, &res, NULL);
+        channel->CallMethod(nullptr, cntl, &req, &res, nullptr);
     }
 
 
@@ -279,7 +279,7 @@ protected:
         test::EchoResponse res;
         res.set_message(EXP_RESPONSE);
         butil::IOBufAsZeroCopyOutputStream res_stream(&msg->body());
-        EXPECT_TRUE(json2pb::ProtoMessageToJson(res, &res_stream, NULL));
+        EXPECT_TRUE(json2pb::ProtoMessageToJson(res, &res_stream, nullptr));
         return msg;
     }
 
@@ -296,7 +296,7 @@ protected:
         EXPECT_EQ((ssize_t)bytes_in_pipe,
                   buf.append_from_file_descriptor(_pipe_fds[0], 1024));
         brpc::ParseResult pr =
-                brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, NULL);
+                brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, nullptr);
         EXPECT_EQ(brpc::PARSE_OK, pr.error());
         brpc::policy::HttpContext* msg =
             static_cast<brpc::policy::HttpContext*>(pr.message());
@@ -314,9 +314,9 @@ protected:
         ASSERT_FALSE(cntl->Failed());
         brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(cntl);
         cntl->_current_call.stream_user_data = h2_req;
-        brpc::SocketMessage* socket_message = NULL;
-        brpc::policy::PackH2Request(NULL, &socket_message, cntl->call_id().value,
-                                    NULL, cntl, request_buf, NULL);
+        brpc::SocketMessage* socket_message = nullptr;
+        brpc::policy::PackH2Request(nullptr, &socket_message, cntl->call_id().value,
+                                    nullptr, cntl, request_buf, nullptr);
         butil::Status st = socket_message->AppendAndDestroySelf(out, _h2_client_sock.get());
         ASSERT_TRUE(st.ok());
         *h2_stream_id = h2_req->_stream_id;
@@ -352,7 +352,7 @@ TEST_F(HttpTest, reject_oversized_http_body) {
     buf.append("POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\nhello");
 
     brpc::ParseResult result =
-        brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, NULL);
+        brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, nullptr);
     EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
     int bytes_in_pipe = 0;
     ASSERT_EQ(0, ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe));
@@ -371,7 +371,7 @@ TEST_F(HttpTest, reject_oversized_chunked_http_body) {
                "3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n");
 
     brpc::ParseResult result =
-        brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, NULL);
+        brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, nullptr);
     EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
     int bytes_in_pipe = 0;
     ASSERT_EQ(0, ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe));
@@ -517,7 +517,7 @@ TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
         brpc::Controller cntl;
         cntl.http_request().uri() = "/status";
         cntl.http_request().set_method(brpc::HTTP_METHOD_GET);
-        chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        chan.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         ASSERT_TRUE(cntl.Failed());
         ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode()) << cntl.ErrorText();
         ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code());
@@ -533,7 +533,7 @@ TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
         brpc::Controller cntl;
         cntl.http_request().uri() = "/status";
         cntl.http_request().set_method(brpc::HTTP_METHOD_GET);
-        chan.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        chan.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(brpc::HTTP_STATUS_OK, cntl.http_response().status_code());
     }
@@ -670,13 +670,13 @@ TEST_F(HttpTest, complete_flow) {
     brpc::policy::SerializeHttpRequest(&request_buf, &cntl, &req);
     ASSERT_FALSE(cntl.Failed());
     brpc::policy::PackHttpRequest(
-        &total_buf, NULL, cntl.call_id().value,
+        &total_buf, nullptr, cntl.call_id().value,
         cntl._method, &cntl, request_buf, &_auth);
     ASSERT_FALSE(cntl.Failed());
 
     // Verify and handle request
     brpc::ParseResult req_pr =
-            brpc::policy::ParseHttpMessage(&total_buf, _socket.get(), false, NULL);
+            brpc::policy::ParseHttpMessage(&total_buf, _socket.get(), false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     brpc::InputMessageBase* req_msg = req_pr.message();
     VerifyMessage(req_msg, true);
@@ -686,7 +686,7 @@ TEST_F(HttpTest, complete_flow) {
     butil::IOPortal response_buf;
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
     brpc::ParseResult res_pr =
-            brpc::policy::ParseHttpMessage(&response_buf, _socket.get(), false, NULL);
+            brpc::policy::ParseHttpMessage(&response_buf, _socket.get(), false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, res_pr.error());
     brpc::InputMessageBase* res_msg = res_pr.message();
     ProcessMessage(brpc::policy::ProcessHttpResponse, res_msg, false);
@@ -699,7 +699,7 @@ TEST_F(HttpTest, chunked_uploading) {
     const int port = 8923;
     brpc::Server server;
     EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
 
     // Send request via curl using chunked encoding
     const std::string req = "{\"message\":\"hello\"}";
@@ -755,12 +755,12 @@ public:
                 ? brpc::FORCE_STOP : brpc::WAIT_FOR_STOP);
         butil::intrusive_ptr<brpc::ProgressiveAttachment> pa
             = cntl->CreateProgressiveAttachment(stop_style);
-        if (pa == NULL) {
+        if (pa == nullptr) {
             cntl->SetFailed("The socket was just failed");
             return;
         }
         if (_done_place == DONE_BEFORE_CREATE_PA) {
-            done_guard.reset(NULL);
+            done_guard.reset(nullptr);
         }
         ASSERT_GT(PA_DATA_LEN, 8u);  // long enough to hold a 64-bit decimal.
         char buf[PA_DATA_LEN];
@@ -782,12 +782,12 @@ public:
             ++c;
         }
         if (_done_place == DONE_AFTER_CREATE_PA_BEFORE_DESTROY_PA) {
-            done_guard.reset(NULL);
+            done_guard.reset(nullptr);
         }
         LOG(INFO) << "Destroy pa="  << pa.get();
-        pa.reset(NULL);
+        pa.reset(nullptr);
         if (_done_place == DONE_AFTER_DESTROY_PA) {
-            done_guard.reset(NULL);
+            done_guard.reset(nullptr);
         }
     }
 
@@ -803,7 +803,7 @@ public:
                 ? brpc::FORCE_STOP : brpc::WAIT_FOR_STOP);
         butil::intrusive_ptr<brpc::ProgressiveAttachment> pa
             = cntl->CreateProgressiveAttachment(stop_style);
-        if (pa == NULL) {
+        if (pa == nullptr) {
             cntl->SetFailed("The socket was just failed");
             return;
         }
@@ -824,7 +824,7 @@ public:
         // The remote client will not receive the data written to the
         // progressive attachment when the controller failed.
         cntl->SetFailed("Intentionally set controller failed");
-        done_guard.reset(NULL);
+        done_guard.reset(nullptr);
         
         // Return value of Write after controller has failed should
         // be less than zero.
@@ -850,7 +850,7 @@ TEST_F(HttpTest, read_chunked_response_normally) {
     brpc::Server server;
     DownloadServiceImpl svc;
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
 
     for (int i = 0; i < 3; ++i) {
         svc.set_done_place((DonePlace)i);
@@ -860,7 +860,7 @@ TEST_F(HttpTest, read_chunked_response_normally) {
         ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
         brpc::Controller cntl;
         cntl.http_request().uri() = "/DownloadService/Download";
-        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
 
         std::string expected(PA_DATA_LEN, 0);
@@ -874,7 +874,7 @@ TEST_F(HttpTest, read_failed_chunked_response) {
     brpc::Server server;
     DownloadServiceImpl svc;
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -884,7 +884,7 @@ TEST_F(HttpTest, read_failed_chunked_response) {
     brpc::Controller cntl;
     cntl.http_request().uri() = "/DownloadService/DownloadFailed";
     cntl.response_will_be_read_progressively();
-    channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     EXPECT_TRUE(cntl.response_attachment().empty());
     ASSERT_TRUE(cntl.Failed());
     ASSERT_NE(cntl.ErrorText().find("HTTP/1.1 500 Internal Server Error"),
@@ -955,7 +955,7 @@ TEST_F(HttpTest, read_long_body_progressively) {
         const int port = 8923;
         brpc::Server server;
         EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, server.Start(port, NULL));
+        EXPECT_EQ(0, server.Start(port, nullptr));
         {
             brpc::Channel channel;
             brpc::ChannelOptions options;
@@ -965,7 +965,7 @@ TEST_F(HttpTest, read_long_body_progressively) {
                 brpc::Controller cntl;
                 cntl.response_will_be_read_progressively();
                 cntl.http_request().uri() = "/DownloadService/Download";
-                channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+                channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
                 ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
                 ASSERT_TRUE(cntl.response_attachment().empty());
                 reader.reset(new ReadBody);
@@ -1003,7 +1003,7 @@ TEST_F(HttpTest, read_short_body_progressively) {
     const int NREP = 10000;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, NREP);
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
     {
         brpc::Channel channel;
         brpc::ChannelOptions options;
@@ -1013,7 +1013,7 @@ TEST_F(HttpTest, read_short_body_progressively) {
             brpc::Controller cntl;
             cntl.response_will_be_read_progressively();
             cntl.http_request().uri() = "/DownloadService/Download";
-            channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+            channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             ASSERT_TRUE(cntl.response_attachment().empty());
             reader.reset(new ReadBody);
@@ -1042,7 +1042,7 @@ TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
         const int port = 8923;
         brpc::Server server;
         EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, server.Start(port, NULL));
+        EXPECT_EQ(0, server.Start(port, nullptr));
         {
             brpc::Channel channel;
             brpc::ChannelOptions options;
@@ -1052,7 +1052,7 @@ TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
                 brpc::Controller cntl;
                 cntl.response_will_be_read_progressively();
                 cntl.http_request().uri() = "/DownloadService/Download";
-                channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+                channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
                 ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
                 ASSERT_TRUE(cntl.response_attachment().empty());
                 reader.reset(new ReadBody);
@@ -1088,7 +1088,7 @@ TEST_F(HttpTest, read_progressively_after_long_delay) {
         const int port = 8923;
         brpc::Server server;
         EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, server.Start(port, NULL));
+        EXPECT_EQ(0, server.Start(port, nullptr));
         {
             brpc::Channel channel;
             brpc::ChannelOptions options;
@@ -1098,7 +1098,7 @@ TEST_F(HttpTest, read_progressively_after_long_delay) {
                 brpc::Controller cntl;
                 cntl.response_will_be_read_progressively();
                 cntl.http_request().uri() = "/DownloadService/Download";
-                channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+                channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
                 ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
                 ASSERT_TRUE(cntl.response_attachment().empty());
                 LOG(INFO) << "Sleep 3 seconds to make PA at server-side full";
@@ -1136,7 +1136,7 @@ TEST_F(HttpTest, skip_progressive_reading) {
     const int port = 8923;
     brpc::Server server;
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
@@ -1145,7 +1145,7 @@ TEST_F(HttpTest, skip_progressive_reading) {
         brpc::Controller cntl;
         cntl.response_will_be_read_progressively();
         cntl.http_request().uri() = "/DownloadService/Download";
-        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_TRUE(cntl.response_attachment().empty());
     }
@@ -1177,7 +1177,7 @@ TEST_F(HttpTest, failed_on_read_one_part) {
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA,
                             std::numeric_limits<size_t>::max());
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
@@ -1186,7 +1186,7 @@ TEST_F(HttpTest, failed_on_read_one_part) {
         brpc::Controller cntl;
         cntl.response_will_be_read_progressively();
         cntl.http_request().uri() = "/DownloadService/Download";
-        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_TRUE(cntl.response_attachment().empty());
         cntl.ReadProgressiveAttachmentBy(new AlwaysFailRead);
@@ -1203,7 +1203,7 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA,
                             std::numeric_limits<size_t>::max());
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
         
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1213,7 +1213,7 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
         brpc::Controller cntl;
         cntl.response_will_be_read_progressively();
         cntl.http_request().uri() = "/DownloadService/Download";
-        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_TRUE(cntl.response_attachment().empty());
         reader.reset(new ReadBody);
@@ -1315,7 +1315,7 @@ public:
 private:
     void check_header(brpc::Controller* cntl) {
         const std::string* test_header = cntl->http_request().GetHeader(TEST_PROGRESSIVE_HEADER);
-        CHECK(test_header != NULL);
+        CHECK(test_header != nullptr);
         CHECK_EQ(*test_header, TEST_PROGRESSIVE_HEADER_VAL);
     }
 };
@@ -1328,7 +1328,7 @@ TEST_F(HttpTest, server_end_read_short_body_progressively) {
     UploadServiceImpl upsvc;
     brpc::Server server;
     EXPECT_EQ(0, server.AddService(&upsvc, opt));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1353,7 +1353,7 @@ TEST_F(HttpTest, server_end_read_short_body_progressively) {
         }
         ++c;
     }
-    channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     ASSERT_FALSE(cntl.Failed());
 }
 
@@ -1367,7 +1367,7 @@ TEST_F(HttpTest, server_end_read_failed) {
     UploadServiceImpl upsvc;
     brpc::Server server;
     EXPECT_EQ(0, server.AddService(&upsvc, opt));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1392,7 +1392,7 @@ TEST_F(HttpTest, server_end_read_failed) {
         }
         ++c;
     }
-    channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
     ASSERT_TRUE(cntl.Failed());
 }
 #endif // BUTIL_USE_ASAN
@@ -1401,23 +1401,23 @@ TEST_F(HttpTest, http2_sanity) {
     const int port = 8923;
     brpc::Server server;
     EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
-    // Check that the first request with size larger than the default window can
-    // be sent out, when remote settings are not received.
+    // Check that the first request larger than the default window completes
+    // after SETTINGS and WINDOW_UPDATE make more capacity available.
     brpc::Controller cntl;
     test::EchoRequest big_req;
     test::EchoResponse res;
-    std::string message(2 * 1024 * 1024 /* 2M */, 'x');
+    std::string message(128 * 1024, 'x');
     big_req.set_message(message);
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.http_request().uri() = "/EchoService/Echo";
-    channel.CallMethod(NULL, &cntl, &big_req, &res, NULL);
+    channel.CallMethod(nullptr, &cntl, &big_req, &res, nullptr);
     ASSERT_FALSE(cntl.Failed());
     ASSERT_EQ(EXP_RESPONSE, res.message());
 
@@ -1431,7 +1431,7 @@ TEST_F(HttpTest, http2_sanity) {
         cntl.http_request().set_content_type("application/json");
         cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
         cntl.http_request().uri() = "/EchoService/Echo";
-        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
         ASSERT_FALSE(cntl.Failed());
         ASSERT_EQ(EXP_RESPONSE, res.message());
     }
@@ -1440,7 +1440,7 @@ TEST_F(HttpTest, http2_sanity) {
     brpc::SocketUniquePtr main_ptr;
     brpc::SocketUniquePtr agent_ptr;
     EXPECT_EQ(brpc::Socket::Address(channel._server_id, &main_ptr), 0);
-    EXPECT_EQ(main_ptr->GetAgentSocket(&agent_ptr, NULL), 0);
+    EXPECT_EQ(main_ptr->GetAgentSocket(&agent_ptr, nullptr), 0);
     brpc::policy::H2Context* ctx = static_cast<brpc::policy::H2Context*>(agent_ptr->parsing_context());
     ASSERT_GT(ctx->_remote_window_left.load(butil::memory_order_relaxed),
              brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE / 2);
@@ -1465,7 +1465,7 @@ TEST_F(HttpTest, http2_ping) {
     res_out.append(pingbuf, sizeof(pingbuf));
     // parse response
     brpc::ParseResult res_pr =
-            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, nullptr);
     ASSERT_TRUE(res_pr.is_ok());
     // process response
     ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
@@ -1495,7 +1495,7 @@ TEST_F(HttpTest, http2_rst_before_header) {
     MakeH2EchoResponseBuf(&res_out, h2_stream_id);
     // parse response
     brpc::ParseResult res_pr =
-            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, nullptr);
     ASSERT_TRUE(res_pr.is_ok());
     // process response
     ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
@@ -1519,7 +1519,7 @@ TEST_F(HttpTest, http2_rst_after_header_and_data) {
     res_out.append(rstbuf, sizeof(rstbuf));
     // parse response
     brpc::ParseResult res_pr =
-            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, nullptr);
     ASSERT_TRUE(res_pr.is_ok());
     // process response
     ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
@@ -1527,7 +1527,7 @@ TEST_F(HttpTest, http2_rst_after_header_and_data) {
     ASSERT_TRUE(cntl.http_response().status_code() == brpc::HTTP_STATUS_OK);
 }
 
-TEST_F(HttpTest, http2_window_used_up) {
+TEST_F(HttpTest, http2_window_used_up_buffers_request) {
     brpc::Controller cntl;
     butil::IOBuf request_buf;
     test::EchoRequest req;
@@ -1543,26 +1543,28 @@ TEST_F(HttpTest, http2_window_used_up) {
     brpc::policy::SerializeFrameHead(settingsbuf, nb, brpc::policy::H2_FRAME_SETTINGS, 0, 0);
     butil::IOBuf buf;
     buf.append(settingsbuf, brpc::policy::FRAME_HEAD_SIZE + nb);
-    brpc::policy::ParseH2Message(&buf, _h2_client_sock.get(), false, NULL);
+    brpc::policy::ParseH2Message(&buf, _h2_client_sock.get(), false, nullptr);
 
+    brpc::policy::H2Context* ctx = static_cast<brpc::policy::H2Context*>(
+        _h2_client_sock->parsing_context());
     int nsuc = brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE / cntl.request_attachment().size();
     for (int i = 0; i <= nsuc; i++) {
         brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(&cntl);
         cntl._current_call.stream_user_data = h2_req;
-        brpc::SocketMessage* socket_message = NULL;
-        brpc::policy::PackH2Request(NULL, &socket_message, cntl.call_id().value,
-                                    NULL, &cntl, request_buf, NULL);
+        brpc::SocketMessage* socket_message = nullptr;
+        brpc::policy::PackH2Request(nullptr, &socket_message, cntl.call_id().value,
+                                    nullptr, &cntl, request_buf, nullptr);
         butil::IOBuf dummy;
         butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
+        ASSERT_TRUE(st.ok());
         if (i == nsuc) {
-            // the last message should fail according to flow control policy.
-            ASSERT_FALSE(st.ok());
-            ASSERT_TRUE(st.error_code() == brpc::ELIMIT);
-            ASSERT_TRUE(butil::StringPiece(st.error_str()).starts_with("remote_window_left is not enough"));
+            ASSERT_GT(ctx->_pending_data_size, 0u);
+            h2_req->DestroyStreamUserData(
+                _h2_client_sock, &cntl, ECANCELED, false);
+            ASSERT_EQ(0u, ctx->_pending_data_size);
         } else {
-            ASSERT_TRUE(st.ok());
+            h2_req->DestroyStreamUserData(_h2_client_sock, &cntl, 0, false);
         }
-        h2_req->DestroyStreamUserData(_h2_client_sock, &cntl, 0, false);
     }
 }
 
@@ -1577,12 +1579,12 @@ TEST_F(HttpTest, http2_settings) {
     butil::IOBuf buf;
     buf.append(settingsbuf, brpc::policy::FRAME_HEAD_SIZE + nb);
 
-    brpc::policy::H2Context* ctx = new brpc::policy::H2Context(_socket.get(), NULL);
+    brpc::policy::H2Context* ctx = new brpc::policy::H2Context(_socket.get(), nullptr);
     CHECK_EQ(ctx->Init(), 0);
     _socket->initialize_parsing_context(&ctx);
     ctx->_conn_state = brpc::policy::H2_CONNECTION_READY;
     // parse settings
-    brpc::policy::ParseH2Message(&buf, _socket.get(), false, NULL);
+    brpc::policy::ParseH2Message(&buf, _socket.get(), false, nullptr);
 
     butil::IOPortal response_buf;
     CHECK_EQ(response_buf.append_from_file_descriptor(_pipe_fds[0], 1024),
@@ -1617,11 +1619,11 @@ TEST_F(HttpTest, http2_goaway_with_debug_data) {
     buf.append(goawaybuf, brpc::policy::FRAME_HEAD_SIZE + payload_size);
 
     brpc::policy::H2Context* ctx =
-        new brpc::policy::H2Context(_h2_client_sock.get(), NULL);
+        new brpc::policy::H2Context(_h2_client_sock.get(), nullptr);
     CHECK_EQ(ctx->Init(), 0);
     _h2_client_sock->initialize_parsing_context(&ctx);
     ctx->_conn_state = brpc::policy::H2_CONNECTION_READY;
-    brpc::policy::ParseH2Message(&buf, _h2_client_sock.get(), false, NULL);
+    brpc::policy::ParseH2Message(&buf, _h2_client_sock.get(), false, nullptr);
 
     // Reading the debug data instead would leave -1 here, which disables the
     // `_goaway_stream_id >= 0' check in TryToInsertStream.
@@ -1655,7 +1657,7 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
     const int port = 8923;
     brpc::Server server;
     EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = "h2";
@@ -1669,7 +1671,7 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
         brpc::Controller cntl;
         cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
         cntl.http_request().uri() = "/EchoService/Echo";
-        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
         ASSERT_FALSE(cntl.Failed());
         ASSERT_EQ(EXP_RESPONSE, res.message());
     }
@@ -1683,7 +1685,7 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
         cntl.set_timeout_ms(50);
         cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
         cntl.http_request().uri() = "/EchoService/Echo?sleep_ms=300";
-        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
         ASSERT_TRUE(cntl.Failed());
 
         brpc::SocketUniquePtr ptr;
@@ -1696,7 +1698,7 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
         brpc::Controller cntl;
         cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
         cntl.http_request().uri() = "/EchoService/Echo";
-        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &res, nullptr);
         ASSERT_FALSE(cntl.Failed());
         ASSERT_EQ(EXP_RESPONSE, res.message());
         brpc::SocketUniquePtr ptr;
@@ -1788,7 +1790,7 @@ TEST_F(HttpTest, http2_header_after_data) {
     }
     // parse response
     brpc::ParseResult res_pr =
-            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, nullptr);
     ASSERT_TRUE(res_pr.is_ok());
     // process response
     ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
@@ -1820,22 +1822,22 @@ TEST_F(HttpTest, http2_goaway_sanity) {
     res_out.append(goawaybuf, sizeof(goawaybuf));
     // parse response
     brpc::ParseResult res_pr =
-            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, nullptr);
     ASSERT_TRUE(res_pr.is_ok());
     // process response
     ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
     ASSERT_TRUE(!cntl.Failed());
 
     // parse GOAWAY
-    res_pr = brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    res_pr = brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, nullptr);
     ASSERT_EQ(res_pr.error(), brpc::PARSE_ERROR_NOT_ENOUGH_DATA);
 
     // Since GOAWAY has been received, the next request should fail
     brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(&cntl);
     cntl._current_call.stream_user_data = h2_req;
-    brpc::SocketMessage* socket_message = NULL;
-    brpc::policy::PackH2Request(NULL, &socket_message, cntl.call_id().value,
-                                NULL, &cntl, butil::IOBuf(), NULL);
+    brpc::SocketMessage* socket_message = nullptr;
+    brpc::policy::PackH2Request(nullptr, &socket_message, cntl.call_id().value,
+                                nullptr, &cntl, butil::IOBuf(), nullptr);
     butil::IOBuf dummy;
     butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
     ASSERT_EQ(st.error_code(), brpc::ELOGOFF);
@@ -1872,10 +1874,10 @@ TEST_F(HttpTest, http2_handle_goaway_streams) {
         ids.push_back(cntl.call_id());
         cntl.set_timeout_ms(-1);
         cntl.http_request().uri() = "/it-doesnt-matter";
-        channel.CallMethod(NULL, &cntl, NULL, NULL, done);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, done);
     }
 
-    int servfd = accept(listenfd, NULL, NULL);
+    int servfd = accept(listenfd, nullptr, nullptr);
     ASSERT_GT(servfd, 0);
     // Sleep for a while to make sure that server has received all data.
     bthread_usleep(2000);
@@ -2042,7 +2044,7 @@ TEST_F(HttpTest, proto_text_content_type) {
     cntl.Reset();
     cntl.http_request().set_content_type("application/proto-text");
     res.Clear();
-    stub.Echo(&cntl, &req, &res, NULL);
+    stub.Echo(&cntl, &req, &res, nullptr);
     ASSERT_FALSE(cntl.Failed());
     ASSERT_EQ(EXP_RESPONSE, res.message());
     ASSERT_EQ("application/proto-text", cntl.http_response().content_type());
@@ -2118,7 +2120,7 @@ class HttpServiceImpl : public ::test::HttpService {
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
         const std::string* expect = cntl->http_request().GetHeader("Expect");
-        ASSERT_TRUE(expect != NULL);
+        ASSERT_TRUE(expect != nullptr);
         ASSERT_EQ("100-continue", *expect);
         ASSERT_EQ(cntl->http_request().method(), brpc::HTTP_METHOD_POST);
         cntl->response_attachment().append("world");
@@ -2130,7 +2132,7 @@ TEST_F(HttpTest, http_head) {
     brpc::Server server;
     HttpServiceImpl svc;
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -2141,7 +2143,7 @@ TEST_F(HttpTest, http_head) {
         cntl.http_request().set_method(brpc::HTTP_METHOD_HEAD);
         cntl.http_request().uri().set_path("/HttpService/Head");
         cntl.http_request().SetHeader("x-db-index", butil::IntToString(i));
-        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
 
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         if (i % 2 == 0) {
@@ -2178,7 +2180,7 @@ void MakeHttpRequestHeaders(butil::IOBuf* out,
     //the request-target consists of only the host name and port number of
     //the tunnel destination, seperated by a colon. For example,
     //Host: server.example.com:80
-    if (h->GetHeader("host") == NULL) {
+    if (h->GetHeader("host") == nullptr) {
         os << "Host: ";
         if (!uri.host().empty()) {
             os << uri.host();
@@ -2198,15 +2200,15 @@ void MakeHttpRequestHeaders(butil::IOBuf* out,
          it != h->HeaderEnd(); ++it) {
         os << it->first << ": " << it->second << BRPC_CRLF;
     }
-    if (h->GetHeader("Accept") == NULL) {
+    if (h->GetHeader("Accept") == nullptr) {
         os << "Accept: */*" BRPC_CRLF;
     }
     // The fake "curl" user-agent may let servers return plain-text results.
-    if (h->GetHeader("User-Agent") == NULL) {
+    if (h->GetHeader("User-Agent") == nullptr) {
         os << "User-Agent: brpc/1.0 curl/7.0" BRPC_CRLF;
     }
     const std::string& user_info = h->uri().user_info();
-    if (!user_info.empty() && h->GetHeader("Authorization") == NULL) {
+    if (!user_info.empty() && h->GetHeader("Authorization") == nullptr) {
         // NOTE: just assume user_info is well formatted, namely
         // "<user_name>:<password>". Users are very unlikely to add extra
         // characters in this part and even if users did, most of them are
@@ -2241,7 +2243,7 @@ void ReadOneResponse(brpc::SocketUniquePtr& sock,
             bthread_usleep(1000);
             continue;
         }
-        brpc::ParseResult pr = brpc::policy::ParseHttpMessage(&read_buf, sock.get(), false, NULL);
+        brpc::ParseResult pr = brpc::policy::ParseHttpMessage(&read_buf, sock.get(), false, nullptr);
         ASSERT_TRUE(pr.error() == brpc::PARSE_ERROR_NOT_ENOUGH_DATA || pr.is_ok());
         if (pr.is_ok()) {
             imsg_guard.reset(static_cast<brpc::policy::HttpContext*>(pr.message()));
@@ -2256,7 +2258,7 @@ TEST_F(HttpTest, http_expect) {
     brpc::Server server;
     HttpServiceImpl svc;
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, NULL));
+    EXPECT_EQ(0, server.Start(port, nullptr));
 
     butil::EndPoint ep;
     ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:8923", &ep));
@@ -2337,7 +2339,7 @@ TEST_F(HttpTest, grpc_auth_failed_response) {
     h2_msg->Init(h2_ctx, 1); // stream_id = 1
 
     // Set socket and arg using existing test pattern
-    if (h2_msg->_socket == NULL) {
+    if (h2_msg->_socket == nullptr) {
       _socket->ReAddress(&h2_msg->_socket);
     }
     h2_msg->_arg = &_server;
@@ -2417,7 +2419,7 @@ TEST_F(HttpTest, http10_auth_failed_response) {
     EXPECT_EQ((ssize_t)bytes_in_pipe, buf.append_from_file_descriptor(_pipe_fds[0], 1024));
 
     // Parse HTTP/1.0 response and verify format
-    brpc::ParseResult pr = brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, NULL);
+    brpc::ParseResult pr = brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, nullptr);
     EXPECT_EQ(brpc::PARSE_OK, pr.error());
     brpc::policy::HttpContext* response_msg = static_cast<brpc::policy::HttpContext*>(pr.message());
 
@@ -2433,12 +2435,12 @@ TEST_F(HttpTest, http10_auth_failed_response) {
 
     // Verify HTTP headers for HTTP/1.0
     const std::string* content_length = response_msg->header().GetHeader("Content-Length");
-    EXPECT_TRUE(content_length != NULL);
+    EXPECT_TRUE(content_length != nullptr);
     EXPECT_GT(std::stoi(*content_length), 0);
 
     // Content-Type may not always be set for error responses, check if present
     const std::string* content_type = response_msg->header().GetHeader("Content-Type");
-    if (content_type != NULL) {
+    if (content_type != nullptr) {
       // If present, should contain text
       EXPECT_TRUE(content_type->find("text") != std::string::npos);
     }

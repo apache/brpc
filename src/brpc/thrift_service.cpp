@@ -28,7 +28,7 @@ ThriftService::ThriftService() {
 
 ThriftService::~ThriftService() {
     delete _status;
-    _status = NULL;
+    _status = nullptr;
 }
 
 void ThriftService::Describe(std::ostream &os, const DescribeOptions&) const {
@@ -36,7 +36,7 @@ void ThriftService::Describe(std::ostream &os, const DescribeOptions&) const {
 }
 
 void ThriftService::Expose(const butil::StringPiece& prefix) {
-    if (_status == NULL) {
+    if (_status == nullptr) {
         return;
     }
     std::string s;

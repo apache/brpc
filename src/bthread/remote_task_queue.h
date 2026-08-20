@@ -40,7 +40,7 @@ public:
     int init(size_t cap) {
         const size_t memsize = sizeof(bthread_t) * cap;
         void* q_mem = malloc(memsize);
-        if (q_mem == NULL) {
+        if (q_mem == nullptr) {
             return -1;
         }
         butil::BoundedQueue<bthread_t> q(q_mem, memsize, butil::OWNS_STORAGE);

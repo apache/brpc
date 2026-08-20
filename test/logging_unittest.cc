@@ -39,7 +39,7 @@ class LogStateSaver {
 
   ~LogStateSaver() {
     SetMinLogLevel(old_min_log_level_);
-    SetLogAssertHandler(NULL);
+    SetLogAssertHandler(nullptr);
     log_sink_call_count = 0;
   }
 
@@ -492,8 +492,8 @@ int g_prof_name_counter = 0;
 butil::atomic<uint64_t> test_logging_count(0);
 
 void* test_async_log(void* arg) {
-    if (arg == NULL) {
-        return NULL;
+    if (arg == nullptr) {
+        return nullptr;
     }
     auto log = (std::string*)(arg);
     while (!g_stopped) {
@@ -501,7 +501,7 @@ void* test_async_log(void* arg) {
         test_logging_count.fetch_add(1);
     }
 
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(LoggingTest, async_log) {
@@ -518,14 +518,14 @@ TEST_F(LoggingTest, async_log) {
     int thread_num = 8;
     pthread_t threads[thread_num];
     for (int i = 0; i < thread_num; ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, test_async_log, &log));
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, test_async_log, &log));
     }
 
     usleep(1000 * 500);
 
     g_stopped = true;
     for (int i = 0; i < thread_num; ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
     // Wait for async log thread to flush all logs to file.
     sleep(15);
@@ -534,7 +534,7 @@ TEST_F(LoggingTest, async_log) {
     std::string cmd = butil::string_printf("grep -c %s %s",
         log.c_str(), temp_file.fname());
     ASSERT_LE(0, butil::read_command_output(oss, cmd.c_str()));
-    uint64_t log_count = std::strtol(oss.str().c_str(), NULL, 10);
+    uint64_t log_count = std::strtol(oss.str().c_str(), nullptr, 10);
     ASSERT_EQ(log_count, test_logging_count.load());
 
     FLAGS_async_log = saved_async_log;
@@ -547,7 +547,7 @@ struct BAIDU_CACHELINE_ALIGNMENT PerfArgs {
     int64_t elapse_ns;
     bool ready;
 
-    PerfArgs() : log(NULL), counter(0), elapse_ns(0), ready(false) {}
+    PerfArgs() : log(nullptr), counter(0), elapse_ns(0), ready(false) {}
 };
 
 void* test_log(void* void_arg) {
@@ -573,7 +573,7 @@ void* test_log(void* void_arg) {
     t.stop();
     args->elapse_ns = t.n_elapsed();
     args->counter = counter;
-    return NULL;
+    return nullptr;
 }
 
 void PerfTest(int thread_num, const std::string& log, bool async) {
@@ -585,7 +585,7 @@ void PerfTest(int thread_num, const std::string& log, bool async) {
     std::vector<PerfArgs> args(thread_num);
     for (int i = 0; i < thread_num; ++i) {
         args[i].log = &log;
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, test_log, &args[i]));
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, test_log, &args[i]));
     }
     while (true) {
         bool all_ready = true;
@@ -611,7 +611,7 @@ void PerfTest(int thread_num, const std::string& log, bool async) {
     int64_t wait_time = 0;
     int64_t count = 0;
     for (int i = 0; i < thread_num; ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
         wait_time += args[i].elapse_ns;
         count += args[i].counter;
     }

@@ -200,7 +200,7 @@ TEST(RecorderTest, perf) {
     ASSERT_TRUE(recorder.valid());
     pthread_t threads[8];
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_create(&threads[i], NULL, &thread_counter, (void *)&recorder);
+        pthread_create(&threads[i], nullptr, &thread_counter, (void *)&recorder);
     }
     long totol_time = 0;
     for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {

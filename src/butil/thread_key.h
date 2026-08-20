@@ -71,14 +71,14 @@ private:
 };
 
 struct ThreadKeyInfo {
-    ThreadKeyInfo() : seq(0), dtor(NULL) {}
+    ThreadKeyInfo() : seq(0), dtor(nullptr) {}
 
     size_t seq; // Already allocated?
     DtorFunction dtor; // Destruction routine.
 };
 
 struct ThreadKeyTLS {
-    ThreadKeyTLS() : seq(0), data(NULL) {}
+    ThreadKeyTLS() : seq(0), data(nullptr) {}
 
     // Sequence number form ThreadKey,
     // set in `thread_setspecific',
@@ -130,7 +130,7 @@ public:
     void reset(T* ptr);
 
     void reset() {
-        reset(NULL);
+        reset(nullptr);
     }
 
 private:
@@ -152,7 +152,7 @@ template <typename T>
 ThreadLocal<T>::ThreadLocal(bool delete_on_thread_exit)
         : _mutex(PTHREAD_MUTEX_INITIALIZER)
         , _delete_on_thread_exit(delete_on_thread_exit) {
-    DtorFunction dtor = _delete_on_thread_exit ? DefaultDtor : NULL;
+    DtorFunction dtor = _delete_on_thread_exit ? DefaultDtor : nullptr;
     thread_key_create(_key, dtor);
 }
 
@@ -175,12 +175,12 @@ T* ThreadLocal<T>::get() {
     if (!ptr) {
         ptr = new (std::nothrow) T;
         if (!ptr) {
-            return NULL;
+            return nullptr;
         }
         int rc = thread_setspecific(_key, ptr);
         if (rc != 0) {
             DefaultDtor(ptr);
-            return NULL;
+            return nullptr;
         }
         {
             BAIDU_SCOPED_LOCK(_mutex);

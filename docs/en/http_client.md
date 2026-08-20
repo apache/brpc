@@ -32,10 +32,10 @@ http/h2 channel also support BNS address or other naming services.
 ```c++
 brpc::Controller cntl;
 cntl.http_request().uri() = "www.baidu.com/index.html";  // Request URL
-channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
+channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr/*done*/);
 ```
 
-http/h2 does not relate to protobuf much, thus all parameters of `CallMethod` are NULL except `Controller` and `done`. Issue asynchronous RPC with non-NULL `done`.
+http/h2 does not relate to protobuf much, thus all parameters of `CallMethod` are nullptr except `Controller` and `done`. Issue asynchronous RPC with non-nullptr `done`.
 
 `cntl.response_attachment()` is body of the http/h2 response and typed `butil::IOBuf`. `IOBuf` can be converted to `std::string` by `to_string()`, which needs to allocate memory and copy all data. If performance is important, the code should consider supporting `IOBuf` directly rather than requiring continuous memory.
 
@@ -48,7 +48,7 @@ brpc::Controller cntl;
 cntl.http_request().uri() = "...";  // Request URL
 cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
 cntl.request_attachment().append("{\"message\":\"hello world!\"}");
-channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
+channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr/*done*/);
 ```
 
 If the body needs a lot of printing to build, consider using `butil::IOBufBuilder`, which has same interfaces as `std::ostringstream`, probably simpler and more efficient than c-style printf when lots of objects need to be printed.
@@ -60,7 +60,7 @@ cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
 butil::IOBufBuilder os;
 os << "A lot of printing" << printable_objects << ...;
 os.move_to(cntl.request_attachment());
-channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
+channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr/*done*/);
 ```
 
 # Change HTTP version
@@ -127,7 +127,7 @@ Take http request as an example (similar with http response), common operations 
 
 Access an HTTP header named `Foo`
 ```c++
-const std::string* value = cntl->http_request().GetHeader("Foo"); // NULL when not exist
+const std::string* value = cntl->http_request().GetHeader("Foo"); // nullptr when not exist
 ```
 
 Set an HTTP header named `Foo`
@@ -137,7 +137,7 @@ cntl->http_request().SetHeader("Foo", "value");
 
 Access a query named `Foo`
 ```c++
-const std::string* value = cntl->http_request().uri().GetQuery("Foo"); // NULL when not exist
+const std::string* value = cntl->http_request().uri().GetQuery("Foo"); // nullptr when not exist
 ```
 
 Set a query named `Foo`
@@ -202,7 +202,7 @@ brpc does not decompress bodies of responses automatically due to universality. 
 #include <brpc/policy/gzip_compress.h>
 ...
 const std::string* encoding = cntl->http_response().GetHeader("Content-Encoding");
-if (encoding != NULL && *encoding == "gzip") {
+if (encoding != nullptr && *encoding == "gzip") {
     butil::IOBuf uncompressed;
     if (!brpc::policy::GzipDecompress(cntl->response_attachment(), &uncompressed)) {
         LOG(ERROR) << "Fail to un-gzip response body";

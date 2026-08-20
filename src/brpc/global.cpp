@@ -171,7 +171,7 @@ struct GlobalExtensions {
 };
 
 static pthread_once_t register_extensions_once = PTHREAD_ONCE_INIT;
-static GlobalExtensions* g_ext = NULL;
+static GlobalExtensions* g_ext = nullptr;
 
 static long ReadPortOfDummyServer(const char* filename) {
     butil::fd_guard fd(open(filename, O_RDONLY));
@@ -189,7 +189,7 @@ static long ReadPortOfDummyServer(const char* filename) {
     port_str[std::min((size_t)nr, sizeof(port_str)-1)] = '\0';
     const char* p = port_str;
     for (; isspace(*p); ++p) {}
-    char* endptr = NULL;
+    char* endptr = nullptr;
     const long port = strtol(p, &endptr, 10);
     for (; isspace(*endptr); ++endptr) {}
     if (*endptr != '\0') {
@@ -231,25 +231,25 @@ static void* GlobalUpdate(void*) {
     ANNOTATE_MEMORY_LEAK_DISABLE();
     // Expose variables.
     bvar::PassiveStatus<int64_t> var_iobuf_block_count(
-        "iobuf_block_count", GetIOBufBlockCount, NULL);
+        "iobuf_block_count", GetIOBufBlockCount, nullptr);
     bvar::PassiveStatus<int64_t> var_iobuf_block_count_hit_tls_threshold(
         "iobuf_block_count_hit_tls_threshold",
-        GetIOBufBlockCountHitTLSThreshold, NULL);
+        GetIOBufBlockCountHitTLSThreshold, nullptr);
     bvar::PassiveStatus<int64_t> var_iobuf_new_bigview_count(
-        GetIOBufNewBigViewCount, NULL);
+        GetIOBufNewBigViewCount, nullptr);
     bvar::PerSecond<bvar::PassiveStatus<int64_t> > var_iobuf_new_bigview_second(
         "iobuf_newbigview_second", &var_iobuf_new_bigview_count);
     bvar::PassiveStatus<int64_t> var_iobuf_block_memory(
-        "iobuf_block_memory", GetIOBufBlockMemory, NULL);
+        "iobuf_block_memory", GetIOBufBlockMemory, nullptr);
     bvar::PassiveStatus<int> var_running_server_count(
-        "rpc_server_count", GetRunningServerCount, NULL);
+        "rpc_server_count", GetRunningServerCount, nullptr);
 
     butil::FileWatcher fw;
     const int fw_rc = fw.init_from_not_exist(DUMMY_SERVER_PORT_FILE);
     ANNOTATE_MEMORY_LEAK_ENABLE();
     if (fw_rc < 0) {
         LOG(FATAL) << "Fail to init FileWatcher on `" << DUMMY_SERVER_PORT_FILE << "'";
-        return NULL;
+        return nullptr;
     }
 
     std::vector<SocketId> conns;
@@ -309,7 +309,7 @@ static void* GlobalUpdate(void*) {
             // 1.7 and 2.5, which means making the static member function weak
             // in details/tcmalloc_extension.cpp is probably not correct, however
             // it does work for heap profilers.
-            if (MallocExtension_ReleaseFreeMemory != NULL) {
+            if (MallocExtension_ReleaseFreeMemory != nullptr) {
                 MallocExtension_ReleaseFreeMemory();
             } else {
 #if defined(OS_LINUX)
@@ -319,7 +319,7 @@ static void* GlobalUpdate(void*) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 #if GOOGLE_PROTOBUF_VERSION < 3022000
@@ -353,8 +353,8 @@ static void GlobalInitializeOrDieImpl() {
 
     // Ignore SIGPIPE.
     struct sigaction oldact;
-    if (sigaction(SIGPIPE, NULL, &oldact) != 0 ||
-            (oldact.sa_handler == NULL && oldact.sa_sigaction == NULL)) {
+    if (sigaction(SIGPIPE, nullptr, &oldact) != 0 ||
+            (oldact.sa_handler == nullptr && oldact.sa_sigaction == nullptr)) {
         CHECK(SIG_ERR != signal(SIGPIPE, SIG_IGN));
     }
 
@@ -385,10 +385,7 @@ static void GlobalInitializeOrDieImpl() {
     InitCommonStrings();
 
     // Leave memory of these extensions to process's clean up.
-    g_ext = new(std::nothrow) GlobalExtensions();
-    if (NULL == g_ext) {
-        exit(1);
-    }
+    g_ext = new GlobalExtensions();
     // Naming Services
 #ifdef BAIDU_INTERNAL
     NamingServiceExtension()->RegisterOrDie("bns", &g_ext->bns);
@@ -439,9 +436,9 @@ static void GlobalInitializeOrDieImpl() {
 
     // Protocols
     Protocol rdma_handshake_protocol = {
-        ParseRdmaHandshake, NULL, NULL,
-        ProcessRdmaHandshake, NULL,
-        NULL, NULL, NULL,
+        ParseRdmaHandshake, nullptr, nullptr,
+        ProcessRdmaHandshake, nullptr,
+        nullptr, nullptr, nullptr,
         CONNECTION_TYPE_ALL, "rdma_handshake" };
     if (RegisterProtocol(PROTOCOL_RDMA_HANDSHAKE, rdma_handshake_protocol) != 0) {
         exit(1);
@@ -450,16 +447,16 @@ static void GlobalInitializeOrDieImpl() {
     Protocol baidu_protocol = { ParseRpcMessage,
                                 SerializeRpcRequest, PackRpcRequest,
                                 ProcessRpcRequest, ProcessRpcResponse,
-                                VerifyRpcRequest, NULL, NULL,
+                                VerifyRpcRequest, nullptr, nullptr,
                                 CONNECTION_TYPE_ALL, "baidu_std" };
     if (RegisterProtocol(PROTOCOL_BAIDU_STD, baidu_protocol) != 0) {
         exit(1);
     }
 
     Protocol streaming_protocol = { ParseStreamingMessage,
-                                    NULL, NULL, ProcessStreamingMessage,
+                                    nullptr, nullptr, ProcessStreamingMessage,
                                     ProcessStreamingMessage,
-                                    NULL, NULL, NULL,
+                                    nullptr, nullptr, nullptr,
                                     CONNECTION_TYPE_SINGLE, "streaming_rpc" };
 
     if (RegisterProtocol(PROTOCOL_STREAMING_RPC, streaming_protocol) != 0) {
@@ -491,7 +488,7 @@ static void GlobalInitializeOrDieImpl() {
     Protocol hulu_protocol = { ParseHuluMessage,
                                SerializeRequestDefault, PackHuluRequest,
                                ProcessHuluRequest, ProcessHuluResponse,
-                               VerifyHuluRequest, NULL, NULL,
+                               VerifyHuluRequest, nullptr, nullptr,
                                CONNECTION_TYPE_ALL, "hulu_pbrpc" };
     if (RegisterProtocol(PROTOCOL_HULU_PBRPC, hulu_protocol) != 0) {
         exit(1);
@@ -500,8 +497,8 @@ static void GlobalInitializeOrDieImpl() {
     // Only valid at client side
     Protocol nova_protocol = { ParseNsheadMessage,
                                SerializeNovaRequest, PackNovaRequest,
-                               NULL, ProcessNovaResponse,
-                               NULL, NULL, NULL,
+                               nullptr, ProcessNovaResponse,
+                               nullptr, nullptr, nullptr,
                                CONNECTION_TYPE_POOLED_AND_SHORT,  "nova_pbrpc" };
     if (RegisterProtocol(PROTOCOL_NOVA_PBRPC, nova_protocol) != 0) {
         exit(1);
@@ -511,8 +508,8 @@ static void GlobalInitializeOrDieImpl() {
     Protocol public_pbrpc_protocol = { ParseNsheadMessage,
                                        SerializePublicPbrpcRequest,
                                        PackPublicPbrpcRequest,
-                                       NULL, ProcessPublicPbrpcResponse,
-                                       NULL, NULL, NULL,
+                                       nullptr, ProcessPublicPbrpcResponse,
+                                       nullptr, nullptr, nullptr,
                                        // public_pbrpc server implementation
                                        // doesn't support full duplex
                                        CONNECTION_TYPE_POOLED_AND_SHORT,
@@ -524,7 +521,7 @@ static void GlobalInitializeOrDieImpl() {
     Protocol sofa_protocol = { ParseSofaMessage,
                                SerializeRequestDefault, PackSofaRequest,
                                ProcessSofaRequest, ProcessSofaResponse,
-                               VerifySofaRequest, NULL, NULL,
+                               VerifySofaRequest, nullptr, nullptr,
                                CONNECTION_TYPE_ALL, "sofa_pbrpc" };
     if (RegisterProtocol(PROTOCOL_SOFA_PBRPC, sofa_protocol) != 0) {
         exit(1);
@@ -536,7 +533,7 @@ static void GlobalInitializeOrDieImpl() {
     Protocol nshead_protocol = { ParseNsheadMessage,
                                  SerializeNsheadRequest, PackNsheadRequest,
                                  ProcessNsheadRequest, ProcessNsheadResponse,
-                                 VerifyNsheadRequest, NULL, NULL,
+                                 VerifyNsheadRequest, nullptr, nullptr,
                                  CONNECTION_TYPE_POOLED_AND_SHORT, "nshead" };
     if (RegisterProtocol(PROTOCOL_NSHEAD, nshead_protocol) != 0) {
         exit(1);
@@ -545,8 +542,8 @@ static void GlobalInitializeOrDieImpl() {
     Protocol mc_binary_protocol = { ParseMemcacheMessage,
                                     SerializeMemcacheRequest,
                                     PackMemcacheRequest,
-                                    NULL, ProcessMemcacheResponse,
-                                    NULL, NULL, GetMemcacheMethodName,
+                                    nullptr, ProcessMemcacheResponse,
+                                    nullptr, nullptr, GetMemcacheMethodName,
                                     CONNECTION_TYPE_ALL, "memcache" };
     if (RegisterProtocol(PROTOCOL_MEMCACHE, mc_binary_protocol) != 0) {
         exit(1);
@@ -555,8 +552,8 @@ static void GlobalInitializeOrDieImpl() {
     Protocol couchbase_protocol = { ParseCouchbaseMessage,
                                     SerializeCouchbaseRequest,
                                     PackCouchbaseRequest,
-                                    NULL, ProcessCouchbaseResponse,
-                                    NULL, NULL, GetCouchbaseMethodName,
+                                    nullptr, ProcessCouchbaseResponse,
+                                    nullptr, nullptr, GetCouchbaseMethodName,
                                     CONNECTION_TYPE_ALL, "couchbase" };
     if (RegisterProtocol(PROTOCOL_COUCHBASE, couchbase_protocol) != 0) {
         exit(1);
@@ -566,16 +563,16 @@ static void GlobalInitializeOrDieImpl() {
                                 SerializeRedisRequest,
                                 PackRedisRequest,
                                 ProcessRedisRequest, ProcessRedisResponse,
-                                NULL, NULL, GetRedisMethodName,
+                                nullptr, nullptr, GetRedisMethodName,
                                 CONNECTION_TYPE_ALL, "redis" };
     if (RegisterProtocol(PROTOCOL_REDIS, redis_protocol) != 0) {
         exit(1);
     }
 
     Protocol mongo_protocol = { ParseMongoMessage,
-                                NULL, NULL,
-                                ProcessMongoRequest, NULL,
-                                NULL, NULL, NULL,
+                                nullptr, nullptr,
+                                ProcessMongoRequest, nullptr,
+                                nullptr, nullptr, nullptr,
                                 CONNECTION_TYPE_POOLED, "mongo" };
     if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol) != 0) {
         exit(1);
@@ -587,7 +584,7 @@ static void GlobalInitializeOrDieImpl() {
         policy::ParseThriftMessage,
         policy::SerializeThriftRequest, policy::PackThriftRequest,
         policy::ProcessThriftRequest, policy::ProcessThriftResponse,
-        policy::VerifyThriftRequest, NULL, NULL,
+        policy::VerifyThriftRequest, nullptr, nullptr,
         CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
     if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
         exit(1);
@@ -598,8 +595,8 @@ static void GlobalInitializeOrDieImpl() {
     Protocol ubrpc_compack_protocol = {
         ParseNsheadMessage,
         SerializeUbrpcCompackRequest, PackUbrpcRequest,
-        NULL, ProcessUbrpcResponse,
-        NULL, NULL, NULL,
+        nullptr, ProcessUbrpcResponse,
+        nullptr, nullptr, nullptr,
         CONNECTION_TYPE_POOLED_AND_SHORT,  "ubrpc_compack" };
     if (RegisterProtocol(PROTOCOL_UBRPC_COMPACK, ubrpc_compack_protocol) != 0) {
         exit(1);
@@ -607,8 +604,8 @@ static void GlobalInitializeOrDieImpl() {
     Protocol ubrpc_mcpack2_protocol = {
         ParseNsheadMessage,
         SerializeUbrpcMcpack2Request, PackUbrpcRequest,
-        NULL, ProcessUbrpcResponse,
-        NULL, NULL, NULL,
+        nullptr, ProcessUbrpcResponse,
+        nullptr, nullptr, nullptr,
         CONNECTION_TYPE_POOLED_AND_SHORT,  "ubrpc_mcpack2" };
     if (RegisterProtocol(PROTOCOL_UBRPC_MCPACK2, ubrpc_mcpack2_protocol) != 0) {
         exit(1);
@@ -618,8 +615,8 @@ static void GlobalInitializeOrDieImpl() {
     Protocol nshead_mcpack_protocol = {
         ParseNsheadMessage,
         SerializeNsheadMcpackRequest, PackNsheadMcpackRequest,
-        NULL, ProcessNsheadMcpackResponse,
-        NULL, NULL, NULL,
+        nullptr, ProcessNsheadMcpackResponse,
+        nullptr, nullptr, nullptr,
         CONNECTION_TYPE_POOLED_AND_SHORT,  "nshead_mcpack" };
     if (RegisterProtocol(PROTOCOL_NSHEAD_MCPACK, nshead_mcpack_protocol) != 0) {
         exit(1);
@@ -629,7 +626,7 @@ static void GlobalInitializeOrDieImpl() {
         ParseRtmpMessage,
         SerializeRtmpRequest, PackRtmpRequest,
         ProcessRtmpMessage, ProcessRtmpMessage,
-        NULL, NULL, NULL,
+        nullptr, nullptr, nullptr,
         (ConnectionType)(CONNECTION_TYPE_SINGLE|CONNECTION_TYPE_SHORT),
         "rtmp" };
     if (RegisterProtocol(PROTOCOL_RTMP, rtmp_protocol) != 0) {
@@ -639,8 +636,8 @@ static void GlobalInitializeOrDieImpl() {
     Protocol esp_protocol = {
         ParseEspMessage,
         SerializeEspRequest, PackEspRequest,
-        NULL, ProcessEspResponse,
-        NULL, NULL, NULL,
+        nullptr, ProcessEspResponse,
+        nullptr, nullptr, nullptr,
         CONNECTION_TYPE_POOLED_AND_SHORT, "esp"};
     if (RegisterProtocol(PROTOCOL_ESP, esp_protocol) != 0) {
         exit(1);
@@ -649,10 +646,10 @@ static void GlobalInitializeOrDieImpl() {
     Protocol mysql_protocol = {ParseMysqlMessage,
                                SerializeMysqlRequest,
                                PackMysqlRequest,
-                               NULL,
+                               nullptr,
                                ProcessMysqlResponse,
-                               NULL,
-                               NULL,
+                               nullptr,
+                               nullptr,
                                GetMysqlMethodName,
                                CONNECTION_TYPE_POOLED_AND_SHORT,
                                "mysql"};
@@ -669,8 +666,8 @@ static void GlobalInitializeOrDieImpl() {
             handler.parse = protocols[i].parse;
             handler.process = protocols[i].process_response;
             // No need to verify at client side
-            handler.verify = NULL;
-            handler.arg = NULL;
+            handler.verify = nullptr;
+            handler.arg = nullptr;
             handler.name = protocols[i].name;
             if (get_or_new_client_side_messenger()->AddHandler(handler) != 0) {
                 exit(1);
@@ -695,7 +692,7 @@ static void GlobalInitializeOrDieImpl() {
     bthread_t th;
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     bthread_attr_set_name(&attr, "GlobalUpdate");
-    CHECK(bthread_start_background(&th, &attr, GlobalUpdate, NULL) == 0)
+    CHECK(bthread_start_background(&th, &attr, GlobalUpdate, nullptr) == 0)
         << "Fail to start GlobalUpdate";
 }
 

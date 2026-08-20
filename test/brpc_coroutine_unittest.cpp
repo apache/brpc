@@ -182,7 +182,7 @@ TEST_F(CoroutineTest, coroutine) {
     brpc::Server server;
     EchoServiceImpl service;
     server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE);
-    ASSERT_EQ(0, server.Start(ep, NULL));
+    ASSERT_EQ(0, server.Start(ep, nullptr));
 
     brpc::Channel channel;
     brpc::ChannelOptions options;

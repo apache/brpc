@@ -33,7 +33,7 @@ namespace bthread {
 
 namespace {
 void* dummy(void*) {
-    return NULL;
+    return nullptr;
 }
 
 TEST(BthreadTest, setconcurrency) {
@@ -48,7 +48,7 @@ TEST(BthreadTest, setconcurrency) {
     ASSERT_EQ(BTHREAD_MIN_CONCURRENCY + 1, bthread_getconcurrency());
     ASSERT_EQ(0, bthread_setconcurrency(BTHREAD_MIN_CONCURRENCY));  // smaller value
     bthread_t th;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, dummy, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, dummy, nullptr));
     ASSERT_EQ(BTHREAD_MIN_CONCURRENCY + 1, bthread_getconcurrency());
     ASSERT_EQ(0, bthread_setconcurrency(BTHREAD_MIN_CONCURRENCY + 5));
     ASSERT_EQ(BTHREAD_MIN_CONCURRENCY + 5, bthread_getconcurrency());
@@ -72,9 +72,9 @@ static void *odd_thread(void *) {
             npthreads.fetch_add(1);
         }
         bthread::butex_wake_all(even);
-        bthread::butex_wait(odd, 0, NULL);
+        bthread::butex_wait(odd, 0, nullptr);
     }
-    return NULL;
+    return nullptr;
 }
 
 static void *even_thread(void *) {
@@ -85,24 +85,24 @@ static void *even_thread(void *) {
             npthreads.fetch_add(1);
         }
         bthread::butex_wake_all(odd);
-        bthread::butex_wait(even, 0, NULL);
+        bthread::butex_wait(even, 0, nullptr);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(BthreadTest, setconcurrency_with_running_bthread) {
     odd = bthread::butex_create_checked<butil::atomic<int> >();
     even = bthread::butex_create_checked<butil::atomic<int> >();
-    ASSERT_TRUE(odd != NULL && even != NULL);
+    ASSERT_TRUE(odd != nullptr && even != nullptr);
     *odd = 0;
     *even = 0;
     std::vector<bthread_t> tids;
     const int N = 200;
     for (int i = 0; i < N; ++i) {
         bthread_t tid;
-        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, odd_thread, NULL);
+        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, odd_thread, nullptr);
         tids.push_back(tid);
-        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, even_thread, NULL);
+        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, even_thread, nullptr);
         tids.push_back(tid);
     }
     for (int i = 100; i <= N; ++i) {
@@ -116,7 +116,7 @@ TEST(BthreadTest, setconcurrency_with_running_bthread) {
     bthread::butex_wake_all(odd);
     bthread::butex_wake_all(even);
     for (size_t i = 0; i < tids.size(); ++i) {
-        bthread_join(tids[i], NULL);
+        bthread_join(tids[i], nullptr);
     }
     LOG(INFO) << "All bthreads has quit";
     ASSERT_EQ(2*N, nbthreads);
@@ -127,14 +127,14 @@ TEST(BthreadTest, setconcurrency_with_running_bthread) {
 
 void* sleep_proc(void*) {
     usleep(100000);
-    return NULL;
+    return nullptr;
 }
 
 void* add_concurrency_proc(void*) {
     bthread_t tid;
-    bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, sleep_proc, NULL);
-    bthread_join(tid, NULL);
-    return NULL;
+    bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, sleep_proc, nullptr);
+    bthread_join(tid, nullptr);
+    return nullptr;
 }
 
 bool set_min_concurrency(int num) {
@@ -176,16 +176,16 @@ TEST(BthreadTest, min_concurrency) {
     std::vector<bthread_t> tids;
     for (int i = 0; i < conn; ++i) {
         bthread_t tid;
-        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, sleep_proc, NULL);
+        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, sleep_proc, nullptr);
         tids.push_back(tid);
     }
     for (int i = 0; i < add_conn; ++i) {
         bthread_t tid;
-        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, add_concurrency_proc, NULL);
+        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, add_concurrency_proc, nullptr);
         tids.push_back(tid);
     }
     for (size_t i = 0; i < tids.size(); ++i) {
-        bthread_join(tids[i], NULL);
+        bthread_join(tids[i], nullptr);
     }
     ASSERT_EQ(conn + add_conn, bthread_getconcurrency());
     ASSERT_EQ(conn + add_conn, bthread::g_task_control->concurrency());

@@ -75,7 +75,7 @@ bool JsonLoader::Reader::read_some() {
 // Ignore json only with spaces and newline
 static bool possibly_valid_json(const butil::IOBuf& json) {
     butil::IOBufAsZeroCopyInputStream it(json);
-    const void* data = NULL;
+    const void* data = nullptr;
     for (int size = 0; it.Next(&data, &size); ) {
         for (int i = 0; i < size; ++i) {
             char c = ((const char*)data)[i];
@@ -97,7 +97,7 @@ bool JsonLoader::Reader::get_next_json(butil::IOBuf* json1) {
     json1->clear();
     while (1) {
         butil::IOBufAsZeroCopyInputStream it(_file_buf);
-        const void* data = NULL;
+        const void* data = nullptr;
         int size = 0;
         int total_size = 0;
         int skipped = 0;

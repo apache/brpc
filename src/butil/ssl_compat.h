@@ -37,29 +37,29 @@
 BRPC_INLINE void *OPENSSL_zalloc(size_t num) {
     void *ret = OPENSSL_malloc(num);
 
-    if (ret != NULL)
+    if (ret != nullptr)
         memset(ret, 0, num);
     return ret;
 }
 
 BRPC_INLINE int RSA_set0_key(RSA *r, BIGNUM *n, BIGNUM *e, BIGNUM *d) {
-    /* If the fields n and e in r are NULL, the corresponding input
-     * parameters MUST be non-NULL for n and e.  d may be
-     * left NULL (in case only the public key is used).
+    /* If the fields n and e in r are nullptr, the corresponding input
+     * parameters MUST be non-nullptr for n and e.  d may be
+     * left nullptr (in case only the public key is used).
      */
-    if ((r->n == NULL && n == NULL)
-            || (r->e == NULL && e == NULL))
+    if ((r->n == nullptr && n == nullptr)
+            || (r->e == nullptr && e == nullptr))
         return 0;
 
-    if (n != NULL) {
+    if (n != nullptr) {
         BN_free(r->n);
         r->n = n;
     }
-    if (e != NULL) {
+    if (e != nullptr) {
         BN_free(r->e);
         r->e = e;
     }
-    if (d != NULL) {
+    if (d != nullptr) {
         BN_free(r->d);
         r->d = d;
     }
@@ -68,18 +68,18 @@ BRPC_INLINE int RSA_set0_key(RSA *r, BIGNUM *n, BIGNUM *e, BIGNUM *d) {
 }
 
 BRPC_INLINE int RSA_set0_factors(RSA *r, BIGNUM *p, BIGNUM *q) {
-    /* If the fields p and q in r are NULL, the corresponding input
-     * parameters MUST be non-NULL.
+    /* If the fields p and q in r are nullptr, the corresponding input
+     * parameters MUST be non-nullptr.
      */
-    if ((r->p == NULL && p == NULL)
-            || (r->q == NULL && q == NULL))
+    if ((r->p == nullptr && p == nullptr)
+            || (r->q == nullptr && q == nullptr))
         return 0;
 
-    if (p != NULL) {
+    if (p != nullptr) {
         BN_free(r->p);
         r->p = p;
     }
-    if (q != NULL) {
+    if (q != nullptr) {
         BN_free(r->q);
         r->q = q;
     }
@@ -88,23 +88,23 @@ BRPC_INLINE int RSA_set0_factors(RSA *r, BIGNUM *p, BIGNUM *q) {
 }
 
 BRPC_INLINE int RSA_set0_crt_params(RSA *r, BIGNUM *dmp1, BIGNUM *dmq1, BIGNUM *iqmp) {
-    /* If the fields dmp1, dmq1 and iqmp in r are NULL, the corresponding input
-     * parameters MUST be non-NULL.
+    /* If the fields dmp1, dmq1 and iqmp in r are nullptr, the corresponding input
+     * parameters MUST be non-nullptr.
      */
-    if ((r->dmp1 == NULL && dmp1 == NULL)
-            || (r->dmq1 == NULL && dmq1 == NULL)
-            || (r->iqmp == NULL && iqmp == NULL))
+    if ((r->dmp1 == nullptr && dmp1 == nullptr)
+            || (r->dmq1 == nullptr && dmq1 == nullptr)
+            || (r->iqmp == nullptr && iqmp == nullptr))
         return 0;
 
-    if (dmp1 != NULL) {
+    if (dmp1 != nullptr) {
         BN_free(r->dmp1);
         r->dmp1 = dmp1;
     }
-    if (dmq1 != NULL) {
+    if (dmq1 != nullptr) {
         BN_free(r->dmq1);
         r->dmq1 = dmq1;
     }
-    if (iqmp != NULL) {
+    if (iqmp != nullptr) {
         BN_free(r->iqmp);
         r->iqmp = iqmp;
     }
@@ -114,60 +114,60 @@ BRPC_INLINE int RSA_set0_crt_params(RSA *r, BIGNUM *dmp1, BIGNUM *dmq1, BIGNUM *
 
 BRPC_INLINE void RSA_get0_key(const RSA *r, 
         const BIGNUM **n, const BIGNUM **e, const BIGNUM **d) {
-    if (n != NULL)
+    if (n != nullptr)
         *n = r->n;
-    if (e != NULL)
+    if (e != nullptr)
         *e = r->e;
-    if (d != NULL)
+    if (d != nullptr)
         *d = r->d;
 }
 
 BRPC_INLINE void RSA_get0_factors(const RSA *r, const BIGNUM **p, const BIGNUM **q) {
-    if (p != NULL)
+    if (p != nullptr)
         *p = r->p;
-    if (q != NULL)
+    if (q != nullptr)
         *q = r->q;
 }
 
 BRPC_INLINE void RSA_get0_crt_params(const RSA *r,
         const BIGNUM **dmp1, const BIGNUM **dmq1,
         const BIGNUM **iqmp) {
-    if (dmp1 != NULL)
+    if (dmp1 != nullptr)
         *dmp1 = r->dmp1;
-    if (dmq1 != NULL)
+    if (dmq1 != nullptr)
         *dmq1 = r->dmq1;
-    if (iqmp != NULL)
+    if (iqmp != nullptr)
         *iqmp = r->iqmp;
 }
 
 BRPC_INLINE void DSA_get0_pqg(const DSA *d,
         const BIGNUM **p, const BIGNUM **q, const BIGNUM **g) {
-    if (p != NULL)
+    if (p != nullptr)
         *p = d->p;
-    if (q != NULL)
+    if (q != nullptr)
         *q = d->q;
-    if (g != NULL)
+    if (g != nullptr)
         *g = d->g;
 }
 
 BRPC_INLINE int DSA_set0_pqg(DSA *d, BIGNUM *p, BIGNUM *q, BIGNUM *g) {
-    /* If the fields p, q and g in d are NULL, the corresponding input
-     * parameters MUST be non-NULL.
+    /* If the fields p, q and g in d are nullptr, the corresponding input
+     * parameters MUST be non-nullptr.
      */
-    if ((d->p == NULL && p == NULL)
-            || (d->q == NULL && q == NULL)
-            || (d->g == NULL && g == NULL))
+    if ((d->p == nullptr && p == nullptr)
+            || (d->q == nullptr && q == nullptr)
+            || (d->g == nullptr && g == nullptr))
         return 0;
 
-    if (p != NULL) {
+    if (p != nullptr) {
         BN_free(d->p);
         d->p = p;
     }
-    if (q != NULL) {
+    if (q != nullptr) {
         BN_free(d->q);
         d->q = q;
     }
-    if (g != NULL) {
+    if (g != nullptr) {
         BN_free(d->g);
         d->g = g;
     }
@@ -177,25 +177,25 @@ BRPC_INLINE int DSA_set0_pqg(DSA *d, BIGNUM *p, BIGNUM *q, BIGNUM *g) {
 
 BRPC_INLINE void DSA_get0_key(const DSA *d,
         const BIGNUM **pub_key, const BIGNUM **priv_key) {
-    if (pub_key != NULL)
+    if (pub_key != nullptr)
         *pub_key = d->pub_key;
-    if (priv_key != NULL)
+    if (priv_key != nullptr)
         *priv_key = d->priv_key;
 }
 
 BRPC_INLINE int DSA_set0_key(DSA *d, BIGNUM *pub_key, BIGNUM *priv_key) {
-    /* If the field pub_key in d is NULL, the corresponding input
-     * parameters MUST be non-NULL.  The priv_key field may
-     * be left NULL.
+    /* If the field pub_key in d is nullptr, the corresponding input
+     * parameters MUST be non-nullptr.  The priv_key field may
+     * be left nullptr.
      */
-    if (d->pub_key == NULL && pub_key == NULL)
+    if (d->pub_key == nullptr && pub_key == nullptr)
         return 0;
 
-    if (pub_key != NULL) {
+    if (pub_key != nullptr) {
         BN_free(d->pub_key);
         d->pub_key = pub_key;
     }
-    if (priv_key != NULL) {
+    if (priv_key != nullptr) {
         BN_free(d->priv_key);
         d->priv_key = priv_key;
     }
@@ -204,14 +204,14 @@ BRPC_INLINE int DSA_set0_key(DSA *d, BIGNUM *pub_key, BIGNUM *priv_key) {
 }
 
 BRPC_INLINE void DSA_SIG_get0(const DSA_SIG *sig, const BIGNUM **pr, const BIGNUM **ps) {
-    if (pr != NULL)
+    if (pr != nullptr)
         *pr = sig->r;
-    if (ps != NULL)
+    if (ps != nullptr)
         *ps = sig->s;
 }
 
 BRPC_INLINE int DSA_SIG_set0(DSA_SIG *sig, BIGNUM *r, BIGNUM *s) {
-    if (r == NULL || s == NULL)
+    if (r == nullptr || s == nullptr)
         return 0;
     BN_clear_free(sig->r);
     BN_clear_free(sig->s);
@@ -222,36 +222,36 @@ BRPC_INLINE int DSA_SIG_set0(DSA_SIG *sig, BIGNUM *r, BIGNUM *s) {
 
 BRPC_INLINE void DH_get0_pqg(const DH *dh,
         const BIGNUM **p, const BIGNUM **q, const BIGNUM **g) {
-    if (p != NULL)
+    if (p != nullptr)
         *p = dh->p;
-    if (q != NULL)
+    if (q != nullptr)
         *q = dh->q;
-    if (g != NULL)
+    if (g != nullptr)
         *g = dh->g;
 }
 
 BRPC_INLINE int DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g) {
-    /* If the fields p and g in d are NULL, the corresponding input
-     * parameters MUST be non-NULL.  q may remain NULL.
+    /* If the fields p and g in d are nullptr, the corresponding input
+     * parameters MUST be non-nullptr.  q may remain nullptr.
      */
-    if ((dh->p == NULL && p == NULL)
-            || (dh->g == NULL && g == NULL))
+    if ((dh->p == nullptr && p == nullptr)
+            || (dh->g == nullptr && g == nullptr))
         return 0;
 
-    if (p != NULL) {
+    if (p != nullptr) {
         BN_free(dh->p);
         dh->p = p;
     }
-    if (q != NULL) {
+    if (q != nullptr) {
         BN_free(dh->q);
         dh->q = q;
     }
-    if (g != NULL) {
+    if (g != nullptr) {
         BN_free(dh->g);
         dh->g = g;
     }
 
-    if (q != NULL) {
+    if (q != nullptr) {
         dh->length = BN_num_bits(q);
     }
 
@@ -259,25 +259,25 @@ BRPC_INLINE int DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g) {
 }
 
 BRPC_INLINE void DH_get0_key(const DH *dh, const BIGNUM **pub_key, const BIGNUM **priv_key) {
-    if (pub_key != NULL)
+    if (pub_key != nullptr)
         *pub_key = dh->pub_key;
-    if (priv_key != NULL)
+    if (priv_key != nullptr)
         *priv_key = dh->priv_key;
 }
 
 BRPC_INLINE int DH_set0_key(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key) {
-    /* If the field pub_key in dh is NULL, the corresponding input
-     * parameters MUST be non-NULL.  The priv_key field may
-     * be left NULL.
+    /* If the field pub_key in dh is nullptr, the corresponding input
+     * parameters MUST be non-nullptr.  The priv_key field may
+     * be left nullptr.
      */
-    if (dh->pub_key == NULL && pub_key == NULL)
+    if (dh->pub_key == nullptr && pub_key == nullptr)
         return 0;
 
-    if (pub_key != NULL) {
+    if (pub_key != nullptr) {
         BN_free(dh->pub_key);
         dh->pub_key = pub_key;
     }
-    if (priv_key != NULL) {
+    if (priv_key != nullptr) {
         BN_free(dh->priv_key);
         dh->priv_key = priv_key;
     }
@@ -312,7 +312,7 @@ BRPC_INLINE int RSA_meth_set_finish(RSA_METHOD *meth, int (*finish) (RSA *rsa)) 
 }
 
 BRPC_INLINE void RSA_meth_free(RSA_METHOD *meth) {
-    if (meth != NULL) {
+    if (meth != nullptr) {
         OPENSSL_free((char *)meth->name);
         OPENSSL_free(meth);
     }

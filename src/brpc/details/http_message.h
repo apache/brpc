@@ -114,21 +114,21 @@ private:
     // For mutual exclusion between on_body and SetBodyReader.
     butil::Mutex _body_mutex;
     // Read body progressively
-    ProgressiveReader* _body_reader{NULL};
+    ProgressiveReader* _body_reader{nullptr};
     butil::IOBuf _body;
     size_t _body_size{0};
     bool _body_too_large{false};
 
     // Store the IOBuf information in `ParseFromIOBuf'
     // for later zero-copy usage in `OnBody'.
-    const butil::IOBuf* _current_source_iobuf{NULL};
-    const char* _current_block_base{NULL};
+    const butil::IOBuf* _current_source_iobuf{nullptr};
+    const char* _current_block_base{nullptr};
     size_t _parsed_block_size{0};
 
     // Parser related members
     struct http_parser _parser;
     std::string _cur_header;
-    std::string *_cur_value{NULL};
+    std::string *_cur_value{nullptr};
 
 protected:
     // Only valid when -http_verbose is on
@@ -141,7 +141,7 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser);
 // Serialize a http request.
 // header: may be modified in some cases
 // remote_side: used when "Host" is absent
-// content: could be NULL.
+// content: could be nullptr.
 void MakeRawHttpRequest(butil::IOBuf* request,
                         HttpHeader* header,
                         const butil::EndPoint& remote_side,
@@ -149,7 +149,7 @@ void MakeRawHttpRequest(butil::IOBuf* request,
 
 // Serialize a http response.
 // header: may be modified in some cases
-// content: cleared after usage. could be NULL. 
+// content: cleared after usage. could be nullptr. 
 void MakeRawHttpResponse(butil::IOBuf* response,
                          HttpHeader* header,
                          butil::IOBuf* content);

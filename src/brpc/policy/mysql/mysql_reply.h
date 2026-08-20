@@ -298,7 +298,7 @@ public:
             float float32;
             double float64;
             butil::StringPiece str;
-        } _data = {.str = NULL};
+        } _data = {.str = nullptr};
         MysqlFieldType _type;
         bool _unsigned;
         bool _is_nil;
@@ -374,7 +374,7 @@ private:
     };
     // Mysql result set
     struct ResultSet : private CheckParsed {
-        ResultSet() : _columns(NULL), _row_count(0) {
+        ResultSet() : _columns(nullptr), _row_count(0) {
             _cur = _first = _last = &_dummy;
         }
         ParseError Parse(butil::IOBuf& buf, butil::Arena* arena, bool binary);
@@ -589,7 +589,7 @@ inline uint8_t MysqlReply::AuthMoreData::seq() const {
     return _seq;
 }
 // mysql prepared statement ok
-inline MysqlReply::PrepareOk::PrepareOk() : _params(NULL), _columns(NULL) {}
+inline MysqlReply::PrepareOk::PrepareOk() : _params(nullptr), _columns(nullptr) {}
 inline uint32_t MysqlReply::PrepareOk::stmt_id() const {
     CHECK(_header._stmt_id > 0) << "stmt id is wrong";
     return _header._stmt_id;
@@ -691,7 +691,7 @@ inline uint8_t MysqlReply::Column::decimal() const {
     return _decimal;
 }
 // mysql reply row
-inline MysqlReply::Row::Row() : _fields(NULL), _field_count(0), _next(NULL) {}
+inline MysqlReply::Row::Row() : _fields(nullptr), _field_count(0), _next(nullptr) {}
 inline uint64_t MysqlReply::Row::field_count() const {
     return _field_count;
 }

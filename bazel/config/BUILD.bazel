@@ -36,6 +36,12 @@ config_setting(
     define_values = {"BRPC_WITH_GLOG": "true"},
 )
 
+config_setting(
+    name = "brpc_with_cpu_frequency",
+    define_values = {"BUTIL_USE_CPU_FREQUENCY": "true"},
+    visibility = ["//visibility:public"],
+)
+
 selects.config_setting_group(
     name = "brpc_with_mesalink",
     match_any = [
@@ -154,5 +160,11 @@ config_setting(
 config_setting(
     name = "with_babylon_counter",
     define_values = {"with_babylon_counter": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "brpc_with_ubring",
+    define_values = {"BRPC_WITH_UBRING": "true"},
     visibility = ["//visibility:public"],
 )

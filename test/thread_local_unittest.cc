@@ -31,7 +31,7 @@ class SetThreadLocal : public ThreadLocalTesterBase {
  public:
   SetThreadLocal(TLPType* tlp, butil::WaitableEvent* done)
       : ThreadLocalTesterBase(tlp, done),
-        val_(NULL) {
+        val_(nullptr) {
   }
   virtual ~SetThreadLocal() {}
 
@@ -51,7 +51,7 @@ class GetThreadLocal : public ThreadLocalTesterBase {
  public:
   GetThreadLocal(TLPType* tlp, butil::WaitableEvent* done)
       : ThreadLocalTesterBase(tlp, done),
-        ptr_(NULL) {
+        ptr_(nullptr) {
   }
   virtual ~GetThreadLocal() {}
 
@@ -70,7 +70,7 @@ class GetThreadLocal : public ThreadLocalTesterBase {
 }  // namespace
 
 // In this test, we start 2 threads which will access a ThreadLocalPointer.  We
-// make sure the default is NULL, and the pointers are unique to the threads.
+// make sure the default is nullptr, and the pointers are unique to the threads.
 TEST(ThreadLocalTest, Pointer) {
   butil::DelegateSimpleThreadPool tp1("ThreadLocalTest tp1", 1);
   butil::DelegateSimpleThreadPool tp2("ThreadLocalTest tp1", 1);
@@ -88,18 +88,18 @@ TEST(ThreadLocalTest, Pointer) {
   GetThreadLocal getter(&tlp, &done);
   getter.set_ptr(&tls_val);
 
-  // Check that both threads defaulted to NULL.
+  // Check that both threads defaulted to nullptr.
   tls_val = kBogusPointer;
   done.Reset();
   tp1.AddWork(&getter);
   done.Wait();
-  EXPECT_EQ(static_cast<ThreadLocalTesterBase*>(NULL), tls_val);
+  EXPECT_EQ(static_cast<ThreadLocalTesterBase*>(nullptr), tls_val);
 
   tls_val = kBogusPointer;
   done.Reset();
   tp2.AddWork(&getter);
   done.Wait();
-  EXPECT_EQ(static_cast<ThreadLocalTesterBase*>(NULL), tls_val);
+  EXPECT_EQ(static_cast<ThreadLocalTesterBase*>(nullptr), tls_val);
 
 
   SetThreadLocal setter(&tlp, &done);
@@ -110,18 +110,18 @@ TEST(ThreadLocalTest, Pointer) {
   tp1.AddWork(&setter);
   done.Wait();
 
-  tls_val = NULL;
+  tls_val = nullptr;
   done.Reset();
   tp1.AddWork(&getter);
   done.Wait();
   EXPECT_EQ(kBogusPointer, tls_val);
 
-  // Make sure thread 2 is still NULL
+  // Make sure thread 2 is still nullptr
   tls_val = kBogusPointer;
   done.Reset();
   tp2.AddWork(&getter);
   done.Wait();
-  EXPECT_EQ(static_cast<ThreadLocalTesterBase*>(NULL), tls_val);
+  EXPECT_EQ(static_cast<ThreadLocalTesterBase*>(nullptr), tls_val);
 
   // Set thread 2 to kBogusPointer + 1.
   setter.set_value(kBogusPointer + 1);
@@ -130,14 +130,14 @@ TEST(ThreadLocalTest, Pointer) {
   tp2.AddWork(&setter);
   done.Wait();
 
-  tls_val = NULL;
+  tls_val = nullptr;
   done.Reset();
   tp2.AddWork(&getter);
   done.Wait();
   EXPECT_EQ(kBogusPointer + 1, tls_val);
 
   // Make sure thread 1 is still kBogusPointer.
-  tls_val = NULL;
+  tls_val = nullptr;
   done.Reset();
   tp1.AddWork(&getter);
   done.Wait();

@@ -394,7 +394,7 @@ inline Char HexDigitToInt(Char c) {
 
 // Returns true if it's a whitespace character.
 inline bool IsWhitespace(wchar_t c) {
-  return wcschr(butil::kWhitespaceWide, c) != NULL;
+  return wcschr(butil::kWhitespaceWide, c) != nullptr;
 }
 
 inline bool IsBlankString(const butil::StringPiece &s) {
@@ -497,7 +497,7 @@ BUTIL_EXPORT butil::string16 JoinString(
 // Replace $1-$2-$3..$9 in the format string with |a|-|b|-|c|..|i| respectively.
 // Additionally, any number of consecutive '$' characters is replaced by that
 // number less one. Eg $$->$, $$$->$$, etc. The offsets parameter here can be
-// NULL. This only allows you to use up to nine replacements.
+// nullptr. This only allows you to use up to nine replacements.
 BUTIL_EXPORT butil::string16 ReplaceStringPlaceholders(
     const butil::string16& format_string,
     const std::vector<butil::string16>& subst,
@@ -508,7 +508,7 @@ BUTIL_EXPORT std::string ReplaceStringPlaceholders(
     const std::vector<std::string>& subst,
     std::vector<size_t>* offsets);
 
-// Single-string shortcut for ReplaceStringHolders. |offset| may be NULL.
+// Single-string shortcut for ReplaceStringHolders. |offset| may be nullptr.
 BUTIL_EXPORT butil::string16 ReplaceStringPlaceholders(
     const butil::string16& format_string,
     const butil::string16& a,

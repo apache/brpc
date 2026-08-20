@@ -128,7 +128,7 @@ class LinkNode {
   void RemoveFromList() {
     this->previous_->next_ = this->next_;
     this->next_->previous_ = this->previous_;
-    // next() and previous() return non-NULL if and only this node is not in any
+    // next() and previous() return non-nullptr if and only this node is not in any
     // list.
     this->next_ = this;
     this->previous_ = this;

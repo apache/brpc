@@ -91,7 +91,7 @@ protected:
 void* RunClosure(void* arg) {
     google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
     done->Run();
-    return NULL;
+    return nullptr;
 }
 
 void SendMultipleRPC(brpc::Channel* channel, int count) {
@@ -101,7 +101,7 @@ void SendMultipleRPC(brpc::Channel* channel, int count) {
         test::EchoResponse res;
         req.set_message(EXP_REQUEST);
         test::EchoService_Stub stub(channel);
-        stub.Echo(&cntl, &req, &res, NULL);
+        stub.Echo(&cntl, &req, &res, nullptr);
 
         EXPECT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
     }
@@ -135,7 +135,7 @@ TEST_F(SSLTest, sanity) {
 
         brpc::Controller cntl;
         test::EchoService_Stub stub(&channel);
-        stub.Echo(&cntl, &req, &res, NULL);
+        stub.Echo(&cntl, &req, &res, nullptr);
         EXPECT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
     }
 
@@ -152,10 +152,10 @@ TEST_F(SSLTest, sanity) {
         for (int i = 0; i < NUM; ++i) {
             google::protobuf::Closure* thrd_func =
                     brpc::NewCallback(SendMultipleRPC, &channel, COUNT);
-            EXPECT_EQ(0, pthread_create(&tids[i], NULL, RunClosure, thrd_func));
+            EXPECT_EQ(0, pthread_create(&tids[i], nullptr, RunClosure, thrd_func));
         }
         for (int i = 0; i < NUM; ++i) {
-            pthread_join(tids[i], NULL);
+            pthread_join(tids[i], nullptr);
         }
     }
     {
@@ -169,10 +169,10 @@ TEST_F(SSLTest, sanity) {
         for (int i = 0; i < NUM; ++i) {
             google::protobuf::Closure* thrd_func =
                     brpc::NewCallback(SendMultipleRPC, &channel, COUNT);
-            EXPECT_EQ(0, pthread_create(&tids[i], NULL, RunClosure, thrd_func));
+            EXPECT_EQ(0, pthread_create(&tids[i], nullptr, RunClosure, thrd_func));
         }
         for (int i = 0; i < NUM; ++i) {
-            pthread_join(tids[i], NULL);
+            pthread_join(tids[i], nullptr);
         }
     }
 
@@ -210,18 +210,18 @@ TEST_F(SSLTest, force_ssl) {
         brpc::Controller cntl;
         test::EchoService_Stub stub(&channel);
         test::EchoResponse res;
-        stub.Echo(&cntl, &req, &res, NULL);
+        stub.Echo(&cntl, &req, &res, nullptr);
         ASSERT_EQ(EXP_RESPONSE, res.message()) << cntl.ErrorText();
     }
 
     {
         brpc::Channel channel;
-        ASSERT_EQ(0, channel.Init("localhost", port, NULL));
+        ASSERT_EQ(0, channel.Init("localhost", port, nullptr));
 
         brpc::Controller cntl;
         test::EchoService_Stub stub(&channel);
         test::EchoResponse res;
-        stub.Echo(&cntl, &req, &res, NULL);
+        stub.Echo(&cntl, &req, &res, nullptr);
         ASSERT_TRUE(cntl.Failed());
     }
 
@@ -239,7 +239,7 @@ void CallServerWithExpectedPeerName(int port, const char* server_address,
         brpc::VerifyMode::VERIFY_PEER;
     options.mutable_ssl_options()->verify.verify_depth = 1;
     options.mutable_ssl_options()->verify.ca_file_path = "cert1.crt";
-    if (expected_peer_name != NULL) {
+    if (expected_peer_name != nullptr) {
         options.mutable_ssl_options()->verify.expected_peer_name = expected_peer_name;
     }
     std::string url = server_address;
@@ -251,7 +251,7 @@ void CallServerWithExpectedPeerName(int port, const char* server_address,
     req.set_message(EXP_REQUEST);
     brpc::Controller cntl;
     test::EchoService_Stub stub(&channel);
-    stub.Echo(&cntl, &req, &res, NULL);
+    stub.Echo(&cntl, &req, &res, nullptr);
     if (expect_success) {
         EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
         EXPECT_EQ(EXP_RESPONSE, res.message());
@@ -274,8 +274,8 @@ TEST_F(SSLTest, verify_peer_name) {
         &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server.Start(port, &server_options));
 
-    CallServerWithExpectedPeerName(port, "https://localhost", NULL, true);
-    CallServerWithExpectedPeerName(port, "https://127.0.0.1", NULL, false);
+    CallServerWithExpectedPeerName(port, "https://localhost", nullptr, true);
+    CallServerWithExpectedPeerName(port, "https://127.0.0.1", nullptr, false);
     CallServerWithExpectedPeerName(
         port, "https://localhost", "wrong.local", false);
 
@@ -286,11 +286,11 @@ TEST_F(SSLTest, verify_peer_name) {
 TEST_F(SSLTest, expected_peer_name_requires_peer_verification) {
     brpc::ChannelSSLOptions options;
     options.verify.expected_peer_name = "localhost";
-    EXPECT_EQ(NULL, brpc::CreateClientSSLContext(options));
+    EXPECT_EQ(nullptr, brpc::CreateClientSSLContext(options));
 
     options.verify.verify_depth = 1;
     options.verify.verify_mode = brpc::VerifyMode::VERIFY_NONE;
-    EXPECT_EQ(NULL, brpc::CreateClientSSLContext(options));
+    EXPECT_EQ(nullptr, brpc::CreateClientSSLContext(options));
 }
 
 TEST_F(SSLTest, peer_name_verification_capability) {
@@ -311,7 +311,7 @@ void ProcessResponse(brpc::InputMessageBase* msg_base) {
     ASSERT_EQ(0, response_meta.error_code()) << response_meta.error_text();
 
     const brpc::CallId cid = { static_cast<uint64_t>(meta.correlation_id()) };
-    brpc::Controller* cntl = NULL;
+    brpc::Controller* cntl = nullptr;
     ASSERT_EQ(0, bthread_id_lock(cid, (void**)&cntl));
     ASSERT_NE(nullptr, cntl);
     ASSERT_TRUE(brpc::ParsePbFromIOBuf(cntl->response(), msg->payload));
@@ -321,14 +321,14 @@ void ProcessResponse(brpc::InputMessageBase* msg_base) {
 TEST_F(SSLTest, connect_on_create) {
     brpc::Protocol dummy_protocol = {
         brpc::policy::ParseRpcMessage, brpc::SerializeRequestDefault,
-        brpc::policy::PackRpcRequest,NULL, ProcessResponse,
-        NULL, NULL, NULL, brpc::CONNECTION_TYPE_ALL, "ssl_ut_baidu"
+        brpc::policy::PackRpcRequest,nullptr, ProcessResponse,
+        nullptr, nullptr, nullptr, brpc::CONNECTION_TYPE_ALL, "ssl_ut_baidu"
     };
     ASSERT_EQ(0, RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
 
     brpc::InputMessageHandler dummy_handler ={
         dummy_protocol.parse, dummy_protocol.process_response,
-        NULL, NULL, dummy_protocol.name
+        nullptr, nullptr, dummy_protocol.name
     };
     brpc::InputMessenger messenger;
     ASSERT_EQ(0, messenger.AddHandler(dummy_handler));
@@ -378,9 +378,9 @@ TEST_F(SSLTest, connect_on_create) {
         cntl._response = &res;
         const brpc::CallId correlation_id = cntl.call_id();
         brpc::SerializeRequestDefault(&request_body, &cntl, &req);
-        brpc::policy::PackRpcRequest(&request_buf, NULL, correlation_id.value,
+        brpc::policy::PackRpcRequest(&request_buf, nullptr, correlation_id.value,
                                      test::EchoService_Stub::descriptor()->method(0),
-                                     &cntl, request_body, NULL);
+                                     &cntl, request_body, nullptr);
         ASSERT_EQ(0, ptr->Write(&request_buf));
         brpc::Join(correlation_id);
         ASSERT_EQ(EXP_RESPONSE, res.message());
@@ -408,7 +408,7 @@ void CheckCert(const char* cname, const char* cert) {
     ASSERT_EQ(0, brpc::Socket::Address(ids[0], &sock));
 
     X509* x509 = sock->GetPeerCertificate();
-    ASSERT_TRUE(x509 != NULL);
+    ASSERT_TRUE(x509 != nullptr);
     std::vector<std::string> cnames;
     brpc::ExtractHostnames(x509, &cnames);
     ASSERT_EQ(cert, cnames[0]) << x509;
@@ -528,7 +528,7 @@ void* ssl_perf_client(void* arg) {
                   << size * REP / tm.u_elapsed() << "M/s"
                   << ", latency=" << tm.u_elapsed() / REP << "us";
     }
-    return NULL;
+    return nullptr;
 }
 
 void* ssl_perf_server(void* arg) {
@@ -541,23 +541,23 @@ void* ssl_perf_server(void* arg) {
             SSL_read(ssl, buf, size);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(SSLTest, ssl_perf) {
     const butil::EndPoint ep(butil::IP_ANY, 5961);
     butil::fd_guard listenfd(butil::tcp_listen(ep));
     ASSERT_GT(listenfd, 0);
-    int clifd = tcp_connect(ep, NULL);
+    int clifd = tcp_connect(ep, nullptr);
     ASSERT_GT(clifd, 0);
-    int servfd = accept(listenfd, NULL, NULL);
+    int servfd = accept(listenfd, nullptr, nullptr);
     ASSERT_GT(servfd, 0);
 
     brpc::ChannelSSLOptions opt;
     SSL_CTX* cli_ctx = brpc::CreateClientSSLContext(opt);
     SSL_CTX* serv_ctx =
             brpc::CreateServerSSLContext("cert1.crt", "cert1.key",
-                                         brpc::SSLOptions(), NULL, NULL);
+                                         brpc::SSLOptions(), nullptr, nullptr);
     SSL* cli_ssl = brpc::CreateSSLSession(cli_ctx, 0, clifd, false);
 #if defined(SSL_CTRL_SET_TLSEXT_HOSTNAME) || defined(USE_MESALINK)
     SSL_set_tlsext_host_name(cli_ssl, "localhost");
@@ -565,10 +565,10 @@ TEST_F(SSLTest, ssl_perf) {
     SSL* serv_ssl = brpc::CreateSSLSession(serv_ctx, 0, servfd, true);
     pthread_t cpid;
     pthread_t spid;
-    ASSERT_EQ(0, pthread_create(&cpid, NULL, ssl_perf_client, cli_ssl));
-    ASSERT_EQ(0, pthread_create(&spid, NULL, ssl_perf_server , serv_ssl));
-    ASSERT_EQ(0, pthread_join(cpid, NULL));
-    ASSERT_EQ(0, pthread_join(spid, NULL));
+    ASSERT_EQ(0, pthread_create(&cpid, nullptr, ssl_perf_client, cli_ssl));
+    ASSERT_EQ(0, pthread_create(&spid, nullptr, ssl_perf_server , serv_ssl));
+    ASSERT_EQ(0, pthread_join(cpid, nullptr));
+    ASSERT_EQ(0, pthread_join(spid, nullptr));
 
     SSL_free(cli_ssl);
     SSL_free(serv_ssl);
@@ -584,7 +584,7 @@ TEST_F(SSLTest, ssl_perf) {
 void* tls13_do_handshake(void* arg) {
     SSL* ssl = (SSL*)arg;
     EXPECT_EQ(1, SSL_do_handshake(ssl));
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(SSLTest, tls13_protocol_string) {
@@ -592,9 +592,9 @@ TEST_F(SSLTest, tls13_protocol_string) {
     const butil::EndPoint ep(butil::IP_ANY, 8613);
     butil::fd_guard listenfd(butil::tcp_listen(ep));
     ASSERT_GT(listenfd, 0);
-    int clifd = tcp_connect(ep, NULL);
+    int clifd = tcp_connect(ep, nullptr);
     ASSERT_GT(clifd, 0);
-    int servfd = accept(listenfd, NULL, NULL);
+    int servfd = accept(listenfd, nullptr, nullptr);
     ASSERT_GT(servfd, 0);
 
     brpc::ChannelSSLOptions opt;
@@ -603,7 +603,7 @@ TEST_F(SSLTest, tls13_protocol_string) {
     ASSERT_NE(nullptr, cli_ctx);
     SSL_CTX* serv_ctx =
             brpc::CreateServerSSLContext("cert1.crt", "cert1.key",
-                                         brpc::SSLOptions(), NULL, NULL);
+                                         brpc::SSLOptions(), nullptr, nullptr);
     ASSERT_NE(nullptr, serv_ctx);
     SSL* cli_ssl = brpc::CreateSSLSession(cli_ctx, 0, clifd, false);
 #if defined(SSL_CTRL_SET_TLSEXT_HOSTNAME) || defined(USE_MESALINK)
@@ -614,13 +614,13 @@ TEST_F(SSLTest, tls13_protocol_string) {
     ASSERT_NE(nullptr, serv_ssl);
     pthread_t cpid;
     pthread_t spid;
-    ASSERT_EQ(0, pthread_create(&cpid, NULL, tls13_do_handshake, cli_ssl));
-    ASSERT_EQ(0, pthread_create(&spid, NULL, tls13_do_handshake, serv_ssl));
-    ASSERT_EQ(0, pthread_join(cpid, NULL));
-    ASSERT_EQ(0, pthread_join(spid, NULL));
+    ASSERT_EQ(0, pthread_create(&cpid, nullptr, tls13_do_handshake, cli_ssl));
+    ASSERT_EQ(0, pthread_create(&spid, nullptr, tls13_do_handshake, serv_ssl));
+    ASSERT_EQ(0, pthread_join(cpid, nullptr));
+    ASSERT_EQ(0, pthread_join(spid, nullptr));
 
     const char* version = SSL_get_version(cli_ssl);
-    ASSERT_TRUE(version != NULL);
+    ASSERT_TRUE(version != nullptr);
     EXPECT_STREQ("TLSv1.3", version) << "negotiated protocol=" << version;
 
     SSL_free(cli_ssl);
@@ -637,7 +637,7 @@ TEST_F(SSLTest, tls13_protocol_string) {
     brpc::ChannelSSLOptions opt;
     opt.protocols = "TLSv1.3";
     SSL_CTX* ctx = brpc::CreateClientSSLContext(opt);
-    ASSERT_TRUE(ctx != NULL);
+    ASSERT_TRUE(ctx != nullptr);
     SSL_CTX_free(ctx);
 }
 

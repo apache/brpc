@@ -65,7 +65,7 @@ bool MemcacheRequest::MergePartialFromCodedStream(
     
     // simple approach just making it work.
     butil::IOBuf tmp;
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (input->GetDirectBufferPointer(&data, &size)) {
         tmp.append(data, size);
@@ -77,7 +77,7 @@ bool MemcacheRequest::MergePartialFromCodedStream(
         char aux_buf[sizeof(policy::MemcacheRequestHeader)];
         const policy::MemcacheRequestHeader* header =
             (const policy::MemcacheRequestHeader*)tmp.fetch(aux_buf, sizeof(aux_buf));
-        if (header == NULL) {
+        if (header == nullptr) {
             return false;
         }
         if (header->magic != (uint8_t)policy::MC_MAGIC_REQUEST) {
@@ -100,7 +100,7 @@ void MemcacheRequest::SerializeWithCachedSizes(
 
     // simple approach just making it work.
     butil::IOBufAsZeroCopyInputStream wrapper(_buf);
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (wrapper.Next(&data, &size)) {
         output->WriteRaw(data, size);
@@ -172,7 +172,7 @@ bool MemcacheResponse::MergePartialFromCodedStream(
     LOG(WARNING) << "You're not supposed to parse a MemcacheResponse";
 
     // simple approach just making it work.
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (input->GetDirectBufferPointer(&data, &size)) {
         _buf.append(data, size);
@@ -187,7 +187,7 @@ void MemcacheResponse::SerializeWithCachedSizes(
     
     // simple approach just making it work.
     butil::IOBufAsZeroCopyInputStream wrapper(_buf);
-    const void* data = NULL;
+    const void* data = nullptr;
     int size = 0;
     while (wrapper.Next(&data, &size)) {
         output->WriteRaw(data, size);
@@ -423,10 +423,10 @@ bool MemcacheResponse::PopGet(
 // MUST NOT have key
 // MUST NOT have value
 bool MemcacheResponse::PopDelete() {
-    return PopStore(policy::MC_BINARY_DELETE, NULL);
+    return PopStore(policy::MC_BINARY_DELETE, nullptr);
 }
 bool MemcacheResponse::PopFlush() {
-    return PopStore(policy::MC_BINARY_FLUSH, NULL);
+    return PopStore(policy::MC_BINARY_FLUSH, nullptr);
 }
 
 struct StoreHeaderWithExtras {

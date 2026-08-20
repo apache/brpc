@@ -40,7 +40,7 @@ TEST(ProcessMemoryTest, GetModuleFromAddress) {
   //
   // kConstantInModule is a constant in this file and
   // therefore within the unit test EXE.
-  EXPECT_EQ(::GetModuleHandle(NULL),
+  EXPECT_EQ(::GetModuleHandle(nullptr),
             butil::GetModuleFromAddress(
                 const_cast<int*>(&kConstantInModule)));
 
@@ -63,7 +63,7 @@ TEST(ProcessMemoryTest, EnableLFH) {
       return;
   }
   HMODULE kernel32 = GetModuleHandle(L"kernel32.dll");
-  ASSERT_TRUE(kernel32 != NULL);
+  ASSERT_TRUE(kernel32 != nullptr);
   HeapQueryFn heap_query = reinterpret_cast<HeapQueryFn>(GetProcAddress(
       kernel32,
       "HeapQueryInformation"));
@@ -71,7 +71,7 @@ TEST(ProcessMemoryTest, EnableLFH) {
   // On Windows 2000, the function is not exported. This is not a reason to
   // fail but we won't be able to retrieves information about the heap, so we
   // should stop here.
-  if (heap_query == NULL)
+  if (heap_query == nullptr)
     return;
 
   HANDLE heaps[1024] = { 0 };
@@ -110,10 +110,10 @@ TEST(ProcessMemoryTest, EnableLFH) {
 TEST(ProcessMemoryTest, MacMallocFailureDoesNotTerminate) {
   // Test that ENOMEM doesn't crash via CrMallocErrorBreak two ways: the exit
   // code and lack of the error string. The number of bytes is one less than
-  // MALLOC_ABSOLUTE_MAX_SIZE, more than which the system early-returns NULL and
+  // MALLOC_ABSOLUTE_MAX_SIZE, more than which the system early-returns nullptr and
   // does not call through malloc_error_break(). See the comment at
   // EnableTerminationOnOutOfMemory() for more information.
-  void* buf = NULL;
+  void* buf = nullptr;
   ASSERT_EXIT(
       {
         butil::EnableTerminationOnOutOfMemory();
@@ -165,7 +165,7 @@ int tc_set_new_mode(int mode);
 class OutOfMemoryTest : public testing::Test {
  public:
   OutOfMemoryTest()
-    : value_(NULL),
+    : value_(nullptr),
     // Make test size as large as possible minus a few pages so
     // that alignment or other rounding doesn't make it wrap.
     test_size_(std::numeric_limits<std::size_t>::max() - 12 * 1024),
@@ -224,7 +224,7 @@ TEST_F(OutOfMemoryDeathTest, Malloc) {
 TEST_F(OutOfMemoryDeathTest, Realloc) {
   ASSERT_DEATH({
       SetUpInDeathAssert();
-      value_ = realloc(NULL, test_size_);
+      value_ = realloc(nullptr, test_size_);
     }, "");
 }
 
@@ -267,7 +267,7 @@ TEST_F(OutOfMemoryDeathTest, ViaSharedLibraries) {
   // This tests that the run-time symbol resolution is overriding malloc for
   // shared libraries (including libc itself) as well as for our code.
   std::string format = butil::StringPrintf("%%%zud", test_size_);
-  char *value = NULL;
+  char *value = nullptr;
   ASSERT_DEATH({
       SetUpInDeathAssert();
       EXPECT_EQ(-1, asprintf(&value, format.c_str(), 0));
@@ -306,7 +306,7 @@ TEST_F(OutOfMemoryDeathTest, ReallocPurgeable) {
   malloc_zone_t* zone = malloc_default_purgeable_zone();
   ASSERT_DEATH({
       SetUpInDeathAssert();
-      value_ = malloc_zone_realloc(zone, NULL, test_size_);
+      value_ = malloc_zone_realloc(zone, nullptr, test_size_);
     }, "");
 }
 
@@ -403,16 +403,16 @@ class OutOfMemoryHandledTest : public OutOfMemoryTest {
 #if !defined(MEMORY_TOOL_REPLACES_ALLOCATOR)
 TEST_F(OutOfMemoryHandledTest, UncheckedMalloc) {
   EXPECT_TRUE(butil::UncheckedMalloc(kSafeMallocSize, &value_));
-  EXPECT_TRUE(value_ != NULL);
+  EXPECT_TRUE(value_ != nullptr);
   free(value_);
 
   EXPECT_FALSE(butil::UncheckedMalloc(test_size_, &value_));
-  EXPECT_TRUE(value_ == NULL);
+  EXPECT_TRUE(value_ == nullptr);
 }
 
 TEST_F(OutOfMemoryHandledTest, UncheckedCalloc) {
   EXPECT_TRUE(butil::UncheckedCalloc(1, kSafeMallocSize, &value_));
-  EXPECT_TRUE(value_ != NULL);
+  EXPECT_TRUE(value_ != nullptr);
   const char* bytes = static_cast<const char*>(value_);
   for (size_t i = 0; i < kSafeMallocSize; ++i)
     EXPECT_EQ(0, bytes[i]);
@@ -420,14 +420,14 @@ TEST_F(OutOfMemoryHandledTest, UncheckedCalloc) {
 
   EXPECT_TRUE(
       butil::UncheckedCalloc(kSafeCallocItems, kSafeCallocSize, &value_));
-  EXPECT_TRUE(value_ != NULL);
+  EXPECT_TRUE(value_ != nullptr);
   bytes = static_cast<const char*>(value_);
   for (size_t i = 0; i < (kSafeCallocItems * kSafeCallocSize); ++i)
     EXPECT_EQ(0, bytes[i]);
   free(value_);
 
   EXPECT_FALSE(butil::UncheckedCalloc(1, test_size_, &value_));
-  EXPECT_TRUE(value_ == NULL);
+  EXPECT_TRUE(value_ == nullptr);
 }
 #endif  // !defined(MEMORY_TOOL_REPLACES_ALLOCATOR)
 #endif  // !defined(OS_ANDROID) && !defined(OS_OPENBSD) && !defined(OS_WIN)

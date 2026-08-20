@@ -88,7 +88,7 @@ TEST(StackContainer, VectorDoubleDelete) {
   EXPECT_EQ(alive, 1);
 
   Dummy* dummy_unref = dummy.get();
-  dummy = NULL;
+  dummy = nullptr;
   EXPECT_EQ(alive, 1);
 
   Container::iterator itr = std::find(vect->begin(), vect->end(), dummy_unref);

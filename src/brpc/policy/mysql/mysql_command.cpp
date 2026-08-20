@@ -74,7 +74,7 @@ butil::Status MakePacket(butil::IOBuf* outbuf, const H& head, const F& func, con
 butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
                                const butil::StringPiece& command) {
-    if (outbuf == NULL || command.size() == 0) {
+    if (outbuf == nullptr || command.size() == 0) {
         return butil::Status(EINVAL, "[MysqlMakeCommand] Param[outbuf] or [stmt] is NULL");
     }
     auto func =
@@ -200,7 +200,7 @@ butil::Status MysqlMakeExecuteData(MysqlStatementStub* stmt,
             break;
         case MYSQL_FIELD_TYPE_STRING: {
             const butil::StringPiece* p = (butil::StringPiece*)value;
-            if (p == NULL || p->data() == NULL) {
+            if (p == nullptr || p->data() == nullptr) {
                 param_types.types[index + index] = MYSQL_FIELD_TYPE_NULL;
                 param_types.types[index + index + 1] = 0x00;
                 null_mask.mask[index / 8] |= 1 << (index & 7);

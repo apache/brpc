@@ -29,13 +29,13 @@ void* ProduceThread(void* arg) {
     for (uint i = 0; i < MAX_COUNT; ++i) {
         q->Enqueue(i);
     }
-    return NULL;
+    return nullptr;
 }
 
 void* ConsumeThread1(void* arg) {
     auto q = (butil::MPSCQueue<uint>*)arg;
     Consume(*q, true);
-    return NULL;
+    return nullptr;
 }
 
 TEST(MPSCQueueTest, spsc_single_thread) {
@@ -49,12 +49,12 @@ TEST(MPSCQueueTest, spsc_single_thread) {
 TEST(MPSCQueueTest, spsc_multi_thread) {
     butil::MPSCQueue<uint> q;
     pthread_t produce_tid;
-    ASSERT_EQ(0, pthread_create(&produce_tid, NULL, ProduceThread, &q));
+    ASSERT_EQ(0, pthread_create(&produce_tid, nullptr, ProduceThread, &q));
     pthread_t consume_tid;
-    ASSERT_EQ(0, pthread_create(&consume_tid, NULL, ConsumeThread1, &q));
+    ASSERT_EQ(0, pthread_create(&consume_tid, nullptr, ConsumeThread1, &q));
 
-    pthread_join(produce_tid, NULL);
-    pthread_join(consume_tid, NULL);
+    pthread_join(produce_tid, nullptr);
+    pthread_join(consume_tid, nullptr);
 
 }
 
@@ -68,7 +68,7 @@ void* MultiProduceThread(void* arg) {
         }
         q->Enqueue(i);
     }
-    return NULL;
+    return nullptr;
 }
 
 butil::Mutex g_mutex;
@@ -98,7 +98,7 @@ void Consume2(butil::MPSCQueue<uint>& q) {
 void* ConsumeThread2(void* arg) {
     auto q = (butil::MPSCQueue<uint>*)arg;
     Consume2(*q);
-    return NULL;
+    return nullptr;
 }
 
 TEST(MPSCQueueTest, mpsc_multi_thread) {
@@ -107,16 +107,16 @@ TEST(MPSCQueueTest, mpsc_multi_thread) {
     int thread_num = 8;
     pthread_t threads[thread_num];
     for (int i = 0; i < thread_num; ++i) {
-        ASSERT_EQ(0, pthread_create(&threads[i], NULL, MultiProduceThread, &q));
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, MultiProduceThread, &q));
     }
 
     pthread_t consume_tid;
-    ASSERT_EQ(0, pthread_create(&consume_tid, NULL, ConsumeThread2, &q));
+    ASSERT_EQ(0, pthread_create(&consume_tid, nullptr, ConsumeThread2, &q));
 
     for (int i = 0; i < thread_num; ++i) {
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], nullptr);
     }
-    pthread_join(consume_tid, NULL);
+    pthread_join(consume_tid, nullptr);
 
 }
 

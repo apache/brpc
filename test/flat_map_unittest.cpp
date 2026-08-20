@@ -237,7 +237,7 @@ TEST_F(FlatMapTest, seek_by_string_piece) {
     ASSERT_TRUE(m.seek(k2));
     ASSERT_EQ(2, *m.seek(k2));
     butil::StringPiece k3("heheda");
-    ASSERT_TRUE(m.seek(k3) == NULL);
+    ASSERT_TRUE(m.seek(k3) == nullptr);
 }
 
 TEST_F(FlatMapTest, to_lower) {
@@ -351,7 +351,7 @@ TEST_F(FlatMapTest, make_sure_all_methods_compile) {
     ASSERT_EQ(100, m1[1]);
     ASSERT_EQ(3u, m1.size());
     ASSERT_TRUE(m1.seek(3));
-    ASSERT_EQ(NULL, m1.seek(4));
+    ASSERT_EQ(nullptr, m1.seek(4));
     ASSERT_EQ(1u, m1.erase(3));
     ASSERT_EQ(0u, m1.erase(4));
     ASSERT_EQ(2u, m1.size());
@@ -379,7 +379,7 @@ TEST_F(FlatMapTest, make_sure_all_methods_compile) {
     s1.insert(1);
     ASSERT_TRUE(s1.seek(1));
     ASSERT_EQ(2u, s1.size());
-    ASSERT_EQ(NULL, s1.seek(3));
+    ASSERT_EQ(nullptr, s1.seek(3));
     ASSERT_EQ(0u, s1.erase(3));
     ASSERT_EQ(2u, s1.size());
     ASSERT_EQ(1u, s1.erase(2));
@@ -540,8 +540,8 @@ TEST_F(FlatMapTest, fast_iterator) {
     ASSERT_EQ(0, m1.init(1));
     ASSERT_EQ(0, m2.init(16384));
 
-    ASSERT_EQ(NULL, m1._thumbnail);
-    ASSERT_TRUE(NULL != m2._thumbnail);
+    ASSERT_EQ(nullptr, m1._thumbnail);
+    ASSERT_TRUE(nullptr != m2._thumbnail);
 
     const size_t N = 170;
     std::vector<uint64_t> keys;
@@ -616,7 +616,7 @@ typedef butil::FlatMap<uint64_t, uint64_t> PositionHintMap;
 
 static void fill_position_hint_map(PositionHintMap* map,
                                    std::vector<uint64_t>* keys) {
-    srand(time(NULL));
+    srand(time(nullptr));
     const size_t N = 5;
     if (!map->initialized()) {
         ASSERT_EQ(0, map->init(N * 3 / 2, 80));
@@ -665,7 +665,7 @@ TEST_F(FlatMapTest, do_nothing_during_iteration) {
 }
 
 struct RemoveInsertVisitedOnPause {
-    RemoveInsertVisitedOnPause() : keys(NULL), map(NULL) {
+    RemoveInsertVisitedOnPause() : keys(nullptr), map(nullptr) {
         removed_keys.init(32);
         inserted_keys.init(32);
     }
@@ -721,7 +721,7 @@ TEST_F(FlatMapTest, erase_insert_visited_during_iteration) {
 }
 
 struct RemoveHintedOnPause {
-    RemoveHintedOnPause() : map(NULL) {
+    RemoveHintedOnPause() : map(nullptr) {
         removed_keys.init(32);
     }
     void operator()(const PositionHintMap::PositionHint& hint) {
@@ -764,7 +764,7 @@ TEST_F(FlatMapTest, erase_hinted_during_iteration) {
 
 struct RemoveInsertUnvisitedOnPause {
     RemoveInsertUnvisitedOnPause()
-        : keys_out(NULL), all_keys(NULL), map(NULL) {
+        : keys_out(nullptr), all_keys(nullptr), map(nullptr) {
         removed_keys.init(32);
         inserted_keys.init(32);
     }
@@ -889,7 +889,7 @@ TEST_F(FlatMapTest, perf_cmp_with_map_storing_pointers) {
     sum = 0;
     tm.start();
     for (size_t i = 0; i < r.size(); ++i) {
-        sum += (m2.seek(r[i]) != NULL);
+        sum += (m2.seek(r[i]) != nullptr);
     }
     tm.stop();
     LOG(INFO) << "FlatMap takes " << tm.n_elapsed()/r.size();
@@ -973,7 +973,7 @@ TEST_F(FlatMapTest, key_value_are_not_constructed_before_first_insertion) {
     const Key k1 = 1;
     ASSERT_EQ(1, n_con_key);
     ASSERT_EQ(0, n_cp_con_key);
-    ASSERT_EQ(NULL, m.seek(k1));
+    ASSERT_EQ(nullptr, m.seek(k1));
     ASSERT_EQ(0u, m.erase(k1));
     ASSERT_EQ(1, n_con_key);
     ASSERT_EQ(0, n_cp_con_key);
@@ -984,7 +984,7 @@ TEST_F(FlatMapTest, key_value_are_not_constructed_before_first_insertion) {
 TEST_F(FlatMapTest, manipulate_uninitialized_map) {
     butil::FlatMap<int, int> m;
     ASSERT_TRUE(m.initialized());
-    ASSERT_EQ(NULL, m.seek(1));
+    ASSERT_EQ(nullptr, m.seek(1));
     ASSERT_EQ(0u, m.erase(1));
     ASSERT_EQ(0u, m.size());
     ASSERT_TRUE(m.empty());
@@ -1088,7 +1088,7 @@ TEST_F(FlatMapTest, sanity) {
     ASSERT_TRUE(p && *p == 10);
     ASSERT_EQ(0UL, m._pool.count_allocated());
 
-    ASSERT_EQ(NULL, m.seek(k2));
+    ASSERT_EQ(nullptr, m.seek(k2));
 
     // Override
     m[k1] = 100;
@@ -1113,7 +1113,7 @@ TEST_F(FlatMapTest, sanity) {
     p = m.seek(k2);
     ASSERT_TRUE(p && *p == 30);
 
-    ASSERT_EQ(NULL, m.seek(2049));
+    ASSERT_EQ(nullptr, m.seek(2049));
 
     Map::iterator it = m.begin();
     ASSERT_EQ(k1, it->first);
@@ -1128,7 +1128,7 @@ TEST_F(FlatMapTest, sanity) {
     ASSERT_EQ(1UL, m.erase(k1));
     ASSERT_EQ(2UL, m.size());
     ASSERT_FALSE(m.empty());
-    ASSERT_EQ(NULL, m.seek(k1));
+    ASSERT_EQ(nullptr, m.seek(k1));
     ASSERT_EQ(30, *m.seek(k2));
     ASSERT_EQ(20, *m.seek(k3));
     ASSERT_EQ(1UL, m._pool.count_allocated());
@@ -1144,9 +1144,9 @@ TEST_F(FlatMapTest, sanity) {
     m.clear();
     ASSERT_EQ(m.size(), 0ul);
     ASSERT_TRUE(m.empty());
-    ASSERT_EQ(NULL, m.seek(k1));
-    ASSERT_EQ(NULL, m.seek(k2));
-    ASSERT_EQ(NULL, m.seek(k3));
+    ASSERT_EQ(nullptr, m.seek(k1));
+    ASSERT_EQ(nullptr, m.seek(k2));
+    ASSERT_EQ(nullptr, m.seek(k3));
 }
 
 TEST_F(FlatMapTest, random_insert_erase) {
@@ -1197,7 +1197,7 @@ TEST_F(FlatMapTest, random_insert_erase) {
                      it != ref[i].end(); ++it)
                 {
                     Value* p_value = ht[i].seek(it->first);
-                    ASSERT_TRUE (p_value != NULL);
+                    ASSERT_TRUE (p_value != nullptr);
                     ASSERT_EQ (it->second, p_value->x_);
                 }
                 ASSERT_EQ (ht[i].size(), ref[i].size());

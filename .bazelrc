@@ -87,3 +87,5 @@ build:macos-asan --copt -D_FORTIFY_SOURCE=0
 build:macos-asan --dynamic_mode=off
 
 test:asan --test_env=ASAN_OPTIONS=detect_leaks=0:detect_stack_use_after_return=1
+
+build:ubring --define BRPC_WITH_UBRING=true

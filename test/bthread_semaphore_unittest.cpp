@@ -28,7 +28,7 @@ void* sem_waiter(void* arg) {
     for (size_t i = 0; i < SEM_COUNT; ++i) {
         bthread_sem_wait(sem);
     }
-    return NULL;
+    return nullptr;
 }
 
 void* sem_poster(void* arg) {
@@ -37,7 +37,7 @@ void* sem_poster(void* arg) {
     for (size_t i = 0; i < SEM_COUNT; ++i) {
         bthread_sem_post(sem);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(SemaphoreTest, sanity) {
@@ -49,10 +49,10 @@ TEST(SemaphoreTest, sanity) {
 
     bthread_t waiter_th;
     bthread_t poster_th;
-    ASSERT_EQ(0, bthread_start_urgent(&waiter_th, NULL, sem_waiter, &sem));
-    ASSERT_EQ(0, bthread_start_urgent(&poster_th, NULL, sem_poster, &sem));
-    ASSERT_EQ(0, bthread_join(waiter_th, NULL));
-    ASSERT_EQ(0, bthread_join(poster_th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&waiter_th, nullptr, sem_waiter, &sem));
+    ASSERT_EQ(0, bthread_start_urgent(&poster_th, nullptr, sem_poster, &sem));
+    ASSERT_EQ(0, bthread_join(waiter_th, nullptr));
+    ASSERT_EQ(0, bthread_join(poster_th, nullptr));
 
     ASSERT_EQ(0, bthread_sem_destroy(&sem));
 }
@@ -66,16 +66,16 @@ TEST(SemaphoreTest, used_in_pthread) {
     pthread_t waiter_th[8];
     pthread_t poster_th[8];
     for (auto& th : waiter_th) {
-        ASSERT_EQ(0, pthread_create(&th, NULL, sem_waiter, &sem));
+        ASSERT_EQ(0, pthread_create(&th, nullptr, sem_waiter, &sem));
     }
     for (auto& th : poster_th) {
-        ASSERT_EQ(0, pthread_create(&th, NULL, sem_poster, &sem));
+        ASSERT_EQ(0, pthread_create(&th, nullptr, sem_poster, &sem));
     }
     for (auto& th : waiter_th) {
-        pthread_join(th, NULL);
+        pthread_join(th, nullptr);
     }
     for (auto& th : poster_th) {
-        pthread_join(th, NULL);
+        pthread_join(th, nullptr);
     }
 
     ASSERT_EQ(0, bthread_sem_destroy(&sem));
@@ -84,15 +84,15 @@ TEST(SemaphoreTest, used_in_pthread) {
 void* do_timedwait(void *arg) {
     struct timespec t = { -2, 0 };
     EXPECT_EQ(ETIMEDOUT, bthread_sem_timedwait((bthread_sem_t*)arg, &t));
-    return NULL;
+    return nullptr;
 }
 
 TEST(SemaphoreTest, timedwait) {
     bthread_sem_t sem;
     ASSERT_EQ(0, bthread_sem_init(&sem, 0));
     bthread_t th;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_timedwait, &sem));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_timedwait, &sem));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
     ASSERT_EQ(0, bthread_sem_destroy(&sem));
 }
 
@@ -105,7 +105,7 @@ struct TryWaitArgs {
 void* do_trywait(void *arg) {
     auto trylock_args = (TryWaitArgs*)arg;
     EXPECT_EQ(trylock_args->rc, bthread_sem_trywait(trylock_args->sem));
-    return NULL;
+    return nullptr;
 }
 
 TEST(SemaphoreTest, trywait) {
@@ -120,11 +120,11 @@ TEST(SemaphoreTest, trywait) {
     ASSERT_EQ(0, bthread_sem_post(&sem));
     bthread_t th;
     TryWaitArgs args{ &sem, 0};
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_trywait, &args));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_trywait, &args));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
     args.rc = EAGAIN;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, do_trywait, &args));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, do_trywait, &args));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
 
     ASSERT_EQ(0, bthread_sem_destroy(&sem));
 }
@@ -157,7 +157,7 @@ void* loop_until_stopped(void* arg) {
     for (size_t i = 0; i < SEM_COUNT; ++i) {
         args->op(args->sem, 20);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(SemaphoreTest, mix_thread_types) {
@@ -182,7 +182,7 @@ TEST(SemaphoreTest, mix_thread_types) {
         } else {
             args.push_back({ &sem, post_op });
         }
-        ASSERT_EQ(0, pthread_create(&pthreads[i], NULL, loop_until_stopped, &args.back()));
+        ASSERT_EQ(0, pthread_create(&pthreads[i], nullptr, loop_until_stopped, &args.back()));
     }
 
     for (int i = 0; i < M; ++i) {
@@ -191,14 +191,14 @@ TEST(SemaphoreTest, mix_thread_types) {
         } else {
             args.push_back({ &sem, post_op });
         }
-        const bthread_attr_t* attr = i % 2 ? NULL : &BTHREAD_ATTR_PTHREAD;
+        const bthread_attr_t* attr = i % 2 ? nullptr : &BTHREAD_ATTR_PTHREAD;
         ASSERT_EQ(0, bthread_start_urgent(&bthreads[i], attr, loop_until_stopped, &args.back()));
     }
     for (bthread_t bthread : bthreads) {
-        bthread_join(bthread, NULL);
+        bthread_join(bthread, nullptr);
     }
     for (pthread_t pthread : pthreads) {
-        pthread_join(pthread, NULL);
+        pthread_join(pthread, nullptr);
     }
 
     ASSERT_EQ(0, bthread_sem_destroy(&sem));

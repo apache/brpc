@@ -54,7 +54,7 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-gdr,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-gdr,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,with-cpu-frequency,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
 WITH_RDMA=0
@@ -68,6 +68,7 @@ BRPC_DEBUG_BTHREAD_SCHE_SAFETY=0
 DEBUGSYMBOLS=-g
 WERROR=
 BRPC_DEBUG_LOCK=0
+WITH_CPU_FREQUENCY=0
 
 if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
 
@@ -95,6 +96,7 @@ while true; do
         --with-bthread-tracer) WITH_BTHREAD_TRACER=1; shift 1 ;;
         --with-debug-bthread-sche-safety ) BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1; shift 1 ;;
         --with-debug-lock ) BRPC_DEBUG_LOCK=1; shift 1 ;;
+        --with-cpu-frequency ) WITH_CPU_FREQUENCY=1; shift 1 ;;
         --with-asan) WITH_ASAN=1; shift 1 ;;
         --with-riscv-zvbc) WITH_RISCV_ZVBC=1; shift 1 ;;
         --with-riscv-zbc) WITH_RISCV_ZBC=1; shift 1 ;;
@@ -128,8 +130,8 @@ fi
 print_info "CC=$CC, CXX=$CXX"
 
 GCC_VERSION=$(CXX=$CXX tools/print_gcc_version.sh)
-if [ $GCC_VERSION -gt 0 ] && [ $GCC_VERSION -lt 40800 ]; then
-    >&2 $ECHO "GCC is too old, please install a newer version supporting C++11"
+if [ $GCC_VERSION -eq 0 ] || [ $GCC_VERSION -lt 50000 ]; then
+    >&2 $ECHO "C++ compiler is too old, please install GCC 5.0+ or Clang 3.5+ with C++14 support"
     exit 1
 fi
 
@@ -385,7 +387,7 @@ if [ "$PROTOBUF_VERSION" -ge 4022000 ]; then
     CXXFLAGS="-std=c++17"
     print_success "Found protobuf version $PROTOBUF_VERSION (>= v22, using C++17 with abseil)"
 else
-    CXXFLAGS="-std=c++0x"
+    CXXFLAGS="-std=c++14"
     print_success "Found protobuf version $PROTOBUF_VERSION"
 fi
 
@@ -481,7 +483,7 @@ append_to_output "STATIC_LINKINGS=$STATIC_LINKINGS"
 append_to_output "DYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
 
 # CPP means C PreProcessing, not C PlusPlus
-CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_GLOG=$WITH_GLOG -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=$BRPC_DEBUG_BTHREAD_SCHE_SAFETY -DBRPC_DEBUG_LOCK=$BRPC_DEBUG_LOCK"
+CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_GLOG=$WITH_GLOG -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=$BRPC_DEBUG_BTHREAD_SCHE_SAFETY -DBRPC_DEBUG_LOCK=$BRPC_DEBUG_LOCK -DBUTIL_USE_CPU_FREQUENCY=$WITH_CPU_FREQUENCY"
 
 # Avoid over-optimizations of TLS variables by GCC>=4.8
 # See: https://github.com/apache/brpc/issues/1693
@@ -690,6 +692,11 @@ cat << EOF > src/butil/config.h
 #undef BRPC_WITH_GLOG
 #endif
 #define BRPC_WITH_GLOG $WITH_GLOG
+
+#ifdef BUTIL_USE_CPU_FREQUENCY
+#undef BUTIL_USE_CPU_FREQUENCY
+#endif
+#define BUTIL_USE_CPU_FREQUENCY $WITH_CPU_FREQUENCY
 
 #endif  // BUTIL_CONFIG_H
 EOF

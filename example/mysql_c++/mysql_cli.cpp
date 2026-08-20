@@ -54,7 +54,7 @@ static bool access_mysql(brpc::Channel& channel, const char* command) {
     }
     brpc::MysqlResponse response;
     brpc::Controller cntl;
-    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
     if (!cntl.Failed()) {
         std::cout << response << std::endl;
     } else {
@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
 
-    // Initialize the channel, NULL means using default options.
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MYSQL;
     options.connection_type = FLAGS_connection_type;
@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
             char prompt[128];
             snprintf(prompt, sizeof(prompt), "mysql %s> ", FLAGS_server.c_str());
             std::unique_ptr<char, Freer> command(readline(prompt));
-            if (command == NULL || *command == '\0') {
+            if (command == nullptr || *command == '\0') {
                 if (g_canceled) {
                     // No input after the prompt and user pressed Ctrl-C,
                     // quit the CLI.

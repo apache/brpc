@@ -96,7 +96,7 @@ do {                                                                 \
         return (ER);                                                 \
       }                                                              \
     }                                                                \
-    FOR##_mark = NULL;                                               \
+    FOR##_mark = nullptr;                                            \
   }                                                                  \
 } while (0)
   
@@ -2424,7 +2424,7 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
 
   if (u->field_set & (1 << UF_PORT)) {
     /* Don't bother with endp; we've already validated the string */
-    unsigned long v = strtoul(buf + u->field_data[UF_PORT].off, NULL, 10);
+    unsigned long v = strtoul(buf + u->field_data[UF_PORT].off, nullptr, 10);
 
     /* Ports have a max value of 2^16 */
     if (v > 0xffff) {

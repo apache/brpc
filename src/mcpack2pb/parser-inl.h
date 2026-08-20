@@ -158,12 +158,24 @@ inline void ArrayIterator::init(InputStream* stream, size_t size) {
     _stream = stream;
     _expected_popped_bytes = _stream->popped_bytes() + sizeof(ItemsHead);
     _expected_popped_end = _stream->popped_bytes() + size;
+    if (size < sizeof(ItemsHead)) {
+        CHECK(false) << "buffer(size=" << size << ") is not enough";
+        return set_bad();
+    }
     ItemsHead items_head;
     if (_stream->cut_packed_pod(&items_head) != sizeof(ItemsHead)) {
         CHECK(false) << "buffer(size=" << size << ") is not enough";
         return set_bad();
     }
     _item_count = items_head.item_count;
+    // The item count is read from the request and may be much larger than
+    // the actual payload. The generated code uses it to Reserve() memory for
+    // repeated protobuf fields, so cap it by the remaining bytes (each item
+    // occupies at least one byte) to avoid a huge preallocation.
+    const size_t remaining = size - sizeof(ItemsHead);
+    if (_item_count > remaining) {
+        _item_count = static_cast<uint32_t>(remaining);
+    }
     operator++();
 }
 
@@ -175,6 +187,10 @@ inline void ISOArrayIterator::init(InputStream* stream, size_t size) {
     _item_size = 0;
     _item_count = 0;
     _left_item_count = 0;
+    if (size < sizeof(IsoItemsHead)) {
+        CHECK(false) << "Not enough data";
+        return set_bad();
+    }
     IsoItemsHead items_head;
     if (_stream->cut_packed_pod(&items_head) != sizeof(IsoItemsHead)) {
         CHECK(false) << "Not enough data";

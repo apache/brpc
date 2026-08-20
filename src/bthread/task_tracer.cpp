@@ -157,7 +157,7 @@ void TaskTracer::set_status(TaskStatus s, TaskMeta* m) {
 
         tracing = m->traced;
         // bthread is scheduled for the first time.
-        if (TASK_STATUS_READY == s && NULL == m->stack) {
+        if (TASK_STATUS_READY == s && nullptr == m->stack) {
             m->status = TASK_STATUS_FIRST_READY;
         } else {
             m->status = s;
@@ -205,7 +205,7 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
     };
 
     if (tid == bthread_self() ||
-        (NULL != pthread_fake_meta && tid == pthread_fake_meta->tid)) {
+        (nullptr != pthread_fake_meta && tid == pthread_fake_meta->tid)) {
         return Result::MakeErrorResult("Forbid to trace self=%d", tid);
     }
 
@@ -221,7 +221,7 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
     _inuse_signal_syncs.erase(iter, _inuse_signal_syncs.end());
 
     TaskMeta* m = TaskGroup::address_meta(tid);
-    if (NULL == m) {
+    if (nullptr == m) {
         return Result::MakeErrorResult("bthread=%d never existed", tid);
     }
 
@@ -335,7 +335,7 @@ bool TaskTracer::RegisterSignalHandler() {
         PLOG(ERROR) << "Failed to sigaction";
         return false;
     }
-    if (NULL != old_sa.sa_handler || NULL != old_sa.sa_sigaction) {
+    if (nullptr != old_sa.sa_handler || nullptr != old_sa.sa_sigaction) {
         LOG(ERROR) << "Signal handler of signal number "
                    << _signal_num << " is already registered";
         return false;
@@ -350,14 +350,15 @@ void TaskTracer::SignalHandler(int, siginfo_t* info, void* context) {
     // Ref has been taken before the signal is sent, so no need to add ref here.
     butil::intrusive_ptr<SignalSync> signal_sync(
         static_cast<SignalSync*>(info->si_value.sival_ptr), false);
-    if (NULL == signal_sync) {
+    if (nullptr == signal_sync) {
         // The signal is not from Tracer, such as TaskControl, do nothing.
         return;
     }
     // Skip the first frame, which is the signal handler itself.
-    signal_sync->result.frame_count = absl::DefaultStackUnwinder(signal_sync->result.ips, NULL,
-                                                                arraysize(signal_sync->result.ips), 1,
-                                                                context, NULL);
+    signal_sync->result.frame_count =
+        absl::DefaultStackUnwinder(signal_sync->result.ips, nullptr,
+                                   arraysize(signal_sync->result.ips),
+                                   1, context, nullptr);
     // write() is async-signal-safe.
     // Don't care about the return value.
     butil::ignore_result(write(signal_sync->pipe_fds[1], "1", 1));

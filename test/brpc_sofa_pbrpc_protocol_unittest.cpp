@@ -109,7 +109,7 @@ protected:
     virtual void TearDown() {};
 
     void VerifyMessage(brpc::InputMessageBase* msg) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;
@@ -118,7 +118,7 @@ protected:
 
     void ProcessMessage(void (*process)(brpc::InputMessageBase*),
                         brpc::InputMessageBase* msg, bool set_eof) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;
@@ -169,7 +169,7 @@ protected:
         butil::IOPortal buf;
         EXPECT_EQ((ssize_t)bytes_in_pipe,
                   buf.append_from_file_descriptor(_pipe_fds[0], 1024));
-        brpc::ParseResult pr = brpc::policy::ParseSofaMessage(&buf, NULL, false, NULL);
+        brpc::ParseResult pr = brpc::policy::ParseSofaMessage(&buf, nullptr, false, nullptr);
         EXPECT_EQ(brpc::PARSE_OK, pr.error());
         brpc::policy::MostCommonMessage* msg =
             static_cast<brpc::policy::MostCommonMessage*>(pr.message());
@@ -193,13 +193,13 @@ protected:
         brpc::SerializeRequestDefault(&request_buf, &cntl, &req);
         ASSERT_FALSE(cntl.Failed());
         brpc::policy::PackSofaRequest(
-            &total_buf, NULL, cntl.call_id().value,
+            &total_buf, nullptr, cntl.call_id().value,
             test::EchoService::descriptor()->method(0),
             &cntl, request_buf, &_auth);
         ASSERT_FALSE(cntl.Failed());
 
         brpc::ParseResult req_pr =
-                brpc::policy::ParseSofaMessage(&total_buf, NULL, false, NULL);
+                brpc::policy::ParseSofaMessage(&total_buf, nullptr, false, nullptr);
         ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
         brpc::InputMessageBase* req_msg = req_pr.message();
         ProcessMessage(brpc::policy::ProcessSofaRequest, req_msg, false);
@@ -213,6 +213,26 @@ protected:
     MyEchoService _svc;
     MyAuthenticator _auth;
 };
+
+// Build a SOFA header without a real SocketMessage. Fields are stored in host
+// byte order (see PackSofaHeader), each 64-bit field is stored as low 32-bit
+// word followed by high 32-bit word.
+static void AppendSofaTestHeader(butil::IOBuf* buf, uint32_t meta_size,
+                                 uint64_t body_size, uint64_t msg_size) {
+    char header[24];
+    memcpy(header, "SOFA", 4);
+    const uint32_t meta = meta_size;
+    const uint32_t body_words[2] = {
+        static_cast<uint32_t>(body_size & 0xFFFFFFFFULL),
+        static_cast<uint32_t>(body_size >> 32)};
+    const uint32_t msg_words[2] = {
+        static_cast<uint32_t>(msg_size & 0xFFFFFFFFULL),
+        static_cast<uint32_t>(msg_size >> 32)};
+    memcpy(header + 4, &meta, sizeof(meta));
+    memcpy(header + 8, body_words, sizeof(body_words));
+    memcpy(header + 16, msg_words, sizeof(msg_words));
+    buf->append(header, sizeof(header));
+}
 
 TEST_F(SofaTest, process_request_failed_socket) {
     brpc::policy::SofaRpcMeta meta;
@@ -287,13 +307,13 @@ TEST_F(SofaTest, complete_flow) {
     brpc::SerializeRequestDefault(&request_buf, &cntl, &req);
     ASSERT_FALSE(cntl.Failed());
     brpc::policy::PackSofaRequest(
-        &total_buf, NULL, cntl.call_id().value,
+        &total_buf, nullptr, cntl.call_id().value,
         test::EchoService::descriptor()->method(0), &cntl, request_buf, &_auth);
     ASSERT_FALSE(cntl.Failed());
 
     // Verify and handle request
     brpc::ParseResult req_pr =
-            brpc::policy::ParseSofaMessage(&total_buf, NULL, false, NULL);
+            brpc::policy::ParseSofaMessage(&total_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     brpc::InputMessageBase* req_msg = req_pr.message();
     VerifyMessage(req_msg);
@@ -303,7 +323,7 @@ TEST_F(SofaTest, complete_flow) {
     butil::IOPortal response_buf;
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
     brpc::ParseResult res_pr =
-            brpc::policy::ParseSofaMessage(&response_buf, NULL, false, NULL);
+            brpc::policy::ParseSofaMessage(&response_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, res_pr.error());
     brpc::InputMessageBase* res_msg = res_pr.message();
     ProcessMessage(brpc::policy::ProcessSofaResponse, res_msg, false);
@@ -324,13 +344,13 @@ TEST_F(SofaTest, close_in_callback) {
     brpc::SerializeRequestDefault(&request_buf, &cntl, &req);
     ASSERT_FALSE(cntl.Failed());
     brpc::policy::PackSofaRequest(
-        &total_buf, NULL, cntl.call_id().value,
+        &total_buf, nullptr, cntl.call_id().value,
         test::EchoService::descriptor()->method(0), &cntl, request_buf, &_auth);
     ASSERT_FALSE(cntl.Failed());
 
     // Handle request
     brpc::ParseResult req_pr =
-            brpc::policy::ParseSofaMessage(&total_buf, NULL, false, NULL);
+            brpc::policy::ParseSofaMessage(&total_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     brpc::InputMessageBase* req_msg = req_pr.message();
     ProcessMessage(brpc::policy::ProcessSofaRequest, req_msg, false);
@@ -343,5 +363,27 @@ TEST_F(SofaTest, sofa_compress) {
     TestSofaCompress(brpc::COMPRESS_TYPE_SNAPPY);
     TestSofaCompress(brpc::COMPRESS_TYPE_GZIP);
     TestSofaCompress(brpc::COMPRESS_TYPE_ZLIB);
+}
+
+TEST_F(SofaTest, reject_oversized_body) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 1024;
+    const uint64_t body_size = 8 * 1024 * 1024;
+    butil::IOBuf buf;
+    AppendSofaTestHeader(&buf, 0, body_size, body_size);
+    brpc::ParseResult pr =
+        brpc::policy::ParseSofaMessage(&buf, _socket.get(), false, nullptr);
+    ASSERT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA, pr.error());
+}
+
+TEST_F(SofaTest, reject_oversized_meta) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 1024;
+    const uint32_t meta_size = 8 * 1024 * 1024;
+    butil::IOBuf buf;
+    AppendSofaTestHeader(&buf, meta_size, 0, meta_size);
+    brpc::ParseResult pr =
+        brpc::policy::ParseSofaMessage(&buf, _socket.get(), false, nullptr);
+    ASSERT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA, pr.error());
 }
 } //namespace

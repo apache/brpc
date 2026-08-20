@@ -35,7 +35,7 @@ __BEGIN_DECLS
 // It's slower than mutex and not proper for general synchronizations.
 // ----------------------------------------------------------------------
 
-// Create a bthread_id_t and put it into *id. Crash when `id' is NULL.
+// Create a bthread_id_t and put it into *id. Crash when `id' is nullptr.
 // id->value will never be zero.
 // `on_error' will be called after bthread_id_error() is called.
 // -------------------------------------------------------------------------

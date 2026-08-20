@@ -12,9 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Thie empty BUILD.bazel file is required to make Bazel treat
-# this directory as a package.
 
 
 cc_binary(
@@ -22,8 +19,5 @@ cc_binary(
     srcs = ["test.cc"],
     deps = [
         "@apache_brpc//:brpc",
-        "@apache_brpc//:bthread",
-        "@apache_brpc//:bvar",
-        "@apache_brpc//:butil",
     ],
 )

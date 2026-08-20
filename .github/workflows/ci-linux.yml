@@ -65,7 +65,7 @@ jobs:
       run: |
         export CC=gcc && export CXX=g++
         mkdir gcc_build_all && cd gcc_build_all
-        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON \
+        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_UBRING=ON \
               -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON \
               -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
         make -j ${{env.proc_num}} && make clean
@@ -123,16 +123,20 @@ jobs:
     # real server (e.g. brpc_redis_unittest) actually run under bazel instead
     # of skipping. Same shared action the make-based unittest jobs use.
     - uses: ./.github/actions/install-essential-dependencies
-    - run: bazel test //test/...
+    - run: bazel test --config=rdma --config=ubring //test/...
 
   gcc-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: |
+    - run: sudo apt-get update && sudo apt-get install -y  libibverbs-dev
+    - name: root
+      run: |
         bazel build --define with_mesalink=false \
                     --define with_glog=true \
                     --define with_thrift=true \
+                    --define BRPC_WITH_RDMA=true \
+                    --define BRPC_WITH_UBRING=true \
                     --define BRPC_WITH_BORINGSSL=true \
                     --define with_debug_bthread_sche_safety=true \
                     --define with_debug_lock=true \
@@ -140,7 +144,23 @@ jobs:
                     --define with_bthread_tracer=true \
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
                     --define with_babylon_counter=true \
-                    -- //:brpc
+                    -- //:brpc //example/...
+    - name: external
+      run: |
+        cd example/build_with_bazel_module
+        bazel build --define with_mesalink=false \
+                    --define with_glog=true \
+                    --define with_thrift=true \
+                    --define BRPC_WITH_RDMA=true \
+                    --define BRPC_WITH_UBRING=true \
+                    --define BRPC_WITH_BORINGSSL=true \
+                    --define with_debug_bthread_sche_safety=true \
+                    --define with_debug_lock=true \
+                    --define with_asan=true \
+                    --define with_bthread_tracer=true \
+                    --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
+                    --define with_babylon_counter=true \
+                    -- //...
 
   clang-compile-with-make-protobuf:
     runs-on: ubuntu-22.04
@@ -182,17 +202,23 @@ jobs:
     - run: |
         bazel test --test_output=streamed \
                    --action_env=CC=clang \
+                   --config=rdma \
+                   --config=ubring \
                    //test/...
 
   clang-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
-    - run: |
+    - run: sudo apt-get update && sudo apt-get install -y  libibverbs-dev
+    - name: root
+      run: |
         bazel build --action_env=CC=clang \
                     --define with_mesalink=false \
                     --define with_glog=true \
                     --define with_thrift=true \
+                    --define BRPC_WITH_RDMA=true \
+                    --define BRPC_WITH_UBRING=true \
                     --define BRPC_WITH_BORINGSSL=true \
                     --define with_debug_bthread_sche_safety=true \
                     --define with_debug_lock=true \
@@ -200,7 +226,24 @@ jobs:
                     --define with_bthread_tracer=true \
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
                     --define with_babylon_counter=true \
-                    -- //:brpc
+                    -- //:brpc //example/...
+    - name: external
+      run: |
+        cd example/build_with_bazel_module
+        bazel build --action_env=CC=clang \
+                    --define with_mesalink=false \
+                    --define with_glog=true \
+                    --define with_thrift=true \
+                    --define BRPC_WITH_RDMA=true \
+                    --define BRPC_WITH_UBRING=true \
+                    --define BRPC_WITH_BORINGSSL=true \
+                    --define with_debug_bthread_sche_safety=true \
+                    --define with_debug_lock=true \
+                    --define with_asan=true \
+                    --define with_bthread_tracer=true \
+                    --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
+                    --define with_babylon_counter=true \
+                    -- //...
 
   clang-unittest:
     runs-on: ubuntu-22.04
@@ -209,7 +252,7 @@ jobs:
     - uses: ./.github/actions/install-essential-dependencies
     - uses: ./.github/actions/init-ut-make-config
       with:
-        options: --with-bthread-tracer
+        options: --with-bthread-tracer --with-rdma
     - name: compile tests
       run: |
         cat config.mk
@@ -245,10 +288,10 @@ jobs:
   clang-unittest-bazel-with-babylon-and-new-pb:
     runs-on: ubuntu-22.04
     env:
-      TEST_PROTOBUF_VERSION: "34.1"
-      # protobuf >= 34.x uses new ProtoInfo fields (option_deps,
-      # extension_declarations) introduced in Bazel 8.x. The repo's
-      # .bazelversion (7.2.1) is too old. bazelisk honors USE_BAZEL_VERSION.
+      TEST_PROTOBUF_VERSION: "35.1"
+      # protobuf >= 34.x uses new ProtoInfo fields (option_deps, extension_declarations)
+      # introduced in Bazel 8.x. The repo's .bazelversion (7.2.1) is too old. bazelisk
+      # honors USE_BAZEL_VERSION.
       USE_BAZEL_VERSION: "8.3.1"
     steps:
     - uses: actions/checkout@v2
@@ -263,7 +306,7 @@ jobs:
         grep -qE "bazel_dep\(name = ['\"]protobuf['\"], version = ['\"]${TEST_PROTOBUF_VERSION}['\"]" MODULE.bazel \
           || { echo "ERROR: failed to override protobuf version in MODULE.bazel to ${TEST_PROTOBUF_VERSION}"; exit 1; }
     - run: | 
-        bazel test --action_env=CC=clang --config=rdma \
+        bazel test --action_env=CC=clang --config=rdma --config=ubring \
                    --define with_bthread_tracer=true \
                    --define with_babylon_counter=true \
                    //test/...

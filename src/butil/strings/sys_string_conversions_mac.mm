@@ -34,7 +34,7 @@ static StringType CFStringToSTLStringWithEncodingT(CFStringRef cfstring,
                                        encoding,
                                        0,      // lossByte
                                        false,  // isExternalRepresentation
-                                       NULL,   // buffer
+                                       nullptr,   // buffer
                                        0,      // maxBufLen
                                        &out_size);
   if (converted == 0 || out_size == 0)
@@ -56,7 +56,7 @@ static StringType CFStringToSTLStringWithEncodingT(CFStringRef cfstring,
                                false,  // isExternalRepresentation
                                reinterpret_cast<UInt8*>(&out_buffer[0]),
                                out_size,
-                               NULL);  // usedBufLen
+                               nullptr);  // usedBufLen
   if (converted == 0)
     return StringType();
 
@@ -79,7 +79,7 @@ static OutStringType STLStringToSTLStringWithEncodingsT(
     return OutStringType();
 
   butil::ScopedCFTypeRef<CFStringRef> cfstring(CFStringCreateWithBytesNoCopy(
-      NULL,
+      nullptr,
       reinterpret_cast<const UInt8*>(in.data()),
       in_length * sizeof(typename InStringType::value_type),
       in_encoding,
@@ -93,7 +93,7 @@ static OutStringType STLStringToSTLStringWithEncodingsT(
 }
 
 // Given an STL string |in| with an encoding specified by |in_encoding|,
-// return it as a CFStringRef.  Returns NULL on failure.
+// return it as a CFStringRef.  Returns nullptr on failure.
 template<typename StringType>
 static CFStringRef STLStringToCFStringWithEncodingsT(
     const StringType& in,

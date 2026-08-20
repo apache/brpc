@@ -55,7 +55,7 @@ public:
     int init_from_not_exist(const char* file_path);
 
     // Check and consume change of the watched file. Write `last_timestamp'
-    // if it's not NULL.
+    // if it's not nullptr.
     // Returns:
     //   CREATE    the file is created since last call to this method.
     //   UPDATED   the file is modified since last call.
@@ -64,7 +64,7 @@ public:
     // Note: If the file is updated too frequently, this method may return 
     // UNCHANGED due to precision of stat(2) and the file system. If the file
     // is created and deleted too frequently, the event may not be detected.
-    Change check_and_consume(Timestamp* last_timestamp = NULL);
+    Change check_and_consume(Timestamp* last_timestamp = nullptr);
 
     // Set internal timestamp. User can use this method to make
     // check_and_consume() replay the change.

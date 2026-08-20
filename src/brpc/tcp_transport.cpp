@@ -28,7 +28,7 @@ void TcpTransport::Init(Socket* socket, const SocketOptions& options) {
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
-    if (options.need_on_edge_trigger && _on_edge_trigger == NULL) {
+    if (options.need_on_edge_trigger && _on_edge_trigger == nullptr) {
         _on_edge_trigger = InputMessenger::OnNewMessages;
     }
 }

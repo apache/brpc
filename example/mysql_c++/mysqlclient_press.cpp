@@ -88,7 +88,7 @@ static void* sender(void* void_args) {
                 CHECK_EQ(mysql_affected_rows(args->mysql_conn), 1);
             } else if (FLAGS_op_type == 1) {
                 MYSQL_RES* res = mysql_store_result(args->mysql_conn);
-                if (res == NULL) {
+                if (res == nullptr) {
                     LOG(INFO) << "not found";
                 } else {
                     CHECK_EQ(mysql_num_rows(res), 1);
@@ -115,7 +115,7 @@ static void* sender(void* void_args) {
             bthread_usleep(50000);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char* argv[]) {
@@ -126,14 +126,14 @@ int main(int argc, char* argv[]) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 
-    MYSQL* conn = mysql_init(NULL);
+    MYSQL* conn = mysql_init(nullptr);
     if (!mysql_real_connect(conn,
                             FLAGS_server.c_str(),
                             FLAGS_user.c_str(),
                             FLAGS_password.c_str(),
                             FLAGS_schema.c_str(),
                             FLAGS_port,
-                            NULL,
+                            nullptr,
                             0)) {
         LOG(ERROR) << mysql_error(conn);
         return -1;
@@ -197,14 +197,14 @@ int main(int argc, char* argv[]) {
     std::vector<SenderArgs> args;
     args.resize(FLAGS_thread_num);
     for (int i = 0; i < FLAGS_thread_num; ++i) {
-        MYSQL* conn = mysql_init(NULL);
+        MYSQL* conn = mysql_init(nullptr);
         if (!mysql_real_connect(conn,
                                 FLAGS_server.c_str(),
                                 FLAGS_user.c_str(),
                                 FLAGS_password.c_str(),
                                 FLAGS_schema.c_str(),
                                 FLAGS_port,
-                                NULL,
+                                nullptr,
                                 0)) {
             LOG(ERROR) << mysql_error(conn);
             return -1;
@@ -212,12 +212,12 @@ int main(int argc, char* argv[]) {
         args[i].base_index = i;
         args[i].mysql_conn = conn;
         if (!FLAGS_use_bthread) {
-            if (pthread_create(&pids[i], NULL, sender, &args[i]) != 0) {
+            if (pthread_create(&pids[i], nullptr, sender, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
         } else {
-            if (bthread_start_background(&bids[i], NULL, sender, &args[i]) != 0) {
+            if (bthread_start_background(&bids[i], nullptr, sender, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -234,9 +234,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "mysql_client is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(pids[i], NULL);
+            pthread_join(pids[i], nullptr);
         } else {
-            bthread_join(bids[i], NULL);
+            bthread_join(bids[i], nullptr);
         }
     }
 

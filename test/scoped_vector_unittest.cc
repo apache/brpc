@@ -66,7 +66,7 @@ class LifeCycleWatcher : public LifeCycleObject::Observer {
   // LifeCycleWatcher.
   virtual void OnLifeCycleConstruct(LifeCycleObject* object) OVERRIDE {
     ASSERT_EQ(LC_INITIAL, life_cycle_state_);
-    ASSERT_EQ(NULL, constructed_life_cycle_object_.get());
+    ASSERT_EQ(nullptr, constructed_life_cycle_object_.get());
     life_cycle_state_ = LC_CONSTRUCTED;
     constructed_life_cycle_object_.reset(object);
   }

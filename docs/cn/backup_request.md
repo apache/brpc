@@ -79,7 +79,7 @@ channel.Init(..., &options);
 | `window_size_seconds` | 10 | 滑动窗口宽度（秒），取值范围 [1, 3600] |
 | `update_interval_seconds` | 5 | 缓存刷新间隔（秒），必须 >= 1 |
 
-参数不合法时 `CreateRateLimitedBackupPolicy` 返回 `NULL`。
+参数不合法时 `CreateRateLimitedBackupPolicy` 返回 `nullptr`。
 
 ### 使用自定义 BackupRequestPolicy
 

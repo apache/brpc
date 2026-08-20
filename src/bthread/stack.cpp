@@ -51,7 +51,7 @@ static int64_t get_stack_count(void*) {
     return s_stack_count.load(butil::memory_order_relaxed);
 }
 static bvar::PassiveStatus<int64_t> bvar_stack_count(
-    "bthread_stack_count", get_stack_count, NULL);
+    "bthread_stack_count", get_stack_count, nullptr);
 
 int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) {
     const static int PAGESIZE = getpagesize();
@@ -66,7 +66,7 @@ int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) 
 
     if (guardsize_in <= 0) {
         void* mem = malloc(stacksize);
-        if (NULL == mem) {
+        if (nullptr == mem) {
             PLOG_EVERY_SECOND(ERROR) << "Fail to malloc (size="
                                      << stacksize << ")";
             return -1;
@@ -89,7 +89,7 @@ int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) 
             ~PAGESIZE_M1;
 
         const int memsize = stacksize + guardsize;
-        void* const mem = mmap(NULL, memsize, (PROT_READ | PROT_WRITE),
+        void* const mem = mmap(nullptr, memsize, (PROT_READ | PROT_WRITE),
                                (MAP_PRIVATE | MAP_ANONYMOUS), -1, 0);
 
         if (MAP_FAILED == mem) {

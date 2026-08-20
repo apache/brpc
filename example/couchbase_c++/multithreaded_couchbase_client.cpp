@@ -186,7 +186,7 @@ void* thread_worker(void* arg) {
   if (!auth_result.success) {
     std::cout << RED << "Thread " << args->thread_id << ": Auth failed - "
               << auth_result.error_message << RESET << std::endl;
-    return NULL;
+    return nullptr;
   }
 
     // // Select bucket
@@ -197,7 +197,7 @@ void* thread_worker(void* arg) {
     //   std::cout << RED << "Thread " << args->thread_id
     //             << ": Bucket selection failed - " << bucket_result.error_message
     //             << RESET << std::endl;
-    //   return NULL;
+    //   return nullptr;
     // }
 
   std::cout << GREEN << "Thread " << args->thread_id << " connected to bucket "
@@ -228,7 +228,7 @@ void* thread_worker(void* arg) {
             << " operations successful, " << failed << " failed" << RESET
             << std::endl;
 
-  return NULL;
+  return nullptr;
 }
 
 void* shared_object_thread_worker(void *arg){
@@ -246,7 +246,7 @@ void* shared_object_thread_worker(void *arg){
         // Small delay between operations
         bthread_usleep(10000);  // 10ms
     }
-    return NULL;
+    return nullptr;
 }
 
 // Print simple statistics
@@ -319,7 +319,7 @@ int main(int argc, char* argv[]) {
 
   // Start all threads
   for (int i = 0; i < NUM_THREADS; ++i) {
-    if (bthread_start_background(&threads[i], NULL, thread_worker, &args[i]) !=
+    if (bthread_start_background(&threads[i], nullptr, thread_worker, &args[i]) !=
         0) {
       std::cout << RED << "Failed to create thread " << i << RESET << std::endl;
       return -1;
@@ -332,7 +332,7 @@ int main(int argc, char* argv[]) {
   std::cout << YELLOW << "Waiting for all threads to complete..." << RESET
             << std::endl;
   for (int i = 0; i < NUM_THREADS; ++i) {
-    bthread_join(threads[i], NULL);
+    bthread_join(threads[i], nullptr);
   }
 
   std::cout << GREEN << "All threads completed!" << RESET << std::endl;
@@ -357,14 +357,14 @@ int main(int argc, char* argv[]) {
   }
 
   for(int i = 0; i < NUM_THREADS; ++i){
-      if (bthread_start_background(&threads[i], NULL, shared_object_thread_worker, &args[i]) !=
+      if (bthread_start_background(&threads[i], nullptr, shared_object_thread_worker, &args[i]) !=
         0) {
       std::cout << RED << "Failed to create shared object thread " << i << RESET << std::endl;
       return -1;
     }
   }
   for(int i = 0; i < NUM_THREADS; ++i){
-      bthread_join(threads[i], NULL);
+      bthread_join(threads[i], nullptr);
   }
   std::cout << GREEN << "All shared object threads completed!" << RESET << std::endl;
 

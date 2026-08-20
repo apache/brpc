@@ -28,6 +28,7 @@
 #include <ostream>
 #include <memory>
 #include <pthread.h>
+#include "butil/atomicops.h"
 #include "butil/macros.h"
 #include "butil/endpoint.h"
 #include "butil/string_splitter.h"
@@ -198,6 +199,11 @@ private:
 
     void dump_to_db();
     void submit(int64_t cpuwide_us);
+    bool try_mark_submitted() const {
+        bool expected = false;
+        return _submitted.compare_exchange_strong(
+            expected, true, butil::memory_order_relaxed);
+    }
     bvar::CollectorSpeedLimit* speed_limit();
     bvar::CollectorPreprocessor* preprocessor();
 
@@ -252,6 +258,8 @@ private:
     // Also protects against concurrent iteration (e.g., CountClientSpans, SpanDB::Index)
     // while the list is being modified.
     mutable pthread_spinlock_t _client_list_spinlock;
+
+    mutable butil::atomic<bool> _submitted;
 };
 
 class SpanContainer : public bvar::Collected {
@@ -287,7 +295,7 @@ private:
 void AnnotateSpan(const char* fmt, ...);
 
 // Add an annotation to the given span.
-// If the span is NULL, this function does nothing.
+// If the span is nullptr, this function does nothing.
 void AnnotateSpanEx(std::shared_ptr<Span> span, const char* fmt, ...);
 
 
@@ -306,7 +314,7 @@ int FindSpan(uint64_t trace_id, uint64_t span_id, RpczSpan* span);
 void FindSpans(uint64_t trace_id, std::deque<RpczSpan>* out);
 
 // Put at most `max_scan' spans before `before_this_time' into `out'.
-// If filter is not NULL, only push spans that make SpanFilter::Keep()
+// If filter is not nullptr, only push spans that make SpanFilter::Keep()
 // true.
 void ListSpans(int64_t before_this_time, size_t max_scan,
                std::deque<BriefSpan>* out, SpanFilter* filter);

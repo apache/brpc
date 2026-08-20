@@ -1,0 +1,61 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Bazel doesn't need more than 200MB of memory for local build based on memory profiling:
+# https://docs.bazel.build/versions/master/skylark/performance.html#memory-profiling
+# The default JVM max heapsize is 1/4 of physical memory up to 32GB which could be large
+# enough to consume all memory constrained by cgroup in large host.
+# Limiting JVM heapsize here to let it do GC more when approaching the limit to
+# leave room for compiler/linker.
+# The number 3G is chosen heuristically to both support large VM and small VM with RBE.
+# Startup options cannot be selected via config.
+startup --host_jvm_args=-Xmx3g
+startup --host_jvm_args="-DBAZEL_TRACK_SOURCE_DIRECTORIES=1"
+
+# Default build options. These are applied first and unconditionally.
+common --registry=https://bcr.bazel.build
+common --registry=https://baidu.github.io/babylon/registry
+common --registry=https://raw.githubusercontent.com/apache/brpc/master/registry
+
+build --verbose_failures
+# Keep SHT_SYMTAB in built binaries so google::Symbolize can resolve
+# in-binary functions (e.g. TestBody() in test binaries) by name
+# instead of falling back to "<unknown>". Bazel's default
+# `--strip=sometimes` strips debug/symbol sections in fastbuild mode,
+# which is what `bazel test` uses unless `-c dbg` is given.
+build --strip=never
+build --cxxopt="-std=c++17"
+build --copt="-fno-omit-frame-pointer"
+# Use gnu17 for asm keyword.
+build --conlyopt="-std=gnu17"
+
+# Enable position independent code (this is the default on macOS and Windows)
+# (Workaround for https://github.com/bazelbuild/rules_foreign_cc/issues/421)
+build --copt=-fPIC
+build --fission=dbg,opt
+build --features=per_object_debug_info
+
+# We already have absl in the build, define absl=1 to tell googletest to use absl for backtrace.
+build --define absl=1
+
+test --config=test
+test --test_output=streamed
+
+# Pass PATH, CC, CXX and LLVM_CONFIG variables from the environment.
+build --action_env=CC
+build --action_env=CXX
+build --action_env=LLVM_CONFIG
+build --action_env=PATH
+

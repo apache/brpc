@@ -105,7 +105,7 @@ namespace {
 // It accepts a bool* and sets the bool to true when the dtor runs.
 class DeleteLogger {
  public:
-  DeleteLogger() : deleted_(NULL) {}
+  DeleteLogger() : deleted_(nullptr) {}
   ~DeleteLogger() { *deleted_ = true; }
 
   void SetDeletedPtr(bool* deleted) {
