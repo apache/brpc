@@ -132,6 +132,12 @@ public:
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)
     { _cntl->_rpa.reset(s); }
 
+    void set_readable_progressive_attachment(
+        ReadableProgressiveAttachment* s, SocketId socket_id) {
+        _cntl->_rpa.reset(s);
+        _cntl->_progressive_read_socket_id = socket_id;
+    }
+
     void set_auth_flags(uint32_t auth_flags) {
         _cntl->_auth_flags = auth_flags;
     }

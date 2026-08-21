@@ -197,6 +197,13 @@ public:
     // are undefined on the server side (may crash).
     // ------------------------------------------------------------------
 
+    // Set/get the maximum idle interval in milliseconds between body parts of
+    // an HTTP/1.x response read progressively. A non-positive value disables
+    // the timeout. The timer starts when ReadProgressiveAttachmentBy() is
+    // called.
+    void set_progressive_read_timeout_ms(int32_t progressive_read_timeout_ms);
+    int32_t progressive_read_timeout_ms() const { return _progressive_read_timeout_ms; }
+
     // Set/get timeout in milliseconds for the RPC call. Use
     // ChannelOptions.timeout_ms on unset.
     void set_timeout_ms(int64_t timeout_ms);
@@ -911,6 +918,8 @@ private:
     int32_t _timeout_ms;
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
+    int32_t _progressive_read_timeout_ms;
+    SocketId _progressive_read_socket_id;
     // Priority: `_backup_request_policy' > `_backup_request_ms'.
     BackupRequestPolicy* _backup_request_policy;
     // If this rpc call has retry/backup request,this var save the real timeout for current call

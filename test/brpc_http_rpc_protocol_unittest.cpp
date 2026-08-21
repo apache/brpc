@@ -19,6 +19,7 @@
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
+#include <atomic>
 #include <cstddef>
 #include <string>
 #include <sys/ioctl.h>
@@ -736,9 +737,13 @@ static void CopyPAPrefixedWithSeqNo(char* buf, uint64_t seq_no) {
 class DownloadServiceImpl : public ::test::DownloadService {
 public:
     DownloadServiceImpl(DonePlace done_place = DONE_BEFORE_CREATE_PA,
-                        size_t num_repeat = 1)
+                        size_t num_repeat = 1,
+                        int write_interval_us = 0,
+                        int initial_write_delay_us = 0)
         : _done_place(done_place)
         , _nrep(num_repeat)
+        , _write_interval_us(write_interval_us)
+        , _initial_write_delay_us(initial_write_delay_us)
         , _nwritten(0)
         , _ever_full(false)
         , _last_errno(0) {}
@@ -762,6 +767,9 @@ public:
         if (_done_place == DONE_BEFORE_CREATE_PA) {
             done_guard.reset(nullptr);
         }
+        if (_initial_write_delay_us > 0) {
+            bthread_usleep(_initial_write_delay_us);
+        }
         ASSERT_GT(PA_DATA_LEN, 8u);  // long enough to hold a 64-bit decimal.
         char buf[PA_DATA_LEN];
         for (size_t c = 0; c < _nrep;) {
@@ -778,6 +786,9 @@ public:
                 }
             } else {
                 _nwritten += PA_DATA_LEN;
+                if (_write_interval_us > 0) {
+                    bthread_usleep(_write_interval_us);
+                }
             }
             ++c;
         }
@@ -840,6 +851,8 @@ public:
 private:
     DonePlace _done_place;
     size_t _nrep;
+    int _write_interval_us;
+    int _initial_write_delay_us;
     size_t _nwritten;
     bool _ever_full;
     int _last_errno;
@@ -941,6 +954,47 @@ private:
     butil::Status _destroying_st;
 };
 
+class TimeoutReadBody : public brpc::ProgressiveReader,
+                        public brpc::SharedObject {
+public:
+    explicit TimeoutReadBody(int read_delay_us = 0, int read_error = 0)
+        : _read_delay_us(read_delay_us)
+        , _read_error(read_error)
+        , _nread(0)
+        , _nend(0)
+        , _end_error(0) {
+        butil::intrusive_ptr<TimeoutReadBody>(this).detach();
+    }
+
+    butil::Status OnReadOnePart(const void*, size_t length) override {
+        if (_read_delay_us > 0) {
+            bthread_usleep(_read_delay_us);
+        }
+        _nread.fetch_add(length);
+        if (_read_error != 0) {
+            return butil::Status(_read_error, "intended progressive read failure");
+        }
+        return butil::Status::OK();
+    }
+
+    void OnEndOfMessage(const butil::Status& status) override {
+        _end_error.store(status.error_code());
+        _nend.fetch_add(1);
+        butil::intrusive_ptr<TimeoutReadBody>(this, false);
+    }
+
+    size_t read_bytes() const { return _nread.load(); }
+    int end_count() const { return _nend.load(); }
+    int end_error() const { return _end_error.load(); }
+
+private:
+    const int _read_delay_us;
+    const int _read_error;
+    std::atomic<size_t> _nread;
+    std::atomic<int> _nend;
+    std::atomic<int> _end_error;
+};
+
 #ifdef BUTIL_USE_ASAN
 static const int GENERAL_DELAY_US = 1000000; // 1s
 #else
@@ -1032,6 +1086,188 @@ TEST_F(HttpTest, read_short_body_progressively) {
         ASSERT_TRUE(reader->destroyed());
         ASSERT_EQ(0, reader->destroying_status().error_code());
     }
+}
+
+TEST_F(HttpTest, progressive_read_timeout_keeps_active_reader_alive) {
+    const int port = 8923;
+    DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 8, 100000);
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_HTTP;
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    cntl.response_will_be_read_progressively();
+    cntl.set_progressive_read_timeout_ms(500);
+    cntl.http_request().uri() = "/DownloadService/Download";
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    butil::intrusive_ptr<TimeoutReadBody> reader(new TimeoutReadBody);
+    cntl.ReadProgressiveAttachmentBy(reader.get());
+    for (int i = 0; i < 200 && reader->end_count() == 0; ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_EQ(1, reader->end_count());
+    EXPECT_EQ(0, reader->end_error());
+    EXPECT_EQ(8 * PA_DATA_LEN, reader->read_bytes());
+}
+
+TEST_F(HttpTest, progressive_read_timeout_closes_idle_http1_reader_once) {
+    const int port = 8923;
+    DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 2, 300000);
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, nullptr));
+
+    butil::intrusive_ptr<TimeoutReadBody> reader(new TimeoutReadBody);
+    {
+        brpc::Channel channel;
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_HTTP;
+        ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+        {
+            brpc::Controller cntl;
+            cntl.response_will_be_read_progressively();
+            cntl.set_progressive_read_timeout_ms(50);
+            cntl.http_request().uri() = "/DownloadService/Download";
+            channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            cntl.ReadProgressiveAttachmentBy(reader.get());
+            bthread_usleep(400000);
+            EXPECT_EQ(0, reader->end_count());
+        }
+    }
+    for (int i = 0; i < 100 && reader->end_count() == 0; ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_EQ(1, reader->end_count());
+    EXPECT_EQ(brpc::EPROGREADTIMEOUT, reader->end_error());
+    bthread_usleep(400000);
+    EXPECT_EQ(1, reader->end_count());
+}
+
+TEST_F(HttpTest, progressive_read_timeout_before_first_body_part) {
+    const int port = 8923;
+    DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 1, 0, 300000);
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, nullptr));
+
+    butil::intrusive_ptr<TimeoutReadBody> reader(new TimeoutReadBody);
+    {
+        brpc::Channel channel;
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_HTTP;
+        ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+        {
+            brpc::Controller cntl;
+            cntl.response_will_be_read_progressively();
+            cntl.set_progressive_read_timeout_ms(50);
+            cntl.http_request().uri() = "/DownloadService/Download";
+            channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            cntl.ReadProgressiveAttachmentBy(reader.get());
+            bthread_usleep(400000);
+            EXPECT_EQ(size_t(0), reader->read_bytes());
+            EXPECT_EQ(0, reader->end_count());
+        }
+    }
+    for (int i = 0; i < 100 && reader->end_count() == 0; ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_EQ(1, reader->end_count());
+    EXPECT_EQ(brpc::EPROGREADTIMEOUT, reader->end_error());
+}
+
+TEST_F(HttpTest, progressive_read_timeout_ignores_slow_user_callback) {
+    const int port = 8923;
+    DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 3, 50000);
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_HTTP;
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    cntl.response_will_be_read_progressively();
+    cntl.set_progressive_read_timeout_ms(50);
+    cntl.http_request().uri() = "/DownloadService/Download";
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    butil::intrusive_ptr<TimeoutReadBody> reader(
+        new TimeoutReadBody(200000));
+    cntl.ReadProgressiveAttachmentBy(reader.get());
+    for (int i = 0; i < 100 && reader->end_count() == 0; ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_EQ(1, reader->end_count());
+    EXPECT_EQ(0, reader->end_error());
+    EXPECT_EQ(3 * PA_DATA_LEN, reader->read_bytes());
+}
+
+TEST_F(HttpTest, progressive_read_timeout_preserves_reader_error) {
+    const int port = 8923;
+    DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 10);
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_HTTP;
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    cntl.response_will_be_read_progressively();
+    cntl.set_progressive_read_timeout_ms(1000);
+    cntl.http_request().uri() = "/DownloadService/Download";
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    butil::intrusive_ptr<TimeoutReadBody> reader(
+        new TimeoutReadBody(0, EIO));
+    cntl.ReadProgressiveAttachmentBy(reader.get());
+    for (int i = 0; i < 100 && reader->end_count() == 0; ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_EQ(1, reader->end_count());
+    EXPECT_EQ(EIO, reader->end_error());
+}
+
+TEST_F(HttpTest, progressive_read_timeout_rejects_http2) {
+    const int port = 8923;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, nullptr));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_H2;
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    brpc::Controller cntl;
+    cntl.response_will_be_read_progressively();
+    cntl.set_progressive_read_timeout_ms(1000);
+    cntl.http_request().uri() = "/EchoService/Echo";
+    test::EchoRequest req;
+    req.set_message(EXP_REQUEST);
+    channel.CallMethod(nullptr, &cntl, &req, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    butil::intrusive_ptr<TimeoutReadBody> reader(new TimeoutReadBody);
+    cntl.ReadProgressiveAttachmentBy(reader.get());
+    ASSERT_EQ(1, reader->end_count());
+    EXPECT_EQ(ENOTSUP, reader->end_error());
+    EXPECT_EQ(size_t(0), reader->read_bytes());
 }
 
 TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
