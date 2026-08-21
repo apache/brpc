@@ -88,17 +88,15 @@ ssize_t UBShmTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
 
 int UBShmTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                                     bool pollin, const timespec duetime) {
-    // LOG(INFO) << "mwj pollin4=" << pollin << " duetime=" << butil::timespec_to_microseconds(duetime);
     if (_ub_state == UB_ON) {
-        // LOG(INFO) << "mwj pollin1=" << pollin;
         const int expected_val = _epollout_butex->load(butil::memory_order_acquire);
         CHECK(_ub_ep != nullptr);
         if (!_ub_ep->IsWritable()) {
             g_vars->nwaitepollout << 1;
             _ub_ep->PollerRegisterEpollOut(pollin);
-            auto mwj_ret = bthread::butex_wait(_epollout_butex, expected_val, &duetime);
-            // LOG(INFO) << "mwj pollin2=" << pollin << " mwj_ret=" << mwj_ret;
-            if (mwj_ret < 0) {
+            const int wait_rc = bthread::butex_wait(
+                _epollout_butex, expected_val, &duetime);
+            if (wait_rc < 0) {
                 if (errno != EAGAIN && errno != ETIMEDOUT) {
                     const int saved_errno = errno;
                     PLOG(WARNING) << "Fail to wait ub window of " << _socket;
@@ -120,7 +118,6 @@ int UBShmTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
     } else {
         return _tcp_transport->WaitEpollOut(_epollout_butex, pollin, duetime);
     }
-    // LOG(INFO) << "mwj return 0";
     return 0;
 }
 
