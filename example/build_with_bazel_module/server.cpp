@@ -83,8 +83,6 @@ int main(int argc, char* argv[]) {
 
     // Start the server. 
     brpc::ServerOptions options;
-    options.mutable_ssl_options()->default_cert.certificate = "cert.pem";
-    options.mutable_ssl_options()->default_cert.private_key = "key.pem";
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     options.max_concurrency = FLAGS_max_concurrency;
     options.internal_port = FLAGS_internal_port;
