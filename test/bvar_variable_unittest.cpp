@@ -18,9 +18,11 @@
 // Date: Fri Jul 24 17:19:40 CST 2015
 
 #include <pthread.h>                                // pthread_*
+#include <unistd.h>                                 // usleep
 
 #include <cstddef>
 #include <memory>
+#include <thread>
 #include <iostream>
 #include <sstream>
 #include "butil/time.h"
@@ -407,6 +409,58 @@ TEST_F(VariableTest, recursive_mutex) {
     timer.stop();
     LOG(INFO) << "Each recursive mutex lock/unlock pair take "
               << timer.n_elapsed() / N << "ns";
+}
+
+struct BlockingDescribeCtx {
+    butil::atomic<bool> entered;
+    butil::atomic<bool> release;
+    BlockingDescribeCtx() : entered(false), release(false) {}
+};
+
+int blocking_getfn(void* arg) {
+    BlockingDescribeCtx* c = static_cast<BlockingDescribeCtx*>(arg);
+    c->entered.store(true);
+    while (!c->release.load()) {
+        usleep(1000);
+    }
+    return 42;
+}
+
+// A Variable dtor must block until all in-flight describe_exposed() finish,
+// otherwise a concurrent describe() would use-after-free the Variable.
+TEST_F(VariableTest, dtor_waits_for_inflight_describe) {
+    BlockingDescribeCtx ctx;
+    auto a = new bvar::PassiveStatus<int>(
+        "lockfree_describe_b", blocking_getfn, &ctx);
+
+    std::thread describer([]{
+        std::ostringstream os;
+        bvar::Variable::describe_exposed("lockfree_describe_b", os);
+    });
+    while (!ctx.entered.load()) {
+        usleep(1000);
+    }
+
+    // Destruct in another thread. It must block inside hide()'s hide_and_wait()
+    // until the in-flight describe finishes.
+    butil::atomic<bool> destructed(false);
+    std::thread destroyer([&]{
+        delete a;
+        destructed.store(true);
+    });
+
+    // While the callback is still blocked, the dtor must not have completed.
+    usleep(200 * 1000);
+    ASSERT_FALSE(destructed.load())
+        << "Variable dtor did not wait for the in-flight describe() to finish.";
+
+    // Release the callback; describe() returns, ref-count drops to 0, and the
+    // dtor is unblocked.
+    ctx.release.store(true);
+    describer.join();
+    destroyer.join();
+
+    ASSERT_TRUE(destructed.load());
 }
 } // namespace
 
