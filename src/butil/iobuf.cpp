@@ -42,6 +42,9 @@
 #include "butil/fd_guard.h"                 // butil::fd_guard
 #include "butil/iobuf.h"
 #include "butil/iobuf_profiler.h"
+#ifdef BRPC_WITH_GDR
+#include "butil/gpu/gpu_block_pool.h"
+#endif
 
 namespace butil {
 static size_t default_block_size = 8192;
@@ -768,6 +771,46 @@ size_t IOBuf::cutn(IOBuf* out, size_t n) {
     return saved_n;
 }
 
+#if BRPC_WITH_GDR
+size_t IOBuf::cutn_from_gpu(IOBuf* out, size_t n) {
+    if (n == 0) {
+      return 0;
+    }
+
+    butil::gdr::BlockPoolAllocator* host_allocator = butil::gdr::BlockPoolAllocators::singleton()->get_cpu_allocator();
+    bool alloc_from_host_alloc = (n <= host_allocator->get_block_size());
+    void* mem = NULL;
+    if (alloc_from_host_alloc) {
+      mem = host_allocator->AllocateRaw(n);
+    } else {
+      mem = malloc(n);
+    }
+
+    if (mem == NULL) {
+        return 0;
+    }
+    size_t saved_n = copy_from_gpu(mem, n, 0, false);
+    if (saved_n > 0) {
+      if (alloc_from_host_alloc) {
+        auto deleter = [host_allocator](void* data) { host_allocator->DeallocateRaw(data); };
+        out->append_user_data(mem, saved_n, deleter);
+      } else {
+        auto deleter = [](void* data) { free(data); };
+        out->append_user_data(mem, saved_n, deleter);
+      }
+      pop_front(saved_n);
+    } else {
+      if (alloc_from_host_alloc) {
+        host_allocator->DeallocateRaw(mem);
+      } else {
+        free(mem);
+      }
+    }
+
+    return saved_n;
+}
+#endif  // BRPC_WITH_GDR
+
 size_t IOBuf::cutn(void* out, size_t n) {
     const size_t len = length();
     if (n > len) {
@@ -1190,6 +1233,37 @@ int IOBuf::append_user_data_with_meta(void* data,
     return 0;
 }
 
+#if BRPC_WITH_GDR
+// Same as append_user_data_with_meta, but also tags the block as GPU memory so
+// that is_gpu_memory() can report it deterministically.
+int IOBuf::append_user_data_gpu(void* data,
+                                size_t size,
+                                std::function<void(void*)> deleter,
+                                uint64_t meta) {
+    if (size > 0xFFFFFFFFULL - 100) {
+        LOG(FATAL) << "data_size=" << size << " is too large";
+        return -1;
+    }
+    if (!deleter) {
+        deleter = ::cudaFree;
+    }
+    if (!size) {
+        deleter(data);
+        return 0;
+    }
+    char* mem = (char*)malloc(sizeof(IOBuf::Block) + sizeof(UserDataExtension));
+    if (mem == NULL) {
+        return -1;
+    }
+    IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, std::move(deleter));
+    b->u.data_meta = meta;
+    b->flags |= IOBUF_BLOCK_FLAGS_GPU_MEMORY;
+    const IOBuf::BlockRef r = { 0, b->cap, b };
+    _move_back_ref(r);
+    return 0;
+}
+#endif  // BRPC_WITH_GDR
+
 uint64_t IOBuf::get_first_data_meta() {
     if (_ref_num() == 0) {
         return 0;
@@ -1200,6 +1274,15 @@ uint64_t IOBuf::get_first_data_meta() {
     }
     return r.block->u.data_meta;
 }
+
+void* IOBuf::get_first_data_ptr() {
+    if (_ref_num() == 0) {
+        return 0;
+    }
+    IOBuf::BlockRef const& r = _ref_at(0);
+    return r.block->data;
+}
+
 
 int IOBuf::resize(size_t n, char c) {
     const size_t saved_len = length();
@@ -1363,6 +1446,46 @@ size_t IOBuf::copy_to(void* d, size_t n, size_t pos) const {
     return n - m;
 }
 
+#if BRPC_WITH_GDR
+size_t IOBuf::copy_from_gpu(void* d, size_t n, size_t pos, bool to_gpu) const {
+    if (n == 0) {
+        return 0;
+    }
+    const size_t nref = _ref_num();
+    // Skip `pos' bytes. `offset' is the starting position in starting BlockRef.
+    size_t offset = pos;
+    size_t i = 0;
+    for (; offset != 0 && i < nref; ++i) {
+        IOBuf::BlockRef const& r = _ref_at(i);
+        if (offset < (size_t)r.length) {
+            break;
+        }
+        offset -= r.length;
+    }
+
+    butil::gdr::GPUStreamPool* gpu_stream_pool = butil::gdr::BlockPoolAllocators::singleton()->get_gpu_stream_pool();
+    size_t m = n;
+    std::vector<void*> src_list;
+    std::vector<int64_t> length_list;
+    for (; m != 0 && i < nref; ++i) {
+        IOBuf::BlockRef const& r = _ref_at(i);
+        const size_t nc = std::min(m, (size_t)r.length - offset);
+        void* gpu_src = r.block->data + r.offset + offset;
+        src_list.push_back(gpu_src);
+        length_list.push_back(nc);
+        offset = 0;
+        m -= nc;
+    }
+    if (to_gpu) {
+        gpu_stream_pool->fast_d2d(src_list, length_list, d);
+    } else {
+        gpu_stream_pool->fast_d2h(src_list, length_list, d);
+    }
+    // If nref == 0, here returns 0 correctly
+    return n - m;
+}
+#endif  // BRPC_WITH_GDR
+
 size_t IOBuf::copy_to(std::string* s, size_t n, size_t pos) const {
     const size_t len = length();
     if (len <= pos) {
@@ -1508,6 +1631,21 @@ bool IOBuf::equals(const butil::IOBuf& other) const {
     } while (true);
     return true;
 }
+
+#if BRPC_WITH_GDR
+// Returns true iff the first block was explicitly tagged as GPU memory via
+// append_user_data_gpu() (done by the GDR receive path in RdmaEndpoint).
+// We deliberately check the block flag rather than guessing from `data_meta',
+// because `data_meta' is legitimately used by callers/users to carry non-zero
+// values (e.g. RDMA lkey, prefetch size) that must NOT be treated as a GPU hint.
+bool IOBuf::is_gpu_memory() {
+    if (_ref_num() == 0) {
+        return false;
+    }
+    IOBuf::BlockRef const& r = _ref_at(0);
+    return (r.block->flags & IOBUF_BLOCK_FLAGS_GPU_MEMORY) != 0;
+}
+#endif
 
 ////////////////////////////// IOPortal //////////////////
 IOPortal::~IOPortal() { return_cached_blocks(); }

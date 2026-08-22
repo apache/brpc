@@ -30,10 +30,19 @@ DECLARE_bool(usercode_in_pthread);
 
 extern SocketVarsCollector *g_vars;
 
-void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
+void RdmaTransport::DoInit(Socket *socket, const SocketOptions &options, bool use_gdr) {
     CHECK(_rdma_ep == nullptr);
-    if (options.socket_mode == SOCKET_MODE_RDMA) {
-        _rdma_ep = new rdma::RdmaEndpoint(socket);
+    // gdr mode is a special mode of rdma mode.
+    // both rdma mode and gdr mode need init rdma::RdmaEndpoint.
+    if (options.socket_mode == SOCKET_MODE_RDMA ||
+            options.socket_mode == SOCKET_MODE_GDR) {
+        _rdma_ep = new(std::nothrow)rdma::RdmaEndpoint(socket, use_gdr);
+        if (!_rdma_ep) {
+            const int saved_errno = errno;
+            PLOG(ERROR) << "Fail to create RdmaEndpoint";
+            socket->SetFailed(
+                saved_errno, "Fail to create RdmaEndpoint: %s", berror(saved_errno));
+        }
         _rdma_state = RDMA_UNKNOWN;
     } else {
         _rdma_state = RDMA_OFF;
@@ -56,6 +65,10 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
     }
     _tcp_transport = std::make_shared<TcpTransport>();
     _tcp_transport->Init(socket, options);
+}
+
+void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
+    DoInit(socket, options, false);
 }
 
 void RdmaTransport::Release() {
