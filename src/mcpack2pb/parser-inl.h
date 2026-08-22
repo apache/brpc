@@ -144,9 +144,23 @@ inline void ObjectIterator::init(InputStream* stream, size_t size) {
     _stream = stream;
     _expected_popped_bytes = _stream->popped_bytes() + sizeof(ItemsHead);
     _expected_popped_end = _stream->popped_bytes() + size;
+    // Every field head takes at least 2 bytes (FieldFixedHead), so a valid
+    // item_count never exceeds half of the remaining value size. The count
+    // is copied verbatim from the wire, reject inconsistent values instead
+    // of trusting them. Guard the size before reading ItemsHead so payloads
+    // shorter than the header are not read past their declared boundary.
+    if (size < sizeof(ItemsHead)) {
+        CHECK(false) << "buffer(size=" << size << ") is not enough";
+        return set_bad();
+    }
     ItemsHead items_head;
     if (_stream->cut_packed_pod(&items_head) != sizeof(ItemsHead)) {
         CHECK(false) << "buffer(size=" << size << ") is not enough";
+        return set_bad();
+    }
+    if (items_head.item_count > (size - sizeof(ItemsHead)) / 2) {
+        CHECK(false) << "inconsistent item_count(" << items_head.item_count
+                     << ") and value_size(" << size << ")";
         return set_bad();
     }
     _field_count = items_head.item_count;

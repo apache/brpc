@@ -76,6 +76,23 @@ bool SnappyCompress(const butil::IOBuf& in, butil::IOBuf* out) {
 }
 
 bool SnappyDecompress(const butil::IOBuf& in, butil::IOBuf* out) {
+    {
+        // Reject bodies whose declared uncompressed length exceeds the
+        // decompression cap (decompression bomb): -max_body_size is checked
+        // against the compressed bytes only.
+        butil::IOBufAsSnappySource length_source(in);
+        uint32_t uncompressed_len = 0;
+        if (!butil::snappy::GetUncompressedLength(&length_source,
+                                                  &uncompressed_len)) {
+            return false;
+        }
+        if (uncompressed_len > MaxDecompressedBodySize()) {
+            LOG(WARNING) << "Uncompressed size=" << uncompressed_len
+                         << " exceeds -max_decompressed_body_size="
+                         << MaxDecompressedBodySize();
+            return false;
+        }
+    }
     butil::IOBufAsSnappySource source(in);
     butil::IOBufAsSnappySink sink(*out);
     return butil::snappy::Uncompress(&source, &sink);

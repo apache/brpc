@@ -282,6 +282,20 @@ TEST_F(SofaTest, process_response_after_eof) {
     ASSERT_TRUE(_socket->Failed());
 }
 
+TEST_F(SofaTest, reject_huge_meta_size) {
+    // A header declaring a huge meta_size must be rejected up front,
+    // otherwise the parser keeps buffering meta_size bytes although the
+    // body itself passes the -max_body_size check.
+    butil::IOBuf buf;
+    const uint32_t meta_size = 0xFFFFFFFFu;
+    const uint64_t body_size = 0;
+    const uint64_t msg_size = meta_size + body_size;
+    AppendSofaTestHeader(&buf, meta_size, body_size, msg_size);
+    brpc::ParseResult pr =
+            brpc::policy::ParseSofaMessage(&buf, _socket.get(), false, nullptr);
+    ASSERT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA, pr.error());
+}
+
 TEST_F(SofaTest, process_response_error_code) {
     const int ERROR_CODE = 12345;
     brpc::policy::SofaRpcMeta meta;
