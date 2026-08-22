@@ -164,6 +164,11 @@ public:
 
     detail::AddStat op() const { return detail::AddStat(); }
     detail::MinusStat inv_op() const { return detail::MinusStat(); }
+
+    // Expose the shared data carrier, so that ReducerSampler holds it instead
+    // of `this'. Sampling then keeps reading valid memory even if this
+    // IntRecorder is destructed before the sampler is recycled.
+    shared_combiner_type share_combiner() const { return _combiner; }
     
     void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
@@ -172,8 +177,9 @@ public:
     bool valid() const { return _combiner->valid(); }
     
     sampler_type* get_sampler() {
-        if (nullptr == _sampler) {
+        if (_sampler == nullptr) {
             _sampler = new sampler_type(this);
+            _sampler->set_debug_name(diagnostic_name());
             _sampler->schedule();
         }
         return _sampler;
@@ -183,9 +189,27 @@ public:
     // IntRecorder is often used as the source of data and not exposed.
     void set_debug_name(const butil::StringPiece& name) {
         _debug_name.assign(name.data(), name.size());
+        if (_sampler != nullptr) {
+            _sampler->set_debug_name(diagnostic_name());
+        }
     }
-    
+
+protected:
+    int expose_impl(const butil::StringPiece& prefix,
+                    const butil::StringPiece& name,
+                    DisplayFilter display_filter) override {
+        const int rc = Variable::expose_impl(prefix, name, display_filter);
+        if (rc == 0 && _sampler != nullptr) {
+            _sampler->set_debug_name(diagnostic_name());
+        }
+        return rc;
+    }
+
 private:
+    const std::string& diagnostic_name() const {
+        return name().empty() ? _debug_name : name();
+    }
+
     // TODO: The following numeric functions should be independent utils
     static uint64_t _get_sum(const uint64_t n) {
         return (n & MAX_SUM_PER_THREAD);
@@ -240,8 +264,8 @@ private:
 
 private:
     shared_combiner_type    _combiner;
-    sampler_type*           _sampler;
-    std::string             _debug_name;
+    sampler_type* _sampler;
+    std::string _debug_name;
 };
 
 inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
@@ -372,6 +396,7 @@ public:
     sampler_type* get_sampler() {
         if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
+            _sampler->set_debug_name(diagnostic_name());
             _sampler->schedule();
         }
         return _sampler;
@@ -381,8 +406,28 @@ public:
     // IntRecorder is often used as the source of data and not exposed.
     void set_debug_name(const butil::StringPiece& name) {
         _debug_name.assign(name.data(), name.size());
+        if (nullptr != _sampler) {
+            _sampler->set_debug_name(diagnostic_name());
+        }
     }
+
+protected:
+    int expose_impl(const butil::StringPiece& prefix,
+                    const butil::StringPiece& name,
+                    DisplayFilter display_filter) override {
+        const int rc = Variable::expose_impl(prefix, name, display_filter);
+        if (rc == 0 && nullptr != _sampler) {
+            _sampler->set_debug_name(diagnostic_name());
+        }
+        return rc;
+    }
+
 private:
+    // See the non-babylon IntRecorder for details.
+    const std::string& diagnostic_name() const {
+        return name().empty() ? _debug_name : name();
+    }
+
     babylon::ConcurrentSummer _summer;
     sampler_type* _sampler{nullptr};
     std::string _debug_name;

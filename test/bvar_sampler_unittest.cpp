@@ -15,9 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <limits>                           //std::numeric_limits
 #include "bvar/detail/sampler.h"
-#include "butil/time.h"
 #include "butil/logging.h"
 #include <gtest/gtest.h>
 

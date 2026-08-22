@@ -86,6 +86,7 @@ public:
     sampler_type* get_sampler() {
         if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
+            _sampler->set_debug_name(name());
             _sampler->schedule();
         }
         return _sampler;
@@ -136,7 +137,13 @@ protected:
                     const butil::StringPiece& name,
                     DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
-        if (rc == 0 && nullptr == _series_sampler &&
+        if (rc != 0) {
+            return rc;
+        }
+        if (nullptr != _sampler) {
+            _sampler->set_debug_name(this->name());
+        }
+        if (nullptr == _series_sampler &&
             !butil::is_same<InvOp, VoidOp>::value &&
             !butil::is_same<T, std::string>::value &&
             FLAGS_save_series) {
@@ -255,10 +262,16 @@ public:
     // Get instance of Op.
     const Op& op() const { return _combiner->op(); }
     const InvOp& inv_op() const { return _inv_op; }
+
+    // Expose the shared data carrier, so that ReducerSampler holds it instead
+    // of `this'. Sampling then keeps reading valid memory even if this Reducer
+    // is destructed before the sampler is recycled by the sampling thread.
+    shared_combiner_type share_combiner() const { return _combiner; }
     
     sampler_type* get_sampler() {
         if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
+            _sampler->set_debug_name(name());
             _sampler->schedule();
         }
         return _sampler;
@@ -276,11 +289,16 @@ public:
     
 protected:
     int expose_impl(const butil::StringPiece& prefix,
-                    const butil::StringPiece& name,
+                    const butil::StringPiece& n,
                     DisplayFilter display_filter) override {
-        const int rc = Variable::expose_impl(prefix, name, display_filter);
-        if (rc == 0 &&
-            _series_sampler == nullptr &&
+        const int rc = Variable::expose_impl(prefix, n, display_filter);
+        if (rc != 0) {
+            return rc;
+        }
+        if (_sampler != nullptr) {
+            _sampler->set_debug_name(name());
+        }
+        if (_series_sampler == nullptr &&
             !butil::is_same<InvOp, detail::VoidOp>::value &&
             !butil::is_same<T, std::string>::value &&
             FLAGS_save_series) {
