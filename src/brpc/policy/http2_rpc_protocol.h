@@ -273,6 +273,10 @@ friend class H2Context;
     butil::atomic<int64_t> _remote_window_left;
     butil::atomic<int64_t> _deferred_window_update;
     uint64_t _correlation_id;
+    // Cumulative decoded size of the header list of this stream
+    // (name + value + 32 per field, RFC 7540 section 10.5.1), checked
+    // against the local max_header_list_size in ConsumeHeaders().
+    uint64_t _decoded_header_list_size;
     butil::IOBuf _remaining_header_fragment;
     // Request body which cannot be sent yet due to remote flow control.
     // Accessed under H2Context::_stream_mutex.
@@ -336,7 +340,8 @@ public:
     int AllocateClientStreamId();
     bool RunOutStreams() const;
     // Try to map stream_id to ctx if stream_id does not exist before
-    // Returns 0 on success, -1 on exist, 1 on goaway.
+    // Returns 0 on success, -1 on exist, 1 on goaway, 2 on exceeding
+    // the local max_concurrent_streams limit (server side).
     int TryToInsertStream(int stream_id, H2StreamContext* ctx);
     size_t VolatilePendingStreamSize() const;
     bool PendingDataOvercrowded() const;

@@ -96,6 +96,34 @@ TEST_F(HPackTest, dynamic_table_size_update_before_header) {
     ASSERT_EQ("GET", h.value);
 }
 
+TEST_F(HPackTest, dynamic_table_size_update_over_advertised_limit) {
+    // RFC 7541 section 4.2/6.3: a dynamic table size update must not exceed
+    // the max size this decoder advertised via SETTINGS_HEADER_TABLE_SIZE
+    // (i.e. what Init() was called with), not the protocol default of 4096.
+    // Previously the update was validated against the compile-time default,
+    // so a decoder initialized with a smaller table accepted a peer update
+    // that regrew the table beyond the queue it was sized for.
+    brpc::HPacker p;
+    ASSERT_EQ(0, p.Init(256));
+    {
+        // Update to 256 (== advertised limit) is acceptable.
+        butil::IOBuf buf;
+        uint8_t ok[] = { 0x3F, 0xE1, 0x01 };  // size update to 256
+        buf.append(ok, sizeof(ok));
+        brpc::HPacker::Header h;
+        ASSERT_GE(p.Decode(&buf, &h), 0);
+    }
+    {
+        // Update to 4096 (> advertised 256) must be rejected as malformed,
+        // even though it equals the protocol default.
+        butil::IOBuf buf;
+        uint8_t bad[] = { 0x3F, 0xE1, 0x1F };  // size update to 4096
+        buf.append(bad, sizeof(bad));
+        brpc::HPacker::Header h;
+        ASSERT_EQ(-1, p.Decode(&buf, &h));
+    }
+}
+
 TEST_F(HPackTest, integer_with_overlong_continuation) {
     brpc::HPacker p;
     ASSERT_EQ(0, p.Init(4096));
