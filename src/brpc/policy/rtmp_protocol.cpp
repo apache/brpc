@@ -1460,6 +1460,23 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
         }
         timestamp_delta = mh.timestamp;
         mh.message_length = ReadBigEndian3Bytes(p + 3);
+        if (mh.message_length > FLAGS_max_body_size) {
+            LOG(ERROR) << socket->remote_side() << ": message_length="
+                       << mh.message_length << " in chunk_stream=" << _cs_id
+                       << " is too large";
+            return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
+        }
+        if (!_r.msg_body.empty()) {
+            // The new message header arrived before the previous message on
+            // this chunk stream completed. Drop the stale partial body,
+            // otherwise it would prefix the new message and, with repeated
+            // mid-message headers, grow `msg_body' without bound.
+            LOG(WARNING) << socket->remote_side() << ": Discard "
+                         << _r.msg_body.size() << " bytes of an incomplete"
+                         " message in chunk_stream=" << _cs_id
+                         << " overridden by a ChunkType0 header";
+            _r.msg_body.clear();
+        }
         _r.left_message_length = mh.message_length;
         cur_chunk_size = std::min(chunk_size_in, _r.left_message_length);
         if (source->size() < header_len + cur_chunk_size) {
@@ -1507,6 +1524,23 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
         }
         mh.timestamp = _r.last_msg_header.timestamp + timestamp_delta;
         mh.message_length = ReadBigEndian3Bytes(p + 3);
+        if (mh.message_length > FLAGS_max_body_size) {
+            LOG(ERROR) << socket->remote_side() << ": message_length="
+                       << mh.message_length << " in chunk_stream=" << _cs_id
+                       << " is too large";
+            return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
+        }
+        if (!_r.msg_body.empty()) {
+            // The new message header arrived before the previous message on
+            // this chunk stream completed. Drop the stale partial body,
+            // otherwise it would prefix the new message and, with repeated
+            // mid-message headers, grow `msg_body' without bound.
+            LOG(WARNING) << socket->remote_side() << ": Discard "
+                         << _r.msg_body.size() << " bytes of an incomplete"
+                         " message in chunk_stream=" << _cs_id
+                         << " overridden by a ChunkType1 header";
+            _r.msg_body.clear();
+        }
         _r.left_message_length = mh.message_length;
         cur_chunk_size = std::min(chunk_size_in, _r.left_message_length);
         if (source->size() < header_len + cur_chunk_size) {
