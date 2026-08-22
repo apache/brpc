@@ -21,10 +21,6 @@
 
 #include <gtest/gtest.h>
 #include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/wait.h>
-#include <unistd.h>
 #include "brpc/details/hpack.h"
 #include "butil/logging.h"
 
@@ -46,36 +42,21 @@ static void* DecodeManyDynamicTableSizeUpdates(void*) {
 }
 
 TEST_F(HPackTest, many_dynamic_table_size_updates) {
-    const pid_t pid = fork();
-    ASSERT_GE(pid, 0);
-    if (pid == 0) {
-        if (freopen("/dev/null", "w", stdout) == nullptr ||
-            freopen("/dev/null", "w", stderr) == nullptr) {
-            exit(1);
-        }
-
-        pthread_attr_t attr;
-        if (pthread_attr_init(&attr) != 0) {
-            exit(2);
-        }
-        if (pthread_attr_setstacksize(&attr, 64 * 1024) != 0) {
-            exit(3);
-        }
-        pthread_t tid;
-        if (pthread_create(&tid, &attr, DecodeManyDynamicTableSizeUpdates, nullptr) != 0) {
-            exit(4);
-        }
-        pthread_attr_destroy(&attr);
-        void* ret = nullptr;
-        if (pthread_join(tid, &ret) != 0) {
-            exit(5);
-        }
-        exit(ret == nullptr ? 0 : 6);
-    }
-    int status = 0;
-    ASSERT_EQ(pid, waitpid(pid, &status, 0));
-    ASSERT_TRUE(WIFEXITED(status));
-    ASSERT_EQ(0, WEXITSTATUS(status));
+    // Decode many consecutive Dynamic Table Size Update entries on a low-stack
+    // thread so that excessive stack usage (e.g. recursion over the updates)
+    // would be caught. Avoid fork(): brpc spawns background threads (such as
+    // bvar_sampler), so a fork() in this multithreaded process inherits
+    // mutexes locked by the forked-away thread, which are never released in
+    // the child and deadlock it (the parent then blocks in waitpid forever).
+    pthread_attr_t attr;
+    ASSERT_EQ(0, pthread_attr_init(&attr));
+    ASSERT_EQ(0, pthread_attr_setstacksize(&attr, 64 * 1024));
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, &attr, DecodeManyDynamicTableSizeUpdates, nullptr));
+    pthread_attr_destroy(&attr);
+    void* ret = nullptr;
+    ASSERT_EQ(0, pthread_join(tid, &ret));
+    ASSERT_EQ(nullptr, ret);
 }
 
 TEST_F(HPackTest, dynamic_table_size_update_before_header) {
