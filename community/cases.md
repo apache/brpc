@@ -68,6 +68,12 @@
 * 使用情况：Apache Doris 作为一款 MPP 分析型数据库，其内部节点间使用 Apache Brpc 作为主要 RPC 框架。Brpc 为 Doris 提供了稳定易用的高性能通信机制。并且 BRPC 提供的 bthread，bvar 等基础库，以及各种性能调试工具，也极大的方便了 Doris 的开发和调试工作。
 * 信息提供者：morningman
 
+## brpc 在 StarRocks 中的应用
+* 落地项目：StarRocks
+* 使用版本：内置（vendored）版本
+* 使用情况：StarRocks 作为一款 MPP 分析型数据库，其 BE 节点间使用 brpc 作为主要 RPC 框架，默认通信端口 brpc_port=8060，用于节点间数据传输与通信。
+* 信息提供者：ShawYann
+
 ## brpc在BaikalDB中的应用
 * 落地项目：BaikalDB
 * 使用版本：社区版0.9.7&百度内部stable
