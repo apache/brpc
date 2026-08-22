@@ -28,3 +28,14 @@ local_path_override(
     module_name = "brpc",
     path = "../..",
 )
+
+single_version_override(
+    module_name = "leveldb",
+    registry = "https://raw.githubusercontent.com/secretflow/bazel-registry/main",
+)
+
+single_version_override(
+    module_name = "openssl",
+    version = "3.3.2.bcr.1",
+    registry = "https://raw.githubusercontent.com/secretflow/bazel-registry/main",
+)
