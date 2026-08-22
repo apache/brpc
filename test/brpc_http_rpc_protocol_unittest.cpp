@@ -1661,6 +1661,81 @@ TEST_F(HttpTest, http2_header_list_size_limit) {
     }
 }
 
+TEST_F(HttpTest, h2_header_list_budget_resets_per_block) {
+    // The decoded header-list budget is per header block (RFC 7540
+    // section 10.5.1): trailing headers on the same stream start a fresh
+    // block. The counter must be reset at the start of a new block, otherwise
+    // legit trailers are rejected once the first block used most of the
+    // budget.
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+    ctx->_unack_local_settings.max_header_list_size = 4096;
+
+    brpc::policy::H2StreamContext* sctx =
+        new brpc::policy::H2StreamContext(false);
+    sctx->Init(ctx, 1);
+
+    // First block: a 3000-byte header costs 3033 of the 4096 budget.
+    butil::IOBuf first;
+    const uint8_t p1[] = { 0x40, 0x01, 'x', 0x7F, 0xB9, 0x16 };
+    first.append(p1, sizeof(p1));
+    first.append(std::string(3000, 'v'));
+    butil::IOBufBytesIterator it1(first);
+    ASSERT_EQ(0, sctx->ConsumeHeaders(it1));
+
+    // Second block (trailers) on the same stream: a 2000-byte header (2033
+    // bytes) exceeds the remaining budget (4096 - 3033 = 1063) but must be
+    // accepted because its counter starts at zero.
+    butil::IOBuf second;
+    const uint8_t p2[] = { 0x40, 0x01, 'x', 0x7F, 0xD1, 0x0E };
+    second.append(p2, sizeof(p2));
+    second.append(std::string(2000, 'v'));
+    butil::IOBufBytesIterator it2(second);
+    brpc::policy::H2FrameHead head;
+    head.payload_size = second.size();
+    head.type = brpc::policy::H2_FRAME_HEADERS;
+    head.flags = 0x4;  // H2_FLAGS_END_HEADERS
+    head.stream_id = 1;
+    const brpc::policy::H2ParseResult res =
+        sctx->OnHeaders(it2, head, second.size(), 0);
+    ASSERT_TRUE(res.is_ok());
+    delete sctx;
+}
+
+TEST_F(HttpTest, h2_oversized_single_headers_block_rejected) {
+    // A single HEADERS frame whose decoded header list exceeds
+    // max_header_list_size must be rejected at the block boundary (before
+    // any CONTINUATION), not accepted into _remaining_header_fragment.
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+    ctx->_unack_local_settings.max_header_list_size = 64;
+
+    brpc::policy::H2StreamContext* sctx =
+        new brpc::policy::H2StreamContext(false);
+    sctx->Init(ctx, 1);
+
+    // One literal-with-incremental-indexing header with a 200-byte value:
+    // its decoded cost (200 + 1 + 32 = 233) exceeds the 64-byte budget.
+    butil::IOBuf payload;
+    const uint8_t p[] = { 0x40, 0x01, 'x', 0x7F, 0xC1, 0x01 };
+    payload.append(p, sizeof(p));
+    payload.append(std::string(200, 'v'));
+    butil::IOBufBytesIterator it(payload);
+    brpc::policy::H2FrameHead head;
+    head.payload_size = payload.size();
+    head.type = brpc::policy::H2_FRAME_HEADERS;
+    head.flags = 0x4;  // H2_FLAGS_END_HEADERS
+    head.stream_id = 1;
+    const brpc::policy::H2ParseResult res =
+        sctx->OnHeaders(it, head, payload.size(), 0);
+    ASSERT_FALSE(res.is_ok());
+    delete sctx;
+}
+
 TEST_F(HttpTest, http2_server_enforces_max_concurrent_streams) {
     // The server advertises SETTINGS_MAX_CONCURRENT_STREAMS but never
     // enforced it: every odd stream id was accepted, so a peer could pin an

@@ -244,6 +244,10 @@ public:
                           uint32_t frag_size, uint8_t pad_length);
     H2ParseResult OnContinuation(butil::IOBufBytesIterator&, const H2FrameHead&);
     H2ParseResult OnResetStream(H2Error h2_error, const H2FrameHead&);
+
+    // True if the accumulated HEADERS/CONTINUATION fragment has grown past the
+    // local max_header_list_size. Bound every place the fragment is appended.
+    bool HeaderFragmentTooLarge() const;
     
     uint64_t correlation_id() const { return _correlation_id; }
     void set_correlation_id(uint64_t cid) { _correlation_id = cid; }

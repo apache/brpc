@@ -683,6 +683,11 @@ H2ParseResult H2Context::OnHeaders(
     return sctx->OnHeaders(it, frame_head, frag_size, pad_length);
 }
 
+bool H2StreamContext::HeaderFragmentTooLarge() const {
+    return _remaining_header_fragment.size() >
+        _conn_ctx->_unack_local_settings.max_header_list_size;
+}
+
 H2ParseResult H2StreamContext::OnHeaders(
     butil::IOBufBytesIterator& it, const H2FrameHead& frame_head,
     uint32_t frag_size, uint8_t pad_length) {
@@ -690,6 +695,12 @@ H2ParseResult H2StreamContext::OnHeaders(
 #if defined(BRPC_H2_STREAM_STATE)
     SetState(H2_STREAM_OPEN);
 #endif
+    // A new HEADERS block (which may be an initial request header set, or
+    // trailing headers on the same stream) starts here. The decoded header
+    // list budget is per header block (RFC 7540 section 10.5.1), so reset the
+    // counter; it stays cumulative across the CONTINUATION frames that finish
+    // this same block.
+    _decoded_header_list_size = 0;
     butil::IOBufBytesIterator it2(it, frag_size);
     if (ConsumeHeaders(it2) < 0) {
         LOG(ERROR) << "Invalid header, frag_size=" << frag_size
@@ -701,6 +712,15 @@ H2ParseResult H2StreamContext::OnHeaders(
     if (it2.bytes_left()) {
         it.append_and_forward(&_remaining_header_fragment,
                               it2.bytes_left());
+        // A single HEADERS frame can carry more than max_header_list_size of
+        // an incomplete header field; cap it here just like CONTINUATION.
+        if (HeaderFragmentTooLarge()) {
+            LOG(ERROR) << "Accumulated header fragment exceeds"
+                          " max_header_list_size="
+                       << _conn_ctx->_unack_local_settings.max_header_list_size
+                       << ", stream_id=" << frame_head.stream_id;
+            return MakeH2Error(H2_ENHANCE_YOUR_CALM);
+        }
     }
     it.forward(pad_length);
     if (frame_head.flags & H2_FLAGS_END_HEADERS) {
@@ -750,8 +770,7 @@ H2ParseResult H2StreamContext::OnContinuation(
     // field, whose wire size never legitimately exceeds the decoded header
     // list limit. Without this cap a never-completed field (e.g. a huge
     // declared string length) accumulates unbounded memory.
-    if (_remaining_header_fragment.size() >
-        _conn_ctx->_unack_local_settings.max_header_list_size) {
+    if (HeaderFragmentTooLarge()) {
         LOG(ERROR) << "Accumulated header fragment exceeds"
                       " max_header_list_size="
                    << _conn_ctx->_unack_local_settings.max_header_list_size
