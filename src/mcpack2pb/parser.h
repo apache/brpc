@@ -88,6 +88,17 @@ class ObjectIterator;
 class ArrayIterator;
 class ISOArrayIterator;
 
+// Bound the argument of RepeatedField::Reserve() calls that generated
+// parsing code derives from a wire-declared item count. The declared count
+// is under control of the remote side and is not necessarily backed by
+// actual bytes, so reserving it verbatim lets a tiny message trigger a huge
+// allocation. Repeated fields grow on demand past this bound, thus parsing
+// of genuinely large arrays is unaffected.
+inline int capped_reserve_count(uint32_t item_count) {
+    const uint32_t MAX_RESERVE_COUNT = 1024;
+    return (int)(item_count < MAX_RESERVE_COUNT ? item_count : MAX_RESERVE_COUNT);
+}
+
 // Represent a piece of unparsed(and unread) data of InputStream.
 struct UnparsedValue {
     UnparsedValue()
