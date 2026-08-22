@@ -21,6 +21,10 @@ add_dependencies(SOURCES_LIB PROTO_LIB)
 target_link_libraries(BUTIL_LIB PRIVATE brpc_common_config)
 target_link_libraries(SOURCES_LIB PRIVATE brpc_common_config)
 
+# protobuf/io/gzip_stream.h includes <zlib.h>. Prioritize the discovered
+# zlib headers over include directories inherited from parent projects.
+target_include_directories(SOURCES_LIB BEFORE PRIVATE ${ZLIB_INCLUDE_DIRS})
+
 # shared library needs POSITION_INDEPENDENT_CODE
 set_property(TARGET ${SOURCES_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
