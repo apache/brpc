@@ -31,6 +31,8 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
 DEFINE_string(certificate, "cert.pem", "Certificate file path to enable SSL");
 DEFINE_string(private_key, "key.pem", "Private key file path to enable SSL");
 DEFINE_string(ciphers, "", "Cipher suite used for SSL connections");
+DEFINE_bool(enable_progressive_timeout, false,
+            "Simulate a long stall mid-progressive response to trigger client-side progressive read idle timeout");
 
 namespace example {
 
@@ -100,10 +102,15 @@ public:
         for (int i = 0; i < 100; ++i) {
             char buf[16];
             int len = snprintf(buf, sizeof(buf), "part_%d ", i);
-            args->pa->Write(buf, len);
+            if (args->pa->Write(buf, len) != 0) {
+                break;
+            }
 
             // sleep a while to send another part.
             bthread_usleep(10000);
+            if (FLAGS_enable_progressive_timeout && i == 50) {
+                bthread_usleep(100000000UL);
+            }
         }
         return nullptr;
     }
@@ -190,10 +197,15 @@ public:
         for (int i = 0; i < 100; ++i) {
             char buf[48];
             int len = snprintf(buf, sizeof(buf), "event: foo\ndata: Hello, world! (%d)\n\n", i);
-            args->pa->Write(buf, len);
+            if (args->pa->Write(buf, len) != 0) {
+                break;
+            }
 
             // sleep a while to send another part.
             bthread_usleep(10000 * 10);
+            if (FLAGS_enable_progressive_timeout && i == 50) {
+                bthread_usleep(100000000UL);
+            }
         }
         return nullptr;
     }

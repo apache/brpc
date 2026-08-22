@@ -434,7 +434,8 @@ void ProcessHttpResponse(InputMessageBase* msg) {
 
         if (imsg_guard->read_body_progressively()) {
             // Set RPA if needed
-            accessor.set_readable_progressive_attachment(imsg_guard.get());
+            accessor.set_readable_progressive_attachment(
+                imsg_guard.get(), imsg_guard->socket_id());
             const int sc = res_header->status_code();
             if (sc < 200 || sc >= 300) {
                 // Even if the body is for streaming purpose, a non-OK status
@@ -1196,6 +1197,7 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
         }
         http_imsg = new HttpContext(socket->is_read_progressive(),
                                     socket->http_request_method());
+        http_imsg->SetSocketId(socket->id());
         // Parsing http is costly, parsing an incomplete http message from the
         // beginning repeatedly should be avoided, otherwise the cost may reach
         // O(n^2) in the worst case. Save incomplete http messages in sockets
