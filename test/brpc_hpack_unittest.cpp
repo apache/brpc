@@ -639,3 +639,37 @@ TEST_F(HPackTest, responses_with_huffman) {
     }
     ASSERT_TRUE(buf.buf().empty());
 }
+
+TEST_F(HPackTest, many_small_indexed_headers) {
+    // Each entry below is a "literal header field with incremental indexing"
+    // (0x40) with a 1-byte name ("a") and an empty value, costing
+    // name(1) + value(0) + 32 = 33 bytes in the dynamic table (rfc7541 4.1).
+    // 121 of them stay under the default 4096-byte table (121*33 = 3993) so
+    // none are evicted and all must decode. The decode table's ring buffer was
+    // previously sized for 34-byte entries (4096/34 = 120), so the 121st
+    // AddHeader() tripped CHECK(!full()) and aborted the process.
+    brpc::HPacker p;
+    ASSERT_EQ(0, p.Init(4096));
+
+    const int num_headers = 121;
+    butil::IOBuf buf;
+    for (int i = 0; i < num_headers; ++i) {
+        const uint8_t entry[] = {0x40, 0x01, (uint8_t)'a', 0x00};
+        buf.append(entry, sizeof(entry));
+    }
+    for (int i = 0; i < num_headers; ++i) {
+        brpc::HPacker::Header h;
+        ASSERT_GT(p.Decode(&buf, &h), 0) << "failed at header " << i;
+        ASSERT_EQ("a", h.name);
+        ASSERT_TRUE(h.value.empty());
+    }
+    ASSERT_TRUE(buf.empty());
+}
+
+TEST_F(HPackTest, zero_size_dynamic_table) {
+    // max_size == 0 disables the dynamic table. num_headers then rounds down to
+    // 0, and malloc(0) may return NULL, so Init must still keep one slot and
+    // succeed. No entry is ever stored because entry_size > max_size.
+    brpc::HPacker p;
+    ASSERT_EQ(0, p.Init(0));
+}
