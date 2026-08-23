@@ -1711,6 +1711,12 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
             if (!FailedInline()) {
                 SetFailed(EREQUEST, "The server didn't accept the stream");
             }
+        } else if (_remote_stream_settings->extra_stream_ids_size() !=
+                   (int)stream_num - 1) {
+            SetFailed(ERESPONSE, "Server returned %d extra_stream_ids, "
+                      "expected %d",
+                      _remote_stream_settings->extra_stream_ids_size(),
+                      (int)stream_num - 1);
         } else {
             for (size_t i = 0; i < stream_num; ++i) {
                 if (Stream::Address(_request_streams[i], &ptrs[i]) != 0) {
