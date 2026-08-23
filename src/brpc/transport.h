@@ -51,6 +51,11 @@ public:
     virtual void QueueMessage(InputMessageClosure& input_msg, int* num_bthread_created, bool last_msg) = 0;
     virtual void Debug(std::ostream &os) = 0;
 
+    // Returns true if OnNewMessages should stop its read loop immediately
+    // (e.g., RDMA transport after handshake completes and edge trigger
+    // is switched to OnNewDataFromTcp). Default: never stop.
+    virtual bool ShouldStopReading() const { return false; }
+
     bool HasOnEdgeTrigger() {
         return _on_edge_trigger != nullptr;
     }

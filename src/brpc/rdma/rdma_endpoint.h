@@ -124,6 +124,13 @@ public:
     // Whether the endpoint can send more data
     bool IsWritable() const;
 
+    // Whether the RDMA handshake has reached ESTABLISHED.
+    // Uses acquire load to pair with the release store in
+    // ExecuteServerHandshake / ProcessHandshakeAtClient.
+    bool IsEstablished() const {
+        return _state.load(butil::memory_order_acquire) == ESTABLISHED;
+    }
+
     // For debug
     void DebugInfo(std::ostream& os,
                    butil::StringPiece connector = "\n") const;

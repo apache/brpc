@@ -500,7 +500,7 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
 
     if (rdma_transport->_rdma_state == RdmaTransport::RDMA_ON) {
-        ep->_state.store(ESTABLISHED, butil::memory_order_relaxed);
+        ep->_state.store(ESTABLISHED, butil::memory_order_release);
         LOG_IF(INFO, FLAGS_rdma_trace_verbose)
             << "Client handshake ends (use rdma v" << ep->_handshake_version
             << ") on " << s->description();
@@ -560,6 +560,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         }
         if (r == RemoteHelloResult::ERROR) {
             ep->_state.store(FAILED, butil::memory_order_relaxed);
+            rdma_transport->_on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
 
@@ -592,6 +593,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         if (hs->SendLocalHello() < 0) {
             PLOG(WARNING) << "Fail to send server hello to " << s->description();
             ep->_state.store(FAILED, butil::memory_order_relaxed);
+            rdma_transport->_on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
 
@@ -607,13 +609,6 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
     if (source->size() < HELLO_ACK_LEN) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
-    if (source->size() > HELLO_ACK_LEN) {
-        LOG(WARNING) << "Too many bytes in handshake ACK, drop connection: "
-                     << s->description();
-        ep->_state.store(FAILED, butil::memory_order_relaxed);
-        s->reset_parsing_context(nullptr);
-        return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
-    }
 
     uint32_t flags_be = 0;
     CHECK_EQ(source->cutn(&flags_be, HELLO_ACK_LEN), HELLO_ACK_LEN);
@@ -625,6 +620,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         ep->_state.store(FALLBACK_TCP, butil::memory_order_release);
         s->reset_parsing_context(nullptr);
+        rdma_transport->_on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
 
@@ -633,6 +629,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
                      << s->description();
         ep->_state.store(FAILED, butil::memory_order_relaxed);
         s->reset_parsing_context(nullptr);
+        rdma_transport->_on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
         return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
 
@@ -640,9 +637,25 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         << "Server handshake ends (use rdma v" << ep->_handshake_version
         << ") on " << s->description();
     rdma_transport->_rdma_state = RdmaTransport::RDMA_ON;
-    ep->_state.store(ESTABLISHED, butil::memory_order_relaxed);
+    // Clear any residual TCP data so it cannot pollute the RDMA recv
+    // stream. HandleCompletion appends (not overwrites) to _read_buf,
+    // so leftover bytes would become a prefix to RDMA data and break
+    // parsing. This clear is safe because HandleCompletion only writes
+    // _read_buf after seeing ESTABLISHED (acquire), which is stored
+    // below (release) — strictly after this clear.
+    source->clear();
+    ep->_state.store(ESTABLISHED, butil::memory_order_release);
     s->reset_parsing_context(nullptr);
-    return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+    rdma_transport->_on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
+    // Return NOT_ENOUGH_DATA (not TRY_OTHERS) so that CutInputMessage
+    // returns immediately without invoking other parsers on _read_buf.
+    // With TRY_OTHERS, each parser would call source->size() on _read_buf,
+    // racing with HandleCompletion which may be appending RDMA data to
+    // _read_buf concurrently. The preferred_index is left as the handshake
+    // parser, but this is self-correcting: the first PollCq-driven
+    // ProcessNewMessage will try the handshake parser, get TRY_OTHERS
+    // (magic mismatch), and switch to the correct parser.
+    return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
 }
 
 bool RdmaEndpoint::IsWritable() const {
@@ -916,16 +929,31 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
     }
     case IBV_WC_RECV: {  // recv completion
         // Please note that only the first wc.byte_len bytes is valid
+        ssize_t bytes_written = 0;
         if (wc.byte_len > 0) {
             if (wc.byte_len < (uint32_t)FLAGS_rdma_zerocopy_min_size) {
                 zerocopy = false;
             }
-            CHECK_NE(_state.load(butil::memory_order_relaxed), FALLBACK_TCP);
-            if (zerocopy) {
-                _rbuf[_rq_received].cutn(&_socket->_read_buf, wc.byte_len);
+            // Don't write to _read_buf until the handshake is fully done
+            // (ESTABLISHED). During the handshake (S_ACK_WAIT etc.), the
+            // main socket's OnNewMessages is driving the handshake via
+            // _read_buf; PollCq writing to _read_buf concurrently corrupts
+            // the IOBuf (non-thread-safe). Fall through to handle imm
+            // data, re-post recv WR, and send ack normally.
+            if (_state.load(butil::memory_order_acquire) != ESTABLISHED) {
+                LOG_EVERY_N(WARNING, 100)
+                    << "RDMA recv completion in non-ESTABLISHED state "
+                    << GetStateStr() << ", drop "
+                    << wc.byte_len << " bytes from "
+                    << _socket->description();
             } else {
-                // Copy data when the receive data is really small
-                _socket->_read_buf.append(_rbuf_data[_rq_received], wc.byte_len);
+                if (zerocopy) {
+                    _rbuf[_rq_received].cutn(&_socket->_read_buf, wc.byte_len);
+                } else {
+                    // Copy data when the receive data is really small
+                    _socket->_read_buf.append(_rbuf_data[_rq_received], wc.byte_len);
+                }
+                bytes_written = wc.byte_len;
             }
         }
         if (0 != (wc.wc_flags & IBV_WC_WITH_IMM) && wc.imm_data > 0) {
@@ -948,7 +976,7 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
         if (wc.byte_len > 0) {
             SendAck(1);
         }
-        return wc.byte_len;
+        return bytes_written;
     }
     default:
         // Some driver bugs may lead to unexpected completion opcode.
@@ -1593,12 +1621,19 @@ void RdmaEndpoint::PollCq(Socket* m) {
 
         // Just call PrcessNewMessage once for all of these CQEs.
         // Otherwise it may call too many bthread_flush to affect performance.
-        const int64_t received_us = butil::cpuwide_time_us();
-        const int64_t base_realtime = butil::gettimeofday_us() - received_us;
-        InputMessenger* messenger = static_cast<InputMessenger*>(s->user());
-        if (messenger->ProcessNewMessage(
-                    s.get(), bytes, false, received_us, base_realtime, last_msg) < 0) {
-            return;
+        // Only call when bytes > 0: when bytes == 0, HandleCompletion wrote
+        // nothing to _read_buf (e.g., IBV_WC_SEND completions, or IBV_WC_RECV
+        // dropped during handshake). Calling ProcessNewMessage with bytes == 0
+        // would still invoke CutInputMessage on _read_buf, racing with
+        // OnNewMessages which is driving the handshake via the same _read_buf.
+        if (bytes > 0) {
+            const int64_t received_us = butil::cpuwide_time_us();
+            const int64_t base_realtime = butil::gettimeofday_us() - received_us;
+            InputMessenger* messenger = static_cast<InputMessenger*>(s->user());
+            if (messenger->ProcessNewMessage(
+                        s.get(), bytes, false, received_us, base_realtime, last_msg) < 0) {
+                return;
+            }
         }
     }
 }

@@ -70,8 +70,17 @@ int RdmaTransport::Reset(int32_t expected_nref) {
     if (_rdma_ep) {
         _rdma_ep->Reset();
         _rdma_state = RDMA_UNKNOWN;
+        if (_socket->CreatedByConnect()) {
+            _on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
+        } else {
+            _on_edge_trigger = InputMessenger::OnNewMessages;
+        }
     }
     return 0;
+}
+
+bool RdmaTransport::ShouldStopReading() const {
+    return _rdma_ep && _rdma_ep->IsEstablished();
 }
 
 std::shared_ptr<AppConnect> RdmaTransport::Connect() {

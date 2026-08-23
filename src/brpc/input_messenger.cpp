@@ -210,8 +210,15 @@ int InputMessenger::ProcessNewMessage(
             if (pr.error() == PARSE_ERROR_NOT_ENOUGH_DATA) {
                 // incomplete message, re-read.
                 // However, some buffer may have been consumed
-                // under protocols like HTTP. Record this size
-                m->_last_msg_size += (last_size - m->_read_buf.length());
+                // under protocols like HTTP. Record this size.
+                // Skip the length() read when the transport is stopping
+                // (e.g., RDMA handshake just completed and ESTABLISHED is
+                // published), because HandleCompletion may be appending
+                // to _read_buf concurrently. The last_msg_size stat is
+                // metrics-only and safe to skip.
+                if (!m->_transport->ShouldStopReading()) {
+                    m->_last_msg_size += (last_size - m->_read_buf.length());
+                }
                 break;
             } else if (pr.error() == PARSE_ERROR_TRY_OTHERS) {
                 LOG(WARNING)
@@ -369,7 +376,19 @@ void InputMessenger::OnNewMessages(Socket* m) {
         if (messenger->ProcessNewMessage(m, nr, read_eof, received_us,
                                          base_realtime, last_msg) < 0) {
             return;
-        } 
+        }
+        // If the transport switched its edge trigger during parsing (e.g.,
+        // RDMA handshake completed and edge trigger changed to
+        // OnNewDataFromTcp), stop reading to avoid racing with the new
+        // edge trigger handler on _read_buf. Drain _nevent so future
+        // epoll events can schedule the new edge trigger handler.
+        if (m->_transport->ShouldStopReading()) {
+            while (m->MoreReadEvents(&progress)) {}
+            if (read_eof) {
+                m->SetEOF();
+            }
+            return;
+        }
     }
 
     if (read_eof) {

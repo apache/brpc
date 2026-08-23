@@ -41,6 +41,7 @@ public:
     void ProcessEvent(bthread_attr_t attr) override;
     void QueueMessage(InputMessageClosure& inputMsg, int* num_bthread_created, bool last_msg) override;
     void Debug(std::ostream &os) override;
+    bool ShouldStopReading() const override;
     rdma::RdmaEndpoint* GetRdmaEp() {
         CHECK(_rdma_ep != nullptr);
         return _rdma_ep;
