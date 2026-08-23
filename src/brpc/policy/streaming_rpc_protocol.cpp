@@ -27,6 +27,7 @@
 #include "butil/iobuf.h"                         // butil::IOBuf
 #include "butil/raw_pack.h"                      // RawPacker RawUnpacker
 #include "brpc/log.h"
+#include "brpc/server.h"
 #include "brpc/socket.h"                        // Socket
 #include "brpc/streaming_rpc_meta.pb.h"         // StreamFrameMeta
 #include "brpc/policy/most_common_message.h"
@@ -59,7 +60,7 @@ void PackStreamMessage(butil::IOBuf* out,
 }
 
 ParseResult ParseStreamingMessage(butil::IOBuf* source,
-                            Socket* socket, bool /*read_eof*/, const void* /*arg*/) {
+                            Socket* socket, bool /*read_eof*/, const void* arg) {
     char header_buf[12];
     const size_t n = source->copy_to(header_buf, sizeof(header_buf));
     if (n >= 4) {
@@ -89,6 +90,16 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
         // Pop the message
         source->pop_front(sizeof(header_buf) + body_size);
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+    }
+    if (arg != nullptr) {
+        // Stream frames are consumed here and never reach InputMessenger's
+        // authentication hook.
+        const Server* server = static_cast<const Server*>(arg);
+        if (server->options().auth != nullptr && !socket->IsAuthenticated()) {
+            LOG(WARNING) << "Reject streaming frame from unauthenticated "
+                         << *socket;
+            return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+        }
     }
     source->pop_front(sizeof(header_buf));
     butil::IOBuf meta_buf;

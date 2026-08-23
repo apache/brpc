@@ -372,7 +372,14 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
             Stream* s = stream_ptr.get();
             StreamSettings *stream_settings = meta.mutable_stream_settings();
             s->FillSettings(stream_settings);
-            s->SetHostSocket(sock);
+            if (s->SetHostSocket(sock) != 0) {
+                cntl->SetFailed(EINVAL, "Fail to bind stream=%" PRIu64
+                                " to %s", response_stream_id,
+                                sock->description().c_str());
+                Stream::SetFailed(response_stream_ids, EINVAL,
+                                  "%s", cntl->ErrorText().c_str());
+                return;
+            }
             for (size_t i = 1; i < response_stream_ids.size(); ++i) {
                 stream_settings->mutable_extra_stream_ids()->Add(response_stream_ids[i]);
             }
@@ -438,8 +445,13 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
             StreamUniquePtr extra_stream_ptr;
             if (Stream::Address(extra_stream_id, &extra_stream_ptr) == 0) {
                 Stream* extra_stream = extra_stream_ptr.get();
-                extra_stream->SetHostSocket(sock);
-                extra_stream->SetConnected();
+                if (extra_stream->SetHostSocket(sock) == 0) {
+                    extra_stream->SetConnected();
+                } else {
+                    Stream::SetFailed(extra_stream_id, EINVAL,
+                                      "Fail to bind stream to %s",
+                                      sock->description().c_str());
+                }
             } else {
                 LOG(WARNING) << "Stream=" << extra_stream_id
                              << " was closed before sending response";
