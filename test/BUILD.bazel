@@ -207,6 +207,11 @@ generate_unittests(
         "@com_google_googletest//:gtest_main",
     ] + TCMALLOC_DEP_UNLESS_ASAN,
     copts = COPTS,
+    per_test_tags = {
+        "bthread_cond_unittest.cpp": ["exclusive"],
+        "bthread_fd_unittest.cpp": ["exclusive"],
+        "bthread_unittest.cpp": ["exclusive"],
+    },
 )
 
 # Expose unit-test data files (cert*, jsonout) at the runfiles workspace root
@@ -252,8 +257,14 @@ generate_unittests(
     # PATH, apt-installed by install-essential-dependencies); tag them the same
     # so bazel never serves a cached pass that actually skipped and runs them
     # outside the sandbox where mysqld and loopback are visible.
+    # Run timing-sensitive event-loop and socket tests without competing test
+    # processes. Their assertions intentionally depend on prompt scheduling.
     per_test_tags = {
+        "brpc_event_dispatcher_unittest.cpp": ["exclusive"],
+        "brpc_http_rpc_protocol_unittest.cpp": ["exclusive"],
         "brpc_redis_unittest.cpp": ["external", "local"],
+        "brpc_server_unittest.cpp": ["exclusive"],
+        "brpc_socket_unittest.cpp": ["exclusive"],
         "brpc_mysql_auth_handshake_unittest.cpp": ["external", "local"],
         "brpc_mysql_connection_type_unittest.cpp": ["external", "local"],
         "brpc_mysql_prepared_integration_unittest.cpp": ["external", "local"],
