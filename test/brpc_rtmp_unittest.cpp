@@ -750,6 +750,33 @@ TEST(RtmpTest, avc_seq_header_sps_without_zero_byte) {
     avc.Create(buf);
 }
 
+// The Exp-Golomb decoder used by ParseSPS placed every value bit at the same
+// shift (leadingZeroBits-1) instead of the descending (leadingZeroBits-1-i)
+// position, so any ue(v) code with leadingZeroBits>=2 decoded to the wrong
+// number (and a crafted code could overflow the int32 accumulator). Here the
+// SPS encodes pic_width/pic_height as ue(4); the old code decoded 5 (width 96),
+// the correct value is 4 (width 80).
+TEST(RtmpTest, avc_seq_header_sps_exp_golomb) {
+    butil::IOBuf buf;
+    // configurationVersion, profile, compat, level, lengthSizeMinusOne=3, numSPS=1
+    const char head[6] = { 0x01, 0x42, 0x00, 0x1E, (char)0xff, (char)0xe1 };
+    buf.append(head, sizeof(head));
+    // Baseline SPS (profile_idc=66 skips the chroma block). The bitstream after
+    // profile/flags/level encodes: seq_parameter_set_id=0, log2_max_frame_num=0,
+    // pic_order_cnt_type=2, max_num_ref_frames=0, gaps_flag=0, then
+    // pic_width_in_mbs_minus1=ue(4) and pic_height_in_map_units_minus1=ue(4).
+    const char sps[7] = { 0x67, 0x42, 0x00, 0x1E, (char)0xdc, 0x52, (char)0xc0 };
+    const char len_be[2] = { 0x00, (char)sizeof(sps) };
+    buf.append(len_be, sizeof(len_be));
+    buf.append(sps, sizeof(sps));
+    buf.push_back('\0'); // numPPS=0
+
+    brpc::AVCDecoderConfigurationRecord avc;
+    ASSERT_TRUE(avc.Create(buf).ok());
+    ASSERT_EQ(80, avc.width);
+    ASSERT_EQ(80, avc.height);
+}
+
 static void AppendBigEndian3Bytes(std::string* s, uint32_t v) {
     s->push_back((char)((v >> 16) & 0xFF));
     s->push_back((char)((v >> 8) & 0xFF));
