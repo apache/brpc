@@ -121,6 +121,19 @@ $ ./echo_client
 $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
+### 使用 Bazel 编译 brpc
+
+bRPC 也支持 Bazel 构建。`example/build_with_bazel_module` 下的 bzlmod 示例会基于本地
+bRPC 源码构建 server 和 client：
+
+```shell
+$ cd example/build_with_bazel_module
+$ bazel build //:echo_c++_server //:echo_c++_client
+```
+
+如果要把 bRPC 作为 Bazel 依赖使用，包括需要配置的 registry 和 `MODULE.bazel`，
+请参考 [Bazel 支持](bazel_support.md)。
+
 ## Fedora/CentOS
 
 ### 依赖准备

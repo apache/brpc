@@ -28,3 +28,24 @@ local_path_override(
     module_name = "brpc",
     path = "../..",
 )
+
+# Overrides only take effect in the root module. When this example is built,
+# `brpc-example` is the root module and `brpc` is just a dependency, so the
+# same two overrides in brpc's root MODULE.bazel are ignored and have to be
+# repeated here. Keep them in sync with the root MODULE.bazel.
+#
+# leveldb is published only in the secretflow registry — not in BCR, nor in
+# the babylon / apache-brpc registries added by .bazelrc. And brpc declares
+# `openssl 3.3.2`, which exists there only as `3.3.2.bcr.1`, hence the
+# version rewrite.
+
+single_version_override(
+    module_name = "leveldb",
+    registry = "https://raw.githubusercontent.com/secretflow/bazel-registry/main",
+)
+
+single_version_override(
+    module_name = "openssl",
+    version = "3.3.2.bcr.1",
+    registry = "https://raw.githubusercontent.com/secretflow/bazel-registry/main",
+)
