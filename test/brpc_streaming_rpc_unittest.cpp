@@ -81,6 +81,128 @@ protected:
     test::EchoResponse response;
 };
 
+class StreamingRpcAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string* auth_str) const override {
+        *auth_str = "credential";
+        return 0;
+    }
+
+    int VerifyCredential(const std::string& auth_str,
+                         const butil::EndPoint&,
+                         brpc::AuthContext*) const override {
+        return auth_str == "credential" ? 0 : brpc::ERPCAUTH;
+    }
+};
+
+class AuthenticatedStreamHandler : public brpc::StreamInputHandler {
+public:
+    int on_received_messages(brpc::StreamId,
+                             butil::IOBuf* const messages[],
+                             size_t size) override {
+        for (size_t i = 0; i < size; ++i) {
+            if (messages[i]->to_string() == "authenticated stream frame") {
+                _received.store(true, std::memory_order_release);
+            }
+        }
+        return 0;
+    }
+
+    void on_idle_timeout(brpc::StreamId) override {}
+    void on_closed(brpc::StreamId) override {}
+    void on_failed(brpc::StreamId, int, const std::string&) override {}
+
+    bool received() const {
+        return _received.load(std::memory_order_acquire);
+    }
+
+private:
+    std::atomic<bool> _received{false};
+};
+
+TEST_F(StreamingRpcTest, reject_stream_frame_from_unauthenticated_socket) {
+    StreamingRpcAuthenticator auth;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.auth = &auth;
+    ASSERT_EQ(0, server.Start(0, &server_options));
+
+    brpc::SocketId socket_id;
+    brpc::SocketOptions socket_options;
+    ASSERT_EQ(0, brpc::Socket::Create(socket_options, &socket_id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+
+    brpc::StreamFrameMeta frame_meta;
+    frame_meta.set_stream_id(brpc::INVALID_STREAM_ID);
+    frame_meta.set_frame_type(brpc::FRAME_TYPE_CLOSE);
+    butil::IOBuf frame;
+    brpc::policy::PackStreamMessage(&frame, frame_meta, nullptr);
+    const size_t frame_size = frame.size();
+
+    brpc::ParseResult result = brpc::policy::ParseStreamingMessage(
+        &frame, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, result.error());
+    ASSERT_EQ(frame_size, frame.size());
+}
+
+TEST_F(StreamingRpcTest, authenticate_before_exchanging_stream_frames) {
+    StreamingRpcAuthenticator auth;
+    AuthenticatedStreamHandler handler;
+    brpc::StreamOptions server_stream_options;
+    server_stream_options.handler = &handler;
+
+    brpc::Server server;
+    MyServiceWithStream service(server_stream_options);
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions server_options;
+    server_options.auth = &auth;
+    ASSERT_EQ(0, server.Start(0, &server_options));
+
+    // A client without credentials is rejected before the service accepts its
+    // stream, and the server-side stream handler does not observe any frame.
+    brpc::Channel unauthenticated_channel;
+    brpc::ChannelOptions unauthenticated_options;
+    unauthenticated_options.max_retry = 0;
+    ASSERT_EQ(0, unauthenticated_channel.Init(
+        server.listen_address(), &unauthenticated_options));
+    brpc::Controller unauthenticated_cntl;
+    brpc::StreamId unauthenticated_stream;
+    ASSERT_EQ(0, StreamCreate(
+        &unauthenticated_stream, unauthenticated_cntl, nullptr));
+    brpc::ScopedStream unauthenticated_stream_guard(unauthenticated_stream);
+    test::EchoResponse unauthenticated_response;
+    test::EchoService_Stub unauthenticated_stub(&unauthenticated_channel);
+    unauthenticated_stub.Echo(&unauthenticated_cntl, &request,
+                              &unauthenticated_response, nullptr);
+    ASSERT_TRUE(unauthenticated_cntl.Failed());
+    ASSERT_EQ(brpc::ERPCAUTH, unauthenticated_cntl.ErrorCode());
+    ASSERT_FALSE(handler.received());
+
+    // A normal client authenticates in the RPC service path before either
+    // endpoint exchanges stream frames.
+    brpc::ChannelOptions channel_options;
+    channel_options.auth = &auth;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &channel_options));
+    brpc::Controller cntl;
+    brpc::StreamId request_stream;
+    ASSERT_EQ(0, StreamCreate(&request_stream, cntl, nullptr));
+    brpc::ScopedStream stream_guard(request_stream);
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &request, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    butil::IOBuf message;
+    message.append("authenticated stream frame");
+    ASSERT_EQ(0, brpc::StreamWrite(request_stream, message));
+    const int64_t deadline = butil::gettimeofday_us() + 3000000L;
+    while (!handler.received() && butil::gettimeofday_us() < deadline) {
+        usleep(1000);
+    }
+    ASSERT_TRUE(handler.received());
+}
+
 struct BatchStreamFeedbackRaceState {
     brpc::StreamId server_first_stream_id{brpc::INVALID_STREAM_ID};
     brpc::StreamId server_extra_stream_id{brpc::INVALID_STREAM_ID};

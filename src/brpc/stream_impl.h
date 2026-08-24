@@ -159,6 +159,9 @@ friend class VersionedRefWithId<Stream>;
     StreamSettings _remote_settings;
 
     bool _parse_rpc_response;
+    // Server-accepted streams must be bound by their creating RPC, never by
+    // the first frame that happens to carry their id.
+    bool _server_accepted_stream;
     bthread::ExecutionQueueId<butil::IOBuf*> _consumer_queue;
     butil::IOBuf* _pending_buf;
     int64_t _start_idle_timer_us;

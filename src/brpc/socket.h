@@ -556,6 +556,10 @@ public:
     // `FightAuthentication', otherwise it's regarded as an error
     void SetAuthentication(int error_code);
 
+    // Returns true iff authentication over this socket has completed
+    // successfully, i.e. `SetAuthentication(0)' was called.
+    bool IsAuthenticated() const;
+
     // Since some protocols are not able to store correlation id in their
     // headers (such as nova-pbrpc, http), we have to store it here. Note
     // that there can only be 1 RPC call on this socket at any time, otherwise

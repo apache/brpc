@@ -1745,7 +1745,13 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
             if(!ptrs[i]) continue;
             Stream* extra_stream = ptrs[i].get();
             _remote_stream_settings->set_stream_id(extra_stream_ids[i - 1]);
-            extra_stream->SetHostSocket(host_socket);
+            if (extra_stream->SetHostSocket(host_socket) != 0) {
+                SetFailed(EREQUEST, "Fail to bind response stream=%" PRIu64,
+                          extra_stream_ids[i - 1]);
+                Stream::SetFailed(_request_streams, _error_code,
+                                  "%s", _error_text.c_str());
+                return;
+            }
             extra_stream->SetConnected(_remote_stream_settings);
         }
     }

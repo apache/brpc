@@ -2206,6 +2206,13 @@ void Socket::SetAuthentication(int error_code) {
     }
 }
 
+bool Socket::IsAuthenticated() const {
+    const uint64_t flag_error =
+        _auth_flag_error.load(butil::memory_order_acquire);
+    return (flag_error & AUTH_FLAG) &&
+        (int32_t)(flag_error & 0xFFFFFFFFul) == 0;
+}
+
 AuthContext* Socket::mutable_auth_context() {
     if (_auth_context != nullptr) {
         LOG(FATAL) << "Impossible! This function is supposed to be called "
