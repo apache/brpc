@@ -23,6 +23,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
     - uses: ./.github/actions/install-all-dependencies
 
     - name: gcc with default options
@@ -53,6 +56,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
     - uses: ./.github/actions/install-all-dependencies
 
     - name: gcc with default options
@@ -89,6 +95,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
     - uses: ./.github/actions/install-essential-dependencies
 
     - name: protobuf 3.5.1
@@ -119,6 +128,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     # Install redis-server/mysql-server so the integration tests that fork a
     # real server (e.g. brpc_redis_unittest) actually run under bazel instead
     # of skipping. Same shared action the make-based unittest jobs use.
@@ -129,6 +141,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     - run: sudo apt-get update && sudo apt-get install -y  libibverbs-dev
     - name: root
       run: |
@@ -166,6 +181,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
     - uses: ./.github/actions/install-essential-dependencies
 
     - name: protobuf 3.5.1
@@ -196,6 +214,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     # Install redis-server/mysql-server so the forked-server integration tests
     # actually run under bazel (see gcc-unittest-with-bazel).
     - uses: ./.github/actions/install-essential-dependencies
@@ -210,6 +231,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     - run: sudo apt-get update && sudo apt-get install -y  libibverbs-dev
     - name: root
       run: |
@@ -249,6 +273,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
     - uses: ./.github/actions/install-essential-dependencies
     - uses: ./.github/actions/init-ut-make-config
       with:
@@ -267,6 +294,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
     - uses: ./.github/actions/install-essential-dependencies
     - uses: ./.github/actions/init-ut-make-config
       with:
@@ -295,6 +325,9 @@ jobs:
       USE_BAZEL_VERSION: "8.3.1"
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     # Install redis-server/mysql-server so the forked-server integration tests
     # actually run under bazel (see gcc-unittest-with-bazel).
     - uses: ./.github/actions/install-essential-dependencies
