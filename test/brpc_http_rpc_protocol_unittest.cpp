@@ -2767,14 +2767,12 @@ void ReadOneResponse(brpc::SocketUniquePtr& sock,
 }
 
 TEST_F(HttpTest, http_expect) {
-    const int port = 8923;
     brpc::Server server;
     HttpServiceImpl svc;
     EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    EXPECT_EQ(0, server.Start(0, nullptr));
 
-    butil::EndPoint ep;
-    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:8923", &ep));
+    const butil::EndPoint ep = server.listen_address();
     brpc::SocketOptions options;
     options.remote_side = ep;
     brpc::SocketId id;
