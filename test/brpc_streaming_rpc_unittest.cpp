@@ -1186,8 +1186,10 @@ TEST_F(StreamingRpcTest, reject_mismatched_returned_stream_identifiers) {
         stub.Echo(&cntl, &request, &response, nullptr);
         ASSERT_TRUE(cntl.Failed());
         ASSERT_EQ(brpc::ERESPONSE, cntl.ErrorCode());
+        const std::string expected_error =
+            "extra_stream_ids, expected " + std::to_string(STREAM_COUNT - 1);
         ASSERT_NE(std::string::npos,
-                  cntl.ErrorText().find("extra_stream_ids, expected 2"));
+                  cntl.ErrorText().find(expected_error));
 
         for (brpc::StreamId stream_id : request_streams) {
             brpc::StreamUniquePtr stream;
