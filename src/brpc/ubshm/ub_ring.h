@@ -28,7 +28,7 @@
 
 namespace brpc {
 namespace ubring {
-DECLARE_int32(ub_flying_io_timeout);
+DECLARE_int32(ub_flying_io_timeout_s);
 extern uint32_t g_sleep_time[UBR_TASK_STEP_NUM];
 
 class UBRing : public butil::IReader {
