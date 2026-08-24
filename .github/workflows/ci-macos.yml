@@ -44,6 +44,10 @@ jobs:
         mkdir build && cd build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DWITH_UBRING=ON -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@21) ..
         make -j ${{env.proc_num}} && make clean
 
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
+
   compile-with-make-cmake-protobuf29:
     runs-on: macos-latest # https://github.com/actions/runner-images
 
@@ -68,6 +72,10 @@ jobs:
         run: |
           mkdir build && cd build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DWITH_UBRING=ON -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@29) ..
           make -j ${{env.proc_num}} && make clean
+
+      - name: Show ccache statistics
+        if: always()
+        run: ccache --show-stats
 
   compile-with-bazel:
     runs-on: macos-latest # https://github.com/actions/runner-images

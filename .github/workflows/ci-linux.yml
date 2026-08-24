@@ -52,6 +52,10 @@ jobs:
                  --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety \
                  --with-debug-lock --with-bthread-tracer --with-asan
 
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
+
   compile-with-cmake:
     runs-on: ubuntu-22.04
     steps:
@@ -91,6 +95,10 @@ jobs:
               -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
         make -j ${{env.proc_num}} && make clean
 
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
+
   gcc-compile-with-make-protobuf:
     runs-on: ubuntu-22.04
     steps:
@@ -123,6 +131,10 @@ jobs:
         protobuf-cpp-version: 3.21.12
         protobuf-install-dir: /protobuf-3.21.12
         config-brpc-options: --cc=gcc --cxx=g++ --werror
+
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
 
   gcc-unittest-with-bazel:
     runs-on: ubuntu-22.04
@@ -210,6 +222,10 @@ jobs:
         protobuf-install-dir: /protobuf-3.21.12
         config-brpc-options: --cc=clang --cxx=clang++ --werror
 
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
+
   clang-unittest-with-bazel:
     runs-on: ubuntu-22.04
     steps:
@@ -289,6 +305,9 @@ jobs:
       run: |
         cd test
         sh ./run_tests.sh
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
 
   clang-unittest-asan:
     runs-on: ubuntu-22.04
@@ -314,6 +333,9 @@ jobs:
         # too slowly, so they flake here (connection refused). Skip just those under ASan; the
         # redis codec/server tests still run, and the full suite runs in clang-unittest.
         GTEST_FILTER='-RedisTest.sanity:RedisTest.keys_with_spaces:RedisTest.incr_and_decr:RedisTest.by_components:RedisTest.auth' sh ./run_tests.sh
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
 
   clang-unittest-bazel-with-babylon-and-new-pb:
     runs-on: ubuntu-22.04
