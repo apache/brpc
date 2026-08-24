@@ -5,6 +5,9 @@ inputs:
   kind:
     description: Cache backend to configure (ccache or bazel)
     required: true
+  cache-key:
+    description: Cache namespace override for matrix jobs
+    required: false
 
 runs:
   using: composite
@@ -14,10 +17,9 @@ runs:
       uses: actions/cache@v6
       with:
         path: ~/.cache/ccache
-        key: ${{ runner.os }}-ccache-${{ github.job }}-${{ github.sha }}
+        key: ${{ runner.os }}-ccache-${{ inputs.cache-key || github.job }}--${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-ccache-${{ github.job }}-
-          ${{ runner.os }}-ccache-
+          ${{ runner.os }}-ccache-${{ inputs.cache-key || github.job }}--
 
     - name: Configure ccache
       if: inputs.kind == 'ccache'

@@ -57,43 +57,54 @@ jobs:
       run: ccache --show-stats
 
   compile-with-cmake:
+    name: compile-with-cmake (${{ matrix.name }})
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc-default
+            cc: gcc
+            cxx: g++
+            cmake-options: ''
+          - name: gcc-all-options
+            cc: gcc
+            cxx: g++
+            cmake-options: >-
+              -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON
+              -DWITH_RDMA=ON -DWITH_UBRING=ON
+              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON
+              -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON
+          - name: clang-default
+            cc: clang
+            cxx: clang++
+            cmake-options: ''
+          - name: clang-all-options
+            cc: clang
+            cxx: clang++
+            cmake-options: >-
+              -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON
+              -DWITH_RDMA=ON -DWITH_UBRING=ON
+              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON
+              -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
+        cache-key: cmake-${{ matrix.name }}
     - uses: ./.github/actions/install-all-dependencies
 
-    - name: gcc with default options
+    - name: Build
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+        CMAKE_OPTIONS: ${{ matrix.cmake-options }}
       run: |
-        export CC=gcc && export CXX=g++
-        mkdir gcc_build && cd gcc_build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-        make -j ${{env.proc_num}} && make clean
-
-    - name: gcc with all options
-      run: |
-        export CC=gcc && export CXX=g++
-        mkdir gcc_build_all && cd gcc_build_all
-        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_UBRING=ON \
-              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON \
-              -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-        make -j ${{env.proc_num}} && make clean
-
-    - name: clang with default options
-      run: |
-        export CC=clang && export CXX=clang++
-        mkdir clang_build && cd clang_build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-        make -j ${{env.proc_num}} && make clean
-
-    - name: clang with all options
-      run: |
-        export CC=clang && export CXX=clang++
-        mkdir clang_build_all && cd clang_build_all
-        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_UBRING=ON \
-              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON \
-              -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-        make -j ${{env.proc_num}} && make clean
+        read -r -a cmake_options <<< "${CMAKE_OPTIONS}"
+        cmake -S . -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          "${cmake_options[@]}"
+        cmake --build build -j ${{env.proc_num}}
 
     - name: Show ccache statistics
       if: always()
