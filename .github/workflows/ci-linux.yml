@@ -20,37 +20,44 @@ concurrency:
 # https://github.com/actions/runner-images
 jobs:
   compile-with-make:
+    name: compile-with-make (${{ matrix.name }})
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc-default
+            make-options: >-
+              --headers=/usr/include --libs=/usr/lib /usr/lib64
+              --cc=gcc --cxx=g++ --werror
+          - name: gcc-all-options
+            make-options: >-
+              --headers=/usr/include --libs=/usr/lib /usr/lib64
+              --cc=gcc --cxx=g++ --werror --with-thrift --with-glog
+              --with-rdma --with-debug-bthread-sche-safety --with-debug-lock
+              --with-bthread-tracer --with-asan
+          - name: clang-default
+            make-options: >-
+              --headers=/usr/include --libs=/usr/lib /usr/lib64
+              --cc=clang --cxx=clang++ --werror
+          - name: clang-all-options
+            make-options: >-
+              --headers=/usr/include --libs=/usr/lib /usr/lib64
+              --cc=clang --cxx=clang++ --werror --with-thrift --with-glog
+              --with-rdma --with-debug-bthread-sche-safety --with-debug-lock
+              --with-bthread-tracer --with-asan
     steps:
     - uses: actions/checkout@v2
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
+        cache-key: make-${{ matrix.name }}
     - uses: ./.github/actions/install-all-dependencies
 
-    - name: gcc with default options
+    - name: Build
       uses: ./.github/actions/compile-with-make
       with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=gcc --cxx=g++ --werror
-
-    - name: gcc with all options
-      uses: ./.github/actions/compile-with-make
-      with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=gcc --cxx=g++ --werror \
-                 --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety \
-                 --with-debug-lock --with-bthread-tracer --with-asan
-
-    - name: clang with default options
-      uses: ./.github/actions/compile-with-make
-      with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=clang --cxx=clang++ --werror
-
-    - name: clang with all options
-      uses: ./.github/actions/compile-with-make
-      with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=clang --cxx=clang++ --werror \
-                 --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety \
-                 --with-debug-lock --with-bthread-tracer --with-asan
+        options: ${{ matrix.make-options }}
 
     - name: Show ccache statistics
       if: always()
