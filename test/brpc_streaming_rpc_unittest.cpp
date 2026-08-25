@@ -368,6 +368,92 @@ static bool WaitForTrue(const std::atomic<bool>& f, int timeout_ms) {
     return WaitForTrue([&f]() { return f.load(std::memory_order_acquire); }, timeout_ms);
 }
 
+class ReassemblyLimitHandler : public brpc::StreamInputHandler {
+public:
+    int on_received_messages(brpc::StreamId,
+                             butil::IOBuf* const messages[],
+                             size_t size) override {
+        for (size_t i = 0; i < size; ++i) {
+            received_bytes.fetch_add(messages[i]->length(),
+                                     std::memory_order_relaxed);
+        }
+        received_messages.fetch_add(size, std::memory_order_release);
+        return 0;
+    }
+
+    void on_idle_timeout(brpc::StreamId) override {}
+    void on_closed(brpc::StreamId) override {}
+    void on_failed(brpc::StreamId, int error_code,
+                   const std::string&) override {
+        failure_code.store(error_code, std::memory_order_release);
+    }
+
+    std::atomic<size_t> received_bytes{0};
+    std::atomic<size_t> received_messages{0};
+    std::atomic<int> failure_code{0};
+};
+
+TEST_F(StreamingRpcTest, limit_reassembled_message_size) {
+    std::string old_max_body_size;
+    std::string old_segment_size;
+    ASSERT_TRUE(GFLAGS_NAMESPACE::GetCommandLineOption(
+        "max_body_size", &old_max_body_size));
+    ASSERT_TRUE(GFLAGS_NAMESPACE::GetCommandLineOption(
+        "stream_write_max_segment_size", &old_segment_size));
+
+    ReassemblyLimitHandler handler;
+    brpc::StreamOptions server_stream_options;
+    server_stream_options.handler = &handler;
+    brpc::Server server;
+    MyServiceWithStream service(server_stream_options);
+    ASSERT_EQ(0, server.AddService(
+        &service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), nullptr));
+    brpc::Controller cntl;
+    brpc::StreamId request_stream;
+    ASSERT_EQ(0, brpc::StreamCreate(&request_stream, cntl, nullptr));
+    brpc::ScopedStream stream_guard(request_stream);
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &request, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+        "max_body_size", "64").empty());
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+        "stream_write_max_segment_size", "16").empty());
+    BRPC_SCOPE_EXIT {
+        GFLAGS_NAMESPACE::SetCommandLineOption(
+            "max_body_size", old_max_body_size.c_str());
+        GFLAGS_NAMESPACE::SetCommandLineOption(
+            "stream_write_max_segment_size", old_segment_size.c_str());
+    };
+
+    butil::IOBuf at_limit;
+    at_limit.append(std::string(64, 'a'));
+    ASSERT_EQ(0, brpc::StreamWrite(request_stream, at_limit));
+    ASSERT_TRUE(WaitForTrue([&handler]() {
+        return handler.received_messages.load(std::memory_order_acquire) == 1;
+    }, 2000));
+    ASSERT_EQ(64u, handler.received_bytes.load(std::memory_order_relaxed));
+
+    butil::IOBuf over_limit;
+    over_limit.append(std::string(65, 'b'));
+    ASSERT_EQ(0, brpc::StreamWrite(request_stream, over_limit));
+    ASSERT_TRUE(WaitForTrue([&handler]() {
+        return handler.failure_code.load(std::memory_order_acquire) != 0;
+    }, 2000));
+    ASSERT_EQ(EMSGSIZE,
+              handler.failure_code.load(std::memory_order_relaxed));
+    ASSERT_EQ(1u,
+              handler.received_messages.load(std::memory_order_relaxed));
+
+    server.Stop(0);
+    server.Join();
+}
+
 TEST_F(StreamingRpcTest, sanity) {
     brpc::Server server;
     MyServiceWithStream service;
