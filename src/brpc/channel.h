@@ -184,6 +184,9 @@ public:
 
     DISALLOW_COPY_AND_ASSIGN(Channel);
 
+    // Init() may be retried after failure, but a successful initialization is
+    // final: subsequent calls return -1.
+
     // Connect this channel to a single server whose address is given by the
     // first parameter. Use default options if `options' is nullptr.
     int Init(butil::EndPoint server_addr_and_port, const ChannelOptions* options);

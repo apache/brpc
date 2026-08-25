@@ -2316,6 +2316,55 @@ TEST_F(ChannelTest, init_as_single_server) {
     }
 }
 
+TEST_F(ChannelTest, reject_reinitialization_after_successful_init) {
+    butil::EndPoint first_endpoint;
+    butil::EndPoint second_endpoint;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:59347", &first_endpoint));
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:59348", &second_endpoint));
+    const brpc::SocketMapKey first_key(first_endpoint);
+    const brpc::SocketMapKey second_key(second_endpoint);
+
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init(first_endpoint, NULL));
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::SocketMapFind(first_key, &id));
+        ASSERT_EQ(channel._server_id, id);
+        ASSERT_EQ(-1, channel.Init(first_endpoint, NULL));
+        ASSERT_EQ(-1, channel.Init(second_endpoint, NULL));
+        ASSERT_EQ(-1, channel.Init("unknown://unknown", "rr", NULL));
+    }
+
+    brpc::SocketId id;
+    EXPECT_NE(0, brpc::SocketMapFind(first_key, &id));
+    EXPECT_NE(0, brpc::SocketMapFind(second_key, &id));
+}
+
+TEST_F(ChannelTest, retry_init_after_failed_init) {
+    butil::EndPoint endpoint;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:59349", &endpoint));
+    const brpc::SocketMapKey key(endpoint);
+
+    {
+        brpc::Channel channel;
+        brpc::ChannelOptions invalid_options;
+        invalid_options.client_host = "not a valid client host";
+        ASSERT_EQ(-1, channel.Init(endpoint, &invalid_options));
+        EXPECT_EQ(brpc::INVALID_SOCKET_ID, channel._server_id);
+
+        brpc::ChannelOptions valid_options;
+        ASSERT_EQ(0, channel.Init(endpoint, &valid_options));
+        EXPECT_NE(brpc::INVALID_SOCKET_ID, channel._server_id);
+        EXPECT_EQ(endpoint, channel._server_address);
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::SocketMapFind(key, &id));
+        ASSERT_EQ(channel._server_id, id);
+    }
+
+    brpc::SocketId id;
+    EXPECT_NE(0, brpc::SocketMapFind(key, &id));
+}
+
 TEST_F(ChannelTest, init_using_unknown_naming_service) {
     brpc::Channel channel;
     ASSERT_EQ(-1, channel.Init("unknown://unknown", "unknown", nullptr));
@@ -2391,73 +2440,138 @@ TEST_F(ChannelTest, parse_hostname) {
     brpc::ChannelOptions opt;
     opt.succeed_without_server = false;
     opt.protocol = brpc::PROTOCOL_HTTP;
-    brpc::Channel channel;
 
-    ASSERT_EQ(-1, channel.Init("", 8888, &opt));
-    ASSERT_EQ("", channel._service_name);
-    ASSERT_EQ(-1, channel.Init("", &opt));
-    ASSERT_EQ("", channel._service_name);
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(-1, channel.Init("", 8888, &opt));
+        ASSERT_EQ("", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(-1, channel.Init("", &opt));
+        ASSERT_EQ("", channel._service_name);
+    }
 
-    ASSERT_EQ(0, channel.Init("http://127.0.0.1", 8888, &opt));
-    ASSERT_EQ("127.0.0.1:8888", channel._service_name);
-    ASSERT_EQ(0, channel.Init("http://127.0.0.1:8888", &opt));
-    ASSERT_EQ("127.0.0.1:8888", channel._service_name);
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://127.0.0.1", 8888, &opt));
+        ASSERT_EQ("127.0.0.1:8888", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://127.0.0.1:8888", &opt));
+        ASSERT_EQ("127.0.0.1:8888", channel._service_name);
+    }
 
-    ASSERT_EQ(0, channel.Init("localhost", 8888, &opt));
-    ASSERT_EQ("localhost:8888", channel._service_name);
-    ASSERT_EQ(0, channel.Init("localhost:8888", &opt));
-    ASSERT_EQ("localhost:8888", channel._service_name);
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("localhost", 8888, &opt));
+        ASSERT_EQ("localhost:8888", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("localhost:8888", &opt));
+        ASSERT_EQ("localhost:8888", channel._service_name);
+    }
 
-    ASSERT_EQ(0, channel.Init("http://www.baidu.com", &opt));
-    ASSERT_EQ("www.baidu.com", channel._service_name);
-    ASSERT_EQ(0, channel.Init("http://www.baidu.com:80", &opt));
-    ASSERT_EQ("www.baidu.com:80", channel._service_name);
-    ASSERT_EQ(0, channel.Init("http://www.baidu.com", 80, &opt));
-    ASSERT_EQ("www.baidu.com:80", channel._service_name);
-    ASSERT_EQ(0, channel.Init("http://www.baidu.com:8888", &opt));
-    ASSERT_EQ("www.baidu.com:8888", channel._service_name);
-    ASSERT_EQ(0, channel.Init("http://www.baidu.com", 8888, &opt));
-    ASSERT_EQ("www.baidu.com:8888", channel._service_name);
-    ASSERT_EQ(0, channel.Init("http://www.baidu.com", "rr", &opt));
-    ASSERT_EQ("www.baidu.com", channel._service_name);
-    ASSERT_EQ(0, channel.Init("http://www.baidu.com:80", "rr", &opt));
-    ASSERT_EQ("www.baidu.com:80", channel._service_name);
-    ASSERT_EQ(0, channel.Init("http://www.baidu.com:8888", "rr", &opt));
-    ASSERT_EQ("www.baidu.com:8888", channel._service_name);
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://www.baidu.com", &opt));
+        ASSERT_EQ("www.baidu.com", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://www.baidu.com:80", &opt));
+        ASSERT_EQ("www.baidu.com:80", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://www.baidu.com", 80, &opt));
+        ASSERT_EQ("www.baidu.com:80", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://www.baidu.com:8888", &opt));
+        ASSERT_EQ("www.baidu.com:8888", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://www.baidu.com", 8888, &opt));
+        ASSERT_EQ("www.baidu.com:8888", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://www.baidu.com", "rr", &opt));
+        ASSERT_EQ("www.baidu.com", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://www.baidu.com:80", "rr", &opt));
+        ASSERT_EQ("www.baidu.com:80", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("http://www.baidu.com:8888", "rr", &opt));
+        ASSERT_EQ("www.baidu.com:8888", channel._service_name);
+    }
 
     opt.mutable_ssl_options()->verify.verify_mode = brpc::VerifyMode::VERIFY_PEER;
     opt.mutable_ssl_options()->verify.verify_depth = 1;
     opt.mutable_ssl_options()->verify.ca_file_path = "cert1.crt";
-    ASSERT_EQ(0, channel.Init("https://www.baidu.com", &opt));
-    ASSERT_EQ("www.baidu.com", channel._service_name);
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://www.baidu.com", &opt));
+        ASSERT_EQ("www.baidu.com", channel._service_name);
 #if defined(USE_MESALINK) || \
     (!defined(OPENSSL_IS_BORINGSSL) && OPENSSL_VERSION_NUMBER < 0x10002000L)
-    ASSERT_TRUE(channel._options.ssl_options().verify.expected_peer_name.empty());
+        ASSERT_TRUE(channel._options.ssl_options().verify.expected_peer_name.empty());
 #else
-    ASSERT_EQ("www.baidu.com",
-              channel._options.ssl_options().verify.expected_peer_name);
+        ASSERT_EQ("www.baidu.com",
+                  channel._options.ssl_options().verify.expected_peer_name);
 #endif
-    ASSERT_EQ(0, channel.Init("https://www.baidu.com:443", &opt));
-    ASSERT_EQ("www.baidu.com:443", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://www.baidu.com:443", &opt));
+        ASSERT_EQ("www.baidu.com:443", channel._service_name);
 #if defined(USE_MESALINK) || \
     (!defined(OPENSSL_IS_BORINGSSL) && OPENSSL_VERSION_NUMBER < 0x10002000L)
-    ASSERT_TRUE(channel._options.ssl_options().verify.expected_peer_name.empty());
+        ASSERT_TRUE(channel._options.ssl_options().verify.expected_peer_name.empty());
 #else
-    ASSERT_EQ("www.baidu.com",
-              channel._options.ssl_options().verify.expected_peer_name);
+        ASSERT_EQ("www.baidu.com",
+                  channel._options.ssl_options().verify.expected_peer_name);
 #endif
-    ASSERT_EQ(0, channel.Init("https://www.baidu.com", 443, &opt));
-    ASSERT_EQ("www.baidu.com:443", channel._service_name);
-    ASSERT_EQ(0, channel.Init("https://www.baidu.com:1443", &opt));
-    ASSERT_EQ("www.baidu.com:1443", channel._service_name);
-    ASSERT_EQ(0, channel.Init("https://www.baidu.com", 1443, &opt));
-    ASSERT_EQ("www.baidu.com:1443", channel._service_name);
-    ASSERT_EQ(0, channel.Init("https://www.baidu.com", "rr", &opt));
-    ASSERT_EQ("www.baidu.com", channel._service_name);
-    ASSERT_EQ(0, channel.Init("https://www.baidu.com:443", "rr", &opt));
-    ASSERT_EQ("www.baidu.com:443", channel._service_name);
-    ASSERT_EQ(0, channel.Init("https://www.baidu.com:1443", "rr", &opt));
-    ASSERT_EQ("www.baidu.com:1443", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://www.baidu.com", 443, &opt));
+        ASSERT_EQ("www.baidu.com:443", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://www.baidu.com:1443", &opt));
+        ASSERT_EQ("www.baidu.com:1443", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://www.baidu.com", 1443, &opt));
+        ASSERT_EQ("www.baidu.com:1443", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://www.baidu.com", "rr", &opt));
+        ASSERT_EQ("www.baidu.com", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://www.baidu.com:443", "rr", &opt));
+        ASSERT_EQ("www.baidu.com:443", channel._service_name);
+    }
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://www.baidu.com:1443", "rr", &opt));
+        ASSERT_EQ("www.baidu.com:1443", channel._service_name);
+    }
 
     const char *address_list[] =  {
         "10.127.0.1:1234",

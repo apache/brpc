@@ -7,6 +7,7 @@ Echo的[client端代码](https://github.com/apache/brpc/blob/master/example/echo
 # 事实速查
 
 - Channel.Init()是线程不安全的。
+- 一个Channel只能成功初始化一次。Init()失败后可以重试。
 - Channel.CallMethod()是线程安全的，一个Channel可以被所有线程同时使用。
 - Channel可以分配在栈上。
 - Channel在发送异步请求后可以析构。
@@ -31,6 +32,8 @@ options.xxx = yyy;
 channel.Init(..., &options);
 ```
 注意Channel不会修改options，Init结束后不会再访问options。所以options一般就像上面代码中那样放栈上。Channel.options()可以获得channel在使用的所有选项。
+
+Init失败后可以重试；一旦成功，Channel的目标和选项即固定，之后的所有Init调用都会返回-1。需要使用不同的目标或配置时，请新建一个Channel。
 
 Init函数分为连接一台服务器和连接服务集群。
 

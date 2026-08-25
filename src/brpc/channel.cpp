@@ -254,6 +254,10 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
 
 int Channel::Init(const char* server_addr_and_port,
                   const ChannelOptions* options) {
+    if (_server_id != INVALID_SOCKET_ID || _lb != NULL) {
+        LOG(ERROR) << "Channel=" << this << " has already been initialized";
+        return -1;
+    }
     GlobalInitializeOrDie();
     butil::EndPoint point;
     const AdaptiveProtocolType& ptype = (options ? options->protocol : _options.protocol);
@@ -287,6 +291,10 @@ int Channel::Init(const char* server_addr_and_port,
 
 int Channel::Init(const char* server_addr, int port,
                   const ChannelOptions* options) {
+    if (_server_id != INVALID_SOCKET_ID || _lb != NULL) {
+        LOG(ERROR) << "Channel=" << this << " has already been initialized";
+        return -1;
+    }
     GlobalInitializeOrDie();
     butil::EndPoint point;
     const AdaptiveProtocolType& ptype = (options ? options->protocol : _options.protocol);
@@ -358,6 +366,10 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                         const char* raw_server_address,
                         const ChannelOptions* options,
                         int raw_port) {
+    if (_server_id != INVALID_SOCKET_ID || _lb != NULL) {
+        LOG(ERROR) << "Channel=" << this << " has already been initialized";
+        return -1;
+    }
     GlobalInitializeOrDie();
     if (InitChannelOptions(options) != 0) {
         return -1;
@@ -409,6 +421,10 @@ int Channel::Init(const char* ns_url,
     if (lb_name == nullptr || *lb_name == '\0') {
         // Treat ns_url as server_addr_and_port
         return Init(ns_url, options);
+    }
+    if (_server_id != INVALID_SOCKET_ID || _lb != NULL) {
+        LOG(ERROR) << "Channel=" << this << " has already been initialized";
+        return -1;
     }
     GlobalInitializeOrDie();
     if (InitChannelOptions(options) != 0) {
