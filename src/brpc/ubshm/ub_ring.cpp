@@ -16,7 +16,6 @@
 // under the License.
 
 #include <errno.h>
-#include <iostream>
 #include <gflags/gflags.h>
 #include <unistd.h>
 #include <ctime>
@@ -29,12 +28,16 @@
 namespace brpc {
 namespace ubring {
 uint32_t g_sleep_time[UBR_TASK_STEP_NUM] = {0};
-#define TIME_COVERSION 1000
-DEFINE_int32(ub_disconnect_timeout, 5, "Ubshm disconnection timeout.");
-DEFINE_int32(ub_connect_timeout, 1, "Ubshm connection timeout.");
-DEFINE_int32(ub_hb_timer_interval, 5, "Heartbeat timer interval.");
-DEFINE_int32(ub_hb_retry_cnt, 10, "Heartbeat retry times.");
-DEFINE_int32(ub_event_queue_timer_interval, 100, "Interval of the disconnection timer.");
+DEFINE_int32(ub_disconnect_timeout_s, 5,
+             "UBRing disconnection timeout in seconds.");
+DEFINE_int32(ub_connect_timeout_s, 1,
+             "UBRing connection timeout in seconds.");
+DEFINE_int32(ub_hb_timer_interval_s, 5,
+             "UBRing heartbeat timer interval in seconds.");
+DEFINE_int32(ub_hb_retry_cnt, 10,
+             "UBRing heartbeat retry count.");
+DEFINE_int32(ub_event_queue_timer_interval_us, 100,
+             "UBRing disconnection check interval in microseconds.");
 
 UBRing::UBRing()
 {}
@@ -69,7 +72,7 @@ RETURN_CODE UBRing::UbrTrxClose() {
         ((UbrEventQMsg *)_trx->ubr_rx.remote_tx_event_q.addr)->flag = UBR_STATE_CLOSING;
     }
 
-    uint32_t disconnect_timeout = FLAGS_ub_disconnect_timeout;
+    const uint32_t disconnect_timeout_s = FLAGS_ub_disconnect_timeout_s;
     uint64_t start_time = GetCurNanoSeconds();
 
     if (_trx->ubr_tx.local_tx_event_q.addr != nullptr && ((UbrEventQMsg *)_trx->ubr_tx.local_tx_event_q.addr)->flag == UBR_STATE_CONNECTED) {
@@ -82,7 +85,7 @@ RETURN_CODE UBRing::UbrTrxClose() {
     }
     while (_trx->ubr_rx.local_rx_event_q.addr != nullptr && ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->flag != UBR_STATE_CLOSED) {
         UbrSetSleepTask(UBR_TASK_CLOSE);
-        if (HasTimedOut(start_time, disconnect_timeout) != UBRING_OK) {
+        if (HasTimedOut(start_time, disconnect_timeout_s) != UBRING_OK) {
             LOG(WARNING) << "Local shm " << _trx->local_shm.name
             << " wait for the peer to close timed out, force cleanup.";
             _trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
@@ -127,9 +130,10 @@ RETURN_CODE UBRing::UbrAddCloseTimer() {
         return UBRING_ERR;
     }
 
-    uint32_t event_q_timer_interval = FLAGS_ub_event_queue_timer_interval * TIME_COVERSION;
+    const uint32_t event_q_timer_interval_ns =
+        FLAGS_ub_event_queue_timer_interval_us * USEC_TO_NSEC;
     itimerspec time_spec = {
-            .it_interval = {.tv_sec = 0, .tv_nsec = event_q_timer_interval},
+            .it_interval = {.tv_sec = 0, .tv_nsec = event_q_timer_interval_ns},
             .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
     int timer_fd = TimerStart(&time_spec, UbrTrxCloseCallback, (void*)_trx);
@@ -202,7 +206,7 @@ RETURN_CODE UBRing::UbrAddHBTimer() {
     }
 
     itimerspec time_spec = {
-            .it_interval = {.tv_sec = FLAGS_ub_hb_timer_interval, .tv_nsec = 0},
+            .it_interval = {.tv_sec = FLAGS_ub_hb_timer_interval_s, .tv_nsec = 0},
             .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
     int timer_fd = TimerStart(&time_spec, UbrTrxHBCallback, (void*)_trx);
@@ -235,7 +239,8 @@ RETURN_CODE UBRing::UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE ty
         DeleteTimerSafe((uint32_t)trx->hb_timer_fd);
         type_name = "Ub event callback";
     }
-    bthread_usleep(FLAGS_ub_flying_io_timeout * 1000000LL);  // yield-friendly sleep
+    constexpr int64_t kMicrosecondsPerSecond = 1000000LL;
+    bthread_usleep(FLAGS_ub_flying_io_timeout_s * kMicrosecondsPerSecond);
 
     int rc = ShmLocalFree(&trx->remote_shm);
     if (rc != UBRING_OK) {
@@ -299,7 +304,7 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
 
     itimerspec time_spec = {
             .it_interval = {.tv_sec = 0, .tv_nsec = 0},
-            .it_value = {.tv_sec = FLAGS_ub_flying_io_timeout, .tv_nsec = 0}
+            .it_value = {.tv_sec = FLAGS_ub_flying_io_timeout_s, .tv_nsec = 0}
     };
 
     int timer_fd = TimerStart(&time_spec, UbrAsynClearCallback, (void*)trx);
@@ -787,8 +792,10 @@ RETURN_CODE UBRing::UbrServerTrxInit(SHM *local_shm, SHM *remote_shm)
         return UBRING_ERR;
     }
 
-    ((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->timeout = FLAGS_ub_connect_timeout;
-    ((UbrDataStatusQMsg *)(_trx->ubr_rx.remote_data_status_q.addr))->timeout = FLAGS_ub_connect_timeout;
+    ((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->timeout =
+        FLAGS_ub_connect_timeout_s;
+    ((UbrDataStatusQMsg *)(_trx->ubr_rx.remote_data_status_q.addr))->timeout =
+        FLAGS_ub_connect_timeout_s;
 
     ((UbrEventQMsg *)_trx->ubr_tx.remote_rx_event_q.addr)->flag = UBR_STATE_CONNECTED;
     ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->flag = UBR_STATE_CONNECTED;
@@ -937,7 +944,8 @@ RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_na
         UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return rc;
     }
-    ((UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr)->timeout = FLAGS_ub_connect_timeout;
+    ((UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr)->timeout =
+        FLAGS_ub_connect_timeout_s;
     _trx->ubr_rx.capacity = (uint32_t)(_trx->ubr_rx.local_data_q.len / UBR_MSG_LEN);
     rc = UBRingManager::GetUbrDealMsgMaxCnt(_trx->ubr_rx.capacity, &_trx->ubr_rx.deal_msg_max_cnt);
     if (rc != UBRING_OK) {

@@ -23,9 +23,11 @@
 #include <ostream>                     // std::ostream
 #include <string>                      // std::string
 #include <vector>                      // std::vector
+#include <memory>                      // std::shared_ptr
 #include <gflags/gflags_declare.h>
 #include "butil/macros.h"               // DISALLOW_COPY_AND_ASSIGN
 #include "butil/strings/string_piece.h" // butil::StringPiece
+#include "bvar/detail/exposed_ref.h"     // detail::ExposedRef
 
 #ifdef BAIDU_INTERNAL
 #include <boost/any.hpp>
@@ -117,7 +119,14 @@ struct SeriesOptions {
 //     safely (provided that there's no non-const methods going on).
 class Variable {
 public:
-    Variable() {}
+    using SharedExposedRef = detail::SharedExposedRef<Variable>;
+
+    Variable() = default;
+
+    // bvar uses TLS, thus copying/assignment need to copy TLS stuff as well,
+    // which is heavy. We disable copying/assignment now.
+    DISALLOW_COPY_AND_ASSIGN(Variable);
+
     virtual ~Variable();
 
     // Implement this method to print the variable into ostream.
@@ -234,10 +243,8 @@ protected:
 
 private:
     std::string _name;
-
-    // bvar uses TLS, thus copying/assignment need to copy TLS stuff as well,
-    // which is heavy. We disable copying/assignment now.
-    DISALLOW_COPY_AND_ASSIGN(Variable);
+    // Shared indirection handle for calling describe() outside the VarMap lock.
+    SharedExposedRef _ref;
 };
 
 // Make name only use lowercased alphabets / digits / underscores, and append

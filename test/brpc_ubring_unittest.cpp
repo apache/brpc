@@ -16,12 +16,14 @@
 
 #include <gtest/gtest.h>
 #include <cstring>
+#include <gflags/gflags.h>
 #include <string>
 #include "butil/macros.h"
 #include "butil/sys_byteorder.h"
 #include "brpc/socket.h"
 
 #if BRPC_WITH_UBRING
+#include "brpc/ubshm/common/common.h"
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/shm/shm_mgr.h"
@@ -29,6 +31,12 @@
 
 namespace brpc {
 namespace ubring {
+DECLARE_int32(ub_disconnect_timeout_s);
+DECLARE_int32(ub_connect_timeout_s);
+DECLARE_int32(ub_hb_timer_interval_s);
+DECLARE_int32(ub_event_queue_timer_interval_us);
+DECLARE_int32(ub_flying_io_timeout_s);
+
 extern bool g_skip_ub_init;
 }  // namespace ubring
 }  // namespace brpc
@@ -133,6 +141,44 @@ TEST_F(HelloMessageTest, toString_contains_fields) {
     EXPECT_NE(std::string::npos, s.find("hello_ver=2"));
     EXPECT_NE(std::string::npos, s.find("impl_ver=1"));
     EXPECT_NE(std::string::npos, s.find("UBRING_test"));
+}
+
+TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
+    struct TimeFlagExpectation {
+        const char* name;
+        const char* suffix;
+        const char* unit;
+        const char* default_value;
+    };
+    const TimeFlagExpectation expected_flags[] = {
+        {"ub_disconnect_timeout_s", "_s", "seconds", "5"},
+        {"ub_connect_timeout_s", "_s", "seconds", "1"},
+        {"ub_hb_timer_interval_s", "_s", "seconds", "5"},
+        {"ub_event_queue_timer_interval_us", "_us", "microseconds", "100"},
+        {"ub_flying_io_timeout_s", "_s", "seconds", "5"},
+    };
+
+    for (const auto& expected : expected_flags) {
+        GFLAGS_NAMESPACE::CommandLineFlagInfo info;
+        ASSERT_TRUE(GFLAGS_NAMESPACE::GetCommandLineFlagInfo(
+            expected.name, &info)) << expected.name;
+        const std::string flag_name(expected.name);
+        const std::string suffix(expected.suffix);
+        ASSERT_GE(flag_name.size(), suffix.size());
+        EXPECT_EQ(flag_name.size() - suffix.size(), flag_name.rfind(suffix));
+        EXPECT_NE(std::string::npos, info.description.find(expected.unit));
+        EXPECT_EQ(std::string(expected.default_value), info.default_value);
+    }
+
+    EXPECT_EQ(5, brpc::ubring::FLAGS_ub_disconnect_timeout_s);
+    EXPECT_EQ(1, brpc::ubring::FLAGS_ub_connect_timeout_s);
+    EXPECT_EQ(5, brpc::ubring::FLAGS_ub_hb_timer_interval_s);
+    EXPECT_EQ(100, brpc::ubring::FLAGS_ub_event_queue_timer_interval_us);
+    EXPECT_EQ(5, brpc::ubring::FLAGS_ub_flying_io_timeout_s);
+    EXPECT_EQ(100U * USEC_TO_NSEC,
+              static_cast<uint32_t>(
+                  brpc::ubring::FLAGS_ub_event_queue_timer_interval_us) *
+                  USEC_TO_NSEC);
 }
 
 namespace brpc {

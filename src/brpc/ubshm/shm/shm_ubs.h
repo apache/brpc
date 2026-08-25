@@ -19,7 +19,7 @@
 #define BRPC_SHM_UBS_H
 namespace brpc {
 namespace ubring {
-DECLARE_int32(ub_flying_io_timeout);
+DECLARE_int32(ub_flying_io_timeout_s);
 
 typedef enum TagUbsLogLevel {
     UBSM_LOG_DEBUG_LEVEL = 0,

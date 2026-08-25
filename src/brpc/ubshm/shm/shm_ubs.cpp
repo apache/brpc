@@ -43,8 +43,9 @@ namespace ubring {
 DEFINE_uint32(node_location, 1, "Location of the ub machine.");
 DEFINE_bool(shm_wr_delay_comp, true, "Indicates whether to enable the write relay."
             "0: relay; 1: non-relay.");
-DEFINE_int32(ub_flying_io_timeout, 5, "Waiting time for stopping data"
-            "sending and receiving when the link is disconnected.");
+DEFINE_int32(ub_flying_io_timeout_s, 5,
+             "Time in seconds to wait for stopping data sending and receiving "
+             "when the link is disconnected.");
 char g_region_name[MAX_REGION_NAME_DESC_LENGTH] = {0};
 int g_shm_timer_fd = 0;
 ShmList *g_shm_list = nullptr;
@@ -450,9 +451,9 @@ void *UbsShmCallback(void* args)
 
 RETURN_CODE UbsShmAddTimer(ShmList *shm_list)
 {
-    uint32_t timer_interval = FLAGS_ub_flying_io_timeout;
+    const uint32_t timer_interval_s = FLAGS_ub_flying_io_timeout_s;
     itimerspec time_spec = {
-        .it_interval = {.tv_sec = timer_interval, .tv_nsec = 0},
+        .it_interval = {.tv_sec = timer_interval_s, .tv_nsec = 0},
         .it_value = {.tv_sec = 0, .tv_nsec = 1}
     };
     int timer_fd = TimerStart(&time_spec, UbsShmCallback, (void*)shm_list);

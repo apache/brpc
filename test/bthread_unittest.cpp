@@ -22,9 +22,12 @@
 #include "butil/macros.h"
 #include "butil/logging.h"
 #include "gperftools_helper.h"
+#include <vector>
+#include <sstream>
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
 #include "bthread/task_meta.h"
+#include "bvar/bvar.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -700,5 +703,42 @@ TEST_F(BthreadTest, trace) {
     repeated_sleep_trace();
 }
 #endif // BRPC_BTHREAD_TRACER
+
+// Regression test for https://github.com/apache/brpc/issues/2888 .
+// Reproduce the real deadlock: many bthreads (>> bthread_concurrency) call
+// describe_exposed() on the same variable concurrently, and the user callback
+// yields the bthread. In the buggy version describe() runs while holding the
+// global VarMap pthread mutex, so once a bthread yields inside the callback the
+// pthread worker picks up another describing bthread that blocks on the same
+// submap mutex; with enough bthreads all workers get stuck and the process
+// deadlocks. With the fix (describe() runs OUTSIDE the lock) this finishes.
+int yielding_getfn(void*) {
+    bthread_usleep(500);
+    return 0;
+}
+
+void* describe_same_var(void*) {
+    std::ostringstream os;
+    bvar::Variable::describe_exposed("bthread_describe_deadlock", os);
+    return nullptr;
+}
+
+TEST_F(BthreadTest, describe_exposed_yields_in_bthread_no_deadlock) {
+    bvar::PassiveStatus<int> ps(
+        "bthread_describe_deadlock", yielding_getfn, nullptr);
+
+    // n >> bthread_concurrency, so that in the buggy version every worker ends
+    // up blocked on the same submap mutex held by a yielded bthread.
+    const int N = 1000;
+    std::vector<bthread_t> tids(N);
+    for (int i = 0; i < N; ++i) {
+        ASSERT_EQ(0, bthread_start_background(
+            &tids[i], nullptr, describe_same_var, nullptr));
+    }
+    for (int i = 0; i < N; ++i) {
+        ASSERT_EQ(0, bthread_join(tids[i], nullptr));
+    }
+    // Reaching here (instead of hanging) means there was no deadlock.
+}
 
 } // namespace

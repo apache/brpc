@@ -46,7 +46,7 @@ int avc_nalu_read_uev(BitStream* stream, int32_t* v) {
             return -1;
         }
         int32_t b = stream->read_bit();
-        result += b << (leadingZeroBits - 1);
+        result += b << (leadingZeroBits - 1 - i);
     }
     *v = result;
     return 0;

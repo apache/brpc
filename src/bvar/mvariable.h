@@ -24,8 +24,11 @@
 #include <sstream>                      // std::ostringstream
 #include <list>                         // std::list
 #include <string>                       // std::string
+#include <vector>                       // std::vector
+#include <memory>                       // std::shared_ptr
 #include "butil/macros.h"               // DISALLOW_COPY_AND_ASSIGN
 #include "butil/strings/string_piece.h" // butil::StringPiece
+#include "bvar/detail/exposed_ref.h"     // detail::ExposedRef
 
 namespace bvar {
 
@@ -34,7 +37,15 @@ struct DumpOptions;
 
 class MVariableBase {
 public:
+    // Shared, single-use handle that lets describe_exposed()/dump_exposed()
+    // call describe()/dump() OUTSIDE the global MVarMap lock (issue #2888).
+    using SharedExposedRef = detail::SharedExposedRef<MVariableBase>;
+
     MVariableBase() = default;
+
+    // mbvar uses bvar, bvar uses TLS, thus copying/assignment need to copy TLS stuff as well,
+    // which is heavy. We disable copying/assignment now.
+    DISALLOW_COPY_AND_ASSIGN(MVariableBase);
 
     virtual ~MVariableBase();
 
@@ -107,10 +118,8 @@ protected:
 
 protected:
     std::string _name;
-
-    // mbvar uses bvar, bvar uses TLS, thus copying/assignment need to copy TLS stuff as well,
-    // which is heavy. We disable copying/assignment now. 
-    DISALLOW_COPY_AND_ASSIGN(MVariableBase);
+    // Shared indirection handle for describe()/dump() outside the MVarMap lock.
+    SharedExposedRef _ref;
 };
 
 template <typename KeyType>
