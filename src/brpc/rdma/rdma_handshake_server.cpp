@@ -207,8 +207,14 @@ ParseResult ExecuteServerHandshake(butil::IOBuf* source, Socket* socket) {
     // Only RDMA-mode connections carry a live RdmaEndpoint and run the real
     // handshake. A connection that is not in RDMA mode (RDMA compiled in but
     // this connection is plain TCP, or RDMA not compiled at all) falls back.
+    // GDR is a special mode of RDMA: it shares the same RDMA handshake.
 #if BRPC_WITH_RDMA
-    if (socket->socket_mode() == SOCKET_MODE_RDMA) {
+    SocketMode mode = socket->socket_mode();
+    if (mode == SOCKET_MODE_RDMA
+#if BRPC_WITH_GDR
+        || mode == SOCKET_MODE_GDR
+#endif
+    ) {
         return RdmaEndpoint::ExecuteServerHandshake(source, socket);
     }
 #endif

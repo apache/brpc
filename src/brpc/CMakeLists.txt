@@ -38,10 +38,21 @@ if(WITH_UBRING)
         set(WITH_UBRING_VAL "1")
 endif()
 
+set(WITH_GDR_VAL "0")
+if(WITH_GDR)
+    # GDR is a special mode of RDMA; it implies RDMA.
+    if(NOT WITH_RDMA)
+        set(WITH_RDMA ON)
+        set(WITH_RDMA_VAL "1")
+    endif()
+    set(WITH_GDR_VAL "1")
+endif()
+
 set(BRPC_DEFINITIONS
     BRPC_WITH_RDMA=${WITH_RDMA_VAL}
     BRPC_WITH_URMA=${WITH_URMA_VAL}
-    BRPC_WITH_UBRING=${WITH_UBRING_VAL})
+    BRPC_WITH_UBRING=${WITH_UBRING_VAL}
+    BRPC_WITH_GDR=${WITH_GDR_VAL})
 set(BRPC_INCLUDE_DIRS)
 if(WITH_THRIFT)
     list(APPEND BRPC_DEFINITIONS ENABLE_THRIFT_FRAMED_PROTOCOL)
