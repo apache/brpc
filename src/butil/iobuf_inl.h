@@ -43,6 +43,10 @@ void SubmitIOBufSample(IOBuf::Block* block, int64_t ref);
 
 const uint16_t IOBUF_BLOCK_FLAGS_USER_DATA = 1 << 0;
 const uint16_t IOBUF_BLOCK_FLAGS_SAMPLED = 1 << 1;
+// Marks a USER_DATA block as holding GPU memory (used by the GDR path).
+// `is_gpu_memory()` checks this flag instead of guessing from `data_meta`,
+// which avoids false positives when users attach their own non-zero meta.
+const uint16_t IOBUF_BLOCK_FLAGS_GPU_MEMORY = 1 << 2;
 
 inline ssize_t IOBuf::cut_into_file_descriptor(int fd, size_t size_hint) {
     return pcut_into_file_descriptor(fd, -1, size_hint);

@@ -18,6 +18,7 @@
 #include "brpc/transport_factory.h"
 #include "brpc/rdma_transport.h"
 #include "brpc/tcp_transport.h"
+#include "brpc/gdr_transport.h"
 #include "brpc/ubshm_transport.h"
 #include "brpc/urma_transport.h"
 
@@ -36,6 +37,15 @@ int TransportFactory::ContextInitOrDie(
 #if BRPC_WITH_URMA
     if (mode == SOCKET_MODE_URMA) {
         return UrmaTransport::ContextInitOrDie(server_or_not, options);
+    }
+#endif
+#if BRPC_WITH_GDR
+    if (mode == SOCKET_MODE_GDR) {
+        // gdr is a special case of rdma, so we should init rdma first;
+        if (RdmaTransport::ContextInitOrDie(server_or_not, options) < 0) {
+            return -1;
+        }
+        return GdrTransport::GdrContextInitOrDie();
     }
 #endif
 #if BRPC_WITH_UBRING
@@ -59,6 +69,11 @@ std::unique_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
 #if BRPC_WITH_URMA
     if (mode == SOCKET_MODE_URMA) {
         return std::unique_ptr<UrmaTransport>(new UrmaTransport());
+    }
+#endif
+#if BRPC_WITH_GDR
+    if (mode == SOCKET_MODE_GDR) {
+        return std::unique_ptr<GdrTransport>(new GdrTransport());
     }
 #endif
 #if BRPC_WITH_UBRING

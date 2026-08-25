@@ -283,7 +283,8 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
     // causing the polling bthread to be scheduled out.
     if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
         _socket->_socket_mode == SOCKET_MODE_UBRING ||
-        _socket->_socket_mode == SOCKET_MODE_URMA) {
+        _socket->_socket_mode == SOCKET_MODE_URMA ||
+        _socket->_socket_mode == SOCKET_MODE_GDR) {
         _socket->_transport->QueueMessage(last_msg, &num_bthread_created, true);
     }
     if (num_bthread_created) {

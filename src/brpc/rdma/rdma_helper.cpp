@@ -25,6 +25,9 @@
 #include "butil/containers/flat_map.h"            // butil::FlatMap
 #include "butil/fd_guard.h"
 #include "butil/fd_utility.h"                     // butil::make_non_blocking
+#if BRPC_WITH_GDR
+#include "butil/gpu/gpu_block_pool.h"
+#endif
 #include "butil/logging.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/block_pool.h"
@@ -87,6 +90,8 @@ static int g_max_sge = 0;
 static uint32_t g_vendor_id = 0;
 static uint8_t g_port_num = 1;
 
+static int g_gpu_index = 0;
+
 static int g_comp_vector_index = 0;
 
 butil::atomic<bool> g_rdma_available(false);
@@ -96,7 +101,7 @@ DEFINE_string(rdma_device, "", "The name of the HCA device used "
                                "(Empty means using the first active device)");
 DEFINE_int32(rdma_port, 1, "The port number to use. For RoCE, it is always 1.");
 DEFINE_int32(rdma_gid_index, -1, "The GID index to use. -1 means using the last one.");
-
+DEFINE_int32(gpu_index, 0, "The GPU device index to use. In GDR, we suggest to use the GPU that is connected to the same PCIe switch with rdma devices");
 // static const size_t SYSFS_SIZE = 4096;
 static ibv_device** g_devices = nullptr;
 static ibv_context* g_context = nullptr;
@@ -588,12 +593,52 @@ static void GlobalRdmaInitializeOrDieImpl() {
     g_rdma_available.store(true, butil::memory_order_relaxed);
 }
 
+static void GlobalGdrInitializeOrDieImpl() {
+#if BRPC_WITH_GDR
+    g_gpu_index = FLAGS_gpu_index;
+
+    // Validate the effective GPU block size BEFORE constructing the pool:
+    // BlockPoolAllocator divides region_size by block_size (division by zero
+    // on 0), and a block no larger than the iobuf block header would make
+    // g_gdr_recv_block_size underflow below.
+    const int64_t gdr_block_size =
+        static_cast<int64_t>(FLAGS_gdr_block_size_kb) * 1024;
+    if (FLAGS_gdr_block_size_kb <= 0 || gdr_block_size <= 32 /* IOBUF_BLOCK_HEADER_LEN */) {
+        LOG(ERROR) << "Invalid gdr_block_size_kb=" << FLAGS_gdr_block_size_kb
+                   << " (must be a positive value whose byte size is larger"
+                   << " than the 32-byte iobuf block header)";
+        ExitWithError();
+    }
+
+    if (!butil::gdr::InitGPUBlockPool(g_gpu_index, GetRdmaPd())) {
+        PLOG(ERROR) << "Fail to initialize RDMA GPU memory pool";
+        ExitWithError();
+    }
+    if (RdmaEndpoint::GlobalGdrInitialize() < 0) {
+        LOG(ERROR) << "gdr_block_size_kb incorrect "
+                   << "(must be larger than 0)";
+        ExitWithError();
+    }
+
+#endif  // if BRPC_WITH_GDR
+
+}
+
 static pthread_once_t initialize_rdma_once = PTHREAD_ONCE_INIT;
+static pthread_once_t initialize_gdr_once = PTHREAD_ONCE_INIT;
 
 void GlobalRdmaInitializeOrDie() {
     if (pthread_once(&initialize_rdma_once,
                      GlobalRdmaInitializeOrDieImpl) != 0) {
         LOG(FATAL) << "Fail to pthread_once GlobalRdmaInitializeOrDie";
+        exit(1);
+    }
+}
+
+void GlobalGdrInitializeOrDie() {
+    if (pthread_once(&initialize_gdr_once,
+                     GlobalGdrInitializeOrDieImpl) != 0) {
+        LOG(FATAL) << "Fail to pthread_once GlobalGdrInitializeOrDie";
         exit(1);
     }
 }
@@ -693,6 +738,10 @@ uint8_t GetRdmaGidIndex() {
 
 uint8_t GetRdmaPortNum() {
     return g_port_num;
+}
+
+int GetGPUIndex() {
+    return g_gpu_index;
 }
 
 bool IsRdmaAvailable() {
