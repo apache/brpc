@@ -227,6 +227,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 find_package(Protobuf REQUIRED)
+find_package(ZLIB REQUIRED)
 if(Protobuf_VERSION VERSION_GREATER 4.21)
     # required by absl
     set(BRPC_CXX_STANDARD 17)
@@ -351,7 +352,7 @@ set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
     dl
-    z)
+    ZLIB::ZLIB)
 
 if(WITH_BORINGSSL)
     list(APPEND DYNAMIC_LIB ${BORINGSSL_SSL_LIBRARY})
