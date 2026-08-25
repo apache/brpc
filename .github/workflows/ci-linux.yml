@@ -47,7 +47,7 @@ jobs:
               --with-rdma --with-debug-bthread-sche-safety --with-debug-lock
               --with-bthread-tracer --with-asan
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-all-dependencies
     - uses: ./.github/actions/setup-build-cache
       with:
@@ -95,7 +95,7 @@ jobs:
               -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON
               -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-all-dependencies
     - uses: ./.github/actions/setup-build-cache
       with:
@@ -137,7 +137,7 @@ jobs:
             protobuf-cpp-version: 3.21.12
             protobuf-install-dir: /protobuf-3.21.12
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-essential-dependencies
       with:
         extra-packages: ccache
@@ -161,7 +161,7 @@ jobs:
   gcc-unittest-with-bazel:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: bazel
@@ -174,7 +174,7 @@ jobs:
   gcc-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: bazel
@@ -231,7 +231,7 @@ jobs:
             protobuf-cpp-version: 3.21.12
             protobuf-install-dir: /protobuf-3.21.12
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-essential-dependencies
       with:
         extra-packages: ccache
@@ -255,7 +255,7 @@ jobs:
   clang-unittest-with-bazel:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: bazel
@@ -272,7 +272,7 @@ jobs:
   clang-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: bazel
@@ -314,7 +314,7 @@ jobs:
   clang-unittest:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-essential-dependencies
       with:
         extra-packages: ccache clang-12 lldb-12 lld-12 libgtest-dev cmake gdb libstdc++6-11-dbg
@@ -340,7 +340,7 @@ jobs:
   clang-unittest-asan:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-essential-dependencies
       with:
         extra-packages: ccache clang-12 lldb-12 lld-12 libgtest-dev cmake gdb libstdc++6-11-dbg
@@ -376,7 +376,7 @@ jobs:
       # honors USE_BAZEL_VERSION.
       USE_BAZEL_VERSION: "8.3.1"
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: bazel
