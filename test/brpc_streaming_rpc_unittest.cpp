@@ -27,6 +27,7 @@
 #include "brpc/controller.h"
 #include "brpc/channel.h"
 #include "brpc/callback.h"
+#include "brpc/details/controller_private_accessor.h"
 #include "brpc/socket.h"
 #include "brpc/stream_impl.h"
 #include "brpc/policy/streaming_rpc_protocol.h"
@@ -1129,6 +1130,76 @@ private:
     size_t _stream_count;
     int _n;
 };
+
+class MyServiceWithMismatchedExtraStreamIds : public test::EchoService {
+public:
+    MyServiceWithMismatchedExtraStreamIds(size_t stream_count, int adjustment)
+        : _stream_count(stream_count), _adjustment(adjustment) {}
+
+    void Echo(::google::protobuf::RpcController* controller,
+              const ::test::EchoRequest* request,
+              ::test::EchoResponse* response,
+              ::google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
+        response->set_message(request->message());
+
+        brpc::ControllerPrivateAccessor accessor(cntl);
+        brpc::StreamSettings* settings = accessor.remote_stream_settings();
+        if (_adjustment < 0) {
+            settings->mutable_extra_stream_ids()->RemoveLast();
+        } else {
+            settings->add_extra_stream_ids(settings->extra_stream_ids(0));
+        }
+
+        brpc::StreamIds response_streams;
+        ASSERT_EQ(0, brpc::StreamAccept(response_streams, *cntl, nullptr));
+        ASSERT_EQ((int)_stream_count + _adjustment,
+                  (int)response_streams.size());
+    }
+
+private:
+    size_t _stream_count;
+    int _adjustment;
+};
+
+TEST_F(StreamingRpcTest, reject_mismatched_returned_stream_identifiers) {
+    const size_t STREAM_COUNT = 3;
+
+    for (int adjustment : {-1, 1}) {
+        brpc::Server server;
+        MyServiceWithMismatchedExtraStreamIds service(STREAM_COUNT, adjustment);
+        ASSERT_EQ(0, server.AddService(
+            &service, brpc::SERVER_DOESNT_OWN_SERVICE));
+        ASSERT_EQ(0, server.Start(0, nullptr));
+
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init(server.listen_address(), nullptr));
+
+        brpc::Controller cntl;
+        brpc::StreamIds request_streams;
+        ASSERT_EQ(0, brpc::StreamCreate(request_streams, STREAM_COUNT, cntl,
+                                        nullptr));
+        ASSERT_EQ(STREAM_COUNT, request_streams.size());
+
+        test::EchoService_Stub stub(&channel);
+        stub.Echo(&cntl, &request, &response, nullptr);
+        ASSERT_TRUE(cntl.Failed());
+        ASSERT_EQ(brpc::ERESPONSE, cntl.ErrorCode());
+        const std::string expected_error =
+            "extra_stream_ids, expected " + std::to_string(STREAM_COUNT - 1);
+        ASSERT_NE(std::string::npos,
+                  cntl.ErrorText().find(expected_error));
+
+        for (brpc::StreamId stream_id : request_streams) {
+            brpc::StreamUniquePtr stream;
+            ASSERT_NE(0, brpc::Stream::Address(stream_id, &stream));
+        }
+
+        server.Stop(0);
+        server.Join();
+    }
+}
 
 TEST_F(StreamingRpcTest, batch_create_extra_stream) {
     const size_t STREAM_COUNT = 3;  // 1 first stream + 2 extra streams

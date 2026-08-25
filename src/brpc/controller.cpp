@@ -1705,12 +1705,20 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
         return;
     }
     size_t stream_num = _request_streams.size();
+    const size_t expected_extra_streams = stream_num - 1;
     std::vector<StreamUniquePtr> ptrs(stream_num);
     if (!FailedInline()) {
         if (_remote_stream_settings == nullptr) {
             if (!FailedInline()) {
                 SetFailed(EREQUEST, "The server didn't accept the stream");
             }
+        } else if (static_cast<size_t>(
+                       _remote_stream_settings->extra_stream_ids_size()) !=
+                   expected_extra_streams) {
+            SetFailed(ERESPONSE, "Server returned %d extra_stream_ids, "
+                      "expected %zu",
+                      _remote_stream_settings->extra_stream_ids_size(),
+                      expected_extra_streams);
         } else {
             for (size_t i = 0; i < stream_num; ++i) {
                 if (Stream::Address(_request_streams[i], &ptrs[i]) != 0) {
