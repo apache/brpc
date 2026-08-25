@@ -26,6 +26,12 @@
 #endif
 #define BRPC_WITH_FLATBUFFERS @WITH_FLATBUFFERS_VAL@
 
+// Defined to 1 when brpc is built with GPU Direct RDMA support.
+#ifdef BRPC_WITH_GDR
+#undef BRPC_WITH_GDR
+#endif
+#cmakedefine BRPC_WITH_GDR @WITH_GDR_VAL@
+
 #ifdef BUTIL_USE_CPU_FREQUENCY
 #undef BUTIL_USE_CPU_FREQUENCY
 #endif

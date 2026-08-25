@@ -146,6 +146,17 @@ public:
     size_t cutn(IOBuf* out, size_t n);
     size_t cutn(void* out, size_t n);
     size_t cutn(std::string* out, size_t n);
+
+#if BRPC_WITH_GDR
+    size_t cutn_from_gpu(IOBuf* out, size_t n);
+    size_t copy_from_gpu(void* d, size_t n, size_t pos = 0, bool to_gpu = false) const;
+    // Returns true iff the first block of this IOBuf was tagged as GPU memory
+    // via append_user_data_gpu(). This is deterministic and independent of the
+    // value of `data_meta' (which is reserved for user/RDMA metadata such as
+    // the lkey or the prefetch size).
+    bool is_gpu_memory();
+#endif  // BRPC_WITH_GDR
+
     // Cut off 1 byte from the front side and set to *c
     // Return true on cut, false otherwise.
     bool cut1(void* c);
@@ -260,10 +271,21 @@ public:
     // The meta is associated with this piece of user-data.
     int append_user_data_with_meta(void* data, size_t size, std::function<void(void*)> deleter, uint64_t meta);
 
+#if BRPC_WITH_GDR
+    // Same as append_user_data_with_meta, but additionally tags the underlying
+    // block with the GPU-memory flag so that is_gpu_memory() can be answered
+    // deterministically (instead of guessing from `meta'). Used by the GDR
+    // receive path to attach device pointers received via RDMA.
+    int append_user_data_gpu(void* data, size_t size, std::function<void(void*)> deleter, uint64_t meta);
+#endif  // BRPC_WITH_GDR
+
     // Get the data meta of the first byte in this IOBuf.
     // The meta is specified with append_user_data_with_meta before.
     // 0 means the meta is invalid.
     uint64_t get_first_data_meta();
+
+    // Get the data addr of the first byte in this IOBuf.
+    void* get_first_data_ptr();
 
     // Resizes the buf to a length of n characters.
     // If n is smaller than the current length, all bytes after n will be

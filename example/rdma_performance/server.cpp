@@ -28,6 +28,7 @@
 
 DEFINE_int32(port, 8002, "TCP Port of this server");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
+DEFINE_bool(use_gdr, false, "Use GDR or not");
 
 butil::atomic<uint64_t> g_last_time(0);
 
@@ -65,6 +66,11 @@ public:
 int main(int argc, char* argv[]) {
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
 
+    if (FLAGS_use_gdr && !FLAGS_use_rdma) {
+        LOG(ERROR) << "--use_gdr requires --use_rdma to be enabled";
+        return -1;
+    }
+
     brpc::Server server;
     test::PerfTestServiceImpl perf_test_service_impl;
 
@@ -77,6 +83,12 @@ int main(int argc, char* argv[]) {
 
     brpc::ServerOptions options;
     options.socket_mode = FLAGS_use_rdma? brpc::SOCKET_MODE_RDMA : brpc::SOCKET_MODE_TCP;
+#ifdef BRPC_WITH_GDR
+    if (FLAGS_use_gdr) {
+        options.socket_mode = brpc::SOCKET_MODE_GDR;
+    }
+#endif
+
     if (server.Start(FLAGS_port, &options) != 0) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;
