@@ -29,10 +29,45 @@ namespace policy {
 
 namespace {
 
+#if BRPC_WITH_GDR
+// CRC32C is computed on the CPU, so GPU memory cannot be read through CPU
+// pointers. Copy the block to a host buffer first and extend the crc over the
+// copy; the data itself stays in GPU memory (the GPU -> GPU data path of GDR
+// is untouched).
+static uint32_t ExtendCrc32cFromGpu(uint32_t crc, const butil::IOBuf& buf) {
+    const size_t size = buf.size();
+    if (size == 0) {
+        return crc;
+    }
+    char* host = new (std::nothrow) char[size];
+    if (host == nullptr) {
+        LOG(ERROR) << "Fail to alloc host buffer to checksum gpu memory";
+        // Fail closed: return a value that cannot match the expected crc.
+        return crc ^ 0xdeadbeefu;
+    }
+    if (buf.copy_from_gpu(host, size) != size) {
+        LOG(ERROR) << "Fail to copy data from gpu memory to checksum";
+        delete[] host;
+        return crc ^ 0xdeadbeefu;
+    }
+    crc = butil::crc32c::Extend(crc, host, size);
+    delete[] host;
+    return crc;
+}
+#endif  // BRPC_WITH_GDR
+
 // Extends `crc' over every block of `buf'. Shared by Crc32cCompute and
 // Crc32cVerify to keep the byte range/order (`buf' then `attachment', see
 // ChecksumIn::attachment) identical on both call sites.
 uint32_t ExtendCrc32c(uint32_t crc, const butil::IOBuf& buf) {
+    if (buf.size() == 0) {
+        return crc;
+    }
+#if BRPC_WITH_GDR
+    if (buf.is_gpu_memory()) {
+        return ExtendCrc32cFromGpu(crc, buf);
+    }
+#endif  // BRPC_WITH_GDR
     butil::IOBufAsZeroCopyInputStream wrapper(buf);
     const void* data;
     int size;

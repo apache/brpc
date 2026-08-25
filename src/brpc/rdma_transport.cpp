@@ -30,11 +30,26 @@ DECLARE_bool(usercode_in_pthread);
 
 extern SocketVarsCollector *g_vars;
 
-void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
+void RdmaTransport::DoInit(Socket *socket, const SocketOptions &options, bool use_gdr) {
     CHECK(_rdma_ep == nullptr);
-    if (options.socket_mode == SOCKET_MODE_RDMA) {
-        _rdma_ep = new rdma::RdmaEndpoint(socket);
-        _rdma_state = RDMA_UNKNOWN;
+    // gdr mode is a special mode of rdma mode.
+    // both rdma mode and gdr mode need init rdma::RdmaEndpoint.
+    if (options.socket_mode == SOCKET_MODE_RDMA ||
+            options.socket_mode == SOCKET_MODE_GDR) {
+        _rdma_ep = new(std::nothrow)rdma::RdmaEndpoint(socket, use_gdr);
+        if (!_rdma_ep) {
+            // Do NOT call socket->SetFailed() here: the Socket still only
+            // holds its creation reference at this point, so SetFailed()
+            // would synchronously recycle it while OnCreated()/DoInit() are
+            // still initializing it. Just log and fall back to TCP.
+            PLOG(ERROR) << "Fail to create RdmaEndpoint, "
+                           "fall back to TCP transport";
+            // No endpoint: later code paths must not assume RDMA is active
+            // and dereference _rdma_ep. Mark the transport as not using RDMA.
+            _rdma_state = RDMA_OFF;
+        } else {
+            _rdma_state = RDMA_UNKNOWN;
+        }
     } else {
         _rdma_state = RDMA_OFF;
         socket->_socket_mode = SOCKET_MODE_TCP;
@@ -51,6 +66,10 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
     }
     _tcp_transport = std::make_shared<TcpTransport>();
     _tcp_transport->Init(socket, options);
+}
+
+void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
+    DoInit(socket, options, false);
 }
 
 void RdmaTransport::Release() {
