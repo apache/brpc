@@ -48,11 +48,11 @@ jobs:
               --with-bthread-tracer --with-asan
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-all-dependencies
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
         cache-key: make-${{ matrix.name }}
-    - uses: ./.github/actions/install-all-dependencies
 
     - name: Build
       uses: ./.github/actions/compile-with-make
@@ -96,11 +96,11 @@ jobs:
               -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-all-dependencies
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
         cache-key: cmake-${{ matrix.name }}
-    - uses: ./.github/actions/install-all-dependencies
 
     - name: Build
       env:
@@ -138,11 +138,13 @@ jobs:
             protobuf-install-dir: /protobuf-3.21.12
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependencies
+      with:
+        extra-packages: ccache
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
         cache-key: gcc-make-${{ matrix.name }}
-    - uses: ./.github/actions/install-essential-dependencies
 
     - name: Build
       uses: ./.github/actions/compile-with-make-protobuf
@@ -213,10 +215,12 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependencies
+      with:
+        extra-packages: ccache
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
-    - uses: ./.github/actions/install-essential-dependencies
 
     - name: protobuf 3.5.1
       uses: ./.github/actions/compile-with-make-protobuf
@@ -309,10 +313,12 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependencies
+      with:
+        extra-packages: ccache clang-12 lldb-12 lld-12 libgtest-dev cmake gdb libstdc++6-11-dbg
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
-    - uses: ./.github/actions/install-essential-dependencies
     - uses: ./.github/actions/init-ut-make-config
       with:
         options: --with-bthread-tracer --with-rdma
@@ -333,10 +339,12 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
+    - uses: ./.github/actions/install-essential-dependencies
+      with:
+        extra-packages: ccache clang-12 lldb-12 lld-12 libgtest-dev cmake gdb libstdc++6-11-dbg
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
-    - uses: ./.github/actions/install-essential-dependencies
     - uses: ./.github/actions/init-ut-make-config
       with:
         options: --with-bthread-tracer --with-asan

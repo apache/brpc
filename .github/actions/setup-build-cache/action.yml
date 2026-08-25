@@ -27,9 +27,6 @@ runs:
       run: |
         if [[ "${{ runner.os }}" == "macOS" ]]; then
           brew install ccache
-        else
-          sudo apt-get update
-          sudo apt-get install -y ccache
         fi
 
         mkdir -p "${HOME}/.cache/ccache" "${HOME}/.cache/ccache-bin"
