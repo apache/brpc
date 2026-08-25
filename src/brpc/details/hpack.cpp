@@ -177,8 +177,6 @@ public:
     }
 
     void ResetMaxSize(size_t new_max_size) {
-        LOG(INFO) << this << ".size=" << _size << " new_max_size=" << new_max_size
-                  << " max_size=" << _max_size;
         if (new_max_size > _max_size) {
             //LOG(ERROR) << "Invalid new_max_size=" << new_max_size;
             //return -1;
