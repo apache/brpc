@@ -27,6 +27,7 @@ option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
+option(WITH_GDR "With GPU Direct RDMA (requires WITH_RDMA and CUDA)" OFF)
 option(WITH_UBRING "With UB" OFF)
 option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" OFF)
 option(WITH_DEBUG_LOCK "With debugging lock" OFF)
@@ -121,6 +122,17 @@ if(WITH_RDMA)
     set(WITH_RDMA_VAL "1")
 endif()
 
+set(WITH_GDR_VAL "0")
+if(WITH_GDR)
+    # GDR is a special mode of RDMA; it implies RDMA.
+    if(NOT WITH_RDMA)
+        message(STATUS "WITH_GDR=ON implies WITH_RDMA=ON")
+        set(WITH_RDMA ON)
+        set(WITH_RDMA_VAL "1")
+    endif()
+    set(WITH_GDR_VAL "1")
+endif()
+
 set(WITH_UBRING_VAL "0")
 if(WITH_UBRING)
         set(WITH_UBRING_VAL "1")
@@ -160,6 +172,7 @@ endif()
 list(APPEND BRPC_COMMON_DEFINITIONS
     BRPC_WITH_GLOG=${WITH_GLOG_VAL}
     BRPC_WITH_RDMA=${WITH_RDMA_VAL}
+    BRPC_WITH_GDR=${WITH_GDR_VAL}
     BRPC_WITH_UBRING=${WITH_UBRING_VAL}
     BRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL}
     BRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}
@@ -318,6 +331,34 @@ if(WITH_RDMA)
     list(APPEND BRPC_COMMON_INCLUDE_DIRS ${RDMA_INCLUDE_PATH})
 endif()
 
+if(WITH_GDR)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "GDR (GPU Direct RDMA) is only supported on Linux")
+    endif()
+    message("brpc compile with gdr")
+    # Honor CUDA_HOME if set by the user, otherwise fall back to common defaults.
+    if(DEFINED ENV{CUDA_HOME} AND NOT CUDA_HOME)
+        set(CUDA_HOME $ENV{CUDA_HOME})
+    endif()
+    if(CUDA_HOME)
+        set(CUDA_INCLUDE_PATH ${CUDA_HOME}/include)
+        find_library(CUDA_LIB NAMES cuda PATHS ${CUDA_HOME}/lib64 ${CUDA_HOME}/lib NO_DEFAULT_PATH)
+        find_library(CUDART_LIB NAMES cudart PATHS ${CUDA_HOME}/lib64 ${CUDA_HOME}/lib NO_DEFAULT_PATH)
+    else()
+        find_path(CUDA_INCLUDE_PATH NAMES cuda_runtime.h
+                  PATHS /usr/local/cuda/include /usr/include)
+        find_library(CUDA_LIB NAMES cuda
+                     PATHS /usr/local/cuda/lib64 /usr/lib64)
+        find_library(CUDART_LIB NAMES cudart
+                     PATHS /usr/local/cuda/lib64 /usr/lib64)
+    endif()
+    if((NOT CUDA_INCLUDE_PATH) OR (NOT CUDA_LIB) OR (NOT CUDART_LIB))
+        message(FATAL_ERROR "Fail to find CUDA (set CUDA_HOME or install CUDA toolkit). "
+                            "Needed headers: cuda_runtime.h; libs: cuda, cudart")
+    endif()
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${CUDA_INCLUDE_PATH})
+endif()
+
 find_library(PROTOC_LIB NAMES protoc)
 if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
@@ -368,6 +409,11 @@ endif()
 
 if(WITH_RDMA)
     list(APPEND DYNAMIC_LIB ${RDMA_LIB})
+endif()
+
+if(WITH_GDR)
+    list(APPEND DYNAMIC_LIB ${CUDA_LIB})
+    list(APPEND DYNAMIC_LIB ${CUDART_LIB})
 endif()
 
 if(WITH_UBRING)
@@ -547,6 +593,7 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/iobuf.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/single_iobuf.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/iobuf_profiler.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/gpu/gpu_block_pool.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/binary_printer.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/recordio.cc
     ${PROJECT_SOURCE_DIR}/src/butil/popen.cpp

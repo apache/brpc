@@ -60,6 +60,9 @@ endif
 .PHONY:all
 ifdef WITH_RDMA
 all: client server
+else ifdef WITH_GDR
+# GDR implies RDMA; libbrpc may have been built with only WITH_GDR recorded.
+all: client server
 else
 all: 
 endif
