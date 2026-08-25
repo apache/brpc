@@ -22,6 +22,8 @@
 
 #include <limits>                                 // std::numeric_limits
 #include <math.h>                                 // round
+#include <type_traits>                            // std::decay
+#include <utility>                                // std::declval
 #include <gflags/gflags_declare.h>
 #include "butil/logging.h"                         // LOG
 #include "bvar/detail/sampler.h"
@@ -45,19 +47,30 @@ public:
     typedef typename R::value_type value_type;
     typedef typename R::sampler_type sampler_type;
 
-    class SeriesSampler : public detail::Sampler {
+    // Type of the underlying var's operator, copied by value so that appending
+    // to the series never dereferences the var.
+    typedef typename std::decay<decltype(std::declval<R&>().op())>::type var_op_type;
+
+    class SeriesSampler : public Sampler {
     public:
+        // Holds a COPY of the underlying var's operator rather than a pointer to
+        // the var. The operators of bvar (AddTo/MaxTo/AddStat/...) are stateless
+        // functors, so copying is cheap and, more importantly, the sampling
+        // thread never touches the var -- which may already be destructed if the
+        // user let this Window outlive it.
         struct Op {
-            explicit Op(R* var) : _var(var) {}
+            explicit Op(const var_op_type& op) : _op(op) {}
             void operator()(value_type& v1, const value_type& v2) const {
-                _var->op()(v1, v2);
+                _op(v1, v2);
             }
         private:
-            R* _var;
+            var_op_type _op;
         };
-        SeriesSampler(WindowBase* owner, R* var)
-            : _owner(owner), _series(Op(var)) {}
-        ~SeriesSampler() {}
+
+        SeriesSampler(WindowBase* owner, const var_op_type& op)
+            : _owner(owner), _series(Op(op)) {}
+        ~SeriesSampler() override = default;
+
         void take_sample() override {
             if (series_freq == SERIES_IN_SECOND) {
                 // Get one-second window value for PerSecond<>, otherwise the
@@ -73,35 +86,43 @@ public:
         void describe(std::ostream& os) { _series.describe(os, nullptr); }
     private:
         WindowBase* _owner;
-        detail::Series<value_type, Op> _series;
+        Series<value_type, Op> _series;
     };
     
     WindowBase(R* var, time_t window_size)
         : _var(var)
+        , _var_op(var->op())
         , _window_size(window_size > 0 ? window_size : FLAGS_bvar_dump_interval)
         , _sampler(var->get_sampler())
         , _series_sampler(nullptr) {
+        // Tell the borrowed sampler about us, so that destructing `var` before
+        // this Window is detected and reported instead of silently leaving
+        // `_sampler' dangling. See Sampler::add_borrower().
+        _sampler->add_borrower();
         CHECK_EQ(0, _sampler->set_window_size(_window_size));
     }
     
-    ~WindowBase() {
+    ~WindowBase() override {
         hide();
         if (_series_sampler) {
             _series_sampler->destroy();
             _series_sampler = nullptr;
         }
+        // Safe even if `var` was destructed first: in that case destroy() marked
+        // the sampler as leaked, so it was not deleted by the sampling thread.
+        _sampler->remove_borrower();
     }
 
-    bool get_span(time_t window_size, detail::Sample<value_type>* result) const {
+    bool get_span(time_t window_size, Sample<value_type>* result) const {
         return _sampler->get_value(window_size, result);
     }
 
-    bool get_span(detail::Sample<value_type>* result) const {
+    bool get_span(Sample<value_type>* result) const {
         return get_span(_window_size, result);
     }
 
     virtual value_type get_value(time_t window_size) const {
-        detail::Sample<value_type> tmp;
+        Sample<value_type> tmp;
         if (get_span(window_size, &tmp)) {
             return tmp.data;
         }
@@ -148,13 +169,17 @@ protected:
         if (rc == 0 &&
             _series_sampler == nullptr &&
             FLAGS_save_series) {
-            _series_sampler = new SeriesSampler(this, _var);
+            _series_sampler = new SeriesSampler(this, _var_op);
             _series_sampler->schedule();
         }
         return rc;
     }
 
+    // NOTE: `_var` is only dereferenced in the ctor (get_sampler()/op()). Do NOT
+    // dereference it afterwards: the user may have destructed it already if this
+    // Window outlives it (see the contract in comments of Window below).
     R* _var;
+    var_op_type _var_op;
     time_t _window_size;
     sampler_type* _sampler;
     SeriesSampler* _series_sampler;
@@ -289,8 +314,7 @@ public:
         return *this;
     }
 
-    // Implement Variable::describe()
-    void describe(std::ostream& os, bool quote_string) const {
+    void describe(std::ostream& os, bool quote_string) const override {
         if (butil::is_same<value_type, std::string>::value && quote_string) {
             os << '"' << get_value() << '"';
         } else {
@@ -298,7 +322,7 @@ public:
         }
     }
 
-    virtual ~WindowExAdapter() {
+    ~WindowExAdapter() override {
         hide();
     }
 

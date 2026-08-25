@@ -218,7 +218,7 @@ int InputMessenger::ProcessNewMessage(
                     << "Close " << *m << " due to unknown message: "
                     << butil::ToPrintable(m->_read_buf);
                 m->SetFailed(EINVAL, "Close %s due to unknown message",
-                                m->description().c_str());
+                             m->description().c_str());
                 return -1;
             } else {
                 LOG(WARNING) << "Close " << *m << ": " << pr.error_str();

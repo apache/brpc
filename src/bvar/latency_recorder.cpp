@@ -24,6 +24,25 @@
 
 namespace bvar {
 
+#if !WITH_BABYLON_COUNTER
+// Verify how ReducerSampler picks its data source, using the very hosts that
+// LatencyRecorder is made of.
+// Hosts keeping their data in a shared combiner are sampled through that carrier,
+// so sampling reads valid memory even if the host is destructed before the sampler
+// is recycled.
+// PassiveStatus keeps its data in a user callback instead, hence it is still sampled
+// through the host pointer.
+static_assert(detail::HasShareCombiner<IntRecorder>::value,
+              "IntRecorder should be sampled through its shared combiner");
+static_assert(detail::HasShareCombiner<Maxer<int64_t>::Base>::value,
+              "Reducer should be sampled through its shared combiner");
+static_assert(detail::HasShareCombiner<detail::Percentile>::value,
+              "Percentile should be sampled through its shared combiner");
+static_assert(!detail::HasShareCombiner<PassiveStatus<int64_t> >::value,
+              "PassiveStatus has no shared carrier, it must keep being sampled"
+              " through the host pointer");
+#endif // !WITH_BABYLON_COUNTER
+
 static bool valid_percentile(const char*, int32_t v) {
     return v > 0 && v < 100;
 }

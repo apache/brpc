@@ -23,6 +23,8 @@
 #include <sstream>
 #include <butil/time.h>
 #include <butil/macros.h>
+#include <butil/logging.h>                          // logging::StringSink
+#include <butil/compiler_specific.h>                // BUTIL_USE_ASAN
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include "bvar/bvar.h"
@@ -95,3 +97,41 @@ TEST_F(WindowTest, window) {
     ASSERT_EQ(recorder_stat.get_average_int(), window_ex_recorder_stat.get_average_int());
     ASSERT_DOUBLE_EQ(recorder_stat.get_average_double(), window_ex_recorder_stat.get_average_double());
 }
+
+// A Window/PerSecond outliving the bvar it references violates the contract
+// documented in bvar/window.h. Before this was handled, the Window was left with
+// a dangling sampler pointer (the sampling thread had already deleted it), which
+// silently became a use-after-free. Now:
+//   - Sampler::destroy() notices it is still borrowed, reports the misuse and
+//     marks the sampler so that the sampling thread leaks it instead of deleting
+//     it, keeping the borrower's pointer valid (edge A);
+//   - the series sampler holds a COPY of the var's operator, so appending to the
+//     series never dereferences the destructed var (edge B).
+//
+// NOTE: this test leaks the sampler ON PURPOSE, hence it is skipped under ASan
+// (which bundles LeakSanitizer) that would (correctly) report that leak.
+#ifndef BUTIL_USE_ASAN
+TEST_F(WindowTest, window_outliving_referenced_var) {
+    bvar::PerSecond<bvar::Adder<int64_t> >* ps = nullptr;
+    {
+        // Named so that the diagnostic below can identify the offending bvar.
+        bvar::Adder<int64_t> a("window_outliving_referenced_var_adder");
+        a << 10;
+        ps = new bvar::PerSecond<bvar::Adder<int64_t> >(&a, 1);
+        // Expose it so that a series sampler is created as well, covering the
+        // path where the series operator would touch the var (edge B).
+        ASSERT_EQ(0, ps->expose("window_outliving_referenced_var"));
+        sleep(1);
+    }
+    // `a' is destructed while `ps' still borrows its sampler. Give the sampling
+    // thread a chance to walk the destroy branch.
+    sleep(2);
+    // Used to be a use-after-free; the sampler memory is still valid now, `ps'
+    // merely stops receiving new samples.
+    (void)ps->get_value();
+    std::ostringstream os;
+    ps->describe(os, false);
+    // remove_borrower() on the leaked sampler is safe too.
+    delete ps;
+}
+#endif // BUTIL_USE_ASAN

@@ -143,6 +143,7 @@ public:
     sampler_type* get_sampler() {
         if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
+            _sampler->set_debug_name(name());
             _sampler->schedule();
         }
         return _sampler;
@@ -168,11 +169,16 @@ public:
 
 protected:
     int expose_impl(const butil::StringPiece& prefix,
-                    const butil::StringPiece& name,
+                    const butil::StringPiece& n,
                     DisplayFilter display_filter) override {
-        const int rc = Variable::expose_impl(prefix, name, display_filter);
+        const int rc = Variable::expose_impl(prefix, n, display_filter);
+        if (rc != 0) {
+            return rc;
+        }
+        if (_sampler != nullptr) {
+            _sampler->set_debug_name(name());
+        }
         if (ADDITIVE &&
-            rc == 0 &&
             _series_sampler == nullptr &&
             FLAGS_save_series) {
             _series_sampler = new SeriesSampler(this);
