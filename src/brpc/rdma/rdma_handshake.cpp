@@ -48,7 +48,18 @@ DECLARE_bool(rdma_trace_verbose);
 extern const uint16_t MIN_QP_SIZE;
 extern const uint16_t MIN_BLOCK_SIZE;
 extern uint32_t g_rdma_recv_block_size;
+// GDR endpoints receive into GPU blocks of this size (rdma_endpoint.cpp);
+// the block size advertised in the handshake must match the actual receive
+// SGE length, otherwise the peer may send chunks larger than what we post.
+extern uint32_t g_gdr_recv_block_size;
 extern bool g_skip_rdma_init;
+
+// The local receive block size to advertise in the handshake: a GDR endpoint
+// receives into GPU memory blocks (g_gdr_recv_block_size), everything else
+// uses the CPU-side block size (g_rdma_recv_block_size).
+static inline uint32_t LocalRecvBlockSize(const RdmaEndpoint* ep) {
+    return ep->use_gdr() ? g_gdr_recv_block_size : g_rdma_recv_block_size;
+}
 
 extern int (*IbvQueryEce)(ibv_qp*, ibv_ece*);
 
@@ -157,7 +168,7 @@ int RdmaHandshakeClientV2::SendLocalHello() {
     local_msg.msg_len = HELLO_V2_MSG_LEN_MIN;
     local_msg.hello_ver = HELLO_V2_VERSION;
     local_msg.impl_ver = IMPL_V2_VERSION;
-    local_msg.block_size = g_rdma_recv_block_size;
+    local_msg.block_size = LocalRecvBlockSize(ep);
     local_msg.sq_size = ep->_sq_size;
     local_msg.rq_size = ep->_rq_size;
     local_msg.lid = GetRdmaLid();
@@ -245,7 +256,7 @@ int RdmaHandshakeServerV2::SendLocalHello() {
     } else {
         local_msg.hello_ver = HELLO_V2_VERSION;
         local_msg.impl_ver = IMPL_V2_VERSION;
-        local_msg.block_size = g_rdma_recv_block_size;
+        local_msg.block_size = LocalRecvBlockSize(_ep);
         local_msg.sq_size = _ep->_sq_size;
         local_msg.rq_size = _ep->_rq_size;
         local_msg.lid = GetRdmaLid();
@@ -290,7 +301,7 @@ bool ValidRdmaHello(const RdmaHello& msg) {
 }
 
 void FillLocalRdmaHello(const RdmaEndpoint* ep, RdmaHello* msg) {
-    msg->set_block_size(g_rdma_recv_block_size);
+    msg->set_block_size(LocalRecvBlockSize(ep));
     msg->set_sq_size(ep->_sq_size);
     msg->set_rq_size(ep->_rq_size);
     msg->set_lid(GetRdmaLid());

@@ -153,6 +153,7 @@ set(BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/guid_posix.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/hash.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/iobuf.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu/gpu_block_pool.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/iobuf_profiler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/lazy_instance.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/location.cc
@@ -285,6 +286,11 @@ endif()
 if(WITH_GLOG)
     list(PREPEND butil_libraries ${GLOG_LIB})
     set(butil_private_libs "-lglog ${butil_private_libs}")
+endif()
+if(WITH_GDR)
+    # gpu_block_pool.cpp is a no-op translation unit without BRPC_WITH_GDR;
+    # only link CUDA libs when GDR is actually enabled.
+    list(APPEND butil_libraries ${CUDA_LIB} ${CUDART_LIB})
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND butil_system_libraries rt)
