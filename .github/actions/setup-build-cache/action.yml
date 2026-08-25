@@ -74,4 +74,5 @@ runs:
         cat >> "${HOME}/.bazelrc" <<EOF
         common --repository_cache=${HOME}/.cache/bazel-repository
         common --disk_cache=${HOME}/.cache/bazel-disk
+        test --cache_test_results=no
         EOF
