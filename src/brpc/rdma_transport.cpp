@@ -184,8 +184,7 @@ void RdmaTransport::QueueMessage(InputMessageClosure& input_msg,
 }
 
 void RdmaTransport::QueueMessages(InputMessageBatch* input_msgs,
-                                  int* num_bthread_created, bool last_msg) {
-    CHECK(!last_msg || rdma::FLAGS_rdma_use_polling);
+                                  int* num_bthread_created) {
     if (!input_msgs || input_msgs->empty()) {
         delete input_msgs;
         return;

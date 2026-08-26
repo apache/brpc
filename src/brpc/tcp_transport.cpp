@@ -104,7 +104,7 @@ void TcpTransport::QueueMessage(InputMessageClosure& input_msg,
 }
 
 void TcpTransport::QueueMessages(InputMessageBatch* input_msgs,
-                                 int* num_bthread_created, bool) {
+                                 int* num_bthread_created) {
     if (!input_msgs || input_msgs->empty()) {
         delete input_msgs;
         return;

@@ -97,9 +97,7 @@ private:
 class InputMessageBatch {
 public:
     InputMessageBatch() {}
-    explicit InputMessageBatch(size_t capacity) {
-        _msgs.reserve(capacity);
-    }
+    explicit InputMessageBatch(size_t capacity);
     ~InputMessageBatch() noexcept(false);
 
     void add(InputMessageBase* msg);
@@ -172,7 +170,7 @@ private:
 
     static void QueueInputMessageBatch(
             Socket* m, std::unique_ptr<InputMessageBatch>* batch,
-            int* num_bthread_created, bool last_msg);
+            int* num_bthread_created);
 
     static void QueueLastMessageOrBatch(
             Socket* m, InputMessageClosure& last_msg,

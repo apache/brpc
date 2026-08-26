@@ -175,8 +175,7 @@ void UBShmTransport::QueueMessage(InputMessageClosure& input_msg,
 }
 
 void UBShmTransport::QueueMessages(InputMessageBatch* input_msgs,
-                                   int* num_bthread_created, bool last_msg) {
-    CHECK(!last_msg);
+                                   int* num_bthread_created) {
     if (!input_msgs || input_msgs->empty()) {
         delete input_msgs;
         return;

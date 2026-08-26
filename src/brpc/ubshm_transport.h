@@ -38,8 +38,7 @@ public:
     void ProcessEvent(bthread_attr_t attr) override;
     void QueueMessage(InputMessageClosure& inputMsg, int* num_bthread_created, bool last_msg) override;
     void QueueMessages(InputMessageBatch* input_msgs,
-                       int* num_bthread_created,
-                       bool last_msg) override;
+                       int* num_bthread_created) override;
     void Debug(std::ostream &os) override;
     ubring::UBShmEndpoint* GetUBShmEp() {
         CHECK(_ub_ep != nullptr);

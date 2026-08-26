@@ -41,8 +41,7 @@ public:
     void ProcessEvent(bthread_attr_t attr) override;
     void QueueMessage(InputMessageClosure& inputMsg, int* num_bthread_created, bool last_msg) override;
     void QueueMessages(InputMessageBatch* inputMsgs,
-                       int* num_bthread_created,
-                       bool last_msg) override;
+                       int* num_bthread_created) override;
     void Debug(std::ostream &os) override;
     rdma::RdmaEndpoint* GetRdmaEp() {
         CHECK(_rdma_ep != nullptr);

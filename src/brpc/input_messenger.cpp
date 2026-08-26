@@ -197,6 +197,12 @@ void* ProcessInputMessageBatch(void* void_arg) {
     return nullptr;
 }
 
+InputMessageBatch::InputMessageBatch(size_t capacity) {
+    // Avoid a large upfront allocation from a user-controlled fixed batch size.
+    _msgs.reserve(std::min(
+        capacity, static_cast<size_t>(MAX_ADAPTIVE_INPUT_BATCH_SIZE)));
+}
+
 InputMessageBatch::~InputMessageBatch() noexcept(false) {
     Run();
 }
@@ -235,12 +241,11 @@ void InputMessageClosure::reset(InputMessageBase* m) {
 
 void InputMessenger::QueueInputMessageBatch(
         Socket* m, std::unique_ptr<InputMessageBatch>* batch,
-        int* num_bthread_created, bool last_msg) {
+        int* num_bthread_created) {
     if (!batch->get() || (*batch)->empty()) {
         return;
     }
-    m->_transport->QueueMessages(
-        batch->release(), num_bthread_created, last_msg);
+    m->_transport->QueueMessages(batch->release(), num_bthread_created);
 }
 
 void InputMessenger::QueueLastMessageOrBatch(
@@ -262,8 +267,7 @@ void InputMessenger::QueueLastMessageOrBatch(
     }
     (*batch)->add(msg);
     if ((*batch)->size() >= batch_size) {
-        QueueInputMessageBatch(
-            m, batch, num_bthread_created, false);
+        QueueInputMessageBatch(m, batch, num_bthread_created);
     }
 }
 
@@ -439,7 +443,7 @@ int InputMessenger::ProcessNewMessage(
             last_msg.reset(msg.release());
             if (batch_process) {
                 QueueInputMessageBatch(
-                    m, &input_batch, &num_bthread_created, false);
+                    m, &input_batch, &num_bthread_created);
             }
             m->_transport->QueueMessage(last_msg, &num_bthread_created, false);
             bthread_flush();
@@ -451,8 +455,7 @@ int InputMessenger::ProcessNewMessage(
     // method for processing messages may call synchronization primitives,
     // causing the polling bthread to be scheduled out.
     if (batch_process) {
-        QueueInputMessageBatch(
-            m, &input_batch, &num_bthread_created, false);
+        QueueInputMessageBatch(m, &input_batch, &num_bthread_created);
     }
     if (m->_socket_mode == SOCKET_MODE_RDMA ||
         m->_socket_mode == SOCKET_MODE_UBRING) {
