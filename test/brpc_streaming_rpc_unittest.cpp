@@ -1260,12 +1260,15 @@ public:
         response->set_message(request->message());
 
         brpc::StreamIds response_streams;
-        accept_result = brpc::StreamAccept(response_streams, *cntl, nullptr);
-        accepted_streams = response_streams.size();
+        accept_result.store(
+            brpc::StreamAccept(response_streams, *cntl, nullptr),
+            std::memory_order_release);
+        accepted_streams.store(
+            response_streams.size(), std::memory_order_release);
     }
 
-    int accept_result{0};
-    size_t accepted_streams{0};
+    std::atomic<int> accept_result{0};
+    std::atomic<size_t> accepted_streams{0};
 };
 
 TEST_F(StreamingRpcTest, limit_streams_accepted_per_request) {
@@ -1299,13 +1302,19 @@ TEST_F(StreamingRpcTest, limit_streams_accepted_per_request) {
         stub.Echo(&cntl, &request, &response, nullptr);
         if (stream_count == 2) {
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-            ASSERT_EQ(0, service.accept_result);
-            ASSERT_EQ(stream_count, service.accepted_streams);
+            ASSERT_EQ(0, service.accept_result.load(
+                             std::memory_order_acquire));
+            ASSERT_EQ(stream_count, service.accepted_streams.load(
+                                        std::memory_order_acquire));
         } else {
             ASSERT_TRUE(cntl.Failed());
             ASSERT_EQ(brpc::EREQUEST, cntl.ErrorCode());
-            ASSERT_EQ(-1, service.accept_result);
-            ASSERT_EQ(0u, service.accepted_streams);
+            ASSERT_NE(std::string::npos, cntl.ErrorText().find(
+                                             "stream_max_streams_per_request"));
+            ASSERT_EQ(-1, service.accept_result.load(
+                              std::memory_order_acquire));
+            ASSERT_EQ(0u, service.accepted_streams.load(
+                              std::memory_order_acquire));
         }
 
         for (brpc::StreamId stream_id : request_streams) {

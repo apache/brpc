@@ -1042,6 +1042,11 @@ int StreamAccept(StreamIds& response_streams, Controller& cntl,
     const int64_t stream_count = static_cast<int64_t>(
         cntl._remote_stream_settings->extra_stream_ids_size()) + 1;
     if (stream_count > FLAGS_stream_max_streams_per_request) {
+        cntl.SetFailed(EREQUEST,
+                       "Reject %" PRId64 " streams in one request, exceeding "
+                       "-stream_max_streams_per_request=%" PRId64,
+                       stream_count,
+                       FLAGS_stream_max_streams_per_request);
         LOG(ERROR) << "Reject " << stream_count
                    << " streams in one request, exceeding "
                       "-stream_max_streams_per_request="
