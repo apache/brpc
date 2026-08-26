@@ -41,6 +41,7 @@ DECLARE_int32(task_group_ntags);
 namespace bthread {
 
 class TaskGroup;
+struct CumulatedWithTagArgs;
 
 // Control all task groups
 class TaskControl {
@@ -171,10 +172,14 @@ private:
     bvar::PassiveStatus<std::string> _status;
     bvar::Adder<int64_t> _nbthreads;
 
-    std::vector<bvar::Adder<int64_t>*> _tagged_nworkers;
-    std::vector<bvar::PassiveStatus<double>*> _tagged_cumulated_worker_time;
-    std::vector<bvar::PerSecond<bvar::PassiveStatus<double>>*> _tagged_worker_usage_second;
-    std::vector<bvar::Adder<int64_t>*> _tagged_nbthreads;
+    std::vector<std::unique_ptr<bvar::Adder<int64_t>>> _tagged_nworkers;
+    std::vector<std::unique_ptr<CumulatedWithTagArgs>>
+        _tagged_cumulated_worker_time_args;
+    std::vector<std::unique_ptr<bvar::PassiveStatus<double>>>
+        _tagged_cumulated_worker_time;
+    std::vector<std::unique_ptr<bvar::PerSecond<bvar::PassiveStatus<double>>>>
+        _tagged_worker_usage_second;
+    std::vector<std::unique_ptr<bvar::Adder<int64_t>>> _tagged_nbthreads;
 
     bool _enable_priority_queue;
     int _ed_priority_queue_num_of_each_tag;
