@@ -102,6 +102,12 @@ void* ProcessInputMessageBatch(void* void_arg) {
     return nullptr;
 }
 
+InputMessageBatch::InputMessageBatch(size_t capacity) {
+    // Avoid a large upfront allocation from a user-controlled fixed batch size.
+    _msgs.reserve(std::min(
+        capacity, static_cast<size_t>(MAX_ADAPTIVE_INPUT_BATCH_SIZE)));
+}
+
 InputMessageBatch::~InputMessageBatch() noexcept(false) {
     Run();
 }

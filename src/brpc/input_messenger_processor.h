@@ -121,8 +121,7 @@ private:
     ParseResult CutInputMessage(InputMessenger* messenger, size_t* index, bool read_eof);
 
     void QueueInputMessageBatch(std::unique_ptr<InputMessageBatch>* batch,
-                                int* num_bthread_created,
-                                bool last_msg);
+                                int* num_bthread_created);
     void QueueLastMessageOrBatch(InputMessageClosure& last_msg,
                                  std::unique_ptr<InputMessageBatch>* batch,
                                  int* num_bthread_created,

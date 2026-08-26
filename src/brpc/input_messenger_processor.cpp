@@ -181,12 +181,11 @@ void InputMessengerProcessor::Reset() {
 
 void InputMessengerProcessor::QueueInputMessageBatch(
         std::unique_ptr<InputMessageBatch>* batch,
-        int* num_bthread_created, bool last_msg) {
+        int* num_bthread_created) {
     if (!batch->get() || (*batch)->empty()) {
         return;
     }
-    _socket->_transport->QueueMessages(
-        batch->release(), num_bthread_created, last_msg);
+    _socket->_transport->QueueMessages(batch->release(), num_bthread_created);
 }
 
 void InputMessengerProcessor::QueueLastMessageOrBatch(
@@ -208,7 +207,7 @@ void InputMessengerProcessor::QueueLastMessageOrBatch(
     }
     (*batch)->add(msg);
     if ((*batch)->size() >= batch_size) {
-        QueueInputMessageBatch(batch, num_bthread_created, false);
+        QueueInputMessageBatch(batch, num_bthread_created);
     }
 }
 
@@ -383,7 +382,7 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
             last_msg.reset(msg.release());
             if (batch_process) {
                 QueueInputMessageBatch(
-                    &input_batch, &num_bthread_created, false);
+                    &input_batch, &num_bthread_created);
             }
             _socket->_transport->QueueMessage(last_msg, &num_bthread_created, false);
             bthread_flush();
@@ -395,8 +394,7 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
     // method for processing messages may call synchronization primitives,
     // causing the polling bthread to be scheduled out.
     if (batch_process) {
-        QueueInputMessageBatch(
-            &input_batch, &num_bthread_created, false);
+        QueueInputMessageBatch(&input_batch, &num_bthread_created);
     }
     if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
         _socket->_socket_mode == SOCKET_MODE_UBRING) {
