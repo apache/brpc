@@ -1249,6 +1249,74 @@ private:
     int _adjustment;
 };
 
+class MyServiceWithStreamCountLimit : public test::EchoService {
+public:
+    void Echo(::google::protobuf::RpcController* controller,
+              const ::test::EchoRequest* request,
+              ::test::EchoResponse* response,
+              ::google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
+        response->set_message(request->message());
+
+        brpc::StreamIds response_streams;
+        accept_result = brpc::StreamAccept(response_streams, *cntl, nullptr);
+        accepted_streams = response_streams.size();
+    }
+
+    int accept_result{0};
+    size_t accepted_streams{0};
+};
+
+TEST_F(StreamingRpcTest, limit_streams_accepted_per_request) {
+    std::string old_stream_limit;
+    ASSERT_TRUE(GFLAGS_NAMESPACE::GetCommandLineOption(
+        "stream_max_streams_per_request", &old_stream_limit));
+    BRPC_SCOPE_EXIT {
+        GFLAGS_NAMESPACE::SetCommandLineOption(
+            "stream_max_streams_per_request", old_stream_limit.c_str());
+    };
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+        "stream_max_streams_per_request", "2").empty());
+
+    brpc::Server server;
+    MyServiceWithStreamCountLimit service;
+    ASSERT_EQ(0, server.AddService(
+        &service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), nullptr));
+
+    for (size_t stream_count : {2u, 3u, 2u}) {
+        brpc::Controller cntl;
+        brpc::StreamIds request_streams;
+        ASSERT_EQ(0, brpc::StreamCreate(
+            request_streams, stream_count, cntl, nullptr));
+        ASSERT_EQ(stream_count, request_streams.size());
+
+        test::EchoService_Stub stub(&channel);
+        stub.Echo(&cntl, &request, &response, nullptr);
+        if (stream_count == 2) {
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            ASSERT_EQ(0, service.accept_result);
+            ASSERT_EQ(stream_count, service.accepted_streams);
+        } else {
+            ASSERT_TRUE(cntl.Failed());
+            ASSERT_EQ(brpc::EREQUEST, cntl.ErrorCode());
+            ASSERT_EQ(-1, service.accept_result);
+            ASSERT_EQ(0u, service.accepted_streams);
+        }
+
+        for (brpc::StreamId stream_id : request_streams) {
+            brpc::StreamClose(stream_id);
+        }
+    }
+
+    server.Stop(0);
+    server.Join();
+}
+
 TEST_F(StreamingRpcTest, reject_mismatched_returned_stream_identifiers) {
     const size_t STREAM_COUNT = 3;
 

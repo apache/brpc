@@ -40,6 +40,11 @@ DECLARE_int64(socket_max_streams_unconsumed_bytes);
 DEFINE_uint64(stream_write_max_segment_size, 512 * 1024 * 1024,
               "Stream message exceeding this size will be automatically split into smaller segments");
 BRPC_VALIDATE_GFLAG(stream_write_max_segment_size, PositiveInteger);
+DEFINE_int32(stream_max_streams_per_request, 64,
+             "Maximum number of streams that StreamAccept creates for one "
+             "request. Raise this flag if an application needs to accept "
+             "more streams per request");
+BRPC_VALIDATE_GFLAG(stream_max_streams_per_request, PositiveInteger);
 
 const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
@@ -1032,6 +1037,15 @@ int StreamAccept(StreamIds& response_streams, Controller& cntl,
     }
     if (!cntl.has_remote_stream()) {
         LOG(ERROR) << "No stream along with this request";
+        return -1;
+    }
+    const int64_t stream_count = static_cast<int64_t>(
+        cntl._remote_stream_settings->extra_stream_ids_size()) + 1;
+    if (stream_count > FLAGS_stream_max_streams_per_request) {
+        LOG(ERROR) << "Reject " << stream_count
+                   << " streams in one request, exceeding "
+                      "-stream_max_streams_per_request="
+                   << FLAGS_stream_max_streams_per_request;
         return -1;
     }
     StreamOptions opt;
