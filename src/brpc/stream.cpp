@@ -35,6 +35,7 @@
 namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
+DECLARE_uint64(max_body_size);
 DECLARE_int64(socket_max_streams_unconsumed_bytes);
 DEFINE_uint64(stream_write_max_segment_size, 512 * 1024 * 1024,
               "Stream message exceeding this size will be automatically split into smaller segments");
@@ -610,6 +611,19 @@ int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* soc
         CHECK(buf->empty());
         break;
     case FRAME_TYPE_DATA:
+        if (buf->length() > FLAGS_max_body_size ||
+            (_pending_buf != nullptr &&
+             _pending_buf->length() > FLAGS_max_body_size - buf->length())) {
+            LOG(WARNING) << "Close stream=" << id()
+                         << " whose pending message size="
+                         << (_pending_buf != nullptr ? _pending_buf->length() : 0)
+                         << " plus frame size=" << buf->length()
+                         << " exceeds max_body_size=" << FLAGS_max_body_size;
+            delete _pending_buf;
+            _pending_buf = nullptr;
+            Close(EMSGSIZE, "Reassembled stream message is too large");
+            return -1;
+        }
         if (_pending_buf != nullptr) {
             _pending_buf->append(*buf);
             buf->clear();
