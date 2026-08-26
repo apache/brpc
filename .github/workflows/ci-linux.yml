@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - name: gcc-default
@@ -68,6 +69,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - name: gcc-default
@@ -117,25 +119,56 @@ jobs:
       if: always()
       run: ccache --show-stats
 
-  gcc-compile-with-make-protobuf:
-    name: gcc-compile-with-make-protobuf (${{ matrix.name }})
+  compile-with-make-protobuf:
+    name: compile-with-make-protobuf (${{ matrix.compiler }}-${{ matrix.name }})
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
-          - name: protobuf-3.5.1
+          - compiler: gcc
+            name: protobuf-3.5.1
             protobuf-version: 3.5.1
             protobuf-cpp-version: 3.5.1
             protobuf-install-dir: /protobuf-3.5.1
-          - name: protobuf-3.12.4
+            cc: gcc
+            cxx: g++
+          - compiler: gcc
+            name: protobuf-3.12.4
             protobuf-version: 3.12.4
             protobuf-cpp-version: 3.12.4
             protobuf-install-dir: /protobuf-3.12.4
-          - name: protobuf-21.12
+            cc: gcc
+            cxx: g++
+          - compiler: gcc
+            name: protobuf-21.12
             protobuf-version: '21.12'
             protobuf-cpp-version: 3.21.12
             protobuf-install-dir: /protobuf-3.21.12
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            name: protobuf-3.5.1
+            protobuf-version: 3.5.1
+            protobuf-cpp-version: 3.5.1
+            protobuf-install-dir: /protobuf-3.5.1
+            cc: clang
+            cxx: clang++
+          - compiler: clang
+            name: protobuf-3.12.4
+            protobuf-version: 3.12.4
+            protobuf-cpp-version: 3.12.4
+            protobuf-install-dir: /protobuf-3.12.4
+            cc: clang
+            cxx: clang++
+          - compiler: clang
+            name: protobuf-21.12
+            protobuf-version: '21.12'
+            protobuf-cpp-version: 3.21.12
+            protobuf-install-dir: /protobuf-3.21.12
+            cc: clang
+            cxx: clang++
     steps:
     - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-essential-dependencies
@@ -144,7 +177,7 @@ jobs:
     - uses: ./.github/actions/setup-build-cache
       with:
         kind: ccache
-        cache-key: gcc-make-${{ matrix.name }}
+        cache-key: ${{ matrix.compiler }}-make-${{ matrix.name }}
 
     - name: Build
       uses: ./.github/actions/compile-with-make-protobuf
@@ -152,7 +185,8 @@ jobs:
         protobuf-version: ${{ matrix.protobuf-version }}
         protobuf-cpp-version: ${{ matrix.protobuf-cpp-version }}
         protobuf-install-dir: ${{ matrix.protobuf-install-dir }}
-        config-brpc-options: --cc=gcc --cxx=g++ --werror
+        config-brpc-options: >-
+          --cc=${{ matrix.cc }} --cxx=${{ matrix.cxx }} --werror
 
     - name: Show ccache statistics
       if: always()
@@ -210,47 +244,6 @@ jobs:
                     --define BRPC_WITH_NO_PTHREAD_MUTEX_HOOK=true \
                     --define with_babylon_counter=true \
                     -- //...
-
-  clang-compile-with-make-protobuf:
-    name: clang-compile-with-make-protobuf (${{ matrix.name }})
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: protobuf-3.5.1
-            protobuf-version: 3.5.1
-            protobuf-cpp-version: 3.5.1
-            protobuf-install-dir: /protobuf-3.5.1
-          - name: protobuf-3.12.4
-            protobuf-version: 3.12.4
-            protobuf-cpp-version: 3.12.4
-            protobuf-install-dir: /protobuf-3.12.4
-          - name: protobuf-21.12
-            protobuf-version: '21.12'
-            protobuf-cpp-version: 3.21.12
-            protobuf-install-dir: /protobuf-3.21.12
-    steps:
-    - uses: actions/checkout@v7.0.1
-    - uses: ./.github/actions/install-essential-dependencies
-      with:
-        extra-packages: ccache
-    - uses: ./.github/actions/setup-build-cache
-      with:
-        kind: ccache
-        cache-key: clang-make-${{ matrix.name }}
-
-    - name: Build
-      uses: ./.github/actions/compile-with-make-protobuf
-      with:
-        protobuf-version: ${{ matrix.protobuf-version }}
-        protobuf-cpp-version: ${{ matrix.protobuf-cpp-version }}
-        protobuf-install-dir: ${{ matrix.protobuf-install-dir }}
-        config-brpc-options: --cc=clang --cxx=clang++ --werror
-
-    - name: Show ccache statistics
-      if: always()
-      run: ccache --show-stats
 
   clang-unittest-with-bazel:
     runs-on: ubuntu-22.04
