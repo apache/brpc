@@ -280,16 +280,16 @@ unw_cursor_t TaskTracer::MakeCursor(bthread_fcontext_t fcontext) {
 
     // Only need RBP, RIP, RSP on x86_64.
     // The base pointer (RBP).
-    if (unw_set_reg(&cursor, UNW_X86_64_RBP, regs[6]) != 0) {
+    if (unw_set_reg(&cursor, UNW_X86_64_RBP, regs[26]) != 0) {
         LOG(ERROR) << "Fail to set RBP";
     }
     // The instruction pointer (RIP).
-    if (unw_set_reg(&cursor, UNW_REG_IP, regs[7]) != 0) {
+    if (unw_set_reg(&cursor, UNW_REG_IP, regs[27]) != 0) {
         LOG(ERROR) << "Fail to set RIP";
     }
 #if UNW_VERSION_MAJOR >= 1 && UNW_VERSION_MINOR >= 7
     // The stack pointer (RSP).
-    if (unw_set_reg(&cursor, UNW_REG_SP, regs[8]) != 0) {
+    if (unw_set_reg(&cursor, UNW_REG_SP, regs[28]) != 0) {
         LOG(ERROR) << "Fail to set RSP";
     }
 #endif
