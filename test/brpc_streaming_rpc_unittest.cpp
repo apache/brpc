@@ -402,13 +402,16 @@ public:
     }
 
     void on_idle_timeout(brpc::StreamId) override {}
-    void on_closed(brpc::StreamId) override {}
+    void on_closed(brpc::StreamId) override {
+        closed.store(true, std::memory_order_release);
+    }
     void on_failed(brpc::StreamId, int error_code,
                    const std::string&) override {
         failure_code.store(error_code, std::memory_order_release);
     }
 
     std::atomic<int> failure_code{0};
+    std::atomic<bool> closed{false};
 };
 
 TEST_F(StreamingRpcTest, reject_malformed_feedback_frames) {
@@ -492,11 +495,13 @@ TEST_F(StreamingRpcTest, reject_malformed_feedback_frames) {
     ASSERT_EQ(0, brpc::Stream::Address(request_stream, &stream));
     ASSERT_TRUE(stream->_connected.load(butil::memory_order_acquire));
     ASSERT_NE(nullptr, stream->_host_socket);
+    brpc::SocketUniquePtr host_socket;
+    stream->_host_socket->ReAddress(&host_socket);
     const int64_t old_unconsumed =
-        stream->_host_socket->_total_streams_unconsumed_size.exchange(
+        host_socket->_total_streams_unconsumed_size.exchange(
             2, butil::memory_order_relaxed);
     BRPC_SCOPE_EXIT {
-        stream->_host_socket->_total_streams_unconsumed_size.store(
+        host_socket->_total_streams_unconsumed_size.store(
             old_unconsumed, butil::memory_order_relaxed);
     };
 
@@ -506,10 +511,14 @@ TEST_F(StreamingRpcTest, reject_malformed_feedback_frames) {
     feedback.mutable_feedback()->set_consumed_size(1);
     butil::IOBuf payload;
     ASSERT_EQ(0, stream->OnReceived(
-        feedback, &payload, stream->_host_socket));
+        feedback, &payload, host_socket.get()));
     ASSERT_EQ(1u, stream->_cur_buf_size);
     ASSERT_EQ(0, valid_handler.failure_code.load(
                      std::memory_order_acquire));
+    stream.reset();
+    ASSERT_EQ(0, brpc::StreamClose(request_stream));
+    ASSERT_EQ(request_stream, stream_guard.release());
+    ASSERT_TRUE(WaitForTrue(valid_handler.closed, 2000));
 }
 
 TEST_F(StreamingRpcTest, limit_reassembled_message_size) {
