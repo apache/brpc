@@ -20,105 +20,185 @@ concurrency:
 # https://github.com/actions/runner-images
 jobs:
   compile-with-make:
+    name: compile-with-make (${{ matrix.name }})
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - name: gcc-default
+            make-options: >-
+              --headers=/usr/include --libs=/usr/lib /usr/lib64
+              --cc=gcc --cxx=g++ --werror
+          - name: gcc-all-options
+            make-options: >-
+              --headers=/usr/include --libs=/usr/lib /usr/lib64
+              --cc=gcc --cxx=g++ --werror --with-thrift --with-glog
+              --with-rdma --with-debug-bthread-sche-safety --with-debug-lock
+              --with-bthread-tracer --with-asan
+          - name: clang-default
+            make-options: >-
+              --headers=/usr/include --libs=/usr/lib /usr/lib64
+              --cc=clang --cxx=clang++ --werror
+          - name: clang-all-options
+            make-options: >-
+              --headers=/usr/include --libs=/usr/lib /usr/lib64
+              --cc=clang --cxx=clang++ --werror --with-thrift --with-glog
+              --with-rdma --with-debug-bthread-sche-safety --with-debug-lock
+              --with-bthread-tracer --with-asan
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-all-dependencies
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
+        cache-key: make-${{ matrix.name }}
 
-    - name: gcc with default options
+    - name: Build
       uses: ./.github/actions/compile-with-make
       with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=gcc --cxx=g++ --werror
+        options: ${{ matrix.make-options }}
 
-    - name: gcc with all options
-      uses: ./.github/actions/compile-with-make
-      with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=gcc --cxx=g++ --werror \
-                 --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety \
-                 --with-debug-lock --with-bthread-tracer --with-asan
-
-    - name: clang with default options
-      uses: ./.github/actions/compile-with-make
-      with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=clang --cxx=clang++ --werror
-
-    - name: clang with all options
-      uses: ./.github/actions/compile-with-make
-      with:
-        options: --headers=/usr/include --libs=/usr/lib /usr/lib64 --cc=clang --cxx=clang++ --werror \
-                 --with-thrift --with-glog --with-rdma  --with-debug-bthread-sche-safety \
-                 --with-debug-lock --with-bthread-tracer --with-asan
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
 
   compile-with-cmake:
+    name: compile-with-cmake (${{ matrix.name }})
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - name: gcc-default
+            cc: gcc
+            cxx: g++
+            cmake-options: ''
+          - name: gcc-all-options
+            cc: gcc
+            cxx: g++
+            cmake-options: >-
+              -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON
+              -DWITH_RDMA=ON -DWITH_UBRING=ON
+              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON
+              -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON
+          - name: clang-default
+            cc: clang
+            cxx: clang++
+            cmake-options: ''
+          - name: clang-all-options
+            cc: clang
+            cxx: clang++
+            cmake-options: >-
+              -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON
+              -DWITH_RDMA=ON -DWITH_UBRING=ON
+              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON
+              -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-all-dependencies
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
+        cache-key: cmake-${{ matrix.name }}
 
-    - name: gcc with default options
+    - name: Build
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+        CMAKE_OPTIONS: ${{ matrix.cmake-options }}
       run: |
-        export CC=gcc && export CXX=g++
-        mkdir gcc_build && cd gcc_build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-        make -j ${{env.proc_num}} && make clean
+        read -r -a cmake_options <<< "${CMAKE_OPTIONS}"
+        cmake -S . -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          "${cmake_options[@]}"
+        cmake --build build -j ${{env.proc_num}}
 
-    - name: gcc with all options
-      run: |
-        export CC=gcc && export CXX=g++
-        mkdir gcc_build_all && cd gcc_build_all
-        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_UBRING=ON \
-              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON \
-              -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-        make -j ${{env.proc_num}} && make clean
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
 
-    - name: clang with default options
-      run: |
-        export CC=clang && export CXX=clang++
-        mkdir clang_build && cd clang_build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-        make -j ${{env.proc_num}} && make clean
-
-    - name: clang with all options
-      run: |
-        export CC=clang && export CXX=clang++
-        mkdir clang_build_all && cd clang_build_all
-        cmake -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON -DWITH_RDMA=ON -DWITH_UBRING=ON \
-              -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON -DWITH_BTHREAD_TRACER=ON \
-              -DWITH_ASAN=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-        make -j ${{env.proc_num}} && make clean
-
-  gcc-compile-with-make-protobuf:
+  compile-with-make-protobuf:
+    name: compile-with-make-protobuf (${{ matrix.compiler }}-${{ matrix.name }})
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - compiler: gcc
+            name: protobuf-3.5.1
+            protobuf-version: 3.5.1
+            protobuf-cpp-version: 3.5.1
+            protobuf-install-dir: /protobuf-3.5.1
+            cc: gcc
+            cxx: g++
+          - compiler: gcc
+            name: protobuf-3.12.4
+            protobuf-version: 3.12.4
+            protobuf-cpp-version: 3.12.4
+            protobuf-install-dir: /protobuf-3.12.4
+            cc: gcc
+            cxx: g++
+          - compiler: gcc
+            name: protobuf-21.12
+            protobuf-version: '21.12'
+            protobuf-cpp-version: 3.21.12
+            protobuf-install-dir: /protobuf-3.21.12
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            name: protobuf-3.5.1
+            protobuf-version: 3.5.1
+            protobuf-cpp-version: 3.5.1
+            protobuf-install-dir: /protobuf-3.5.1
+            cc: clang
+            cxx: clang++
+          - compiler: clang
+            name: protobuf-3.12.4
+            protobuf-version: 3.12.4
+            protobuf-cpp-version: 3.12.4
+            protobuf-install-dir: /protobuf-3.12.4
+            cc: clang
+            cxx: clang++
+          - compiler: clang
+            name: protobuf-21.12
+            protobuf-version: '21.12'
+            protobuf-cpp-version: 3.21.12
+            protobuf-install-dir: /protobuf-3.21.12
+            cc: clang
+            cxx: clang++
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-essential-dependencies
+      with:
+        extra-packages: ccache
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
+        cache-key: ${{ matrix.compiler }}-make-${{ matrix.name }}
 
-    - name: protobuf 3.5.1
+    - name: Build
       uses: ./.github/actions/compile-with-make-protobuf
       with:
-        protobuf-version: 3.5.1
-        protobuf-cpp-version: 3.5.1
-        protobuf-install-dir: /protobuf-3.5.1
-        config-brpc-options: --cc=gcc --cxx=g++ --werror
+        protobuf-version: ${{ matrix.protobuf-version }}
+        protobuf-cpp-version: ${{ matrix.protobuf-cpp-version }}
+        protobuf-install-dir: ${{ matrix.protobuf-install-dir }}
+        config-brpc-options: >-
+          --cc=${{ matrix.cc }} --cxx=${{ matrix.cxx }} --werror
 
-    - name: protobuf 3.12.4
-      uses: ./.github/actions/compile-with-make-protobuf
-      with:
-        protobuf-version: 3.12.4
-        protobuf-cpp-version: 3.12.4
-        protobuf-install-dir: /protobuf-3.12.4
-        config-brpc-options: --cc=gcc --cxx=g++ --werror
-
-    - name: protobuf 21.12
-      uses: ./.github/actions/compile-with-make-protobuf
-      with:
-        protobuf-version: 21.12
-        protobuf-cpp-version: 3.21.12
-        protobuf-install-dir: /protobuf-3.21.12
-        config-brpc-options: --cc=gcc --cxx=g++ --werror
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
 
   gcc-unittest-with-bazel:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     # Install redis-server/mysql-server so the integration tests that fork a
     # real server (e.g. brpc_redis_unittest) actually run under bazel instead
     # of skipping. Same shared action the make-based unittest jobs use.
@@ -128,7 +208,10 @@ jobs:
   gcc-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     - run: sudo apt-get update && sudo apt-get install -y  libibverbs-dev
     - name: root
       run: |
@@ -162,40 +245,13 @@ jobs:
                     --define with_babylon_counter=true \
                     -- //...
 
-  clang-compile-with-make-protobuf:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v2
-    - uses: ./.github/actions/install-essential-dependencies
-
-    - name: protobuf 3.5.1
-      uses: ./.github/actions/compile-with-make-protobuf
-      with:
-        protobuf-version: 3.5.1
-        protobuf-cpp-version: 3.5.1
-        protobuf-install-dir: /protobuf-3.5.1
-        config-brpc-options: --cc=clang --cxx=clang++ --werror
-
-    - name: protobuf 3.12.4
-      uses: ./.github/actions/compile-with-make-protobuf
-      with:
-        protobuf-version: 3.12.4
-        protobuf-cpp-version: 3.12.4
-        protobuf-install-dir: /protobuf-3.12.4
-        config-brpc-options: --cc=clang --cxx=clang++ --werror
-
-    - name: protobuf 21.12
-      uses: ./.github/actions/compile-with-make-protobuf
-      with:
-        protobuf-version: 21.12
-        protobuf-cpp-version: 3.21.12
-        protobuf-install-dir: /protobuf-3.21.12
-        config-brpc-options: --cc=clang --cxx=clang++ --werror
-
   clang-unittest-with-bazel:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     # Install redis-server/mysql-server so the forked-server integration tests
     # actually run under bazel (see gcc-unittest-with-bazel).
     - uses: ./.github/actions/install-essential-dependencies
@@ -209,7 +265,10 @@ jobs:
   clang-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     - run: sudo apt-get update && sudo apt-get install -y  libibverbs-dev
     - name: root
       run: |
@@ -248,8 +307,13 @@ jobs:
   clang-unittest:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-essential-dependencies
+      with:
+        extra-packages: ccache clang-12 lldb-12 lld-12 libgtest-dev cmake gdb libstdc++6-11-dbg
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
     - uses: ./.github/actions/init-ut-make-config
       with:
         options: --with-bthread-tracer --with-rdma
@@ -262,12 +326,20 @@ jobs:
       run: |
         cd test
         sh ./run_tests.sh
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
 
   clang-unittest-asan:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
     - uses: ./.github/actions/install-essential-dependencies
+      with:
+        extra-packages: ccache clang-12 lldb-12 lld-12 libgtest-dev cmake gdb libstdc++6-11-dbg
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: ccache
     - uses: ./.github/actions/init-ut-make-config
       with:
         options: --with-bthread-tracer --with-asan
@@ -284,6 +356,9 @@ jobs:
         # too slowly, so they flake here (connection refused). Skip just those under ASan; the
         # redis codec/server tests still run, and the full suite runs in clang-unittest.
         GTEST_FILTER='-RedisTest.sanity:RedisTest.keys_with_spaces:RedisTest.incr_and_decr:RedisTest.by_components:RedisTest.auth' sh ./run_tests.sh
+    - name: Show ccache statistics
+      if: always()
+      run: ccache --show-stats
 
   clang-unittest-bazel-with-babylon-and-new-pb:
     runs-on: ubuntu-22.04
@@ -294,7 +369,10 @@ jobs:
       # honors USE_BAZEL_VERSION.
       USE_BAZEL_VERSION: "8.3.1"
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7.0.1
+    - uses: ./.github/actions/setup-build-cache
+      with:
+        kind: bazel
     # Install redis-server/mysql-server so the forked-server integration tests
     # actually run under bazel (see gcc-unittest-with-bazel).
     - uses: ./.github/actions/install-essential-dependencies

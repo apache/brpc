@@ -1,9 +1,18 @@
+inputs:
+  extra-packages:
+    description: Additional apt packages to install in the same transaction
+    required: false
+
 runs:
   using: "composite"
   steps:
     - run: ulimit -c unlimited -S && sudo bash -c "echo 'core.%e.%p' > /proc/sys/kernel/core_pattern"
       shell: bash
-    - run: sudo apt-get update && sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev redis-server mysql-server libibverbs-dev
+    - run: |
+        sudo apt-get update
+        sudo apt-get install -y git g++ make libssl-dev libgflags-dev \
+          libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev \
+          redis-server mysql-server libibverbs-dev ${{ inputs.extra-packages }}
       shell: bash
     - run: redis-server --version && mysqld --version
       shell: bash

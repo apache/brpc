@@ -1,0 +1,75 @@
+name: Setup build cache
+description: Restore and configure the compiler cache used by CI builds
+
+inputs:
+  kind:
+    description: Cache backend to configure (ccache or bazel)
+    required: true
+  cache-key:
+    description: Cache namespace override for matrix jobs
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Restore ccache
+      if: inputs.kind == 'ccache'
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ccache
+        key: ${{ runner.os }}-ccache-${{ inputs.cache-key || github.job }}--${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-${{ inputs.cache-key || github.job }}--
+
+    - name: Configure ccache
+      if: inputs.kind == 'ccache'
+      shell: bash
+      run: |
+        if [[ "${{ runner.os }}" == "macOS" ]]; then
+          brew install ccache
+        fi
+
+        mkdir -p "${HOME}/.cache/ccache" "${HOME}/.cache/ccache-bin"
+        for compiler in cc c++ gcc g++ clang clang++ clang-12 clang++-12; do
+          ln -sf "$(command -v ccache)" "${HOME}/.cache/ccache-bin/${compiler}"
+        done
+        CCACHE_DIR="${HOME}/.cache/ccache" ccache --max-size=2G
+        CCACHE_DIR="${HOME}/.cache/ccache" ccache --zero-stats
+
+        echo "${HOME}/.cache/ccache-bin" >> "${GITHUB_PATH}"
+        echo "CCACHE_DIR=${HOME}/.cache/ccache" >> "${GITHUB_ENV}"
+        echo "CCACHE_BASEDIR=${GITHUB_WORKSPACE}" >> "${GITHUB_ENV}"
+        echo "CCACHE_COMPILERCHECK=content" >> "${GITHUB_ENV}"
+        echo "CCACHE_NOHASHDIR=true" >> "${GITHUB_ENV}"
+
+    - name: Restore Bazel repository cache
+      if: inputs.kind == 'bazel'
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cache/bazel-repository
+          ~/.cache/bazelisk
+        key: ${{ runner.os }}-bazel-repository-${{ hashFiles('.bazelversion', 'MODULE.bazel', 'MODULE.bazel.lock', 'WORKSPACE') }}
+        restore-keys: |
+          ${{ runner.os }}-bazel-repository-
+
+    - name: Restore Bazel disk cache
+      if: inputs.kind == 'bazel'
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/bazel-disk
+        key: ${{ runner.os }}-bazel-disk-${{ github.job }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-bazel-disk-${{ github.job }}-
+          ${{ runner.os }}-bazel-disk-
+
+    - name: Configure Bazel caches
+      if: inputs.kind == 'bazel'
+      shell: bash
+      run: |
+        mkdir -p "${HOME}/.cache/bazel-repository" "${HOME}/.cache/bazel-disk"
+        cat >> "${HOME}/.bazelrc" <<EOF
+        common --repository_cache=${HOME}/.cache/bazel-repository
+        common --disk_cache=${HOME}/.cache/bazel-disk
+        test --cache_test_results=no
+        EOF
