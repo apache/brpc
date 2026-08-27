@@ -117,6 +117,24 @@ config_setting(
 )
 
 config_setting(
+    name = "brpc_with_urma_use_real",
+    define_values = {
+        "BRPC_WITH_URMA": "true",
+        "BRPC_URMA_USE_MOCK": "false",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "brpc_with_urma_download_headers_disabled",
+    define_values = {
+        "BRPC_WITH_URMA": "true",
+        "BRPC_DOWNLOAD_URMA_HEADERS": "false",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "brpc_with_boringssl",
     define_values = {"BRPC_WITH_BORINGSSL": "true"},
     visibility = ["//visibility:public"],

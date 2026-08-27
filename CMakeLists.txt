@@ -28,6 +28,9 @@ option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
 option(WITH_URMA "With URMA (openEuler Unified Remote Memory Access)" OFF)
+set(URMA_USE_MOCK "AUTO" CACHE STRING
+    "URMA mock mode: AUTO, ON, or OFF (OFF requires liburma)")
+set_property(CACHE URMA_USE_MOCK PROPERTY STRINGS AUTO ON OFF)
 option(DOWNLOAD_URMA_HEADERS
        "Download UMDK headers when WITH_URMA is enabled and headers are absent"
        ON)
@@ -128,6 +131,14 @@ endif()
 set(WITH_URMA_VAL "0")
 if(WITH_URMA)
     set(WITH_URMA_VAL "1")
+endif()
+
+string(TOUPPER "${URMA_USE_MOCK}" URMA_USE_MOCK_MODE)
+if(NOT URMA_USE_MOCK_MODE STREQUAL "AUTO" AND
+   NOT URMA_USE_MOCK_MODE STREQUAL "ON" AND
+   NOT URMA_USE_MOCK_MODE STREQUAL "OFF")
+    message(FATAL_ERROR
+        "URMA_USE_MOCK must be AUTO, ON, or OFF, got: ${URMA_USE_MOCK}")
 endif()
 
 set(WITH_UBRING_VAL "0")
@@ -372,13 +383,23 @@ if(WITH_URMA)
     find_library(URMA_LIB NAMES urma
                  HINTS ENV URMA_ROOT
                  PATH_SUFFIXES lib lib64)
-    if(URMA_LIB)
+    if(URMA_USE_MOCK_MODE STREQUAL "ON")
+        message(STATUS "URMA_USE_MOCK=ON; forcing the link-time URMA mock")
+        set(URMA_USE_MOCK_ENABLED 1)
+    elseif(URMA_USE_MOCK_MODE STREQUAL "OFF")
+        if(NOT URMA_LIB)
+            message(FATAL_ERROR
+                "URMA_USE_MOCK=OFF requires liburma; install it or use AUTO/ON.")
+        endif()
+        message(STATUS "URMA_USE_MOCK=OFF; using liburma")
+        set(URMA_USE_MOCK_ENABLED 0)
+    elseif(URMA_LIB)
         message(STATUS "Found URMA library: ${URMA_LIB}")
-        set(URMA_USE_MOCK 0)
+        set(URMA_USE_MOCK_ENABLED 0)
     else()
         message(STATUS
             "liburma not found; building with the URMA link-time mock")
-        set(URMA_USE_MOCK 1)
+        set(URMA_USE_MOCK_ENABLED 1)
     endif()
 endif()
 
@@ -441,8 +462,8 @@ if(WITH_RDMA)
 endif()
 
 if(WITH_URMA)
-    message(STATUS "brpc compile with URMA (mock=${URMA_USE_MOCK})")
-    if(NOT URMA_USE_MOCK)
+    message(STATUS "brpc compile with URMA (mock=${URMA_USE_MOCK_ENABLED})")
+    if(NOT URMA_USE_MOCK_ENABLED)
         list(APPEND DYNAMIC_LIB ${URMA_LIB})
     endif()
 endif()
@@ -655,7 +676,7 @@ file(GLOB_RECURSE EXCLUDE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/b
 # When building with the real liburma, exclude the link-time mock so its urma_*
 # symbols do not clash with the library. When liburma is absent, keep it so CI
 # can build and test UrmaTransport without URMA hardware.
-if(WITH_URMA AND NOT URMA_USE_MOCK)
+if(WITH_URMA AND NOT URMA_USE_MOCK_ENABLED)
     list(REMOVE_ITEM BRPC_SOURCES
          "${PROJECT_SOURCE_DIR}/src/brpc/urma/mock_urma.cpp")
 endif()

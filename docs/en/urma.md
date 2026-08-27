@@ -36,7 +36,26 @@ commit when the headers are unavailable. Set `DOWNLOAD_URMA_HEADERS=OFF` to
 disable downloading.
 When `liburma` is found it is linked for the hardware data path. Otherwise,
 brpc uses its link-time mock so URMA code and tests can still be built without
-hardware.
+hardware. `URMA_USE_MOCK` defaults to `AUTO`; set it to `ON` to force the mock,
+or to `OFF` to require `liburma` and exclude the mock.
+
+### Build with Make
+
+```bash
+sh config_brpc.sh --headers=/usr/include --libs=/usr/lib \
+    --with-urma
+make -j4
+
+# Force the mock, or require the real liburma
+sh config_brpc.sh --headers=/usr/include --libs=/usr/lib \
+    --with-urma --with-urma-mock
+sh config_brpc.sh --headers=/usr/include --libs=/usr/lib \
+    --with-urma --without-urma-mock
+```
+
+Without either override, the Make configuration selects the implementation
+automatically from whether `liburma` is available. `--without-urma-mock`
+requires `liburma` in the configured library paths.
 
 ### Build with Bazel
 
@@ -44,14 +63,28 @@ hardware.
 # Build brpc with URMA support
 bazel build --define=BRPC_WITH_URMA=true //:brpc
 
+# This only shows the download switch; headers must still be declared by the toolchain or a local BUILD target
+bazel build --define=BRPC_WITH_URMA=true \
+    --define=BRPC_DOWNLOAD_URMA_HEADERS=false //:brpc
+
 # Build and run the URMA unit tests (using the mock, without URMA hardware)
-bazel test --define=BRPC_WITH_URMA=true //test:brpc_unittests
+bazel test --define=BRPC_WITH_URMA=true \
+    --define=BRPC_URMA_USE_MOCK=true //test:brpc_unittests
+
+# Use the real liburma; the linker must be able to find -lurma
+bazel build --define=BRPC_WITH_URMA=true \
+    --define=BRPC_URMA_USE_MOCK=false //:brpc
 ```
 
 Bazel fetches the pinned UMDK commit and exposes its headers through
-`@umdk//:urma_headers`. `DOWNLOAD_URMA_HEADERS` is a CMake-only option and is
-not read by Bazel. The Bazel build also uses the link-time URMA mock, so
-`liburma` and URMA hardware are not required.
+`@umdk//:urma_headers` by default. With
+`BRPC_DOWNLOAD_URMA_HEADERS=false`, Bazel does not depend on that external
+repository; the actual build must still declare `urma_api.h`, `urma_types.h`,
+and `urma_ubagg.h` through the toolchain or a local BUILD target. Passing only
+`--copt=-I/path` to a directory outside the workspace does not make undeclared
+headers available inside Bazel's default sandbox.
+`BRPC_URMA_USE_MOCK=true` forces the link-time mock, while `false` excludes it
+and links `liburma`. If unspecified, URMA builds use the mock by default.
 
 ## Usage
 

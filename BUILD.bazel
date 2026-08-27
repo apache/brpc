@@ -551,11 +551,18 @@ cc_library(
         "src/brpc/policy/thrift_protocol.cpp",
         "src/brpc/event_dispatcher_epoll.cpp",
         "src/brpc/event_dispatcher_kqueue.cpp",
+        "src/brpc/urma/mock_urma.cpp",
     ]) + select({
         "//bazel/config:brpc_with_thrift": glob([
             "src/brpc/thrift*.cpp",
             "src/brpc/**/thrift*.cpp",
         ]),
+        "//conditions:default": [],
+    }) + select({
+        "//bazel/config:brpc_with_urma_use_real": [],
+        "//bazel/config:brpc_with_urma": [
+            "src/brpc/urma/mock_urma.cpp",
+        ],
         "//conditions:default": [],
     }),
     hdrs = glob([
@@ -566,7 +573,10 @@ cc_library(
     ]),
     copts = COPTS,
     includes = ["src/"],
-    linkopts = LINKOPTS,
+    linkopts = LINKOPTS + select({
+        "//bazel/config:brpc_with_urma_use_real": ["-lurma"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":brpc_internal_cc_proto",
@@ -577,6 +587,7 @@ cc_library(
         ":mcpack2pb",
         "@com_github_google_leveldb//:leveldb",
     ] + select({
+        "//bazel/config:brpc_with_urma_download_headers_disabled": [],
         "//bazel/config:brpc_with_urma": [
             "@umdk//:urma_headers",
         ],

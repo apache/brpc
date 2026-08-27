@@ -34,7 +34,25 @@ make -C build -j$(nproc)
 SDK；找不到头文件时，会参照 Mooncake 的 mock 构建方式下载固定版本的
 UMDK commit，可通过 `DOWNLOAD_URMA_HEADERS=OFF` 禁止下载。找到 `liburma` 时使用
 真实硬件数据通路，否则链接 brpc 的 mock，使 URMA 代码和测试仍可在无硬件
-环境编译。
+环境编译。`URMA_USE_MOCK` 默认为 `AUTO`；设为 `ON` 可强制使用 mock，设为
+`OFF` 则要求找到 `liburma` 并排除 mock。
+
+### Make 编译
+
+```bash
+sh config_brpc.sh --headers=/usr/include --libs=/usr/lib \
+    --with-urma
+make -j4
+
+# 强制使用 mock，或强制使用真实 liburma
+sh config_brpc.sh --headers=/usr/include --libs=/usr/lib \
+    --with-urma --with-urma-mock
+sh config_brpc.sh --headers=/usr/include --libs=/usr/lib \
+    --with-urma --without-urma-mock
+```
+
+默认根据 `liburma` 是否存在自动选择；`--without-urma-mock` 要求配置路径中
+存在 `liburma`。
 
 ### Bazel 编译
 
@@ -42,15 +60,27 @@ UMDK commit，可通过 `DOWNLOAD_URMA_HEADERS=OFF` 禁止下载。找到 `libur
 # 编译带 URMA 支持的 brpc
 bazel build --define=BRPC_WITH_URMA=true //:brpc
 
+# 仅展示关闭下载的开关；头文件仍须由工具链或本地 BUILD 目标声明
+bazel build --define=BRPC_WITH_URMA=true \
+    --define=BRPC_DOWNLOAD_URMA_HEADERS=false //:brpc
+
 # 编译并运行 URMA 单元测试（使用 mock，不需要 URMA 硬件）
-bazel test --define=BRPC_WITH_URMA=true //test:brpc_unittests
+bazel test --define=BRPC_WITH_URMA=true \
+    --define=BRPC_URMA_USE_MOCK=true //test:brpc_unittests
+
+# 使用真实 liburma；要求链接器可找到 -lurma
+bazel build --define=BRPC_WITH_URMA=true \
+    --define=BRPC_URMA_USE_MOCK=false //:brpc
 ```
 
 Bazel 会自动获取固定 commit 的 UMDK 头文件，并通过 `@umdk//:urma_headers`
-提供给 URMA 目标；`DOWNLOAD_URMA_HEADERS` 是 CMake 专用选项，Bazel 不读取该
-选项。若网络或依赖仓库不可用，可先在构建环境中准备 UMDK 源码并按 Bazel 的
-外部仓库缓存规则复用；Bazel 构建同样使用 URMA mock，不要求本机安装
-`liburma`。
+提供给 URMA 目标。设置 `BRPC_DOWNLOAD_URMA_HEADERS=false` 后，Bazel 不再依赖
+该外部仓库；实际构建仍需通过工具链或本地 BUILD 目标声明
+`urma_api.h`、`urma_types.h` 和 `urma_ubagg.h`。仅通过
+`--copt=-I/path` 指向工作区外目录，在默认 Bazel 沙箱下不会把未声明的头文件
+带入编译输入。设置
+`BRPC_URMA_USE_MOCK=true` 强制加入 mock；设置为 `false` 则排除 mock 并链接
+`liburma`。未指定时，URMA 构建默认使用 mock。
 
 ## 使用
 
