@@ -16,6 +16,7 @@
 // under the License.
 
 #include <cstring>
+#include <limits>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 
@@ -212,8 +213,7 @@ TEST(UrmaHandshakeTest, ack_bit_is_urma_ok) {
 // ParsedHello field layout: covers the flattened segment (seg_* fields).
 // ---------------------------------------------------------------------------
 TEST(UrmaHandshakeTest, parsed_hello_segment_fields) {
-    urma::ParsedHello p;
-    std::memset(&p, 0, sizeof(p));
+    urma::ParsedHello p{};
     p.buffer_size = 8192;
     p.recv_buffer_cnt = 127;
     p.jetty_id = 42;
@@ -247,6 +247,11 @@ TEST(UrmaHandshakeTest, rejects_invalid_resource_and_window_values) {
     EXPECT_FALSE(urma::ValidHello(hello));
     hello.seg_len = 8192;
     hello.jetty_id = 0;
+    EXPECT_FALSE(urma::ValidHello(hello));
+
+    hello.jetty_id = 1;
+    hello.seg_va = std::numeric_limits<uint64_t>::max() - 7;
+    hello.seg_len = 8;
     EXPECT_FALSE(urma::ValidHello(hello));
 }
 

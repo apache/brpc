@@ -26,7 +26,18 @@ brpc_example_find_common_deps(DYNAMIC_LIB)
 
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER test.proto)
 set(BRPC_EXAMPLE_WITH_URMA ON)
-find_library(URMA_LIB NAMES urma)
+find_path(URMA_INCLUDE_PATH NAMES urma_api.h
+    HINTS ENV URMA_ROOT
+    PATHS /usr/include /usr/local/include
+    PATH_SUFFIXES ub/umdk/urma umdk/urma urma
+                  src/urma/lib/urma/core/include)
+if(NOT URMA_INCLUDE_PATH)
+    message(FATAL_ERROR
+        "Fail to find urma_api.h. Install UMDK headers or set URMA_ROOT.")
+endif()
+find_library(URMA_LIB NAMES urma
+    HINTS ENV URMA_ROOT
+    PATH_SUFFIXES lib lib64)
 if(URMA_LIB)
     list(APPEND DYNAMIC_LIB ${URMA_LIB})
 else()

@@ -177,7 +177,12 @@ bool ValidHello(const ParsedHello& h) {
     if (h.tp_type > static_cast<uint8_t>(URMA_UTP)) {
         return false;
     }
-    if (h.seg_len == 0 || h.seg_va == 0) {
+    // The provider consumes the advertised VA/length as a single remote
+    // segment. Reject a wrapped end address before it reaches the import
+    // API, which could otherwise turn a malformed hello into an invalid
+    // segment range.
+    if (h.seg_len == 0 || h.seg_va == 0 ||
+        h.seg_len > std::numeric_limits<uint64_t>::max() - h.seg_va) {
         return false;
     }
     return true;

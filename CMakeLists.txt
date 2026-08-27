@@ -331,7 +331,7 @@ endif()
 if(WITH_URMA)
     # UrmaTransport and its link-time mock both compile against the upstream
     # UMDK API. Prefer installed headers; otherwise fetch a pinned upstream
-    # release, following Mooncake's URMA mock setup.
+    # commit, following Mooncake's URMA mock setup.
     find_path(URMA_INCLUDE_PATH NAMES urma_api.h
               HINTS ENV URMA_ROOT
               PATHS /usr/include /usr/local/include
@@ -347,7 +347,10 @@ if(WITH_URMA)
         FetchContent_Declare(
             urma_headers
             GIT_REPOSITORY https://atomgit.com/openeuler/umdk.git
-            GIT_TAG v26.06.0_CAM
+            GIT_TAG 564ee727a55523d4351a8fb3c94292b388ebb924
+            # brpc only consumes UMDK headers; avoid cloning unrelated UMDK
+            # submodules such as CAM dependencies during configuration.
+            GIT_SUBMODULES ""
             GIT_SHALLOW TRUE)
         FetchContent_GetProperties(urma_headers)
         if(NOT urma_headers_POPULATED)

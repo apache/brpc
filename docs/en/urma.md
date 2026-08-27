@@ -31,12 +31,27 @@ make -C build -j$(nproc)
 ```
 
 `WITH_URMA=ON` compiles against upstream UMDK headers. CMake prefers an
-installed SDK and, following Mooncake's mock setup, downloads a pinned UMDK
-release when the headers are unavailable. Set `DOWNLOAD_URMA_HEADERS=OFF` to
+installed SDK and, following Mooncake's mock setup, downloads UMDK at a pinned
+commit when the headers are unavailable. Set `DOWNLOAD_URMA_HEADERS=OFF` to
 disable downloading.
 When `liburma` is found it is linked for the hardware data path. Otherwise,
 brpc uses its link-time mock so URMA code and tests can still be built without
 hardware.
+
+### Build with Bazel
+
+```bash
+# Build brpc with URMA support
+bazel build --define=BRPC_WITH_URMA=true //:brpc
+
+# Build and run the URMA unit tests (using the mock, without URMA hardware)
+bazel test --define=BRPC_WITH_URMA=true //test:brpc_unittests
+```
+
+Bazel fetches the pinned UMDK commit and exposes its headers through
+`@umdk//:urma_headers`. `DOWNLOAD_URMA_HEADERS` is a CMake-only option and is
+not read by Bazel. The Bazel build also uses the link-time URMA mock, so
+`liburma` and URMA hardware are not required.
 
 ## Usage
 

@@ -32,9 +32,25 @@ make -C build -j$(nproc)
 
 `WITH_URMA=ON` 使用上游 UMDK 头文件进行编译。CMake 优先使用系统安装的
 SDK；找不到头文件时，会参照 Mooncake 的 mock 构建方式下载固定版本的
-UMDK，可通过 `DOWNLOAD_URMA_HEADERS=OFF` 禁止下载。找到 `liburma` 时使用
+UMDK commit，可通过 `DOWNLOAD_URMA_HEADERS=OFF` 禁止下载。找到 `liburma` 时使用
 真实硬件数据通路，否则链接 brpc 的 mock，使 URMA 代码和测试仍可在无硬件
 环境编译。
+
+### Bazel 编译
+
+```bash
+# 编译带 URMA 支持的 brpc
+bazel build --define=BRPC_WITH_URMA=true //:brpc
+
+# 编译并运行 URMA 单元测试（使用 mock，不需要 URMA 硬件）
+bazel test --define=BRPC_WITH_URMA=true //test:brpc_unittests
+```
+
+Bazel 会自动获取固定 commit 的 UMDK 头文件，并通过 `@umdk//:urma_headers`
+提供给 URMA 目标；`DOWNLOAD_URMA_HEADERS` 是 CMake 专用选项，Bazel 不读取该
+选项。若网络或依赖仓库不可用，可先在构建环境中准备 UMDK 源码并按 Bazel 的
+外部仓库缓存规则复用；Bazel 构建同样使用 URMA mock，不要求本机安装
+`liburma`。
 
 ## 使用
 

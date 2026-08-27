@@ -276,6 +276,19 @@ urma_context_t *urma_create_context(urma_device_t *device, uint32_t eid_index) {
     return ctx;
 }
 
+urma_status_t urma_user_ctl(urma_context_t *ctx, urma_user_ctl_in_t *in,
+                            urma_user_ctl_out_t *out) {
+    std::shared_lock<std::shared_mutex> lock(g_rw_mutex);
+    if (!ctx || context_map.find(ctx) == context_map.end() || !in ||
+        (in->len != 0 && in->addr == 0)) {
+        return URMA_EINVAL;
+    }
+    // The mock has no provider-specific controls. Accept the command so the
+    // optional bonding setup remains linkable and harmless in mock builds.
+    (void)out;
+    return URMA_SUCCESS;
+}
+
 urma_status_t urma_delete_context(urma_context_t *ctx) {
     std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
     if (!ctx || context_map.find(ctx) == context_map.end()) {
