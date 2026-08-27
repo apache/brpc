@@ -1046,7 +1046,8 @@ int StreamAccept(StreamIds& response_streams, Controller& cntl,
                        "Reject %" PRId64 " streams in one request, exceeding "
                        "-stream_max_streams_per_request=%" PRId64,
                        stream_count,
-                       FLAGS_stream_max_streams_per_request);
+                       static_cast<int64_t>(
+                           FLAGS_stream_max_streams_per_request));
         LOG(ERROR) << "Reject " << stream_count
                    << " streams in one request, exceeding "
                       "-stream_max_streams_per_request="
