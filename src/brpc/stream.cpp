@@ -370,7 +370,7 @@ int Stream::SetRemoteConsumed(size_t new_remote_consumed) {
                 FLAGS_socket_max_streams_unconsumed_bytes) {
                 if (_options.min_buf_size > 0) {
                     _cur_buf_size = _options.min_buf_size;
-                } else {
+                } else if (_cur_buf_size > 1) {
                     _cur_buf_size /= 2;
                 }
                 LOG(INFO) << "stream consumers on socket "
