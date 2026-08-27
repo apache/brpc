@@ -97,7 +97,7 @@ int NacosNamingService::RefreshAccessToken(const char *service_name) {
 
     auto iter_ttl = doc.FindMember("tokenTtl");
     if (iter_ttl != doc.MemberEnd() && iter_ttl->value.IsInt()) {
-        _token_expire_time = time(NULL) + iter_ttl->value.GetInt() - 10;
+        _token_expire_time = time(nullptr) + iter_ttl->value.GetInt() - 10;
     } else {
         _token_expire_time = 0;
     }
@@ -257,7 +257,7 @@ int NacosNamingService::GetServers(const char *service_name,
         !FLAGS_nacos_username.empty() && !FLAGS_nacos_password.empty();
     const bool has_invalid_access_token =
         _access_token.empty() ||
-        (0 < _token_expire_time && _token_expire_time <= time(NULL));
+        (0 < _token_expire_time && _token_expire_time <= time(nullptr));
     bool token_changed = false;
 
     if (authentiction_enabled && has_invalid_access_token) {

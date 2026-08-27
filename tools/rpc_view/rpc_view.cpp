@@ -145,7 +145,7 @@ public:
         // Keep content as it is.
         client_cntl->request_attachment() = server_cntl->request_attachment();
         
-        http_chan.CallMethod(NULL, client_cntl, NULL, NULL,
+        http_chan.CallMethod(nullptr, client_cntl, nullptr, nullptr,
                              brpc::NewCallback(
                                  handle_response, client_cntl, target,
                                  server_cntl, done_guard.release()));

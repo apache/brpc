@@ -36,11 +36,11 @@ void BuildDependency(const FileDescriptor *file_desc, DescriptorPool *pool) {
         BuildDependency(fd, pool);
         FileDescriptorProto proto;
         fd->CopyTo(&proto);
-        ASSERT_TRUE(pool->BuildFile(proto) != NULL);
+        ASSERT_TRUE(pool->BuildFile(proto) != nullptr);
     }
     FileDescriptorProto proto;
     file_desc->CopyTo(&proto);
-    ASSERT_TRUE(pool->BuildFile(proto) != NULL);
+    ASSERT_TRUE(pool->BuildFile(proto) != nullptr);
 }
 
 TEST(ProtoTest, proto) {
@@ -53,14 +53,14 @@ TEST(ProtoTest, proto) {
     FileDescriptorProto file_desc_proto;
     file_desc->CopyTo(&file_desc_proto);
     const FileDescriptor *new_file_desc = pool.BuildFile(file_desc_proto);
-    ASSERT_TRUE(new_file_desc != NULL);
+    ASSERT_TRUE(new_file_desc != nullptr);
     const Descriptor *new_desc = new_file_desc->FindMessageTypeByName(desc->name());
-    ASSERT_TRUE(new_desc != NULL);
+    ASSERT_TRUE(new_desc != nullptr);
     meta.set_correlation_id(123);
     std::string data;
     ASSERT_TRUE(meta.SerializeToString(&data));
     std::unique_ptr<Message> msg(factory.GetPrototype(new_desc)->New());
-    ASSERT_TRUE(msg != NULL);
+    ASSERT_TRUE(msg != nullptr);
     ASSERT_TRUE(msg->ParseFromString(data));
     ASSERT_TRUE(msg->SerializeToString(&data));
     policy::RpcMeta new_meta;

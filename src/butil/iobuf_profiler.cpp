@@ -46,7 +46,7 @@ static uint g_iobuf_profiler_sample_rate = 100;
 // 2. IOBUF_PROFILER_SAMPLE_RATE: set value between (0, 100] to control sample rate.
 static void InitGlobalIOBufProfilerInfo() {
     const char* enabled = getenv("ENABLE_IOBUF_PROFILER");
-    g_iobuf_profiler_enabled = enabled && strcmp("1", enabled) == 0 && ::GetStackTrace != NULL;
+    g_iobuf_profiler_enabled = enabled && strcmp("1", enabled) == 0 && ::GetStackTrace != nullptr;
     if (!g_iobuf_profiler_enabled) {
         return;
     }
@@ -116,7 +116,7 @@ IOBufProfiler::~IOBufProfiler() {
     _stack_map.clear();
 
     // Clear `_sample_queue'.
-    IOBufSample* sample = NULL;
+    IOBufSample* sample = nullptr;
     while (_sample_queue.Dequeue(sample)) {
         IOBufSample::Destroy(sample);
     }
@@ -139,7 +139,7 @@ void IOBufProfiler::Dump(IOBufSample* s) {
         IOBufRefSampleSharedPtr* stack_ptr = _stack_map.seek(s);
         if (!stack_ptr) {
             stack_sample = IOBufSample::CopyAndSharedWithDestroyer(s);
-            stack_sample->block = NULL;
+            stack_sample->block = nullptr;
             stack_ptr = &_stack_map[stack_sample.get()];
             *stack_ptr = stack_sample;
         } else {
@@ -170,7 +170,7 @@ void IOBufProfiler::Dump(IOBufSample* s) {
             new_info.stack_count_map[*stack_ptr] = s->count;
         }
     } while (false);
-    s->block = NULL;
+    s->block = nullptr;
 }
 
 IOBufSample* IOBufSample::Copy(IOBufSample* ref) {
@@ -280,7 +280,7 @@ void IOBufProfiler::Run() {
 }
 
 void IOBufProfiler::Consume() {
-    IOBufSample* sample = NULL;
+    IOBufSample* sample = nullptr;
     bool is_empty = true;
     while (_sample_queue.Dequeue(sample)) {
         Dump(sample);

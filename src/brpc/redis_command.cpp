@@ -100,7 +100,7 @@ static void FlushComponent(std::string* out, std::string* compbuf, int* ncomp) {
 // compatibility with hiredis.
 butil::Status
 RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
-    if (outbuf == NULL || fmt == NULL) {
+    if (outbuf == nullptr || fmt == nullptr) {
         return butil::Status(EINVAL, "Param[outbuf] or [fmt] is NULL");
     }
     const size_t fmt_len = strlen(fmt);
@@ -181,7 +181,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 va_list _cpy;
 
                 /* Flags */
-                while (*_p != '\0' && strchr(flags,*_p) != NULL) _p++;
+                while (*_p != '\0' && strchr(flags,*_p) != nullptr) _p++;
 
                 /* Field width */
                 while (*_p != '\0' && isdigit(*_p)) _p++;
@@ -196,13 +196,13 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 va_copy(_cpy, ap);
 
                 /* Integer conversion (without modifiers) */
-                if (strchr(intfmts,*_p) != NULL) {
+                if (strchr(intfmts,*_p) != nullptr) {
                     va_arg(ap,int);
                     goto fmt_valid;
                 }
 
                 /* Double conversion (without modifiers) */
-                if (strchr("eEfFgGaA",*_p) != NULL) {
+                if (strchr("eEfFgGaA",*_p) != nullptr) {
                     va_arg(ap,double);
                     goto fmt_valid;
                 }
@@ -210,7 +210,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 /* Size: char */
                 if (_p[0] == 'h' && _p[1] == 'h') {
                     _p += 2;
-                    if (*_p != '\0' && strchr(intfmts,*_p) != NULL) {
+                    if (*_p != '\0' && strchr(intfmts,*_p) != nullptr) {
                         va_arg(ap,int); /* char gets promoted to int */
                         goto fmt_valid;
                     }
@@ -220,7 +220,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 /* Size: short */
                 if (_p[0] == 'h') {
                     _p += 1;
-                    if (*_p != '\0' && strchr(intfmts,*_p) != NULL) {
+                    if (*_p != '\0' && strchr(intfmts,*_p) != nullptr) {
                         va_arg(ap,int); /* short gets promoted to int */
                         goto fmt_valid;
                     }
@@ -230,7 +230,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 /* Size: long long */
                 if (_p[0] == 'l' && _p[1] == 'l') {
                     _p += 2;
-                    if (*_p != '\0' && strchr(intfmts,*_p) != NULL) {
+                    if (*_p != '\0' && strchr(intfmts,*_p) != nullptr) {
                         va_arg(ap,long long);
                         goto fmt_valid;
                     }
@@ -240,7 +240,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 /* Size: long */
                 if (_p[0] == 'l') {
                     _p += 1;
-                    if (*_p != '\0' && strchr(intfmts,*_p) != NULL) {
+                    if (*_p != '\0' && strchr(intfmts,*_p) != nullptr) {
                         va_arg(ap,long);
                         goto fmt_valid;
                     }
@@ -305,7 +305,7 @@ butil::Status RedisCommandFormat(butil::IOBuf* buf, const char* fmt, ...) {
 
 butil::Status
 RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
-    if (outbuf == NULL || cmd == NULL) {
+    if (outbuf == nullptr || cmd == nullptr) {
         return butil::Status(EINVAL, "Param[outbuf] or [cmd] is NULL");
     }
     const size_t cmd_len = cmd.size();
@@ -370,7 +370,7 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
 butil::Status RedisCommandByComponents(butil::IOBuf* output,
                                       const butil::StringPiece* components,
                                       size_t ncomponents) {
-    if (output == NULL) {
+    if (output == nullptr) {
         return butil::Status(EINVAL, "Param[output] is NULL");
     }
     AppendHeader(*output, '*', ncomponents);
@@ -415,7 +415,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
                                                          butil::Arena* arena,
                                                          ParseError* err) {
     const auto pfc = static_cast<const char *>(buf.fetch1());
-    if (pfc == NULL) {
+    if (pfc == nullptr) {
         *err = PARSE_ERROR_NOT_ENOUGH_DATA;
         return CONSUME_STATE_ERROR;
     }
@@ -472,8 +472,8 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         }
         const size_t buf_size = crlf_pos;
         const auto copy_str = static_cast<char *>(arena->allocate(buf_size + 1));
-        // arena->allocate() may return NULL on allocation failure
-        if (copy_str == NULL) {
+        // arena->allocate() may return nullptr on allocation failure
+        if (copy_str == nullptr) {
             LOG(FATAL) << "Arena failed allocation";
             *err = PARSE_ERROR_ABSOLUTELY_WRONG;
             return CONSUME_STATE_ERROR;
@@ -536,7 +536,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         *err = PARSE_ERROR_NOT_ENOUGH_DATA;
         return CONSUME_STATE_ERROR;
     }
-    char* endptr = NULL;
+    char* endptr = nullptr;
     int64_t value = strtoll(intbuf + 1/*skip fc*/, &endptr, 10);
     if (endptr != intbuf + crlf_pos) {
         LOG(ERROR) << '`' << intbuf + 1 << "' is not a valid 64-bit decimal";
@@ -592,7 +592,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     buf.pop_front(crlf_pos + 2/*CRLF*/);
     char* d = (char*)arena->allocate((len/8 + 1) * 8);
     // Guard against allocation failure
-    if (d == NULL) {
+    if (d == nullptr) {
         LOG(FATAL) << "Arena failed allocation";
         *err = PARSE_ERROR_ABSOLUTELY_WRONG;
         return CONSUME_STATE_ERROR;

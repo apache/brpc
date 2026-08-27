@@ -57,7 +57,7 @@ TEST_F(CouchbaseUnitTest, RejectOversizedResponseBeforeBufferingBody) {
   couchbase_buf.append(&couchbase_header, sizeof(couchbase_header));
   EXPECT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA,
             brpc::policy::ParseCouchbaseMessage(
-                &couchbase_buf, socket.get(), false, NULL).error());
+                &couchbase_buf, socket.get(), false, nullptr).error());
 
 }
 

@@ -78,9 +78,9 @@ bool IsTcMallocBypassed() {
 }
 
 bool CallocDiesOnOOM() {
-// The sanitizers' calloc dies on OOM instead of returning NULL.
+// The sanitizers' calloc dies on OOM instead of returning nullptr.
 // The wrapper function in butil/process_util_linux.cc that is used when we
-// compile without TCMalloc will just die on OOM instead of returning NULL.
+// compile without TCMalloc will just die on OOM instead of returning nullptr.
 #if defined(ADDRESS_SANITIZER) || \
     defined(MEMORY_SANITIZER) || \
     defined(THREAD_SANITIZER) || \
@@ -219,8 +219,8 @@ bool CallocReturnsNull(size_t nmemb, size_t size) {
       static_cast<char*>(calloc(nmemb, size)));
   // We need the call to HideValueFromCompiler(): we have seen LLVM
   // optimize away the call to calloc() entirely and assume
-  // the pointer to not be NULL.
-  return HideValueFromCompiler(array_pointer.get()) == NULL;
+  // the pointer to not be nullptr.
+  return HideValueFromCompiler(array_pointer.get()) == nullptr;
 }
 
 // Test if calloc() can overflow.
@@ -268,13 +268,13 @@ TEST(SecurityTest, TCMALLOC_TEST(RandomMemoryAllocations)) {
   ASSERT_EQ(munmap(default_mmap_heap_address, kPageSize), 0);
   void* brk_heap_address = sbrk(0);
   ASSERT_NE(brk_heap_address, reinterpret_cast<void*>(-1));
-  ASSERT_TRUE(brk_heap_address != NULL);
+  ASSERT_TRUE(brk_heap_address != nullptr);
   // 1 MB should get us past what TCMalloc pre-allocated before initializing
   // the sophisticated allocators.
   size_t kAllocSize = 1<<20;
   scoped_ptr<char, butil::FreeDeleter> ptr(
       static_cast<char*>(malloc(kAllocSize)));
-  ASSERT_TRUE(ptr != NULL);
+  ASSERT_TRUE(ptr != nullptr);
   // If two pointers are separated by less than 512MB, they are considered
   // to be in the same area.
   // Our random pointer could be anywhere within 0x3fffffffffff (46bits),

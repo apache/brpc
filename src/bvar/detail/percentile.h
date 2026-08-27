@@ -523,10 +523,16 @@ public:
     }
     VoidOp inv_op() const { return VoidOp(); }
 
+    // Expose the shared data carrier, so that ReducerSampler holds it instead
+    // of `this`. Sampling then keeps reading valid memory even if this
+    // Percentile is destructed before the sampler is recycled.
+    shared_combiner_type share_combiner() const { return _combiner; }
+
     // The sampler for windows over percentile.
     sampler_type* get_sampler() {
         if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
+            _sampler->set_debug_name(_debug_name);
             _sampler->schedule();
         }
         return _sampler;
@@ -543,6 +549,9 @@ public:
     // This name is useful for warning negative latencies in operator<<
     void set_debug_name(const butil::StringPiece& name) {
         _debug_name.assign(name.data(), name.size());
+        if (nullptr != _sampler) {
+            _sampler->set_debug_name(_debug_name);
+        }
     }
 
 private:
@@ -591,6 +600,7 @@ public:
     sampler_type* get_sampler() {
         if (nullptr == _sampler) {
             _sampler = new sampler_type(this);
+            _sampler->set_debug_name(_debug_name);
             _sampler->schedule();
         }
         return _sampler;
@@ -610,6 +620,9 @@ public:
     // This name is useful for warning negative latencies in operator<<
     void set_debug_name(const butil::StringPiece& name) {
         _debug_name.assign(name.data(), name.size());
+        if (nullptr != _sampler) {
+            _sampler->set_debug_name(_debug_name);
+        }
     }
 
 private:

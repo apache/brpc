@@ -871,7 +871,7 @@ TEST(StringUtilTest, ReplaceStringPlaceholdersTooFew) {
 
   string16 formatted =
       ReplaceStringPlaceholders(
-          ASCIIToUTF16("$1a,$2b,$3c,$4d,$5e,$6f,$1g,$2h,$3i"), subst, NULL);
+          ASCIIToUTF16("$1a,$2b,$3c,$4d,$5e,$6f,$1g,$2h,$3i"), subst, nullptr);
 
   EXPECT_EQ(formatted, ASCIIToUTF16("9aa,8bb,7cc,d,e,f,9ag,8bh,7ci"));
 }
@@ -890,7 +890,7 @@ TEST(StringUtilTest, ReplaceStringPlaceholders) {
 
   string16 formatted =
       ReplaceStringPlaceholders(
-          ASCIIToUTF16("$1a,$2b,$3c,$4d,$5e,$6f,$7g,$8h,$9i"), subst, NULL);
+          ASCIIToUTF16("$1a,$2b,$3c,$4d,$5e,$6f,$7g,$8h,$9i"), subst, nullptr);
 
   EXPECT_EQ(formatted, ASCIIToUTF16("9aa,8bb,7cc,6dd,5ee,4ff,3gg,2hh,1ii"));
 }
@@ -915,7 +915,7 @@ TEST(StringUtilTest, ReplaceStringPlaceholdersMoreThan9Replacements) {
   string16 formatted =
       ReplaceStringPlaceholders(
           ASCIIToUTF16("$1a,$2b,$3c,$4d,$5e,$6f,$7g,$8h,$9i,"
-                       "$10j,$11k,$12l,$13m,$14n,$1"), subst, NULL);
+                       "$10j,$11k,$12l,$13m,$14n,$1"), subst, nullptr);
 
   EXPECT_EQ(formatted, ASCIIToUTF16("9aa,8bb,7cc,6dd,5ee,4ff,3gg,2hh,"
                                     "1ii,0jj,-1kk,-2ll,-3mm,-4nn,9a"));
@@ -935,7 +935,7 @@ TEST(StringUtilTest, StdStringReplaceStringPlaceholders) {
 
   std::string formatted =
       ReplaceStringPlaceholders(
-          "$1a,$2b,$3c,$4d,$5e,$6f,$7g,$8h,$9i", subst, NULL);
+          "$1a,$2b,$3c,$4d,$5e,$6f,$7g,$8h,$9i", subst, nullptr);
 
   EXPECT_EQ(formatted, "9aa,8bb,7cc,6dd,5ee,4ff,3gg,2hh,1ii");
 }
@@ -945,7 +945,7 @@ TEST(StringUtilTest, ReplaceStringPlaceholdersConsecutiveDollarSigns) {
   subst.push_back("a");
   subst.push_back("b");
   subst.push_back("c");
-  EXPECT_EQ(ReplaceStringPlaceholders("$$1 $$$2 $$$$3", subst, NULL),
+  EXPECT_EQ(ReplaceStringPlaceholders("$$1 $$$2 $$$$3", subst, nullptr),
             "$1 $$2 $$$3");
 }
 

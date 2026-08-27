@@ -159,11 +159,11 @@ public:
 };
 
 static Session* GetOrCreateSession(brpc::RedisConnContext* ctx) {
-    if (ctx == NULL) {
-        return NULL;
+    if (ctx == nullptr) {
+        return nullptr;
     }
     Session* s = static_cast<Session*>(ctx->get_session());
-    if (s == NULL) {
+    if (s == nullptr) {
         s = new Session;
         ctx->reset_session(s);
     }
@@ -187,7 +187,7 @@ public:
                                         brpc::RedisReply* output,
                                         bool /*flush_batched*/) override {
         Session* s = GetOrCreateSession(ctx);
-        if (s != NULL) {
+        if (s != nullptr) {
             s->asking = true;
         }
         output->SetStatus("OK");
@@ -366,7 +366,7 @@ public:
             }
             if (_data->node_id == _data->meta->ask_to) {
                 Session* s = GetOrCreateSession(ctx);
-                if (s == NULL || !s->asking) {
+                if (s == nullptr || !s->asking) {
                     output->SetError("ERR ASKING required");
                     return brpc::REDIS_CMD_HANDLED;
                 }
@@ -552,7 +552,7 @@ TEST_F(RedisClusterChannelTest, basic_routing_and_multi_key_commands) {
         brpc::RedisResponse resp;
         brpc::Controller cntl;
         ASSERT_TRUE(req.AddCommand("mset %s v0 %s v1", key0.c_str(), key1.c_str()));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, resp.reply_size());
         ASSERT_TRUE(resp.reply(0).is_string());
@@ -564,7 +564,7 @@ TEST_F(RedisClusterChannelTest, basic_routing_and_multi_key_commands) {
         brpc::RedisResponse resp;
         brpc::Controller cntl;
         ASSERT_TRUE(req.AddCommand("mget %s %s", key0.c_str(), key1.c_str()));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, resp.reply_size());
         ASSERT_TRUE(resp.reply(0).is_array());
@@ -578,7 +578,7 @@ TEST_F(RedisClusterChannelTest, basic_routing_and_multi_key_commands) {
         brpc::RedisResponse resp;
         brpc::Controller cntl;
         ASSERT_TRUE(req.AddCommand("exists %s %s", key0.c_str(), key1.c_str()));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(2, resp.reply(0).integer());
     }
@@ -588,7 +588,7 @@ TEST_F(RedisClusterChannelTest, basic_routing_and_multi_key_commands) {
         brpc::RedisResponse resp;
         brpc::Controller cntl;
         ASSERT_TRUE(req.AddCommand("del %s %s", key0.c_str(), key1.c_str()));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(2, resp.reply(0).integer());
     }
@@ -609,7 +609,7 @@ TEST_F(RedisClusterChannelTest, moved_redirection) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", moved_key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
     ASSERT_TRUE(resp.reply(0).is_string());
@@ -633,7 +633,7 @@ TEST_F(RedisClusterChannelTest, ask_redirection) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", _meta->ask_key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
     ASSERT_TRUE(resp.reply(0).is_string());
@@ -658,7 +658,7 @@ TEST_F(RedisClusterChannelTest, ask_redirection_does_not_override_slot_cache) {
         brpc::RedisResponse resp;
         brpc::Controller cntl;
         ASSERT_TRUE(req.AddCommand("get %s", _meta->ask_key.c_str()));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, resp.reply_size());
         ASSERT_TRUE(resp.reply(0).is_string());
@@ -676,7 +676,7 @@ TEST_F(RedisClusterChannelTest, cluster_nodes_fallback) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("set %s vv", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_TRUE(resp.reply(0).is_string());
     ASSERT_EQ("OK", resp.reply(0).data());
@@ -697,7 +697,7 @@ TEST_F(RedisClusterChannelTest, eval_and_evalsha) {
             "eval", "return 1", "2", key0, key1
         };
         ASSERT_TRUE(req.AddCommandByComponents(parts, sizeof(parts) / sizeof(parts[0])));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, resp.reply_size());
         ASSERT_TRUE(resp.reply(0).is_error());
@@ -710,7 +710,7 @@ TEST_F(RedisClusterChannelTest, eval_and_evalsha) {
         brpc::RedisResponse resp;
         brpc::Controller cntl;
         ASSERT_TRUE(req.AddCommand("evalsha abcdef 1 %s arg1", key0.c_str()));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, resp.reply_size());
         ASSERT_TRUE(resp.reply(0).is_string());
@@ -727,7 +727,7 @@ TEST_F(RedisClusterChannelTest, redirect_retry_limit) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", _meta->redirect_loop_key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_TRUE(cntl.Failed());
     ASSERT_NE(std::string::npos, cntl.ErrorText().find("redirect"));
 }
@@ -749,7 +749,7 @@ TEST_F(RedisClusterChannelTest, async_call) {
 
     bthread::CountdownEvent event(1);
     Done done(&event);
-    channel.CallMethod(NULL, &cntl, &req, &resp, &done);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, &done);
     event.wait();
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -775,7 +775,7 @@ TEST_F(RedisClusterChannelTest, pipeline_order_with_mixed_commands) {
     ASSERT_TRUE(req.AddCommand("unlink %s %s", key0.c_str(), key1.c_str()));
     ASSERT_TRUE(req.AddCommand("mget %s %s", key0.c_str(), key1.c_str()));
 
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(6, resp.reply_size());
     ASSERT_EQ("OK", resp.reply(0).data());
@@ -806,7 +806,7 @@ TEST_F(RedisClusterChannelTest, transaction_commands_are_not_supported) {
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("multi"));
     ASSERT_TRUE(req.AddCommand("exec"));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(2, resp.reply_size());
     ASSERT_TRUE(resp.reply(0).is_error());
@@ -827,7 +827,7 @@ TEST_F(RedisClusterChannelTest, eval_argument_validation) {
             "eval", "return 1", "abc", "k1"
         };
         ASSERT_TRUE(req.AddCommandByComponents(parts, sizeof(parts) / sizeof(parts[0])));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, resp.reply_size());
         ASSERT_TRUE(resp.reply(0).is_error());
@@ -843,7 +843,7 @@ TEST_F(RedisClusterChannelTest, eval_argument_validation) {
             "eval", "return 1", "2", "k1"
         };
         ASSERT_TRUE(req.AddCommandByComponents(parts, sizeof(parts) / sizeof(parts[0])));
-        channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, resp.reply_size());
         ASSERT_TRUE(resp.reply(0).is_error());
@@ -864,7 +864,7 @@ TEST_F(RedisClusterChannelTest, async_failure_propagation) {
 
     bthread::CountdownEvent event(1);
     Done done(&event);
-    channel.CallMethod(NULL, &cntl, &req, &resp, &done);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, &done);
     event.wait();
 
     ASSERT_TRUE(cntl.Failed());
@@ -886,7 +886,7 @@ TEST_F(RedisClusterChannelTest, max_redirect_zero_fails_on_single_redirect) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_TRUE(cntl.Failed());
     ASSERT_NE(std::string::npos, cntl.ErrorText().find("redirect"));
@@ -912,7 +912,7 @@ TEST_F(RedisClusterChannelTest, redirect_with_refresh_failure_still_returns_repl
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_TRUE(resp.reply(0).is_string());
     ASSERT_EQ("moved-value", resp.reply(0).data());
@@ -955,7 +955,7 @@ TEST_F(RedisClusterChannelTest, pipeline_with_ask_and_moved_keeps_order) {
     ASSERT_TRUE(req.AddCommand("get %s", moved_key.c_str()));
     ASSERT_TRUE(req.AddCommand("get %s", ask_key.c_str()));
 
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(3, resp.reply_size());
     ASSERT_EQ("ask-value", resp.reply(0).data());
@@ -984,7 +984,7 @@ TEST_F(RedisClusterChannelTest, fallback_to_nodes_then_recover_to_slots) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ("recover-value", resp.reply(0).data());
     ASSERT_GT(_meta->slots_calls.load(std::memory_order_relaxed), before_slots);
@@ -1000,7 +1000,7 @@ TEST_F(RedisClusterChannelTest, cluster_slots_empty_host_uses_seed_host) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("set %s host-fallback-value", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ("OK", resp.reply(0).data());
 }
@@ -1036,7 +1036,7 @@ TEST_F(RedisClusterChannelTest, ping_without_key_uses_any_endpoint) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("ping"));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
     ASSERT_TRUE(resp.reply(0).is_string());
@@ -1053,7 +1053,7 @@ TEST_F(RedisClusterChannelTest, wrong_argument_count_commands_return_error_reply
     ASSERT_TRUE(req.AddCommand("mget"));
     ASSERT_TRUE(req.AddCommand("mset only_key"));
     ASSERT_TRUE(req.AddCommand("del"));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(3, resp.reply_size());
@@ -1073,7 +1073,7 @@ TEST_F(RedisClusterChannelTest, malformed_redirect_error_is_returned_directly) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
@@ -1101,7 +1101,7 @@ TEST_F(RedisClusterChannelTest, cluster_nodes_parser_ignores_migration_tokens) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("set %s from-nodes", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ("OK", resp.reply(0).data());
 }
@@ -1117,7 +1117,7 @@ TEST_F(RedisClusterChannelTest, eval_numkeys_zero_routes_without_slot) {
         "eval", "return 'ok'", "0", "arg1"
     };
     ASSERT_TRUE(req.AddCommandByComponents(parts, sizeof(parts) / sizeof(parts[0])));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
@@ -1146,7 +1146,7 @@ TEST_F(RedisClusterChannelTest, mset_stops_after_subcommand_error) {
                                key_ok.c_str(),
                                key_err.c_str(),
                                key_tail.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
@@ -1159,7 +1159,7 @@ TEST_F(RedisClusterChannelTest, mset_stops_after_subcommand_error) {
         brpc::RedisResponse get_resp;
         brpc::Controller get_cntl;
         ASSERT_TRUE(get_req.AddCommand("get %s", key_ok.c_str()));
-        channel.CallMethod(NULL, &get_cntl, &get_req, &get_resp, NULL);
+        channel.CallMethod(nullptr, &get_cntl, &get_req, &get_resp, nullptr);
         ASSERT_FALSE(get_cntl.Failed()) << get_cntl.ErrorText();
         ASSERT_TRUE(get_resp.reply(0).is_string());
         ASSERT_EQ("v0", get_resp.reply(0).data());
@@ -1169,7 +1169,7 @@ TEST_F(RedisClusterChannelTest, mset_stops_after_subcommand_error) {
         brpc::RedisResponse get_resp;
         brpc::Controller get_cntl;
         ASSERT_TRUE(get_req.AddCommand("get %s", key_tail.c_str()));
-        channel.CallMethod(NULL, &get_cntl, &get_req, &get_resp, NULL);
+        channel.CallMethod(nullptr, &get_cntl, &get_req, &get_resp, nullptr);
         ASSERT_FALSE(get_cntl.Failed()) << get_cntl.ErrorText();
         ASSERT_TRUE(get_resp.reply(0).is_nil());
     }
@@ -1201,7 +1201,7 @@ TEST_F(RedisClusterChannelTest, integer_aggregate_stops_after_subcommand_error) 
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("unlink %s %s %s",
                                key0.c_str(), key_err.c_str(), key_tail.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
@@ -1213,7 +1213,7 @@ TEST_F(RedisClusterChannelTest, integer_aggregate_stops_after_subcommand_error) 
     brpc::RedisResponse get_resp;
     brpc::Controller get_cntl;
     ASSERT_TRUE(get_req.AddCommand("get %s", key_tail.c_str()));
-    channel.CallMethod(NULL, &get_cntl, &get_req, &get_resp, NULL);
+    channel.CallMethod(nullptr, &get_cntl, &get_req, &get_resp, nullptr);
     ASSERT_FALSE(get_cntl.Failed()) << get_cntl.ErrorText();
     ASSERT_TRUE(get_resp.reply(0).is_string());
     ASSERT_EQ("vtail", get_resp.reply(0).data());
@@ -1267,7 +1267,7 @@ TEST_F(RedisClusterChannelTest, async_concurrent_calls_with_mixed_redirections) 
             expected[i] = "normal-v";
         }
         ASSERT_TRUE(requests[i]->AddCommand("get %s", key.c_str()));
-        channel.CallMethod(NULL,
+        channel.CallMethod(nullptr,
                            controllers[i].get(),
                            requests[i].get(),
                            responses[i].get(),
@@ -1299,7 +1299,7 @@ TEST_F(RedisClusterChannelTest, hashtag_keys_route_for_multi_key_commands) {
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("mset %s v0 %s v1", key0.c_str(), key1.c_str()));
     ASSERT_TRUE(req.AddCommand("mget %s %s", key0.c_str(), key1.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(2, resp.reply_size());
@@ -1321,7 +1321,7 @@ TEST_F(RedisClusterChannelTest, missing_key_get_returns_nil_reply) {
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
@@ -1358,7 +1358,7 @@ TEST_F(RedisClusterChannelTest, pipeline_with_string_nil_error_and_string) {
     ASSERT_TRUE(req.AddCommand("get %s", key_nil.c_str()));
     ASSERT_TRUE(req.AddCommand("get %s", key_err.c_str()));
     ASSERT_TRUE(req.AddCommand("get %s", key_ok.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(4, resp.reply_size());
@@ -1379,7 +1379,7 @@ TEST_F(RedisClusterChannelTest, empty_request_should_fail) {
     brpc::RedisRequest req;
     brpc::RedisResponse resp;
     brpc::Controller cntl;
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_TRUE(cntl.Failed());
     ASSERT_NE(std::string::npos, cntl.ErrorText().find("no redis command"));
 }
@@ -1401,7 +1401,7 @@ TEST_F(RedisClusterChannelTest, pipeline_continues_after_command_error_reply) {
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", key_err.c_str()));
     ASSERT_TRUE(req.AddCommand("get %s", key_ok.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(2, resp.reply_size());
@@ -1429,7 +1429,7 @@ TEST_F(RedisClusterChannelTest, redirect_updates_slot_cache_even_when_refresh_fa
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ("value-on-node1", resp.reply(0).data());
 
@@ -1437,7 +1437,7 @@ TEST_F(RedisClusterChannelTest, redirect_updates_slot_cache_even_when_refresh_fa
     brpc::RedisResponse resp2;
     brpc::Controller cntl2;
     ASSERT_TRUE(req2.AddCommand("get %s", key.c_str()));
-    channel.CallMethod(NULL, &cntl2, &req2, &resp2, NULL);
+    channel.CallMethod(nullptr, &cntl2, &req2, &resp2, nullptr);
     ASSERT_FALSE(cntl2.Failed()) << cntl2.ErrorText();
     ASSERT_EQ("value-on-node1", resp2.reply(0).data());
 
@@ -1491,7 +1491,7 @@ TEST_F(RedisClusterChannelTest, periodic_refresh_updates_slot_cache_on_topology_
     brpc::RedisResponse resp;
     brpc::Controller cntl;
     ASSERT_TRUE(req.AddCommand("get %s", key.c_str()));
-    channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, resp.reply_size());
     ASSERT_TRUE(resp.reply(0).is_string());
@@ -1508,7 +1508,7 @@ TEST_F(RedisClusterChannelTest, periodic_refresh_updates_slot_cache_on_topology_
         brpc::RedisResponse resp2;
         brpc::Controller cntl2;
         ASSERT_TRUE(req2.AddCommand("get %s", key.c_str()));
-        channel.CallMethod(NULL, &cntl2, &req2, &resp2, NULL);
+        channel.CallMethod(nullptr, &cntl2, &req2, &resp2, nullptr);
         ASSERT_FALSE(cntl2.Failed()) << cntl2.ErrorText();
         ASSERT_EQ(1, resp2.reply_size());
         ASSERT_TRUE(resp2.reply(0).is_string());
@@ -1540,7 +1540,7 @@ TEST_F(RedisClusterChannelTest, async_pipeline_mixed_commands) {
 
     bthread::CountdownEvent event(1);
     Done done(&event);
-    channel.CallMethod(NULL, &cntl, &req, &resp, &done);
+    channel.CallMethod(nullptr, &cntl, &req, &resp, &done);
     event.wait();
 
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();

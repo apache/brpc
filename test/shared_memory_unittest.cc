@@ -106,7 +106,7 @@ class MultipleLockThread : public PlatformThread::Delegate {
   // PlatformThread::Delegate interface.
   virtual void ThreadMain() OVERRIDE {
     const uint32_t kDataSize = sizeof(int);
-    SharedMemoryHandle handle = NULL;
+    SharedMemoryHandle handle = nullptr;
     {
       SharedMemory memory1;
       EXPECT_TRUE(memory1.CreateNamedDeprecated(
@@ -170,8 +170,8 @@ TEST(SharedMemoryTest, OpenClose) {
   EXPECT_NE(memory1.memory(), memory2.memory());  // Compare the pointers.
 
   // Make sure we don't segfault. (it actually happened!)
-  ASSERT_NE(memory1.memory(), static_cast<void*>(NULL));
-  ASSERT_NE(memory2.memory(), static_cast<void*>(NULL));
+  ASSERT_NE(memory1.memory(), static_cast<void*>(nullptr));
+  ASSERT_NE(memory2.memory(), static_cast<void*>(nullptr));
 
   // Write data to the first memory segment, verify contents of second.
   memset(memory1.memory(), '1', kDataSize);
@@ -419,7 +419,7 @@ TEST(SharedMemoryTest, ShareReadOnly) {
 
   errno = 0;
   void* writable = mmap(
-      NULL, contents.size(), PROT_READ | PROT_WRITE, MAP_SHARED, handle.fd, 0);
+      nullptr, contents.size(), PROT_READ | PROT_WRITE, MAP_SHARED, handle.fd, 0);
   int mmap_errno = errno;
   EXPECT_EQ(MAP_FAILED, writable)
       << "It shouldn't be possible to re-mmap the descriptor writable.";
@@ -428,7 +428,7 @@ TEST(SharedMemoryTest, ShareReadOnly) {
     EXPECT_EQ(0, munmap(writable, readonly_shmem.mapped_size()));
 
 #elif defined(OS_WIN)
-  EXPECT_EQ(NULL, MapViewOfFile(handle, FILE_MAP_WRITE, 0, 0, 0))
+  EXPECT_EQ(nullptr, MapViewOfFile(handle, FILE_MAP_WRITE, 0, 0, 0))
       << "Shouldn't be able to map memory writable.";
 
   HANDLE temp_handle;
@@ -482,7 +482,7 @@ TEST(SharedMemoryTest, MapAt) {
   SharedMemory memory;
   ASSERT_TRUE(memory.CreateAndMapAnonymous(kDataSize));
   uint32_t* ptr = static_cast<uint32_t*>(memory.memory());
-  ASSERT_NE(ptr, static_cast<void*>(NULL));
+  ASSERT_NE(ptr, static_cast<void*>(nullptr));
 
   for (size_t i = 0; i < kCount; ++i) {
     ptr[i] = i;
@@ -494,7 +494,7 @@ TEST(SharedMemoryTest, MapAt) {
   ASSERT_TRUE(memory.MapAt(offset, kDataSize - offset));
   offset /= sizeof(uint32_t);
   ptr = static_cast<uint32_t*>(memory.memory());
-  ASSERT_NE(ptr, static_cast<void*>(NULL));
+  ASSERT_NE(ptr, static_cast<void*>(nullptr));
   for (size_t i = offset; i < kCount; ++i) {
     EXPECT_EQ(ptr[i - offset], i);
   }

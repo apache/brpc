@@ -31,7 +31,7 @@ DEFINE_int32(ub_shm_type, 1, "shm type: 1-ipc; 2-ub_ring");
 static SHM_TYPE g_shm_type;
 
 static bool CheckInputShmParam(SHM *shm) {
-    if (shm == NULL) {
+    if (shm == nullptr) {
         LOG(ERROR) << "Input Param shm is NULL.";
         return false;
     }
@@ -114,7 +114,7 @@ RETURN_CODE ShmLocalCalloc(SHM *shm) {
         LOG(ERROR) << "Failed to alloc local shm.";
         return rc;
     }
-    if (UNLIKELY(shm->addr == NULL)) {
+    if (UNLIKELY(shm->addr == nullptr)) {
         LOG(ERROR) << "Local shm=" << shm->name << " allocated with NULL address.";
         ShmFree(shm);
         return SHM_ERR;

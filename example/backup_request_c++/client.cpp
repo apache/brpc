@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
 
-    // Initialize the channel, NULL means using default options.
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
@@ -68,9 +68,9 @@ int main(int argc, char* argv[]) {
 
         request.set_index(++counter);
 
-        // Because `done'(last parameter) is NULL, this function waits until
+        // Because `done'(last parameter) is nullptr, this function waits until
         // the response comes back or error occurs(including timedout).
-        stub.Echo(&cntl, &request, &response, NULL);
+        stub.Echo(&cntl, &request, &response, nullptr);
         if (!cntl.Failed()) {
             LOG(INFO) << "Received response[index=" << response.index()
                       << "] from " << cntl.remote_side()

@@ -21,10 +21,6 @@
 
 #include <gtest/gtest.h>
 #include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/wait.h>
-#include <unistd.h>
 #include "brpc/details/hpack.h"
 #include "butil/logging.h"
 
@@ -46,36 +42,21 @@ static void* DecodeManyDynamicTableSizeUpdates(void*) {
 }
 
 TEST_F(HPackTest, many_dynamic_table_size_updates) {
-    const pid_t pid = fork();
-    ASSERT_GE(pid, 0);
-    if (pid == 0) {
-        if (freopen("/dev/null", "w", stdout) == NULL ||
-            freopen("/dev/null", "w", stderr) == NULL) {
-            exit(1);
-        }
-
-        pthread_attr_t attr;
-        if (pthread_attr_init(&attr) != 0) {
-            exit(2);
-        }
-        if (pthread_attr_setstacksize(&attr, 64 * 1024) != 0) {
-            exit(3);
-        }
-        pthread_t tid;
-        if (pthread_create(&tid, &attr, DecodeManyDynamicTableSizeUpdates, NULL) != 0) {
-            exit(4);
-        }
-        pthread_attr_destroy(&attr);
-        void* ret = NULL;
-        if (pthread_join(tid, &ret) != 0) {
-            exit(5);
-        }
-        exit(ret == NULL ? 0 : 6);
-    }
-    int status = 0;
-    ASSERT_EQ(pid, waitpid(pid, &status, 0));
-    ASSERT_TRUE(WIFEXITED(status));
-    ASSERT_EQ(0, WEXITSTATUS(status));
+    // Decode many consecutive Dynamic Table Size Update entries on a low-stack
+    // thread so that excessive stack usage (e.g. recursion over the updates)
+    // would be caught. Avoid fork(): brpc spawns background threads (such as
+    // bvar_sampler), so a fork() in this multithreaded process inherits
+    // mutexes locked by the forked-away thread, which are never released in
+    // the child and deadlock it (the parent then blocks in waitpid forever).
+    pthread_attr_t attr;
+    ASSERT_EQ(0, pthread_attr_init(&attr));
+    ASSERT_EQ(0, pthread_attr_setstacksize(&attr, 64 * 1024));
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, &attr, DecodeManyDynamicTableSizeUpdates, nullptr));
+    pthread_attr_destroy(&attr);
+    void* ret = nullptr;
+    ASSERT_EQ(0, pthread_join(tid, &ret));
+    ASSERT_EQ(nullptr, ret);
 }
 
 TEST_F(HPackTest, dynamic_table_size_update_before_header) {
@@ -638,4 +619,38 @@ TEST_F(HPackTest, responses_with_huffman) {
         ASSERT_EQ(header3[i].value, h.value);
     }
     ASSERT_TRUE(buf.buf().empty());
+}
+
+TEST_F(HPackTest, many_small_indexed_headers) {
+    // Each entry below is a "literal header field with incremental indexing"
+    // (0x40) with a 1-byte name ("a") and an empty value, costing
+    // name(1) + value(0) + 32 = 33 bytes in the dynamic table (rfc7541 4.1).
+    // 121 of them stay under the default 4096-byte table (121*33 = 3993) so
+    // none are evicted and all must decode. The decode table's ring buffer was
+    // previously sized for 34-byte entries (4096/34 = 120), so the 121st
+    // AddHeader() tripped CHECK(!full()) and aborted the process.
+    brpc::HPacker p;
+    ASSERT_EQ(0, p.Init(4096));
+
+    const int num_headers = 121;
+    butil::IOBuf buf;
+    for (int i = 0; i < num_headers; ++i) {
+        const uint8_t entry[] = {0x40, 0x01, (uint8_t)'a', 0x00};
+        buf.append(entry, sizeof(entry));
+    }
+    for (int i = 0; i < num_headers; ++i) {
+        brpc::HPacker::Header h;
+        ASSERT_GT(p.Decode(&buf, &h), 0) << "failed at header " << i;
+        ASSERT_EQ("a", h.name);
+        ASSERT_TRUE(h.value.empty());
+    }
+    ASSERT_TRUE(buf.empty());
+}
+
+TEST_F(HPackTest, zero_size_dynamic_table) {
+    // max_size == 0 disables the dynamic table. num_headers then rounds down to
+    // 0, and malloc(0) may return NULL, so Init must still keep one slot and
+    // succeed. No entry is ever stored because entry_size > max_size.
+    brpc::HPacker p;
+    ASSERT_EQ(0, p.Init(0));
 }

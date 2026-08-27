@@ -75,7 +75,7 @@ private:
 TEST(RecordIOTest, empty_record) {
     butil::Record r;
     ASSERT_EQ((size_t)0, r.MetaCount());
-    ASSERT_TRUE(r.Meta("foo") == NULL);
+    ASSERT_TRUE(r.Meta("foo") == nullptr);
     ASSERT_FALSE(r.RemoveMeta("foo"));
     ASSERT_TRUE(r.Payload().empty());
     ASSERT_TRUE(r.MutablePayload()->empty());
@@ -106,7 +106,7 @@ TEST(RecordIOTest, manipulate_record) {
 
     ASSERT_TRUE(r1.RemoveMeta("foo"));
     ASSERT_EQ((size_t)1, r1.MetaCount());
-    ASSERT_TRUE(r1.Meta("foo") == NULL);
+    ASSERT_TRUE(r1.Meta("foo") == nullptr);
 
     ASSERT_EQ(foo_val, r2.Meta("foo"));
     ASSERT_EQ("foo_data", *foo_val);
@@ -119,7 +119,7 @@ TEST(RecordIOTest, invalid_name) {
     }
     name[sizeof(name) - 1] = 0;
     butil::Record r;
-    ASSERT_EQ(NULL, r.MutableMeta(name));
+    ASSERT_EQ(nullptr, r.MutableMeta(name));
 }
 
 TEST(RecordIOTest, write_read_basic) {
@@ -180,7 +180,7 @@ TEST(RecordIOTest, write_read_basic) {
     ASSERT_EQ("bar_data", *r4.MetaAt(1).data);
     ASSERT_EQ("payload_data", r4.Payload());
 
-    ASSERT_FALSE(rr.ReadNext(NULL));
+    ASSERT_FALSE(rr.ReadNext(nullptr));
     ASSERT_EQ((int)butil::RecordReader::END_OF_READER, rr.last_error());
     ASSERT_EQ(sw.str().size(), rr.offset());
 }
@@ -224,7 +224,7 @@ TEST(RecordIOTest, incomplete_reader) {
     ASSERT_EQ("bar_data", *r3.MetaAt(1).data);
     ASSERT_TRUE(r3.Payload().empty());
 
-    ASSERT_FALSE(rr.ReadNext(NULL));
+    ASSERT_FALSE(rr.ReadNext(nullptr));
     ASSERT_EQ(EAGAIN, rr.last_error());
     ASSERT_EQ(sw.str().size(), rr.offset());
 }

@@ -21,8 +21,7 @@
 #define BUTIL_THREAD_LOCAL_H
 
 #include <new>                      // std::nothrow
-#include <cstddef>                  // NULL
-#include "butil/macros.h"            
+#include "butil/macros.h"
 
 #ifdef _MSC_VER
 #define BAIDU_THREAD_LOCAL __declspec(thread)

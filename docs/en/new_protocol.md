@@ -67,7 +67,7 @@ typedef ParseResult (*Parse)(butil::IOBuf* source, Socket *socket, bool read_eof
 ```
 This function is used to cut messages from source. Client side and server side must share the same parse function. The returned message will be passed to `process_request`(server side) or `process_response`(client side).
 
-Argument: source is the binary content from remote side, socket is the corresponding connection, read_eof is true iff the connection is closed by remote, arg is a pointer to the corresponding server in server client and NULL in client side.
+Argument: source is the binary content from remote side, socket is the corresponding connection, read_eof is true iff the connection is closed by remote, arg is a pointer to the corresponding server in server client and nullptr in client side.
 
 ParseResult could be an error or a cut message, its possible value contains:
 
@@ -94,7 +94,7 @@ typedef int (*PackRequest)(butil::IOBuf* msg,
                            const butil::IOBuf& request_buf,
                            const Authenticator* auth);
 ```
-This function is used to pack request_buf into msg, which is called every time before sending messages to server(including retrying). When auth is not NULL, authentication information is also needed to be packed. Return 0 if succeed, otherwise -1.
+This function is used to pack request_buf into msg, which is called every time before sending messages to server(including retrying). When auth is not nullptr, authentication information is also needed to be packed. Return 0 if succeed, otherwise -1.
 
 ### process_request
 ```c++
@@ -112,7 +112,7 @@ This function is used to parse message response in client side that client must 
 ```c++
 typedef bool (*Verify)(const InputMessageBase* msg);
 ```
-This function is used to authenticate connections, it is called when the first message is received. It is must be implemented by servers that need authentication, otherwise the function pointer can be NULL. Return true if succeed, otherwise false.
+This function is used to authenticate connections, it is called when the first message is received. It is must be implemented by servers that need authentication, otherwise the function pointer can be nullptr. Return true if succeed, otherwise false.
 
 ### parse_server_address
 ```c++

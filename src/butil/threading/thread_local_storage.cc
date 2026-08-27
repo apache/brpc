@@ -141,17 +141,17 @@ void OnThreadExitInternal(void* value) {
         butil::subtle::NoBarrier_Load(&g_last_used_tls_key);
     for (int slot = last_used_tls_key; slot > 0; --slot) {
       void* value = stack_allocated_tls_data[slot];
-      if (value == NULL)
+      if (value == nullptr)
         continue;
 
       butil::ThreadLocalStorage::TLSDestructorFunc destructor =
           g_tls_destructors[slot];
-      if (destructor == NULL)
+      if (destructor == nullptr)
         continue;
-      stack_allocated_tls_data[slot] = NULL;  // pre-clear the slot.
+      stack_allocated_tls_data[slot] = nullptr;  // pre-clear the slot.
       destructor(value);
       // Any destructor might have called a different service, which then set
-      // a different slot to a non-NULL value.  Hence we need to check
+      // a different slot to a non-nullptr value.  Hence we need to check
       // the whole vector again.  This is a pthread standard.
       need_to_scan_destructors = true;
     }
@@ -162,7 +162,7 @@ void OnThreadExitInternal(void* value) {
   }
 
   // Remove our stack allocated vector.
-  PlatformThreadLocalStorage::SetTLSValue(key, NULL);
+  PlatformThreadLocalStorage::SetTLSValue(key, nullptr);
 }
 
 }  // namespace
@@ -220,7 +220,7 @@ void ThreadLocalStorage::StaticSlot::Free() {
   // So all we need to do is wipe the destructor.
   DCHECK_GT(slot_, 0);
   DCHECK_LT(slot_, kThreadLocalStorageSize);
-  g_tls_destructors[slot_] = NULL;
+  g_tls_destructors[slot_] = nullptr;
   slot_ = 0;
   initialized_ = false;
 }

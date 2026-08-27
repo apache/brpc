@@ -134,7 +134,7 @@ static std::string g_schema;
 
 static std::string TestDataDir() {
     char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    if (getcwd(cwd, sizeof(cwd)) == nullptr) {
         return std::string("/tmp/mysql_pool_conc_data_for_test");
     }
     return std::string(cwd) + "/mysql_pool_conc_data_for_test";
@@ -240,7 +240,7 @@ static void StartServerOnce() {
             (char*)logerr_arg.c_str(),
             (char*)"--mysqlx=OFF",
             (char*)"--bind-address=127.0.0.1",
-            NULL};
+            nullptr};
         if (execvp(MYSQLD_BIN, argv) < 0) {
             puts("Fail to run " MYSQLD_BIN);
             exit(1);
@@ -269,7 +269,7 @@ static bool RunPlain(brpc::Channel& channel, const std::string& sql,
         return false;
     }
     brpc::Controller cntl;
-    channel.CallMethod(NULL, &cntl, &req, resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, resp, nullptr);
     if (cntl.Failed()) {
         if (err) *err = "rpc failed: " + cntl.ErrorText();
         return false;
@@ -300,7 +300,7 @@ static bool RunInTx(brpc::Channel& channel, const brpc::MysqlTransaction* tx,
         return false;
     }
     brpc::Controller cntl;
-    channel.CallMethod(NULL, &cntl, &req, resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, resp, nullptr);
     if (cntl.Failed()) {
         if (err) *err = "rpc failed: " + cntl.ErrorText();
         return false;
@@ -375,7 +375,7 @@ protected:
             << "failed to set gflag max_connection_pool_size";
 
         // Create the schema over a schema-less channel, then bind to it.
-        brpc::policy::MysqlAuthenticator* setup_auth = NULL;
+        brpc::policy::MysqlAuthenticator* setup_auth = nullptr;
         ASSERT_EQ(0, InitPooledChannel(&_setup_channel, &setup_auth, ""));
         _setup_auth.reset(setup_auth);
         brpc::MysqlResponse resp;
@@ -384,7 +384,7 @@ protected:
                              "CREATE DATABASE IF NOT EXISTS " + g_schema,
                              &resp, &err)) << err;
 
-        brpc::policy::MysqlAuthenticator* auth = NULL;
+        brpc::policy::MysqlAuthenticator* auth = nullptr;
         ASSERT_EQ(0, InitPooledChannel(&_channel, &auth, g_schema));
         _auth.reset(auth);
     }
@@ -414,7 +414,7 @@ static bool WU_TxnCommitVisible(brpc::Channel& ch, const std::string& table,
     brpc::MysqlResponse resp;
     brpc::MysqlTransactionUniquePtr tx =
         brpc::NewMysqlTransaction(ch, brpc::MysqlTransactionOptions());
-    if (tx == NULL) { *err = "WU1: NewMysqlTransaction NULL"; return false; }
+    if (tx == nullptr) { *err = "WU1: NewMysqlTransaction NULL"; return false; }
     if (!RunInTx(ch, tx.get(),
                  butil::string_printf("INSERT INTO %s VALUES (%d, '%s')",
                                       table.c_str(), id, name),
@@ -453,7 +453,7 @@ static bool WU_TxnRollbackDiscards(brpc::Channel& ch, const std::string& table,
     brpc::MysqlResponse resp;
     brpc::MysqlTransactionUniquePtr tx =
         brpc::NewMysqlTransaction(ch, brpc::MysqlTransactionOptions());
-    if (tx == NULL) { *err = "WU2: NewMysqlTransaction NULL"; return false; }
+    if (tx == nullptr) { *err = "WU2: NewMysqlTransaction NULL"; return false; }
     if (!RunInTx(ch, tx.get(),
                  butil::string_printf("INSERT INTO %s VALUES (%d, 'cory')",
                                       table.c_str(), id),
@@ -486,7 +486,7 @@ static bool WU_TxnReadsOwnWrite(brpc::Channel& ch, const std::string& table,
     brpc::MysqlResponse resp;
     brpc::MysqlTransactionUniquePtr tx =
         brpc::NewMysqlTransaction(ch, brpc::MysqlTransactionOptions());
-    if (tx == NULL) { *err = "WU3: NewMysqlTransaction NULL"; return false; }
+    if (tx == nullptr) { *err = "WU3: NewMysqlTransaction NULL"; return false; }
     if (!RunInTx(ch, tx.get(),
                  butil::string_printf("INSERT INTO %s VALUES (%d, '%s')",
                                       table.c_str(), id, name),
@@ -524,13 +524,13 @@ static bool WU_PreparedBindInt(brpc::Channel& ch, const std::string& table,
     brpc::MysqlStatementUniquePtr stmt = brpc::NewMysqlStatement(
         ch, butil::string_printf("SELECT name FROM %s WHERE id=?",
                                  table.c_str()));
-    if (stmt == NULL) { *err = "WU4: NewMysqlStatement NULL"; return false; }
+    if (stmt == nullptr) { *err = "WU4: NewMysqlStatement NULL"; return false; }
     if (stmt->param_count() != 1u) { *err = "WU4: param_count != 1"; return false; }
 
     brpc::MysqlRequest req(stmt.get());
     if (!req.AddParam((int32_t)id)) { *err = "WU4: AddParam failed"; return false; }
     brpc::Controller cntl;
-    ch.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    ch.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     if (cntl.Failed()) { *err = "WU4 rpc: " + cntl.ErrorText(); return false; }
     if (resp.reply_size() < 1 || !resp.reply(0).is_resultset()) {
         *err = "WU4: not a resultset"; return false;
@@ -556,7 +556,7 @@ static bool WU_PreparedArithmetic(brpc::Channel& ch, int worker, int iter,
     const long long expect = (long long)a + b;
     brpc::MysqlStatementUniquePtr stmt =
         brpc::NewMysqlStatement(ch, "SELECT CAST(? AS SIGNED) + CAST(? AS SIGNED)");
-    if (stmt == NULL) { *err = "WU5: NewMysqlStatement NULL"; return false; }
+    if (stmt == nullptr) { *err = "WU5: NewMysqlStatement NULL"; return false; }
     if (stmt->param_count() != 2u) { *err = "WU5: param_count != 2"; return false; }
 
     brpc::MysqlRequest req(stmt.get());
@@ -565,7 +565,7 @@ static bool WU_PreparedArithmetic(brpc::Channel& ch, int worker, int iter,
     }
     brpc::MysqlResponse resp;
     brpc::Controller cntl;
-    ch.CallMethod(NULL, &cntl, &req, &resp, NULL);
+    ch.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
     if (cntl.Failed()) { *err = "WU5 rpc: " + cntl.ErrorText(); return false; }
     if (resp.reply_size() < 1 || !resp.reply(0).is_resultset() ||
         resp.reply(0).row_count() != 1u) {
@@ -609,11 +609,11 @@ void* MixWorker(void* p) {
         if (!ok) {
             a->error = butil::string_printf("worker %d iter %d pick %d: %s",
                                             a->worker_id, iter, pick, err.c_str());
-            return NULL;
+            return nullptr;
         }
         ++a->completed;
     }
-    return NULL;
+    return nullptr;
 }
 
 // TEST 1: many bthreads, each looping ~50x over a mix of the reused work
@@ -640,11 +640,11 @@ TEST_F(MysqlPoolConcurrencyTest, ManyWorkersMixedScenarios) {
 
     std::vector<bthread_t> threads(kWorkers);
     for (int w = 0; w < kWorkers; ++w) {
-        ASSERT_EQ(0, bthread_start_background(&threads[w], NULL, MixWorker,
+        ASSERT_EQ(0, bthread_start_background(&threads[w], nullptr, MixWorker,
                                               &args[w]));
     }
     for (int w = 0; w < kWorkers; ++w) {
-        bthread_join(threads[w], NULL);
+        bthread_join(threads[w], nullptr);
     }
 
     for (int w = 0; w < kWorkers; ++w) {
@@ -683,22 +683,22 @@ void* AffinityWorker(void* p) {
 
     brpc::MysqlTransactionUniquePtr tx =
         brpc::NewMysqlTransaction(*a->channel, brpc::MysqlTransactionOptions());
-    if (tx == NULL) { a->error = "NewMysqlTransaction NULL"; return NULL; }
+    if (tx == nullptr) { a->error = "NewMysqlTransaction NULL"; return nullptr; }
     a->socket_id = tx->GetSocketId();
 
     brpc::MysqlResponse resp;
     if (!RunInTx(*a->channel, tx.get(),
                  butil::string_printf("INSERT INTO %s VALUES (%d)",
                                       a->table.c_str(), a->id),
-                 &resp, &a->error)) return NULL;
+                 &resp, &a->error)) return nullptr;
     if (resp.reply(0).is_error()) {
         a->error = "INSERT err: " + resp.reply(0).error().msg().as_string();
-        return NULL;
+        return nullptr;
     }
     // Read inside the txn: must see exactly our own row (per-worker table).
     if (!RunInTx(*a->channel, tx.get(),
                  butil::string_printf("SELECT v FROM %s", a->table.c_str()),
-                 &resp, &a->error)) return NULL;
+                 &resp, &a->error)) return nullptr;
     a->row_count = ResultRowCount(resp);
     if (a->row_count == 1) {
         long long v = 0;
@@ -708,7 +708,7 @@ void* AffinityWorker(void* p) {
     }
     a->committed = tx->commit();
     if (!a->committed) a->error = "commit failed";
-    return NULL;
+    return nullptr;
 }
 
 // TEST 2 (focused check a): two transactions in parallel must hold DIFFERENT
@@ -733,10 +733,10 @@ TEST_F(MysqlPoolConcurrencyTest, TwoTransactionsHoldDifferentPinnedSockets) {
         AffinityWorkerArgs a1{&_channel, t1, 30900 + iter, 0, -1, -1, false, ""};
 
         bthread_t b0, b1;
-        ASSERT_EQ(0, bthread_start_background(&b0, NULL, AffinityWorker, &a0));
-        ASSERT_EQ(0, bthread_start_background(&b1, NULL, AffinityWorker, &a1));
-        bthread_join(b0, NULL);
-        bthread_join(b1, NULL);
+        ASSERT_EQ(0, bthread_start_background(&b0, nullptr, AffinityWorker, &a0));
+        ASSERT_EQ(0, bthread_start_background(&b1, nullptr, AffinityWorker, &a1));
+        bthread_join(b0, nullptr);
+        bthread_join(b1, nullptr);
 
         ASSERT_TRUE(a0.error.empty()) << "iter " << iter << " txn0: " << a0.error;
         ASSERT_TRUE(a1.error.empty()) << "iter " << iter << " txn1: " << a1.error;
@@ -781,10 +781,10 @@ void* PreparedWorker(void* p) {
         if (!WU_PreparedArithmetic(*a->channel, a->base, k, &err)) {
             a->ok = false;
             a->error = err;
-            return NULL;
+            return nullptr;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 // TEST 3 (focused check b): one transaction + one prepared statement in
@@ -805,10 +805,10 @@ TEST_F(MysqlPoolConcurrencyTest, TransactionPlusPreparedInParallel) {
         PreparedWorkerArgs pa{&_channel, 200 + iter, true, ""};
 
         bthread_t bt, bp;
-        ASSERT_EQ(0, bthread_start_background(&bt, NULL, AffinityWorker, &ta));
-        ASSERT_EQ(0, bthread_start_background(&bp, NULL, PreparedWorker, &pa));
-        bthread_join(bt, NULL);
-        bthread_join(bp, NULL);
+        ASSERT_EQ(0, bthread_start_background(&bt, nullptr, AffinityWorker, &ta));
+        ASSERT_EQ(0, bthread_start_background(&bp, nullptr, PreparedWorker, &pa));
+        bthread_join(bt, nullptr);
+        bthread_join(bp, nullptr);
 
         ASSERT_TRUE(ta.error.empty()) << "iter " << iter << " txn: " << ta.error;
         ASSERT_TRUE(pa.ok) << "iter " << iter << " prepared: " << pa.error;
@@ -862,7 +862,7 @@ void* PinnedTxnWorker(void* p) {
 
     brpc::MysqlTransactionUniquePtr tx =
         brpc::NewMysqlTransaction(*a->channel, brpc::MysqlTransactionOptions());
-    if (tx == NULL) { a->error = "NewMysqlTransaction NULL"; return NULL; }
+    if (tx == nullptr) { a->error = "NewMysqlTransaction NULL"; return nullptr; }
 
     brpc::MysqlResponse resp;
 
@@ -871,10 +871,10 @@ void* PinnedTxnWorker(void* p) {
     if (!RunInTx(*a->channel, tx.get(),
                  butil::string_printf("INSERT INTO %s VALUES (%d, 'nova')",
                                       a->table.c_str(), a->id),
-                 &resp, &a->error)) return NULL;
+                 &resp, &a->error)) return nullptr;
     if (resp.reply(0).is_error()) {
         a->error = "INSERT err: " + resp.reply(0).error().msg().as_string();
-        return NULL;
+        return nullptr;
     }
 
     // Statement 2: SELECT our own (uncommitted) row back.
@@ -882,11 +882,11 @@ void* PinnedTxnWorker(void* p) {
     if (!RunInTx(*a->channel, tx.get(),
                  butil::string_printf("SELECT name FROM %s WHERE id=%d",
                                       a->table.c_str(), a->id),
-                 &resp, &a->error)) return NULL;
+                 &resp, &a->error)) return nullptr;
     if (ResultRowCount(resp) != 1 ||
         resp.reply(0).next().field(0).string().as_string() != "nova") {
         a->error = "SELECT-own-row did not read back its own write";
-        return NULL;
+        return nullptr;
     }
 
     // Statement 3: UPDATE our own row.
@@ -894,10 +894,10 @@ void* PinnedTxnWorker(void* p) {
     if (!RunInTx(*a->channel, tx.get(),
                  butil::string_printf("UPDATE %s SET name='zephyr' WHERE id=%d",
                                       a->table.c_str(), a->id),
-                 &resp, &a->error)) return NULL;
+                 &resp, &a->error)) return nullptr;
     if (resp.reply(0).is_error()) {
         a->error = "UPDATE err: " + resp.reply(0).error().msg().as_string();
-        return NULL;
+        return nullptr;
     }
 
     // Statement 4: SELECT the updated value back.
@@ -905,16 +905,16 @@ void* PinnedTxnWorker(void* p) {
     if (!RunInTx(*a->channel, tx.get(),
                  butil::string_printf("SELECT name FROM %s WHERE id=%d",
                                       a->table.c_str(), a->id),
-                 &resp, &a->error)) return NULL;
+                 &resp, &a->error)) return nullptr;
     if (ResultRowCount(resp) != 1 ||
         resp.reply(0).next().field(0).string().as_string() != "zephyr") {
         a->error = "SELECT after UPDATE saw wrong value";
-        return NULL;
+        return nullptr;
     }
 
     // Discard so the per-worker table is empty for the next outer-loop pass.
-    if (!tx->rollback()) { a->error = "rollback failed"; return NULL; }
-    return NULL;
+    if (!tx->rollback()) { a->error = "rollback failed"; return nullptr; }
+    return nullptr;
 }
 
 // TEST A: ConcurrentTxnsStayPinned  (the most important check)
@@ -958,11 +958,11 @@ TEST_F(MysqlPoolConcurrencyTest, ConcurrentTxnsStayPinned) {
 
         std::vector<bthread_t> threads(kTxns);
         for (int w = 0; w < kTxns; ++w) {
-            ASSERT_EQ(0, bthread_start_background(&threads[w], NULL,
+            ASSERT_EQ(0, bthread_start_background(&threads[w], nullptr,
                                                   PinnedTxnWorker, &args[w]));
         }
         for (int w = 0; w < kTxns; ++w) {
-            bthread_join(threads[w], NULL);
+            bthread_join(threads[w], nullptr);
         }
 
         // No worker errored.
@@ -1018,23 +1018,23 @@ void* AbortWorker(void* p) {
     {
         brpc::MysqlTransactionUniquePtr tx = brpc::NewMysqlTransaction(
             *a->channel, brpc::MysqlTransactionOptions());
-        if (tx == NULL) { a->error = "NewMysqlTransaction NULL"; return NULL; }
+        if (tx == nullptr) { a->error = "NewMysqlTransaction NULL"; return nullptr; }
 
         brpc::MysqlResponse resp;
         if (!RunInTx(*a->channel, tx.get(),
                      butil::string_printf("INSERT INTO %s VALUES (%d, 'quill')",
                                           a->table.c_str(), a->id),
-                     &resp, &a->error)) return NULL;
+                     &resp, &a->error)) return nullptr;
         if (resp.reply(0).is_error()) {
             a->error = "INSERT err: " + resp.reply(0).error().msg().as_string();
-            return NULL;
+            return nullptr;
         }
         if (a->mode == 0) {
-            if (!tx->rollback()) { a->error = "explicit rollback failed"; return NULL; }
+            if (!tx->rollback()) { a->error = "explicit rollback failed"; return nullptr; }
         }
         // mode 1: fall off the end of this scope -> tx dtor auto-rollbacks.
     }
-    return NULL;
+    return nullptr;
 }
 
 // TEST B: ConcurrentTxnAbortAndAutoRollback
@@ -1071,11 +1071,11 @@ TEST_F(MysqlPoolConcurrencyTest, ConcurrentTxnAbortAndAutoRollback) {
 
         std::vector<bthread_t> threads(kWorkersB);
         for (int w = 0; w < kWorkersB; ++w) {
-            ASSERT_EQ(0, bthread_start_background(&threads[w], NULL,
+            ASSERT_EQ(0, bthread_start_background(&threads[w], nullptr,
                                                   AbortWorker, &args[w]));
         }
         for (int w = 0; w < kWorkersB; ++w) {
-            bthread_join(threads[w], NULL);
+            bthread_join(threads[w], nullptr);
         }
 
         for (int w = 0; w < kWorkersB; ++w) {
@@ -1122,12 +1122,12 @@ void* ReserveWorker(void* p) {
     for (int k = 0; k < 8; ++k) {
         brpc::MysqlTransactionUniquePtr tx = brpc::NewMysqlTransaction(
             *a->channel, brpc::MysqlTransactionOptions());
-        if (tx == NULL) { a->error = "reserve: NewMysqlTransaction NULL"; return NULL; }
+        if (tx == nullptr) { a->error = "reserve: NewMysqlTransaction NULL"; return nullptr; }
         brpc::MysqlResponse resp;
-        if (!RunInTx(*a->channel, tx.get(), "SELECT 1", &resp, &a->error)) return NULL;
-        if (!tx->rollback()) { a->error = "reserve: rollback failed"; return NULL; }
+        if (!RunInTx(*a->channel, tx.get(), "SELECT 1", &resp, &a->error)) return nullptr;
+        if (!tx->rollback()) { a->error = "reserve: rollback failed"; return nullptr; }
     }
-    return NULL;
+    return nullptr;
 }
 
 // Execute a shared prepared statement S with a fresh INT param and verify the
@@ -1146,23 +1146,23 @@ void* StmtExecWorker(void* p) {
     for (int k = 0; k < 12; ++k) {
         const int32_t v = a->base + k;
         brpc::MysqlRequest req(a->stmt);
-        if (!req.AddParam(v)) { a->error = "AddParam failed"; return NULL; }
+        if (!req.AddParam(v)) { a->error = "AddParam failed"; return nullptr; }
         brpc::MysqlResponse resp;
         brpc::Controller cntl;
-        a->channel->CallMethod(NULL, &cntl, &req, &resp, NULL);
-        if (cntl.Failed()) { a->error = "rpc: " + cntl.ErrorText(); return NULL; }
+        a->channel->CallMethod(nullptr, &cntl, &req, &resp, nullptr);
+        if (cntl.Failed()) { a->error = "rpc: " + cntl.ErrorText(); return nullptr; }
         if (resp.reply_size() < 1 || !resp.reply(0).is_resultset() ||
             resp.reply(0).row_count() != 1u) {
-            a->error = "bad resultset for S"; return NULL;
+            a->error = "bad resultset for S"; return nullptr;
         }
         long long got = 0;
         if (!FieldToLongLong(resp.reply(0).next().field(0), &got) || got != v) {
             a->error = butil::string_printf(
                 "S returned wrong value (got %lld want %d)", got, v);
-            return NULL;
+            return nullptr;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 // TEST C: PreparedRePreparesWhenConnectionStolen
@@ -1192,7 +1192,7 @@ TEST_F(MysqlPoolConcurrencyTest, PreparedRePreparesWhenConnectionStolen) {
 
     brpc::MysqlStatementUniquePtr S =
         brpc::NewMysqlStatement(_channel, "SELECT CAST(? AS SIGNED) AS v");
-    ASSERT_TRUE(S != NULL);
+    ASSERT_TRUE(S != nullptr);
     ASSERT_EQ(1u, S->param_count());
 
     // Execute S once to cache its stmt_id on whatever connection it lands on.
@@ -1200,7 +1200,7 @@ TEST_F(MysqlPoolConcurrencyTest, PreparedRePreparesWhenConnectionStolen) {
         brpc::MysqlRequest req(S.get());
         ASSERT_TRUE(req.AddParam((int32_t)140000));
         brpc::Controller cntl;
-        _channel.CallMethod(NULL, &cntl, &req, &resp, NULL);
+        _channel.CallMethod(nullptr, &cntl, &req, &resp, nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_TRUE(resp.reply_size() >= 1 && resp.reply(0).is_resultset());
         long long got = 0;
@@ -1218,7 +1218,7 @@ TEST_F(MysqlPoolConcurrencyTest, PreparedRePreparesWhenConnectionStolen) {
 
         for (int w = 0; w < kReservers; ++w) {
             res_args[w].channel = &_channel;
-            ASSERT_EQ(0, bthread_start_background(&res_threads[w], NULL,
+            ASSERT_EQ(0, bthread_start_background(&res_threads[w], nullptr,
                                                   ReserveWorker, &res_args[w]));
         }
         for (int w = 0; w < kExecutors; ++w) {
@@ -1226,14 +1226,14 @@ TEST_F(MysqlPoolConcurrencyTest, PreparedRePreparesWhenConnectionStolen) {
             exec_args[w].stmt = S.get();
             // Unique param ranges per worker+loop so a wrong value is unambiguous.
             exec_args[w].base = 141000 + loop * 1000 + w * 100;
-            ASSERT_EQ(0, bthread_start_background(&exec_threads[w], NULL,
+            ASSERT_EQ(0, bthread_start_background(&exec_threads[w], nullptr,
                                                   StmtExecWorker, &exec_args[w]));
         }
         for (int w = 0; w < kReservers; ++w) {
-            bthread_join(res_threads[w], NULL);
+            bthread_join(res_threads[w], nullptr);
         }
         for (int w = 0; w < kExecutors; ++w) {
-            bthread_join(exec_threads[w], NULL);
+            bthread_join(exec_threads[w], nullptr);
         }
 
         for (int w = 0; w < kReservers; ++w) {

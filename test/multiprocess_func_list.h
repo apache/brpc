@@ -52,7 +52,7 @@ int InvokeChildProcessTest(std::string test_name);
 // This macro creates a global MultiProcessTest::AppendMultiProcessTest object
 // whose constructor does the work of adding the global mapping.
 #define MULTIPROCESS_TEST_MAIN(test_main) \
-  MULTIPROCESS_TEST_MAIN_WITH_SETUP(test_main, NULL)
+  MULTIPROCESS_TEST_MAIN_WITH_SETUP(test_main, nullptr)
 
 // Same as above but lets callers specify a setup method that is run in the
 // child process, just before the main function is run.  This facilitates

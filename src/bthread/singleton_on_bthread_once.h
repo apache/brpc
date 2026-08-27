@@ -31,7 +31,7 @@ public:
 };
 
 template <typename T>
-T* GetLeakySingleton<T>::_instance = NULL;
+T* GetLeakySingleton<T>::_instance = nullptr;
 
 template <typename T>
 bthread_once_t* GetLeakySingleton<T>::g_create_leaky_singleton_once

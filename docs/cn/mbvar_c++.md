@@ -184,7 +184,7 @@ class MVariable {
     ...
     ...
     // Find all exposed mvariables and send them to `dumper'.
-    // Use default options when `options' is NULL.
+    // Use default options when `options' is nullptr.
     // Return number of dumped mvariables, -1 on error.
     static size_t dump_exposed(Dumper* dumper, const DumpOptions* options);
 };
@@ -406,7 +406,7 @@ public:
     ...
 
     // Get real bvar pointer object
-    // Return real bvar pointer(Not NULL) on success, NULL otherwise.
+    // Return real bvar pointer(Not nullptr) on success, nullptr otherwise.
     T* get_stats(const std::list<std::string>& labels_value);
 };
 ```
@@ -462,10 +462,10 @@ int request_count = get_request_count(request_label_list);
 
 class MyStringView {
 public:
-    MyStringView() : _ptr(NULL), _len(0) {}
+    MyStringView() : _ptr(nullptr), _len(0) {}
     MyStringView(const char* str)
         : _ptr(str),
-          _len(str == NULL ? 0 : strlen(str)) {}
+          _len(str == nullptr ? 0 : strlen(str)) {}
 #if __cplusplus >= 201703L
     MyStringView(const std::string_view& str)
         : _ptr(str.data()), _len(str.size()) {}
@@ -480,7 +480,7 @@ public:
 
     // Converts to `std::basic_string`.
     explicit operator std::string() const {
-        if (NULL == _ptr) {
+        if (nullptr == _ptr) {
             return {};
         }
         return {_ptr, size()};
@@ -488,7 +488,7 @@ public:
 
     // Converts to butil::StringPiece.
     explicit operator butil::StringPiece() const {
-        if (NULL == _ptr) {
+        if (nullptr == _ptr) {
             return {};
         }
         return {_ptr, size()};

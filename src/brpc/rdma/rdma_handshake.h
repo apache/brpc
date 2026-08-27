@@ -171,7 +171,7 @@ public:
 std::unique_ptr<RdmaHandshake> CreateClientHandshake(RdmaEndpoint* ep);
 
 // Pick the server-side handshake based on the 4B magic already read.
-// Returns NULL if `magic` is not a recognized RDMA magic
+// Returns nullptr if `magic` is not a recognized RDMA magic
 // (the caller should then fallback to TCP).
 //   "RDMA" -> RdmaHandshakeServerV2
 //   "RDM3" -> RdmaHandshakeServerV3

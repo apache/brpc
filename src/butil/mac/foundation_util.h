@@ -79,20 +79,20 @@ OSType CreatorCodeForCFBundleRef(CFBundleRef bundle);
 BUTIL_EXPORT OSType CreatorCodeForApplication();
 
 // Searches for directories for the given key in only the given |domain_mask|.
-// If found, fills result (which must always be non-NULL) with the
+// If found, fills result (which must always be non-nullptr) with the
 // first found directory and returns true.  Otherwise, returns false.
 BUTIL_EXPORT bool GetSearchPathDirectory(NSSearchPathDirectory directory,
                                         NSSearchPathDomainMask domain_mask,
                                         FilePath* result);
 
 // Searches for directories for the given key in only the local domain.
-// If found, fills result (which must always be non-NULL) with the
+// If found, fills result (which must always be non-nullptr) with the
 // first found directory and returns true.  Otherwise, returns false.
 BUTIL_EXPORT bool GetLocalDirectory(NSSearchPathDirectory directory,
                                    FilePath* result);
 
 // Searches for directories for the given key in only the user domain.
-// If found, fills result (which must always be non-NULL) with the
+// If found, fills result (which must always be non-nullptr) with the
 // first found directory and returns true.  Otherwise, returns false.
 BUTIL_EXPORT bool GetUserDirectory(NSSearchPathDirectory directory,
                                   FilePath* result);
@@ -154,7 +154,7 @@ BUTIL_EXPORT void NSObjectRelease(void* obj);
 BUTIL_EXPORT void* CFTypeRefToNSObjectAutorelease(CFTypeRef cf_object);
 
 // Returns the base bundle ID, which can be set by SetBaseBundleID but
-// defaults to a reasonable string. This never returns NULL. BaseBundleID
+// defaults to a reasonable string. This never returns nullptr. BaseBundleID
 // returns a pointer to static storage that must not be freed.
 BUTIL_EXPORT const char* BaseBundleID();
 
@@ -244,8 +244,8 @@ namespace mac {
 // object is found by comparing its opaque type against the
 // requested type identifier. If the supplied object is not
 // compatible with the requested return type, CFCast<>() returns
-// NULL and CFCastStrict<>() will DCHECK. Providing a NULL pointer
-// to either variant results in NULL being returned without
+// nullptr and CFCastStrict<>() will DCHECK. Providing a nullptr pointer
+// to either variant results in nullptr being returned without
 // triggering any DCHECK.
 //
 // Example usage:
@@ -338,7 +338,7 @@ BUTIL_EXPORT std::string GetValueFromDictionaryErrorMessage(
     CFStringRef key, const std::string& expected_type, CFTypeRef value);
 
 // Utility function to pull out a value from a dictionary, check its type, and
-// return it. Returns NULL if the key is not present or of the wrong type.
+// return it. Returns nullptr if the key is not present or of the wrong type.
 template<typename T>
 T GetValueFromDictionary(CFDictionaryRef dict, CFStringRef key) {
   CFTypeRef value = CFDictionaryGetValue(dict, key);

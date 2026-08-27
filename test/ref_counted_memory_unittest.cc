@@ -83,7 +83,7 @@ TEST(RefCountedMemoryUnitTest, Equals) {
 TEST(RefCountedMemoryUnitTest, EqualsNull) {
   std::string s("str");
   scoped_refptr<RefCountedMemory> mem = RefCountedString::TakeString(&s);
-  EXPECT_FALSE(mem->Equals(NULL));
+  EXPECT_FALSE(mem->Equals(nullptr));
 }
 
 }  //  namespace butil

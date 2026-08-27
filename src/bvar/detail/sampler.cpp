@@ -166,9 +166,16 @@ void SamplerCollector::run() {
             Sampler* s = p->value();
             s->_mutex.lock();
             if (!s->_used) {
+                // If the sampler is still borrowed (a Window outlived the bvar
+                // it references), deleting it would leave the borrowers with a
+                // dangling pointer, so leak it on purpose. destroy() already
+                // reported the misuse.
+                const bool leaked = s->_leaked;
                 s->_mutex.unlock();
                 p->RemoveFromList();
-                delete s;
+                if (!leaked) {
+                    delete s;
+                }
             } else {
                 s->take_sample();
                 s->_mutex.unlock();
@@ -196,11 +203,16 @@ void SamplerCollector::run() {
     }
 }
 
-Sampler::Sampler() : _used(true) {}
+Sampler::Sampler() : _used(true), _nborrow(0), _leaked(false) {}
 
 Sampler::~Sampler() {}
 
 DEFINE_bool(bvar_enable_sampling, true, "is enable bvar sampling");
+
+DEFINE_bool(bvar_abort_on_sampler_still_borrowed, false,
+            "Abort when a bvar is destructed while its sampler is still "
+            "borrowed by a Window/PerSecond, namely the Window outlives the "
+            "bvar it references");
 
 void Sampler::schedule() {
     // since the SamplerCollector is initialized before the program starts
@@ -211,9 +223,53 @@ void Sampler::schedule() {
 }
 
 void Sampler::destroy() {
-    _mutex.lock();
-    _used = false;
-    _mutex.unlock();
+    int nborrow = 0;
+    std::string owner;
+    {
+        BAIDU_SCOPED_LOCK(_mutex);
+        _used = false;
+        nborrow = _nborrow;
+        if (nborrow > 0) {
+            // The owning bvar is being destructed while Window/PerSecond objects
+            // still borrow this sampler. Leak the sampler so that the borrowers
+            // keep pointing at valid memory (they just stop getting new samples),
+            // which turns a use-after-free into a bounded leak.
+            _leaked = true;
+            if (!_debug_name.empty()) {
+                owner.append("bvar`").append(_debug_name).append("`");
+            } else {
+                owner.append("An unnamed bvar");
+            }
+        }
+    }
+
+    if (nborrow <= 0) {
+        return;
+    }
+    if (FLAGS_bvar_abort_on_sampler_still_borrowed) {
+        LOG(FATAL) << "Abort because " << owner << " is destructed while "
+                   << nborrow << " Window/PerSecond still reference its"
+                      " sampler";
+    } else {
+        LOG(ERROR) << owner << " is destructed while " << nborrow
+                   << " Window/PerSecond still reference its sampler. The"
+                      " bvar referenced by a Window MUST be destructed"
+                      " AFTER that Window, see comments of Window in"
+                      " bvar/window.h. The sampler is leaked to avoid a"
+                      " dangling pointer.";
+    }
+}
+
+void Sampler::add_borrower() {
+    BAIDU_SCOPED_LOCK(_mutex);
+    ++_nborrow;
+}
+
+void Sampler::remove_borrower() {
+    BAIDU_SCOPED_LOCK(_mutex);
+    CHECK_GT(_nborrow, 0) << "remove_borrower() is called more times than "
+                             "add_borrower(), which is a bug of the caller";
+    --_nborrow;
 }
 
 }  // namespace detail

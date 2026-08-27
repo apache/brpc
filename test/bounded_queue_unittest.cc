@@ -29,8 +29,8 @@ TEST(BoundedQueueTest, sanity) {
     butil::BoundedQueue<int> q(storage, sizeof(storage), butil::NOT_OWN_STORAGE);
     ASSERT_EQ(0ul, q.size());
     ASSERT_TRUE(q.empty());
-    ASSERT_TRUE(NULL == q.top());
-    ASSERT_TRUE(NULL == q.bottom());
+    ASSERT_TRUE(nullptr == q.top());
+    ASSERT_TRUE(nullptr == q.bottom());
     for (int i = 1; i <= N; ++i) {
         if (i % 2 == 0) {
             ASSERT_TRUE(q.push(i));

@@ -23,10 +23,10 @@
 namespace brpc {
 
 static const int MAX_HANDLER_SIZE = 1024;
-static ChecksumHandler s_handler_map[MAX_HANDLER_SIZE] = {{NULL, NULL, NULL}};
+static ChecksumHandler s_handler_map[MAX_HANDLER_SIZE] = {{nullptr, nullptr, nullptr}};
 
 int RegisterChecksumHandler(ChecksumType type, ChecksumHandler handler) {
-    if (NULL == handler.Compute) {
+    if (nullptr == handler.Compute) {
         LOG(FATAL) << "Invalid parameter: handler function is NULL";
         return -1;
     }
@@ -35,7 +35,7 @@ int RegisterChecksumHandler(ChecksumType type, ChecksumHandler handler) {
         LOG(FATAL) << "ChecksumType=" << type << " is out of range";
         return -1;
     }
-    if (s_handler_map[index].Compute != NULL) {
+    if (s_handler_map[index].Compute != nullptr) {
         LOG(FATAL) << "ChecksumType=" << type << " was registered";
         return -1;
     }
@@ -44,15 +44,15 @@ int RegisterChecksumHandler(ChecksumType type, ChecksumHandler handler) {
 }
 
 // Find ChecksumHandler by type.
-// Returns NULL if not found
+// Returns nullptr if not found
 inline const ChecksumHandler* FindChecksumHandler(ChecksumType type) {
     int index = type;
     if (index < 0 || index >= MAX_HANDLER_SIZE) {
         LOG(ERROR) << "ChecksumType=" << type << " is out of range";
-        return NULL;
+        return nullptr;
     }
-    if (NULL == s_handler_map[index].Compute) {
-        return NULL;
+    if (nullptr == s_handler_map[index].Compute) {
+        return nullptr;
     }
     return &s_handler_map[index];
 }
@@ -62,13 +62,13 @@ const char* ChecksumTypeToCStr(ChecksumType type) {
         return "none";
     }
     const ChecksumHandler* handler = FindChecksumHandler(type);
-    return (handler != NULL ? handler->name : "unknown");
+    return (handler != nullptr ? handler->name : "unknown");
 }
 
 void ListChecksumHandler(std::vector<ChecksumHandler>* vec) {
     vec->clear();
     for (int i = 0; i < MAX_HANDLER_SIZE; ++i) {
-        if (s_handler_map[i].Compute != NULL) {
+        if (s_handler_map[i].Compute != nullptr) {
             vec->push_back(s_handler_map[i]);
         }
     }
@@ -80,7 +80,7 @@ void ComputeDataChecksum(const ChecksumIn& in, ChecksumType checksum_type) {
         return;
     }
     const ChecksumHandler* handler = FindChecksumHandler(checksum_type);
-    if (NULL != handler) {
+    if (nullptr != handler) {
         handler->Compute(in);
     }
 }
@@ -91,7 +91,7 @@ bool VerifyDataChecksum(const ChecksumIn& in, ChecksumType checksum_type) {
         return true;
     }
     const ChecksumHandler* handler = FindChecksumHandler(checksum_type);
-    if (NULL != handler) {
+    if (nullptr != handler) {
         return handler->Verify(in);
     }
     return true;

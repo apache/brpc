@@ -59,11 +59,11 @@ static long start_perf_test_with_madder(size_t num_thread, bvar::Adder<uint64_t>
     EXPECT_TRUE(adder->valid());
     pthread_t threads[num_thread];
     for (size_t i = 0; i < num_thread; ++i) {
-        pthread_create(&threads[i], NULL, &thread_adder, (void *)adder);
+        pthread_create(&threads[i], nullptr, &thread_adder, (void *)adder);
     }
     long totol_time = 0;
     for (size_t i = 0; i < num_thread; ++i) {
-        void *ret = NULL; 
+        void *ret = nullptr; 
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }
@@ -87,11 +87,11 @@ static long start_perf_test_with_mmaxer(size_t num_thread, bvar::Maxer<uint64_t>
     EXPECT_TRUE(maxer->valid());
     pthread_t threads[num_thread];
     for (size_t i = 0; i < num_thread; ++i) {
-        pthread_create(&threads[i], NULL, &thread_maxer, (void *)maxer);
+        pthread_create(&threads[i], nullptr, &thread_maxer, (void *)maxer);
     }
     long totol_time = 0;
     for (size_t i = 0; i < num_thread; ++i) {
-        void *ret = NULL; 
+        void *ret = nullptr; 
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }
@@ -115,11 +115,11 @@ static long start_perf_test_with_mminer(size_t num_thread, bvar::Miner<uint64_t>
     EXPECT_TRUE(miner->valid());
     pthread_t threads[num_thread];
     for (size_t i = 0; i < num_thread; ++i) {
-        pthread_create(&threads[i], NULL, &thread_miner, (void *)miner);
+        pthread_create(&threads[i], nullptr, &thread_miner, (void *)miner);
     }
     long totol_time = 0;
     for (size_t i = 0; i < num_thread; ++i) {
-        void *ret = NULL; 
+        void *ret = nullptr; 
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }
@@ -143,11 +143,11 @@ static long start_perf_test_with_mintrecorder(size_t num_thread, bvar::IntRecord
     EXPECT_TRUE(intrecorder->valid());
     pthread_t threads[num_thread];
     for (size_t i = 0; i < num_thread; ++i) {
-        pthread_create(&threads[i], NULL, &thread_intrecorder, (void *)intrecorder);
+        pthread_create(&threads[i], nullptr, &thread_intrecorder, (void *)intrecorder);
     }
     long totol_time = 0;
     for (size_t i = 0; i < num_thread; ++i) {
-        void *ret = NULL; 
+        void *ret = nullptr; 
         pthread_join(threads[i], &ret);
         totol_time += (long)ret;
     }
@@ -500,10 +500,10 @@ TEST_F(MultiDimensionTest, test_hash) {
 
 class MyStringView {
 public:
-    MyStringView() : _ptr(NULL), _len(0) {}
+    MyStringView() : _ptr(nullptr), _len(0) {}
     MyStringView(const char* str)
         : _ptr(str),
-          _len(str == NULL ? 0 : strlen(str)) {}
+          _len(str == nullptr ? 0 : strlen(str)) {}
 #if __cplusplus >= 201703L
     MyStringView(const std::string_view& str)
         : _ptr(str.data()), _len(str.size()) {}
@@ -518,7 +518,7 @@ public:
 
     // Converts to `std::basic_string`.
     explicit operator std::string() const {
-        if (NULL == _ptr) {
+        if (nullptr == _ptr) {
             return {};
         }
         return {_ptr, size()};
@@ -526,7 +526,7 @@ public:
 
     // Converts to butil::StringPiece.
     explicit operator butil::StringPiece() const {
-        if (NULL == _ptr) {
+        if (nullptr == _ptr) {
             return {};
         }
         return {_ptr, size()};
@@ -621,7 +621,7 @@ void* get_shared_adder_thread(void* arg) {
         EXPECT_NE(nullptr, adder);
         *adder << 1;
     }
-    return NULL;
+    return nullptr;
 }
 
 void* delete_shared_adder_thread(void* arg) {
@@ -630,7 +630,7 @@ void* delete_shared_adder_thread(void* arg) {
     while (!g_shared_stop) {
         my_madder->delete_stats(g_labels_value);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(MultiDimensionTest, shared) {
@@ -651,15 +651,15 @@ TEST_F(MultiDimensionTest, shared) {
     const int get_num = 8;
     std::vector<pthread_t> get_threads(get_num);
     for (int i = 0; i < get_num; ++i) {
-        ASSERT_EQ(0, pthread_create(&get_threads[i], NULL, get_shared_adder_thread, &my_madder));
+        ASSERT_EQ(0, pthread_create(&get_threads[i], nullptr, get_shared_adder_thread, &my_madder));
     }
     pthread_t delete_thread;
-    ASSERT_EQ(0, pthread_create(&delete_thread, NULL, delete_shared_adder_thread, &my_madder));
+    ASSERT_EQ(0, pthread_create(&delete_thread, nullptr, delete_shared_adder_thread, &my_madder));
     usleep(100 * 1000); // 100ms
     g_shared_stop = true;
     for (int i = 0; i < get_num; ++i) {
-        ASSERT_EQ(0, pthread_join(get_threads[i], NULL));
+        ASSERT_EQ(0, pthread_join(get_threads[i], nullptr));
     }
-    ASSERT_EQ(0, pthread_join(delete_thread, NULL));
+    ASSERT_EQ(0, pthread_join(delete_thread, nullptr));
 }
 

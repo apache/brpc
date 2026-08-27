@@ -131,9 +131,11 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     uint64_t weight_sum = s->weight_sum;
     for (size_t i = 0; i < n; ++i) {
         uint64_t random_weight = butil::fast_rand_less_than(weight_sum);
+        // current_weight_sum is an inclusive prefix sum, so random_weight belongs
+        // to the first server whose prefix sum is strictly greater than it.
         const Server random_server(0, 0, random_weight);
         const auto& server =
-            std::lower_bound(s->server_list.begin(), s->server_list.end(),
+            std::upper_bound(s->server_list.begin(), s->server_list.end(),
                              random_server, server_compare);
         const SocketId id = server->id;
         if (ExcludedServers::IsExcluded(in.excluded, id)) {
@@ -153,7 +155,7 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         for (size_t i = 0; i < n; ++i) {
             offset = (offset + stride) % n;
             SocketId id = s->server_list[offset].id;
-            if (NULL != random_traversed.seek(id)) {
+            if (nullptr != random_traversed.seek(id)) {
                 continue;
             }
             if (IsServerAvailable(id, out->ptr)) {
@@ -168,12 +170,12 @@ int WeightedRandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     // Returns EHOSTDOWN, if no available server is found
     // after traversing the whole server list.
     // Otherwise, returns 0 with a available excluded server.
-    return NULL == out->ptr ? EHOSTDOWN : 0;
+    return nullptr == out->ptr ? EHOSTDOWN : 0;
 }
 
 LoadBalancer* WeightedRandomizedLoadBalancer::New(
     const butil::StringPiece&) const {
-    return new (std::nothrow) WeightedRandomizedLoadBalancer;
+    return new WeightedRandomizedLoadBalancer;
 }
 
 void WeightedRandomizedLoadBalancer::Destroy() {

@@ -122,7 +122,7 @@ SHMEM_API int ubsmem_shmem_deallocate(const char *name);
 
 /**
  * Map item in UBSMSHMEM to the local virtual address space, and return its pointer.
- * @param addr - The starting address for the new mapping is specified in addr, If addr is NULL, then
+ * @param addr - The starting address for the new mapping is specified in addr, If addr is nullptr, then
  * the kernel chooses the (page-aligned) address at which to create the mapping
  * @param length - The length argument specifies the length of the mapping (which must be greater than 0)
  * @param prot - same as mmap, describes the desired memory protection of the mapping (and must not conflict with

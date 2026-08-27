@@ -29,19 +29,19 @@ ArenaOptions::ArenaOptions()
 {}
 
 Arena::Arena(const ArenaOptions& options)
-    : _cur_block(NULL)
-    , _isolated_blocks(NULL)
+    : _cur_block(nullptr)
+    , _isolated_blocks(nullptr)
     , _block_size(options.initial_block_size)
     , _options(options) {
 }
 
 Arena::~Arena() {
-    while (_cur_block != NULL) {
+    while (_cur_block != nullptr) {
         Block* const saved_next = _cur_block->next;
         free(_cur_block);
         _cur_block = saved_next;
     }
-    while (_isolated_blocks != NULL) {
+    while (_isolated_blocks != nullptr) {
         Block* const saved_next = _isolated_blocks->next;
         free(_isolated_blocks);
         _isolated_blocks = saved_next;
@@ -79,7 +79,7 @@ void* Arena::allocate_in_other_blocks(size_t n) {
     // Waste the left space. At most 1/4 of allocated spaces are wasted.
 
     // Grow the block size gradually.
-    if (_cur_block != NULL) {
+    if (_cur_block != nullptr) {
         _block_size = std::min(2 * _block_size, _options.max_block_size);
     }
     size_t new_size = _block_size;
@@ -87,10 +87,10 @@ void* Arena::allocate_in_other_blocks(size_t n) {
         new_size = n;
     }
     Block* b = (Block*)malloc(offsetof(Block, data) + new_size);
-    if (NULL == b) {
-        return NULL;
+    if (nullptr == b) {
+        return nullptr;
     }
-    b->next = NULL;
+    b->next = nullptr;
     b->alloc_size = n;
     b->size = new_size;
     if (_cur_block) {

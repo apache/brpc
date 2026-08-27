@@ -21,6 +21,9 @@
 #define  BVAR_DETAIL_SAMPLER_H
 
 #include <vector>
+#include <string>                        // std::string
+#include <type_traits>                   // std::true_type
+#include <utility>                       // std::declval
 #include "butil/containers/linked_list.h"// LinkNode
 #include "butil/scoped_lock.h"           // BAIDU_SCOPED_LOCK
 #include "butil/logging.h"               // LOG()
@@ -57,14 +60,41 @@ public:
     // Call this function instead of delete to destroy the sampler. Deletion
     // of the sampler may be delayed for seconds.
     void destroy();
-        
+
+    // Declare/undeclare that an external object borrows this sampler which is
+    // owned by another bvar. Window/PerSecond does this because it samples
+    // through the sampler of the bvar it references.
+    // If the owner is destructed while borrowers remain (namely a Window
+    // outlives the bvar it references, which violates the contract documented
+    // in bvar/window.h), destroy() reports the misuse and the sampler is
+    // deliberately leaked so that borrowers are not left with a dangling
+    // pointer.
+    void add_borrower();
+    void remove_borrower();
+
+    // Name of the owning bvar, purely for diagnostics.
+    void set_debug_name(const std::string& name) {
+        BAIDU_SCOPED_LOCK(_mutex);
+        _debug_name = name;
+    }
+    std::string debug_name() const {
+        BAIDU_SCOPED_LOCK(_mutex);
+        return _debug_name;
+    }
+
 protected:
     virtual ~Sampler();
     
 friend class SamplerCollector;
     bool _used;
-    // Sync destroy() and take_sample().
-    butil::Mutex _mutex;
+    // Number of external borrowers, guarded by _mutex.
+    int _nborrow;
+    // Set by destroy() when _nborrow > 0, telling the sampling thread to leak
+    // this sampler instead of deleting it. Guarded by _mutex.
+    bool _leaked;
+    mutable butil::Mutex _mutex;
+    // For diagnostics only, see set_debug_name().
+    std::string _debug_name;
 };
 
 // Representing a non-existing operator so that we can test
@@ -78,19 +108,90 @@ struct VoidOp {
     }
 };
 
+// Detects whether the host R exposes share_combiner(), namely whether its
+// sampling data lives in a shared_ptr-managed carrier (an AgentCombiner) that
+// the sampler is able to hold on its own. Hosts keeping the data elsewhere --
+// a user callback in PassiveStatus, or a value-type babylon counter -- do NOT
+// provide it and are sampled through the host pointer as before.
+template <typename R>
+class HasShareCombiner {
+    template <typename U>
+    static auto probe(U* p) -> decltype(p->share_combiner(), std::true_type());
+    static std::false_type probe(...);
+public:
+    static const bool value = decltype(probe(std::declval<R*>()))::value;
+};
+
+// Samples through the host pointer, for hosts keeping their data outside a
+// shared carrier (a user callback in PassiveStatus, a value-type babylon
+// counter, ...).
+template <typename R, typename T, typename Op, typename InvOp>
+class HostSampleSource {
+public:
+    explicit HostSampleSource(R* host)
+        : _host(host), _op(host->op()), _inv_op(host->inv_op()) {}
+
+    // Only reached from take_sample(), namely from the sampling thread, which is
+    // mutually exclusive with the host's destroy(). The host is therefore always
+    // alive here.
+    T reset() { return _host->reset(); }
+    T get_value() const { return _host->get_value(); }
+
+    // Never touch the host, see the ctor.
+    const Op& op() const { return _op; }
+    const InvOp& inv_op() const { return _inv_op; }
+
+private:
+    R* _host;
+    Op _op;
+    InvOp _inv_op;
+};
+
+// Samples directly from the shared data carrier, so that sampling still reads
+// valid memory even if the host is destructed before the sampler is recycled.
+// `Op'/`InvOp' are stateless functors, thus copied by value at construction and
+// the host is never touched afterwards.
+template <typename R, typename T, typename Op, typename InvOp>
+class CombinerSampleSource {
+public:
+    explicit CombinerSampleSource(R* host)
+        : _combiner(host->share_combiner())
+        , _op(host->op())
+        , _inv_op(host->inv_op()) {}
+
+    T reset() { return _combiner->reset_all_agents(); }
+    T get_value() const { return _combiner->combine_agents(); }
+    const Op& op() const { return _op; }
+    const InvOp& inv_op() const { return _inv_op; }
+
+private:
+    typename R::shared_combiner_type _combiner;
+    Op _op;
+    InvOp _inv_op;
+};
+
 // The sampler for reducer-alike variables.
 // The R should have following methods:
 //  - T reset();
 //  - T get_value();
 //  - Op op();
 //  - InvOp inv_op();
+// Additionally, if R exposes
+//  - shared_combiner_type share_combiner();
+// the sampler holds that shared carrier instead of R itself, which makes
+// sampling immune to R being destructed first.
 template <typename R, typename T, typename Op, typename InvOp>
 class ReducerSampler : public Sampler {
+    typedef typename butil::conditional<
+        HasShareCombiner<R>::value,
+        CombinerSampleSource<R, T, Op, InvOp>,
+        HostSampleSource<R, T, Op, InvOp> >::type source_type;
+
 public:
     static const time_t MAX_SECONDS_LIMIT = 3600;
 
     explicit ReducerSampler(R* reducer)
-        : _reducer(reducer)
+        : _source(reducer)
         , _window_size(1) {
         
         // Invoked take_sample at begining so the value of the first second
@@ -127,14 +228,14 @@ public:
             // Suming up samples gives the result within a window.
             // In this case, get_value() of _reducer gives wrong answer and
             // should not be called.
-            latest.data = _reducer->reset();
+            latest.data = _source.reset();
         } else {
             // The operator can be inversed.
             // We save the result as a sample.
             // Inversed operation between latest and oldest sample within a
             // window gives result.
             // get_value() of _reducer can still be called.
-            latest.data = _reducer->get_value();
+            latest.data = _source.get_value();
         }
         latest.time_us = butil::cpuwide_time_us();
         _q.elim_push(latest);
@@ -164,12 +265,12 @@ public:
                 if (e == oldest) {
                     break;
                 }
-                _reducer->op()(result->data, e->data);
+                _source.op()(result->data, e->data);
             }
         } else {
             // Diff the latest and oldest sample within the window.
             result->data = latest->data;
-            _reducer->inv_op()(result->data, oldest->data);
+            _source.inv_op()(result->data, oldest->data);
         }
         result->time_us = latest->time_us - oldest->time_us;
         return true;
@@ -212,7 +313,7 @@ public:
     }
 
 private:
-    R* _reducer;
+    source_type _source;
     time_t _window_size;
     butil::BoundedQueue<Sample<T> > _q;
 };

@@ -116,7 +116,7 @@ protected:
     virtual void TearDown() {};
 
     void VerifyMessage(brpc::InputMessageBase* msg) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;
@@ -125,7 +125,7 @@ protected:
 
     void ProcessMessage(void (*process)(brpc::InputMessageBase*),
                         brpc::InputMessageBase* msg, bool set_eof) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket.get()->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;
@@ -176,7 +176,7 @@ protected:
         butil::IOPortal buf;
         EXPECT_EQ((ssize_t)bytes_in_pipe,
                   buf.append_from_file_descriptor(_pipe_fds[0], 1024));
-        brpc::ParseResult pr = brpc::policy::ParseHuluMessage(&buf, NULL, false, NULL);
+        brpc::ParseResult pr = brpc::policy::ParseHuluMessage(&buf, nullptr, false, nullptr);
         EXPECT_EQ(brpc::PARSE_OK, pr.error());
         brpc::policy::MostCommonMessage* msg =
             static_cast<brpc::policy::MostCommonMessage*>(pr.message());
@@ -200,13 +200,13 @@ protected:
         brpc::SerializeRequestDefault(&request_buf, &cntl, &req);
         ASSERT_FALSE(cntl.Failed());
         brpc::policy::PackHuluRequest(
-            &total_buf, NULL, cntl.call_id().value,
+            &total_buf, nullptr, cntl.call_id().value,
             test::EchoService::descriptor()->method(0),
             &cntl, request_buf, &_auth);
         ASSERT_FALSE(cntl.Failed());
 
         brpc::ParseResult req_pr =
-                brpc::policy::ParseHuluMessage(&total_buf, NULL, false, NULL);
+                brpc::policy::ParseHuluMessage(&total_buf, nullptr, false, nullptr);
         ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
         brpc::InputMessageBase* req_msg = req_pr.message();
         ProcessMessage(brpc::policy::ProcessHuluRequest, req_msg, false);
@@ -290,13 +290,13 @@ TEST_F(HuluTest, complete_flow) {
     ASSERT_FALSE(cntl.Failed());
     cntl.request_attachment().append(EXP_REQUEST);
     brpc::policy::PackHuluRequest(
-        &total_buf, NULL, cntl.call_id().value,
+        &total_buf, nullptr, cntl.call_id().value,
         test::EchoService::descriptor()->method(0), &cntl, request_buf, &_auth);
     ASSERT_FALSE(cntl.Failed());
 
     // Verify and handle request
     brpc::ParseResult req_pr =
-            brpc::policy::ParseHuluMessage(&total_buf, NULL, false, NULL);
+            brpc::policy::ParseHuluMessage(&total_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     brpc::InputMessageBase* req_msg = req_pr.message();
     VerifyMessage(req_msg);
@@ -306,7 +306,7 @@ TEST_F(HuluTest, complete_flow) {
     butil::IOPortal response_buf;
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
     brpc::ParseResult res_pr =
-            brpc::policy::ParseHuluMessage(&response_buf, NULL, false, NULL);
+            brpc::policy::ParseHuluMessage(&response_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, res_pr.error());
     brpc::InputMessageBase* res_msg = res_pr.message();
     ProcessMessage(brpc::policy::ProcessHuluResponse, res_msg, false);
@@ -327,13 +327,13 @@ TEST_F(HuluTest, close_in_callback) {
     brpc::SerializeRequestDefault(&request_buf, &cntl, &req);
     ASSERT_FALSE(cntl.Failed());
     brpc::policy::PackHuluRequest(
-        &total_buf, NULL, cntl.call_id().value,
+        &total_buf, nullptr, cntl.call_id().value,
         test::EchoService::descriptor()->method(0), &cntl, request_buf, &_auth);
     ASSERT_FALSE(cntl.Failed());
 
     // Handle request
     brpc::ParseResult req_pr =
-            brpc::policy::ParseHuluMessage(&total_buf, NULL, false, NULL);
+            brpc::policy::ParseHuluMessage(&total_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     brpc::InputMessageBase* req_msg = req_pr.message();
     ProcessMessage(brpc::policy::ProcessHuluRequest, req_msg, false);

@@ -38,7 +38,7 @@ class TimeTest : public testing::Test {
       0,            // day of year (ignored, output only)
       -1,           // DST in effect, -1 tells mktime to figure it out
       0,
-      NULL
+      nullptr
     };
 
     time_t converted_time = mktime(&local_comparison_tm);
@@ -56,7 +56,7 @@ class TimeTest : public testing::Test {
 // Test conversions to/from time_t and exploding/unexploding.
 TEST_F(TimeTest, TimeT) {
   // C library time and exploded time.
-  time_t now_t_1 = time(NULL);
+  time_t now_t_1 = time(nullptr);
   struct tm tms;
 #if defined(OS_WIN)
   localtime_s(&tms, &now_t_1);

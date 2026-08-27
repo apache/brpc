@@ -159,7 +159,7 @@ int HandleResponseWritten(bthread_id_t id, void* data, int /*error_code*/) {
 ConcurrencyRemover::~ConcurrencyRemover() {
     if (_status) {
         _status->OnResponded(_c->ErrorCode(), butil::cpuwide_time_us() - _received_us);
-        _status = NULL;
+        _status = nullptr;
     }
     ServerPrivateAccessor(_c->server()).RemoveConcurrency(_c);
 }

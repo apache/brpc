@@ -164,7 +164,7 @@ TEST_F(PercentileTest, combine_of) {
         bvar::detail::PercentileSamples<510> g;
         g.combine_of(result.begin(), result.end());
         for (size_t i = 0; i < bvar::detail::NUM_INTERVALS; ++i) {
-            if (g._intervals[i] == NULL) {
+            if (g._intervals[i] == nullptr) {
                 continue;
             }
             bvar::detail::PercentileInterval<510>& p = *g._intervals[i];

@@ -45,7 +45,7 @@ public:
     { return _nref.fetch_add(1, butil::memory_order_relaxed); }
 
     // Remove one ref, if the ref_count hit zero, delete this object.
-    // Same as butil::intrusive_ptr<T>(obj, false).reset(NULL)
+    // Same as butil::intrusive_ptr<T>(obj, false).reset(nullptr)
     void RemoveRefManually() {
         if (_nref.fetch_sub(1, butil::memory_order_release) == 1) {
             butil::atomic_thread_fence(butil::memory_order_acquire);

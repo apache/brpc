@@ -176,7 +176,7 @@ void OffsetAdjuster::MergeSequentialAdjustments(
 // Converts the given source Unicode character type to the given destination
 // Unicode character type as a STL string. The given input buffer and size
 // determine the source, and the given output STL string will be replaced by
-// the result.  If non-NULL, |adjustments| is set to reflect the all the
+// the result.  If non-nullptr, |adjustments| is set to reflect the all the
 // alterations to the string that are not one-character-to-one-character.
 // It will always be sorted by increasing offset.
 template<typename SrcChar, typename DestStdString>

@@ -48,9 +48,9 @@ DEFINE_int32(data_queue_size, 4, "data queue size for UB");
 DEFINE_bool(ub_trace_verbose, false, "Print log message verbosely");
 BRPC_VALIDATE_GFLAG(ub_trace_verbose, brpc::PassValidate);
 DEFINE_int32(ub_poller_num, 1, "Poller number in ub polling mode.");
-DEFINE_bool(ub_poller_yield, false, "Yield thread in RDMA polling mode.");
+DEFINE_bool(ub_poller_yield, false, "Yield thread in UBRing polling mode.");
 DEFINE_bool(ub_edisp_unsched, false, "Disable event dispatcher schedule");
-DEFINE_bool(ub_disable_bthread, false, "Disable bthread in RDMA");
+DEFINE_bool(ub_disable_bthread, false, "Disable bthread in UBRing polling mode.");
 
 static const size_t MIN_ONCE_READ = 4096;
 static const size_t MAX_ONCE_READ = 524288;
@@ -66,7 +66,7 @@ static uint16_t g_ub_impl_version = 1;
 
 static const uint32_t ACK_MSG_UB_OK = 0x1;
 
-static butil::Mutex* g_ubring_resource_mutex = NULL;
+static butil::Mutex* g_ubring_resource_mutex = nullptr;
 
 void HelloMessage::Serialize(void* data) const {
     char* current_pos = static_cast<char*>(data);
@@ -126,7 +126,7 @@ UBShmEndpoint::UBShmEndpoint(Socket* s)
     , _socket_id(s ? s->id() : INVALID_SOCKET_ID)
     , _state(UNINIT)
     , _ub_ring(nullptr)
-    , _cq_sid(INVALID_SOCKET_ID)
+    , _poller_sid(INVALID_SOCKET_ID)
 {
     _read_butex = bthread::butex_create_checked<butil::atomic<int>>();
 }
@@ -141,7 +141,7 @@ void UBShmEndpoint::Reset() {
 
     delete _ub_ring;
     _ub_ring = nullptr;
-    _cq_sid = INVALID_SOCKET_ID;
+    _poller_sid = INVALID_SOCKET_ID;
     _state = UNINIT;
 }
 
@@ -149,7 +149,7 @@ void UBConnect::StartConnect(const Socket* socket,
                                void (*done)(int err, void* data),
                                void* data) {
     auto* ub_transport = static_cast<UBShmTransport*>(socket->_transport.get());
-    CHECK(ub_transport->_ub_ep != NULL);
+    CHECK(ub_transport->_ub_ep != nullptr);
     SocketUniquePtr s;
     if (Socket::Address(socket->id(), &s) != 0) {
         return;
@@ -211,7 +211,7 @@ static void TryReadOnTcpDuringRdmaEst(Socket* s) {
 void UBShmEndpoint::OnNewDataFromTcp(Socket* m) {
     auto* ub_transport = static_cast<UBShmTransport*>(m->_transport.get());
     UBShmEndpoint* ep = ub_transport->GetUBShmEp();
-    CHECK(ep != NULL);
+    CHECK(ep != nullptr);
 
     int progress = Socket::PROGRESS_INIT;
     while (true) {
@@ -267,7 +267,7 @@ bool HelloNegotiationValid(HelloMessage& msg) {
 static const int WAIT_TIMEOUT_MS = 50;
 
 int UBShmEndpoint::ReadFromFd(void* data, size_t len) {
-    CHECK(data != NULL);
+    CHECK(data != nullptr);
     int nr = 0;
     size_t received = 0;
     do {
@@ -295,7 +295,7 @@ int UBShmEndpoint::ReadFromFd(void* data, size_t len) {
 }
 
 int UBShmEndpoint::WriteToFd(void* data, size_t len) {
-    CHECK(data != NULL);
+    CHECK(data != nullptr);
     int nw = 0;
     size_t written = 0;
     do {
@@ -341,14 +341,14 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     ep->_state = C_ALLOC_SHM;
     auto* ub_transport = static_cast<UBShmTransport*>(s->_transport.get());
     size_t local_shm_len = (size_t)(FLAGS_data_queue_size) * MB_TO_BYTE;
-    SHM local_trx_shm = {NULL, local_shm_len, 0, {0}, (uint32_t)s->fd()};
+    SHM local_trx_shm = {nullptr, local_shm_len, 0, {0}, (uint32_t)s->fd()};
     auto shm_name_str = butil::endpoint2str(s->local_side());
     const char* shm_name = shm_name_str.c_str();
     if (ep->AllocateClientResources(&local_trx_shm, shm_name) < 0) {
         LOG(WARNING) << "Fallback to tcp:" << s->description();
         ub_transport->_ub_state = UBShmTransport::UB_OFF;
         ep->_state = FALLBACK_TCP;
-        return NULL;
+        return nullptr;
     }
 
     ep->_state = C_HELLO_SEND;
@@ -366,7 +366,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
     LOG_IF(INFO, FLAGS_ub_trace_verbose) << "client handshake message : " << local_msg.toString();
 
@@ -377,14 +377,14 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
     if (memcmp(data, MAGIC_STR, MAGIC_STR_LEN) != 0) {
         LOG(WARNING) << "Read unexpected data during handshake:" << s->description();
         s->SetFailed(EPROTO, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(EPROTO));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     if (ep->ReadFromFd(data, HELLO_MSG_LEN_MIN - MAGIC_STR_LEN) < 0) {
@@ -393,7 +393,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
     HelloMessage remote_msg;
     remote_msg.Deserialize(data);
@@ -403,7 +403,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(EPROTO, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(EPROTO));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
@@ -438,7 +438,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     if (ub_transport->_ub_state == UBShmTransport::UB_ON) {
@@ -454,7 +454,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
 
     errno = 0;
 
-    return NULL;
+    return nullptr;
 }
 
 void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
@@ -473,7 +473,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
     auto* ub_transport = static_cast<UBShmTransport*>(s->_transport.get());
     if (memcmp(data, MAGIC_STR, MAGIC_STR_LEN) != 0) {
@@ -484,7 +484,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->_state = FALLBACK_TCP;
         ub_transport->_ub_state = UBShmTransport::UB_OFF;
         ep->TryReadOnTcp();
-        return NULL;
+        return nullptr;
     }
 
     if (ep->ReadFromFd(data, g_ub_hello_msg_len - MAGIC_STR_LEN) < 0) {
@@ -493,7 +493,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     HelloMessage remote_msg;
@@ -505,7 +505,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(EPROTO, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(EPROTO));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
     if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
         // TODO: Read Hello Message customized header
@@ -518,17 +518,17 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         ub_transport->_ub_state = UBShmTransport::UB_OFF;
     } else {
         ep->_state = S_ALLOC_SHM;
-        ubring::SHM remote_trx_shm = {NULL, remote_msg.len, 0, {0}, (uint32_t)ep->_socket->fd()};
+        ubring::SHM remote_trx_shm = {nullptr, remote_msg.len, 0, {0}, (uint32_t)ep->_socket->fd()};
         strncpy(remote_trx_shm.name, remote_msg.shm_name, SHM_MAX_NAME_BUFF_LEN);
 
         size_t local_shm_len = (size_t)(FLAGS_data_queue_size) * MB_TO_BYTE;
         // server-side shared memory name
-        ubring::SHM local_trx_shm = {NULL, local_shm_len, 0, {0}, (uint32_t)ep->_socket->fd()};
+        ubring::SHM local_trx_shm = {nullptr, local_shm_len, 0, {0}, (uint32_t)ep->_socket->fd()};
         char client_name[SHM_MAX_NAME_BUFF_LEN];
         strncpy(client_name, remote_msg.shm_name, SHM_MAX_NAME_BUFF_LEN);
 
         char *client_ip_port = strrchr(client_name, '_');
-        if (client_ip_port != NULL) {
+        if (client_ip_port != nullptr) {
             *client_ip_port = '\0';
         }
         int result = snprintf(local_trx_shm.name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
@@ -564,7 +564,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete ub handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     ep->_state = S_ACK_WAIT;
@@ -574,7 +574,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         s->SetFailed(saved_errno, "Fail to complete ubring handshake from %s: %s",
                 s->description().c_str(), berror(saved_errno));
         ep->_state = FAILED;
-        return NULL;
+        return nullptr;
     }
 
     uint32_t* tmp = (uint32_t*)data;
@@ -586,7 +586,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
             s->SetFailed(EPROTO, "Fail to complete ub handshake from %s: %s",
                     s->description().c_str(), berror(EPROTO));
             ep->_state = FAILED;
-            return NULL;
+            return nullptr;
         } else {
             ub_transport->_ub_state = UBShmTransport::UB_ON;
             ep->_state = ESTABLISHED;
@@ -602,7 +602,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
     }
     ep->TryReadOnTcp();
 
-    return NULL;
+    return nullptr;
 }
 
 bool UBShmEndpoint::IsWritable() const {
@@ -671,22 +671,22 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM* local_trx_shm, const cha
         return 0;
     }
 
-    CHECK(_ub_ring == NULL);
+    CHECK(_ub_ring == nullptr);
     // TODO: Pooling management
     _ub_ring = new UBRing();
 
     SocketOptions options;
     options.user = this;
     options.keytable_pool = _socket->_keytable_pool;
-    if (Socket::Create(options, &_cq_sid) < 0) {
-        PLOG(WARNING) << "Fail to create socket for cq";
+    if (Socket::Create(options, &_poller_sid) < 0) {
+        PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
     int ret = _ub_ring->UbrAllocateLocalShm(local_trx_shm, shm_name);
     if (ret != 0) {
         return ret;
     }
-    PollerRegisterEvent(CqSidOp::ADD, EPOLLIN);
+    PollerRegisterEvent(PollerSidOp::ADD, EPOLLIN);
     return 0;
 }
 
@@ -696,23 +696,22 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm, ubring::
         return 0;
     }
 
-    CHECK(_ub_ring == NULL);
+    CHECK(_ub_ring == nullptr);
     // TODO: Pooling management
     _ub_ring = new UBRing();
 
     SocketOptions options;
     options.user = this;
     options.keytable_pool = _socket->_keytable_pool;
-    if (Socket::Create(options, &_cq_sid) < 0) {
-        PLOG(WARNING) << "Fail to create socket for cq";
+    if (Socket::Create(options, &_poller_sid) < 0) {
+        PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
     int ret = _ub_ring->UbrAllocateServerShm(remote_trx_shm, local_trx_shm);
     if (ret != 0) {
         return ret;
     }
-    // TODO mwj should polling start after the connection is established?
-    PollerRegisterEvent(CqSidOp::ADD, EPOLLIN);
+    PollerRegisterEvent(PollerSidOp::ADD, EPOLLIN);
     return ret;
 }
 
@@ -720,12 +719,12 @@ void UBShmEndpoint::DeallocateResources() {
     if (!_ub_ring) {
         return;
     }
-    PollerRegisterEvent(CqSidOp::REMOVE);
+    PollerRegisterEvent(PollerSidOp::REMOVE);
     _ub_ring->UbrTrxClose();
-    if (INVALID_SOCKET_ID != _cq_sid) {
+    if (INVALID_SOCKET_ID != _poller_sid) {
         SocketUniquePtr s;
-        if (Socket::Address(_cq_sid, &s) == 0) {
-            s->_user = NULL;
+        if (Socket::Address(_poller_sid, &s) == 0) {
+            s->_user = nullptr;
             s->_fd = -1;
             s->SetFailed();
         }
@@ -840,27 +839,26 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
         std::unique_ptr<FnArgs> args(static_cast<FnArgs*>(p));
         auto poller = args->poller;
         auto running = args->running;
-        std::unordered_set<CqSidOp, CqSidOpHash, CqSidOpEqual> cq_sids;
-        CqSidOp op;
+        std::unordered_set<PollerSidOp, PollerSidOpHash, PollerSidOpEqual> poller_sids;
+        PollerSidOp op;
 
         if (poller->init_fn) {
             poller->init_fn();
         }
         while (running->load(std::memory_order_relaxed)) {
             while (poller->op_queue.Dequeue(op)) {
-                if (op.type == CqSidOp::ADD) {
-                    cq_sids.emplace(op);
-                } else if (op.type == CqSidOp::REMOVE) {
-                    cq_sids.erase(op);
-                    
-                } else if (op.type == CqSidOp::MOD) {
-                    cq_sids.erase(op);
-                    cq_sids.emplace(op);
+                if (op.type == PollerSidOp::ADD) {
+                    poller_sids.emplace(op);
+                } else if (op.type == PollerSidOp::REMOVE) {
+                    poller_sids.erase(op);
+                } else if (op.type == PollerSidOp::MOD) {
+                    poller_sids.erase(op);
+                    poller_sids.emplace(op);
                 }
             }
-            for (auto cq : cq_sids) {
+            for (const auto& poller_sid : poller_sids) {
                 SocketUniquePtr s;
-                if (Socket::Address(cq.sid, &s) < 0) {
+                if (Socket::Address(poller_sid.sid, &s) < 0) {
                     continue;
                 }
                 UBShmEndpoint* ep = static_cast<UBShmEndpoint*>(s->user());
@@ -868,12 +866,12 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
                     continue;
                 }
 
-                if (cq.event & EPOLLIN) {
-                    PollIn(ep, cq.event);
+                if (poller_sid.events & EPOLLIN) {
+                    PollIn(ep, poller_sid.events);
                 }
 
-                if (cq.event & EPOLLOUT) {
-                    PollOut(ep, cq.event);
+                if (poller_sid.events & EPOLLOUT) {
+                    PollOut(ep, poller_sid.events);
                 }
             }
             if (poller->callback) {
@@ -914,17 +912,18 @@ void UBShmEndpoint::PollingModeRelease(bthread_tag_t tag) {
     auto& running = group.running;
     running.store(false, std::memory_order_relaxed);
     for (int i = 0; i < FLAGS_ub_poller_num; ++i) {
-        bthread_join(pollers[i].tid, NULL);
+        bthread_join(pollers[i].tid, nullptr);
     }
 }
 
-void UBShmEndpoint::PollerRegisterEvent(CqSidOp::OpType op, uint32_t events) {
-    auto index = butil::fmix32(_cq_sid) % FLAGS_ub_poller_num;
+void UBShmEndpoint::PollerRegisterEvent(PollerSidOp::OpType op,
+                                        uint32_t events) {
+    auto index = butil::fmix32(_poller_sid) % FLAGS_ub_poller_num;
     auto& group = _poller_groups[bthread_self_tag()];
     auto& pollers = group.pollers;
     auto& poller = pollers[index];
-    if (INVALID_SOCKET_ID != _cq_sid) {
-        poller.op_queue.Enqueue(CqSidOp{_cq_sid, events, op});
+    if (INVALID_SOCKET_ID != _poller_sid) {
+        poller.op_queue.Enqueue(PollerSidOp{_poller_sid, events, op});
     }
 }
 

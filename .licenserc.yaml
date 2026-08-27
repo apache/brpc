@@ -34,6 +34,7 @@ header:
     - 'example/*/*.json'
     - 'example/*/*.pem'
     - 'example/*/*.port'
+    - 'example/build_with_bazel_module/.bazelversion'
     - 'src/bthread/offset_inl.list'
     - 'test/*.crt'
     - 'test/*.key'

@@ -95,7 +95,7 @@ static std::string s_password;
 
 static std::string TestDataDir() {
     char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    if (getcwd(cwd, sizeof(cwd)) == nullptr) {
         return std::string("/tmp/mysql_txn_data_for_test");
     }
     return std::string(cwd) + "/mysql_txn_data_for_test";
@@ -199,7 +199,7 @@ static void RunMysqlServer() {
             (char*)logerr_arg.c_str(),
             (char*)"--mysqlx=OFF",
             (char*)"--bind-address=127.0.0.1",
-            NULL};
+            nullptr};
         if (execvp(MYSQLD_BIN, argv) < 0) {
             puts("Fail to run " MYSQLD_BIN);
             exit(1);
@@ -232,7 +232,7 @@ static bool RunPlain(brpc::Channel& channel, const std::string& sql,
         return false;
     }
     brpc::Controller cntl;
-    channel.CallMethod(NULL, &cntl, &req, resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, resp, nullptr);
     return !cntl.Failed();
 }
 
@@ -245,7 +245,7 @@ static bool RunInTx(brpc::Channel& channel, const brpc::MysqlTransaction* tx,
         return false;
     }
     brpc::Controller cntl;
-    channel.CallMethod(NULL, &cntl, &req, resp, NULL);
+    channel.CallMethod(nullptr, &cntl, &req, resp, nullptr);
     return !cntl.Failed();
 }
 
@@ -353,7 +353,7 @@ TEST_F(MysqlTxnIntegrationTest, CommitPublishesRollbackRestores) {
     {
         brpc::MysqlTransactionUniquePtr tx =
             brpc::NewMysqlTransaction(_channel, brpc::MysqlTransactionOptions());
-        ASSERT_TRUE(tx != NULL) << "failed to start transaction";
+        ASSERT_TRUE(tx != nullptr) << "failed to start transaction";
         ASSERT_TRUE(RunInTx(_channel, tx.get(),
                             "INSERT INTO " + Table() + " VALUES (3107, 'quill')",
                             &resp));
@@ -377,7 +377,7 @@ TEST_F(MysqlTxnIntegrationTest, CommitPublishesRollbackRestores) {
     {
         brpc::MysqlTransactionUniquePtr tx =
             brpc::NewMysqlTransaction(_channel, brpc::MysqlTransactionOptions());
-        ASSERT_TRUE(tx != NULL);
+        ASSERT_TRUE(tx != nullptr);
         ASSERT_TRUE(RunInTx(_channel, tx.get(),
                             "INSERT INTO " + Table() + " VALUES (5288, 'brindle')",
                             &resp));
@@ -391,7 +391,7 @@ TEST_F(MysqlTxnIntegrationTest, CommitPublishesRollbackRestores) {
     {
         brpc::MysqlTransactionUniquePtr tx =
             brpc::NewMysqlTransaction(_channel, brpc::MysqlTransactionOptions());
-        ASSERT_TRUE(tx != NULL);
+        ASSERT_TRUE(tx != nullptr);
         ASSERT_TRUE(RunInTx(_channel, tx.get(),
                             "DELETE FROM " + Table() + " WHERE id = 3107", &resp));
         EXPECT_TRUE(ExpectOk(resp));
@@ -414,7 +414,7 @@ TEST_F(MysqlTxnIntegrationTest, CommitPublishesRollbackRestores) {
 TEST_F(MysqlTxnIntegrationTest, OwnWriteVisibleOthersIsolated) {
     brpc::MysqlTransactionUniquePtr tx =
         brpc::NewMysqlTransaction(_channel, brpc::MysqlTransactionOptions());
-    ASSERT_TRUE(tx != NULL);
+    ASSERT_TRUE(tx != nullptr);
 
     brpc::MysqlResponse resp;
     ASSERT_TRUE(RunInTx(_channel, tx.get(),
@@ -465,7 +465,7 @@ TEST_F(MysqlTxnIntegrationTest, AutocommitOnDurableOffRollbackable) {
     {
         brpc::MysqlTransactionUniquePtr tx =
             brpc::NewMysqlTransaction(_channel, brpc::MysqlTransactionOptions());
-        ASSERT_TRUE(tx != NULL);
+        ASSERT_TRUE(tx != nullptr);
         ASSERT_TRUE(RunInTx(_channel, tx.get(), "SET autocommit = 0", &resp));
         EXPECT_TRUE(ExpectOk(resp));
         ASSERT_TRUE(RunInTx(_channel, tx.get(),
@@ -491,7 +491,7 @@ TEST_F(MysqlTxnIntegrationTest, GroupedInsertsThenSavepointPartialUndo) {
     {
         brpc::MysqlTransactionUniquePtr tx =
             brpc::NewMysqlTransaction(_channel, brpc::MysqlTransactionOptions());
-        ASSERT_TRUE(tx != NULL);
+        ASSERT_TRUE(tx != nullptr);
         ASSERT_TRUE(RunInTx(_channel, tx.get(),
                             "INSERT INTO " + Table() + " VALUES (211, 'one')",
                             &resp));
@@ -518,7 +518,7 @@ TEST_F(MysqlTxnIntegrationTest, GroupedInsertsThenSavepointPartialUndo) {
     {
         brpc::MysqlTransactionUniquePtr tx =
             brpc::NewMysqlTransaction(_channel, brpc::MysqlTransactionOptions());
-        ASSERT_TRUE(tx != NULL);
+        ASSERT_TRUE(tx != nullptr);
         ASSERT_TRUE(RunInTx(_channel, tx.get(),
                             "INSERT INTO " + Table() + " VALUES (901, 'kept')",
                             &resp));
@@ -565,7 +565,7 @@ TEST_F(MysqlTxnIntegrationTest, DuplicateKeyAndReadOnlyWriteReportErr) {
     {
         brpc::MysqlTransactionUniquePtr tx =
             brpc::NewMysqlTransaction(_channel, brpc::MysqlTransactionOptions());
-        ASSERT_TRUE(tx != NULL);
+        ASSERT_TRUE(tx != nullptr);
         // Duplicate-key insert -> ERR packet (errno 1062, ER_DUP_ENTRY).
         ASSERT_TRUE(RunInTx(_channel, tx.get(),
                             "INSERT INTO " + Table() + " VALUES (1505, 'clash')",
@@ -585,7 +585,7 @@ TEST_F(MysqlTxnIntegrationTest, DuplicateKeyAndReadOnlyWriteReportErr) {
         opts.readonly = true;
         brpc::MysqlTransactionUniquePtr tx =
             brpc::NewMysqlTransaction(_channel, opts);
-        ASSERT_TRUE(tx != NULL) << "failed to start read-only transaction";
+        ASSERT_TRUE(tx != nullptr) << "failed to start read-only transaction";
         ASSERT_TRUE(RunInTx(_channel, tx.get(),
                             "INSERT INTO " + Table() + " VALUES (1777, 'nope')",
                             &resp));

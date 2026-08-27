@@ -38,7 +38,7 @@ struct IndexTableOptions {
     IndexTableOptions()
         : max_size(0)
         , start_index(0)
-        , static_table(NULL)
+        , static_table(nullptr)
         , static_table_size(0)
         , need_indexes(false)
     {}
@@ -83,7 +83,7 @@ public:
 
     const Header* HeaderAt(int index) const {
         if (BAIDU_UNLIKELY(index < _start_index)) {
-            return NULL;
+            return nullptr;
         }
         return _header_queue.bottom(index - _start_index);
     };
@@ -177,8 +177,6 @@ public:
     }
 
     void ResetMaxSize(size_t new_max_size) {
-        LOG(INFO) << this << ".size=" << _size << " new_max_size=" << new_max_size
-                  << " max_size=" << _max_size;
         if (new_max_size > _max_size) {
             //LOG(ERROR) << "Invalid new_max_size=" << new_max_size;
             //return -1;
@@ -223,10 +221,22 @@ int IndexTable::Init(const IndexTableOptions& options) {
         num_headers = options.static_table_size;
         _max_size = UINT_MAX;
     } else {
-        num_headers = options.max_size / (32 + 2);
+        num_headers = options.max_size / (32 + 1);
         //                                     ^
-        // name and value both have at least one byte in.
+        // AddHeader() only requires a non-empty name; the value may be empty,
+        // so the smallest possible entry is name(1) + value(0) + 32 = 33 bytes
+        // (rfc7541 section 4.1). Sizing the queue for 34-byte entries under-
+        // provisions it and lets a peer sending many 33-byte entries fill the
+        // queue before eviction triggers, tripping CHECK(!full()) in AddHeader.
         _max_size = options.max_size;
+    }
+    // A dynamic table smaller than the 33-byte minimum entry (including the
+    // valid max_size == 0 case that disables it) yields num_headers == 0.
+    // malloc(0) may return NULL and make Init fail on some platforms, so keep
+    // at least one slot. No entry can actually be stored since entry_size >
+    // _max_size still holds in AddHeader().
+    if (num_headers == 0) {
+        num_headers = 1;
     }
     void *header_queue_storage = malloc(num_headers * sizeof(Header));
     if (!header_queue_storage) {
@@ -319,10 +329,10 @@ public:
 
     const HuffmanNode* node(NodeId id) const {
         if (id == 0u) {
-            return NULL;
+            return nullptr;
         }
         if (id > _node_memory.size()) {
-            return NULL;
+            return nullptr;
         }
         return &_node_memory[id - 1];
     }
@@ -386,7 +396,7 @@ public:
         _out->push_back(_partial_byte);
         _partial_byte = 0;
         _remain_bit = 0;
-        _out = NULL;
+        _out = nullptr;
         ++_out_bytes;
     }
 
@@ -496,8 +506,8 @@ inline void EncodeInteger(butil::IOBufAppender* out, uint8_t msb,
 }
 
 // Static variables
-static HuffmanTree* s_huffman_tree = NULL;
-static IndexTable* s_static_table = NULL;
+static HuffmanTree* s_huffman_tree = nullptr;
+static IndexTable* s_static_table = nullptr;
 static pthread_once_t s_create_once = PTHREAD_ONCE_INIT;
 
 static void CreateStaticTableOrDie() {
@@ -530,7 +540,7 @@ static const size_t MAX_HPACK_INTEGER = 10 * 1024 * 1024ul;
 
 inline ssize_t DecodeInteger(butil::IOBufBytesIterator& iter,
                              uint8_t prefix_size, uint32_t* value) {
-    if (iter == NULL) {
+    if (iter == nullptr) {
         return 0; // No enough data
     }
     uint8_t first_byte = *iter;
@@ -615,7 +625,7 @@ inline void EncodeString(butil::IOBufAppender* out, const std::string& s,
 }
 
 inline ssize_t DecodeString(butil::IOBufBytesIterator& iter, std::string* out) {
-    if (iter == NULL) {
+    if (iter == nullptr) {
         return 0;
     }
     const bool huffman = *iter & 0x80;
@@ -634,7 +644,7 @@ inline ssize_t DecodeString(butil::IOBufBytesIterator& iter, std::string* out) {
         return in_bytes;
     }
     HuffmanDecoder d(out, s_huffman_tree);
-    for (; iter != NULL && length; ++iter, --length) {
+    for (; iter != nullptr && length; ++iter, --length) {
         if (d.Decode(*iter) != 0) {
             return -1;
         }
@@ -646,19 +656,19 @@ inline ssize_t DecodeString(butil::IOBufBytesIterator& iter, std::string* out) {
 }
 
 HPacker::HPacker()
-    : _encode_table(NULL)
-    , _decode_table(NULL) {
+    : _encode_table(nullptr)
+    , _decode_table(nullptr) {
     CreateStaticTableOnceOrDie();
 }
 
 HPacker::~HPacker() {
     if (_encode_table) {
         delete _encode_table;
-        _encode_table = NULL;
+        _encode_table = nullptr;
     }
     if (_decode_table) {
         delete _decode_table;
-        _decode_table = NULL;
+        _decode_table = nullptr;
     }
 }
 
@@ -752,7 +762,7 @@ inline ssize_t HPacker::DecodeWithKnownPrefix(
     }
     if (index != 0) {
         const Header* indexed_header = HeaderAt(index);
-        if (indexed_header == NULL) {
+        if (indexed_header == nullptr) {
             LOG(ERROR) << "No header at index=" << index;
             return -1;
         }
@@ -776,7 +786,7 @@ inline ssize_t HPacker::DecodeWithKnownPrefix(
 ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
     ssize_t skipped_bytes = 0;
 decode_next:
-    if (iter == NULL) {
+    if (iter == nullptr) {
         return 0;
     }
     const uint8_t first_byte = *iter;
@@ -799,7 +809,7 @@ decode_next:
                 return index_bytes;
             }
             const Header* indexed_header = HeaderAt(index);
-            if (indexed_header == NULL) {
+            if (indexed_header == nullptr) {
                 LOG(ERROR) << "No header at index=" << index;
                 return -1;
             }

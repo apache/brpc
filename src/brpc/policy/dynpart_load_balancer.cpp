@@ -155,7 +155,7 @@ int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
 }
 
 DynPartLoadBalancer* DynPartLoadBalancer::New(const butil::StringPiece&) const {
-    return new (std::nothrow) DynPartLoadBalancer;
+    return new DynPartLoadBalancer;
 }
 
 void DynPartLoadBalancer::Destroy() {

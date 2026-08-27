@@ -171,7 +171,7 @@ bool DetermineDevShmExecutable() {
     CHECK_GE(sysconf_result, 0);
     size_t pagesize = static_cast<size_t>(sysconf_result);
     CHECK_GE(sizeof(pagesize), sizeof(sysconf_result));
-    void* mapping = mmap(NULL, pagesize, PROT_READ, MAP_SHARED, fd.get(), 0);
+    void* mapping = mmap(nullptr, pagesize, PROT_READ, MAP_SHARED, fd.get(), 0);
     if (mapping != MAP_FAILED) {
       if (mprotect(mapping, pagesize, PROT_READ | PROT_EXEC) == 0)
         result = true;
@@ -187,7 +187,7 @@ bool DetermineDevShmExecutable() {
 FilePath MakeAbsoluteFilePath(const FilePath& input) {
   ThreadRestrictions::AssertIOAllowed();
   char full_path[PATH_MAX];
-  if (realpath(input.value().c_str(), full_path) == NULL)
+  if (realpath(input.value().c_str(), full_path) == nullptr)
     return FilePath();
   return FilePath(full_path);
 }
@@ -501,7 +501,7 @@ bool CreateTemporaryFile(FilePath* path) {
 FILE* CreateAndOpenTemporaryFileInDir(const FilePath& dir, FilePath* path) {
   int fd = CreateAndOpenFdForTemporaryFile(dir, path);
   if (fd < 0)
-    return NULL;
+    return nullptr;
 
   FILE* file = fdopen(fd, "a+");
   if (!file)
@@ -667,7 +667,7 @@ bool GetFileInfo(const FilePath& file_path, File::Info* results) {
 
 FILE* OpenFile(const FilePath& filename, const char* mode) {
   ThreadRestrictions::AssertIOAllowed();
-  FILE* result = NULL;
+  FILE* result = nullptr;
   do {
     result = fopen(filename.value().c_str(), mode);
   } while (!result && errno == EINTR);

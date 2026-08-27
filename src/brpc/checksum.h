@@ -26,14 +26,14 @@ namespace brpc {
 
 struct ChecksumIn {
     ChecksumIn(const butil::IOBuf* buf, Controller* cntl,
-               const butil::IOBuf* attachment = NULL)
+               const butil::IOBuf* attachment = nullptr)
         : buf(buf), cntl(cntl), attachment(attachment) {}
 
     const butil::IOBuf* buf;
     Controller* cntl;
-    // Attachment to fold into the checksum in addition to `buf', or NULL if
+    // Attachment to fold into the checksum in addition to `buf', or nullptr if
     // the checksum should cover `buf' only (the default, pre-existing
-    // behavior). When non-NULL, implementations must extend the checksum
+    // behavior). When non-nullptr, implementations must extend the checksum
     // with `buf' first and `attachment' second, so that both sides of the
     // RPC (which independently decide whether to pass an attachment here
     // based on Controller::request/response_checksum_attachment()) compute

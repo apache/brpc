@@ -46,7 +46,7 @@ uint32_t MysqlStatement::StatementId(SocketId socket_id) const {
             return 0;
         }
         const MysqlStatementId* p = ptr->seek(socket_id);
-        if (p == NULL) {
+        if (p == nullptr) {
             LOG(WARNING) << "MysqlStatement::StatementId: no prepared statement id "
                           "cached for socket_id=" << socket_id
                        << " (statement not found / not prepared on this "

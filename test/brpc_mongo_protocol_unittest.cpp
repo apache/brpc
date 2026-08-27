@@ -115,7 +115,7 @@ protected:
 
     void ProcessMessage(void (*process)(brpc::InputMessageBase*),
                         brpc::InputMessageBase* msg, bool set_eof) {
-        if (msg->_socket == NULL) {
+        if (msg->_socket == nullptr) {
             _socket->ReAddress(&msg->_socket);
         }
         msg->_arg = &_server;

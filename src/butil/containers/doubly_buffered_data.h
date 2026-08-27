@@ -94,7 +94,7 @@ public:
     class ScopedPtr {
     friend class DoublyBufferedData;
     public:
-        ScopedPtr() : _data(NULL), _index(0), _w(NULL) {}
+        ScopedPtr() : _data(nullptr), _index(0), _w(nullptr) {}
         ~ScopedPtr() {
             if (_w) {
                 if (AllowBthreadSuspended) {
@@ -202,7 +202,7 @@ public:
 
     struct BAIDU_CACHELINE_ALIGNMENT ThreadBlock {
         WrapperSharedPtr at(size_t offset) {
-            if (NULL == _data[offset]) {
+            if (nullptr == _data[offset]) {
                 _data[offset] = std::make_shared<Wrapper>();
             }
             return _data[offset];
@@ -237,9 +237,9 @@ public:
     static WrapperSharedPtr get_or_create_tls_data(WrapperTLSId id) {
         if (BAIDU_UNLIKELY(id < 0)) {
             CHECK(false) << "Invalid id=" << id;
-            return NULL;
+            return nullptr;
         }
-        if (_s_tls_blocks == NULL) {
+        if (_s_tls_blocks == nullptr) {
             _s_tls_blocks = new std::vector<ThreadBlock*>;
             butil::thread_atexit(_destroy_tls_blocks);
         }
@@ -249,7 +249,7 @@ public:
             _s_tls_blocks->resize(std::max(block_id + 1, 32ul));
         }
         ThreadBlock* tb = (*_s_tls_blocks)[block_id];
-        if (tb == NULL) {
+        if (tb == nullptr) {
             tb = new ThreadBlock;
             (*_s_tls_blocks)[block_id] = tb;
         }
@@ -265,7 +265,7 @@ private:
             delete (*_s_tls_blocks)[i];
         }
         delete _s_tls_blocks;
-        _s_tls_blocks = NULL;
+        _s_tls_blocks = nullptr;
     }
 
     inline static std::deque<WrapperTLSId>& _get_free_ids() {
@@ -288,7 +288,7 @@ pthread_mutex_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGro
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 std::deque<typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSId>*
-        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_free_ids = NULL;
+        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_free_ids = nullptr;
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSId
@@ -296,7 +296,7 @@ typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSId
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 __thread std::vector<typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::ThreadBlock*>*
-        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_tls_blocks = NULL;
+        DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperTLSGroup::_s_tls_blocks = nullptr;
 
 template <typename T, typename TLS, bool AllowBthreadSuspended>
 class BAIDU_CACHELINE_ALIGNMENT DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Wrapper
@@ -304,12 +304,12 @@ class BAIDU_CACHELINE_ALIGNMENT DoublyBufferedData<T, TLS, AllowBthreadSuspended
 friend class DoublyBufferedData;
 public:
     explicit Wrapper()
-        : _control(NULL)
+        : _control(nullptr)
         , _modify_wait(false) {
-        pthread_mutex_init(&_mutex, NULL);
+        pthread_mutex_init(&_mutex, nullptr);
         if (AllowBthreadSuspended) {
-            pthread_cond_init(&_cond[0], NULL);
-            pthread_cond_init(&_cond[1], NULL);
+            pthread_cond_init(&_cond[0], nullptr);
+            pthread_cond_init(&_cond[1], nullptr);
         }
     }
     
@@ -403,15 +403,15 @@ template <typename T, typename TLS, bool AllowBthreadSuspended>
 typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::WrapperSharedPtr
 DoublyBufferedData<T, TLS, AllowBthreadSuspended>::GetWrapper() {
     WrapperSharedPtr w = WrapperTLSGroup::get_or_create_tls_data(_wrapper_key);
-    if (NULL == w) {
-        return NULL;
+    if (nullptr == w) {
+        return nullptr;
     }
     if (w->_control == this) {
         return w;
     }
-    if (w->_control != NULL) {
+    if (w->_control != nullptr) {
         LOG(FATAL) << "Get wrapper from tls but control != this";
-        return NULL;
+        return nullptr;
     }
     try {
         w->_control = this;
@@ -425,7 +425,7 @@ DoublyBufferedData<T, TLS, AllowBthreadSuspended>::GetWrapper() {
                 }),
             _wrappers.end());
     } catch (std::exception& e) {
-        return NULL;
+        return nullptr;
     }
     return w;
 }
@@ -438,11 +438,11 @@ DoublyBufferedData<T, TLS, AllowBthreadSuspended>::DoublyBufferedData()
                   "Forbidden to allow bthread suspended with non-Void TLS");
 
     _wrappers.reserve(64);
-    pthread_mutex_init(&_modify_mutex, NULL);
-    pthread_mutex_init(&_wrappers_mutex, NULL);
+    pthread_mutex_init(&_modify_mutex, nullptr);
+    pthread_mutex_init(&_wrappers_mutex, nullptr);
     _wrapper_key = WrapperTLSGroup::key_create();
     // Initialize _data for some POD types. This is essential for pointer
-    // types because they should be Read() as NULL before any Modify().
+    // types because they should be Read() as nullptr before any Modify().
     if (is_integral<T>::value || is_floating_point<T>::value ||
         is_pointer<T>::value || is_member_function_pointer<T>::value) {
         _data[0] = T();
@@ -459,8 +459,8 @@ DoublyBufferedData<T, TLS, AllowBthreadSuspended>::~DoublyBufferedData() {
         BAIDU_SCOPED_LOCK(_wrappers_mutex);
         for (size_t i = 0; i < _wrappers.size(); ++i) {
             WrapperSharedPtr w = _wrappers[i].lock();
-            if (NULL != w) {
-                w->_control = NULL;  // hack: disable removal.
+            if (nullptr != w) {
+                w->_control = nullptr;  // hack: disable removal.
             }
         }
         _wrappers.clear();
@@ -475,7 +475,7 @@ template <typename T, typename TLS, bool AllowBthreadSuspended>
 int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(
     typename DoublyBufferedData<T, TLS, AllowBthreadSuspended>::ScopedPtr* ptr) {
     WrapperSharedPtr w = GetWrapper();
-    if (BAIDU_UNLIKELY(w == NULL)) {
+    if (BAIDU_UNLIKELY(w == nullptr)) {
         return -1;
     }
 
@@ -541,7 +541,7 @@ size_t DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Modify(Fn&& fn, Args&&
             std::remove_if(_wrappers.begin(), _wrappers.end(),
                            [bg_index](const WrapperWeakPtr& weak) {
                 WrapperSharedPtr w = weak.lock();
-                bool expired = NULL == w;
+                bool expired = nullptr == w;
                 if (!expired) {
                     // Notify all threads waiting for read done.
                     if (AllowBthreadSuspended) {

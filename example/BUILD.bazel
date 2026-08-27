@@ -37,6 +37,9 @@ COPTS = [
 }) + select({
     "//bazel/config:brpc_with_rdma": ["-DBRPC_WITH_RDMA=1"],
     "//conditions:default": [""],
+}) + select({
+    "//bazel/config:brpc_with_ubring": ["-DBRPC_WITH_UBRING=1"],
+    "//conditions:default": [""],
 })
 
 brpc_proto_library(
@@ -50,6 +53,13 @@ brpc_proto_library(
     name = "cc_rdma_performance_proto",
     srcs = ["rdma_performance/test.proto"],
     include = "rdma_performance",
+    proto_deps = [],
+)
+
+brpc_proto_library(
+    name = "cc_ubring_performance_proto",
+    srcs = ["ubring_performance/test.proto"],
+    include = "ubring_performance",
     proto_deps = [],
 )
 
@@ -109,6 +119,36 @@ cc_binary(
     copts = COPTS + ["-DBRPC_WITH_RDMA=1"],
     deps = [
         ":cc_rdma_performance_proto",
+        "//:brpc",
+    ],
+)
+
+cc_binary(
+    name = "ubring_performance_server",
+    srcs = [
+        "ubring_performance/server.cpp",
+    ],
+    copts = COPTS,
+    includes = [
+        "ubring_performance",
+    ],
+    deps = [
+        ":cc_ubring_performance_proto",
+        "//:brpc",
+    ],
+)
+
+cc_binary(
+    name = "ubring_performance_client",
+    srcs = [
+        "ubring_performance/client.cpp",
+    ],
+    copts = COPTS,
+    includes = [
+        "ubring_performance",
+    ],
+    deps = [
+        ":cc_ubring_performance_proto",
         "//:brpc",
     ],
 )

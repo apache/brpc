@@ -55,7 +55,7 @@ TEST_F(EventDispatcherTest, versioned_ref) {
 
 struct UserData;
 
-UserData* g_user_data = NULL;
+UserData* g_user_data = nullptr;
 
 struct UserData : public brpc::VersionedRefWithId<UserData> {
     explicit UserData(Forbidden f)
@@ -72,7 +72,7 @@ struct UserData : public brpc::VersionedRefWithId<UserData> {
 
     void BeforeRecycled() {
         count.store(0, butil::memory_order_relaxed);
-        g_user_data = NULL;
+        g_user_data = nullptr;
     }
 
     void BeforeAdditionalRefReleased() {
@@ -117,7 +117,7 @@ void* VRefThread(void* arg) {
     while (!vref_thread_stop) {
         TestVRef(id);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(EventDispatcherTest, versioned_ref_with_id) {
@@ -140,14 +140,14 @@ TEST_F(EventDispatcherTest, versioned_ref_with_id) {
     const size_t thread_num = 8;
     pthread_t tid[thread_num];
     for (auto& i : tid) {
-        ASSERT_EQ(0, pthread_create(&i, NULL, VRefThread, (void*)id));
+        ASSERT_EQ(0, pthread_create(&i, nullptr, VRefThread, (void*)id));
     }
 
     sleep(2);
 
     vref_thread_stop = true;
     for (const auto i : tid) {
-        pthread_join(i, NULL);
+        pthread_join(i, nullptr);
     }
 
     ASSERT_EQ(2, ptr->nref());
@@ -299,7 +299,7 @@ void* client_thread(void* arg) {
     }
     free(buf);
     EXPECT_EQ(0, close(m->fd));
-    return NULL;
+    return nullptr;
 }
 
 inline uint32_t fmix32 ( uint32_t h ) {
@@ -345,7 +345,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
         cm[i]->fd = fds[i * 2 + 1];
         cm[i]->times = 0;
         cm[i]->bytes = 0;
-        ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i]));
+        ASSERT_EQ(0, pthread_create(&cth[i], nullptr, client_thread, cm[i]));
     }
     
     LOG(INFO) << "Begin to profile... (5 seconds)";
@@ -369,7 +369,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
 
     client_stop = true;
     for (size_t i = 0; i < NCLIENT; ++i) {
-        pthread_join(cth[i], NULL);
+        pthread_join(cth[i], nullptr);
     }
     sleep(1);
 

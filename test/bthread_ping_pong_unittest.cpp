@@ -78,7 +78,7 @@ void* pipe_player(void* void_arg) {
         }
         ++arg->counter;
     }
-    return NULL;
+    return nullptr;
 }
 
 static const int INITIAL_FUTEX_VALUE = 0;
@@ -87,28 +87,28 @@ void* futex_player(void* void_arg) {
     PlayerArg* arg = static_cast<PlayerArg*>(void_arg);
     int counter = INITIAL_FUTEX_VALUE;
     while (!stop) {
-        int rc = bthread::futex_wait_private(arg->wait_addr, counter, NULL);
+        int rc = bthread::futex_wait_private(arg->wait_addr, counter, nullptr);
         ++counter;
         ++*arg->wake_addr;
         bthread::futex_wake_private(arg->wake_addr, 1);
         ++arg->counter;
         arg->wakeup += (rc == 0);
     }
-    return NULL;
+    return nullptr;
 }
 
 void* butex_player(void* void_arg) {
     PlayerArg* arg = static_cast<PlayerArg*>(void_arg);
     int counter = INITIAL_FUTEX_VALUE;
     while (!stop) {
-        int rc = bthread::butex_wait(arg->wait_addr, counter, NULL);
+        int rc = bthread::butex_wait(arg->wait_addr, counter, nullptr);
         ++counter;
         ++*arg->wake_addr;
         bthread::butex_wake(arg->wake_addr);
         ++arg->counter;
         arg->wakeup += (rc == 0);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(PingPongTest, ping_pong) {
@@ -161,14 +161,14 @@ TEST(PingPongTest, ping_pong) {
         pthread_t th1, th2;
         bthread_t bth1, bth2;
         if (!FLAGS_use_futex && !FLAGS_use_butex) {
-            ASSERT_EQ(0, pthread_create(&th1, NULL, pipe_player, arg1));
-            ASSERT_EQ(0, pthread_create(&th2, NULL, pipe_player, arg2));
+            ASSERT_EQ(0, pthread_create(&th1, nullptr, pipe_player, arg1));
+            ASSERT_EQ(0, pthread_create(&th2, nullptr, pipe_player, arg2));
         } else if (FLAGS_use_futex) {
-            ASSERT_EQ(0, pthread_create(&th1, NULL, futex_player, arg1));
-            ASSERT_EQ(0, pthread_create(&th2, NULL, futex_player, arg2));
+            ASSERT_EQ(0, pthread_create(&th1, nullptr, futex_player, arg1));
+            ASSERT_EQ(0, pthread_create(&th2, nullptr, futex_player, arg2));
         } else if (FLAGS_use_butex) {
-            ASSERT_EQ(0, bthread_start_background(&bth1, NULL, butex_player, arg1));
-            ASSERT_EQ(0, bthread_start_background(&bth2, NULL, butex_player, arg2));
+            ASSERT_EQ(0, bthread_start_background(&bth1, nullptr, butex_player, arg1));
+            ASSERT_EQ(0, bthread_start_background(&bth2, nullptr, butex_player, arg2));
         } else {
             ASSERT_TRUE(false);
         }

@@ -786,7 +786,7 @@ TEST(StringNumberConversionsTest, DoubleToString) {
 }
 
 TEST(StringNumberConversionsTest, HexEncode) {
-  std::string hex(HexEncode(NULL, 0));
+  std::string hex(HexEncode(nullptr, 0));
   EXPECT_EQ(hex.length(), 0U);
   unsigned char bytes[] = {0x01, 0xff, 0x02, 0xfe, 0x03, 0x80, 0x81};
   hex = HexEncode(bytes, sizeof(bytes));

@@ -68,8 +68,8 @@ public:
 
 private:
     void Run();
-    void (*_done)(int, void*){NULL};
-    void* _data{NULL};
+    void (*_done)(int, void*){nullptr};
+    void* _data{nullptr};
 };
 
 class BAIDU_CACHELINE_ALIGNMENT UBShmEndpoint : public SocketUser {
@@ -98,19 +98,19 @@ public:
     void PollerRegisterEpollOut(bool pollin) {
         uint32_t events = EPOLLOUT | EPOLLET;
         if (pollin) {
-            PollerRegisterEvent(CqSidOp::MOD, events | EPOLLIN);
+            PollerRegisterEvent(PollerSidOp::MOD, events | EPOLLIN);
             return;
         }
-        PollerRegisterEvent(CqSidOp::ADD, events);
+        PollerRegisterEvent(PollerSidOp::ADD, events);
     }
 
     void PollerUnRegisterEpollOut(bool pollin) {
         uint32_t events = EPOLLIN | EPOLLET;
         if (pollin) {
-            PollerRegisterEvent(CqSidOp::MOD, events);
+            PollerRegisterEvent(PollerSidOp::MOD, events);
             return;
         }
-        PollerRegisterEvent(CqSidOp::REMOVE);
+        PollerRegisterEvent(PollerSidOp::REMOVE);
     }
 
     // Callback when there is new epollin event on TCP fd
@@ -171,7 +171,7 @@ private:
     // return -1 if encounter other errno
     int WriteToFd(void* data, size_t len);
 
-    // Poll CQ and get the work completion
+    // Poll inbound and outbound UBRing events.
     static void PollIn(UBShmEndpoint* ep, uint32_t ep_event);
 
     static void PollOut(UBShmEndpoint* ep, uint32_t ep_event);
@@ -188,32 +188,33 @@ private:
     // ub resource
     ubring::UBRing* _ub_ring{nullptr};
 
-    SocketId _cq_sid;
+    // Synthetic SocketId registered with the UBRing poller.
+    SocketId _poller_sid;
 
     // butex for inform read events on TCP fd during handshake
     butil::atomic<int> *_read_butex;
 
     DISALLOW_COPY_AND_ASSIGN(UBShmEndpoint);
 
-    struct CqSidOp {
+    struct PollerSidOp {
         enum OpType {
             ADD,
             REMOVE,
             MOD
         };
         SocketId sid;
-        uint32_t event;
+        uint32_t events;
         OpType type;
     };
 
-    struct CqSidOpHash {
-        std::size_t operator()(const CqSidOp& op) const {
+    struct PollerSidOpHash {
+        std::size_t operator()(const PollerSidOp& op) const {
             return op.sid;
         }
     };
 
-    struct CqSidOpEqual {
-        bool operator()(const CqSidOp& lhs, const CqSidOp& rhs) const {
+    struct PollerSidOpEqual {
+        bool operator()(const PollerSidOp& lhs, const PollerSidOp& rhs) const {
             return lhs.sid == rhs.sid;
         }
     };
@@ -221,7 +222,8 @@ private:
     // Poller instance
     struct BAIDU_CACHELINE_ALIGNMENT Poller {
         bthread_t tid{INVALID_BTHREAD};
-        butil::MPSCQueue<CqSidOp, butil::ObjectPoolAllocator<CqSidOp>> op_queue;
+        butil::MPSCQueue<
+            PollerSidOp, butil::ObjectPoolAllocator<PollerSidOp>> op_queue;
         // Callback used for io_uring/spdk etc
         std::function<void()> callback;
         // Init and Destroy function
@@ -236,7 +238,8 @@ private:
     };
     static std::vector<PollerGroup> _poller_groups;
 
-    void PollerRegisterEvent(CqSidOp::OpType op, uint32_t events = EPOLLET);
+    void PollerRegisterEvent(PollerSidOp::OpType op,
+                             uint32_t events = EPOLLET);
 };
 
 }  // namespace ubring

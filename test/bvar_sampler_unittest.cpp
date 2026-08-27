@@ -15,9 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <limits>                           //std::numeric_limits
 #include "bvar/detail/sampler.h"
-#include "butil/time.h"
 #include "butil/logging.h"
 #include <gtest/gtest.h>
 
@@ -110,7 +108,7 @@ static void* check(void*) {
     for (int i = 0; i < N; ++i) {
         s[i]->destroy();
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST(SamplerTest, multi_threaded) {
@@ -121,10 +119,10 @@ TEST(SamplerTest, multi_threaded) {
     pthread_t th[10];
     DebugSampler::_s_ndestroy = 0;
     for (size_t i = 0; i < arraysize(th); ++i) {
-        ASSERT_EQ(0, pthread_create(&th[i], NULL, check, NULL));
+        ASSERT_EQ(0, pthread_create(&th[i], nullptr, check, nullptr));
     }
     for (size_t i = 0; i < arraysize(th); ++i) {
-        ASSERT_EQ(0, pthread_join(th[i], NULL));
+        ASSERT_EQ(0, pthread_join(th[i], nullptr));
     }
     sleep(1);
     EXPECT_EQ(100 * arraysize(th), (size_t)DebugSampler::_s_ndestroy);

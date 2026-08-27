@@ -118,7 +118,7 @@ public:
                            ::test::EchoResponse& res) {
         for (g_index = 0; g_index < 1000; ++g_index) {
             brpc::Controller cntl;
-            stub.Echo(&cntl, &req, &res, NULL);
+            stub.Echo(&cntl, &req, &res, nullptr);
             if (g_index % 2 == 0) {
                 ASSERT_TRUE(cntl.Failed());
                 ASSERT_EQ(EREJECT, cntl.ErrorCode());
@@ -190,7 +190,7 @@ TEST_F(InterceptorTest, sanity) {
         for (g_index = 0; g_index < 1000; ++g_index) {
             brpc::Controller cntl;
             brpc::NsheadMessage response;
-            channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+            channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
             if (g_index % 2 == 0) {
                 ASSERT_EQ(NSHEAD_EXP_RESPONSE, response.body.to_string());
             } else {

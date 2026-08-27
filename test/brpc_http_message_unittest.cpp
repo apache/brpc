@@ -151,7 +151,7 @@ TEST(HttpMessageTest, request_sanity) {
 
     ASSERT_TRUE(header.GetHeader("log-id"));
     ASSERT_EQ("456", *header.GetHeader("log-id"));
-    ASSERT_TRUE(NULL != header.GetHeader("Authorization"));
+    ASSERT_TRUE(nullptr != header.GetHeader("Authorization"));
     ASSERT_EQ("test", *header.GetHeader("Authorization"));
 }
 
@@ -429,19 +429,19 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(new test::EchoService(),
                                    brpc::SERVER_OWNS_SERVICE));
-    ASSERT_EQ(0, server.Start(9237, NULL));
+    ASSERT_EQ(0, server.Start(9237, nullptr));
     std::string unknown_method;
-    brpc::Server::MethodProperty* mp = NULL;
+    brpc::Server::MethodProperty* mp = nullptr;
               
-    mp = FindMethodPropertyByURI("", &server, NULL);
+    mp = FindMethodPropertyByURI("", &server, nullptr);
     ASSERT_TRUE(mp);
     ASSERT_EQ("index", mp->method->service()->name());
 
-    mp = FindMethodPropertyByURI("/", &server, NULL);
+    mp = FindMethodPropertyByURI("/", &server, nullptr);
     ASSERT_TRUE(mp);
     ASSERT_EQ("index", mp->method->service()->name());
 
-    mp = FindMethodPropertyByURI("//", &server, NULL);
+    mp = FindMethodPropertyByURI("//", &server, nullptr);
     ASSERT_TRUE(mp);
     ASSERT_EQ("index", mp->method->service()->name());
 
@@ -649,14 +649,14 @@ TEST(HttpMessageTest, serialize_http_response) {
     // Content is cleared.
     CHECK(content.empty());
 
-    // NULL content
+    // nullptr content
     header.SetHeader("Content-Length", "100");
-    MakeRawHttpResponse(&response, &header, NULL);
+    MakeRawHttpResponse(&response, &header, nullptr);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nContent-Length: 100\r\n\r\n", response)
         << butil::ToPrintable(response);
 
     header.SetHeader("Transfer-Encoding", "chunked");
-    MakeRawHttpResponse(&response, &header, NULL);
+    MakeRawHttpResponse(&response, &header, nullptr);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nTransfer-Encoding: chunked\r\n\r\n", response)
                     << butil::ToPrintable(response);
     header.RemoveHeader("Transfer-Encoding");
@@ -669,7 +669,7 @@ TEST(HttpMessageTest, serialize_http_response) {
 
     header.SetHeader("Content-Length", "100");
     header.SetHeader("Transfer-Encoding", "chunked");
-    MakeRawHttpResponse(&response, &header, NULL);
+    MakeRawHttpResponse(&response, &header, nullptr);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\nTransfer-Encoding: chunked\r\n\r\n", response)
                     << butil::ToPrintable(response);
     header.RemoveHeader("Transfer-Encoding");
@@ -703,6 +703,58 @@ TEST(HttpMessageTest, serialize_http_response) {
         << butil::ToPrintable(response);
 }
 
+TEST(HttpMessageTest, serialize_header_with_crlf_is_not_injected) {
+    // A header value carrying CR/LF must not terminate the current line and
+    // introduce extra header fields (HTTP request/response splitting).
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:1234", &ep));
+
+    brpc::HttpHeader req_header;
+    req_header.set_method(brpc::HTTP_METHOD_POST);
+    req_header.SetHeader("X-Evil", "a\r\nInjected: 1");
+    butil::IOBuf req_content;
+    req_content.append("data");
+    butil::IOBuf request;
+    MakeRawHttpRequest(&request, &req_header, ep, &req_content);
+    std::string request_str = request.to_string();
+    ASSERT_EQ(std::string::npos, request_str.find("Injected: 1")) << request_str;
+
+    brpc::HttpHeader res_header;
+    res_header.SetHeader("X-Evil", "a\r\nInjected: 1");
+    butil::IOBuf res_content;
+    res_content.append("data");
+    butil::IOBuf response;
+    MakeRawHttpResponse(&response, &res_header, &res_content);
+    std::string response_str = response.to_string();
+    ASSERT_EQ(std::string::npos, response_str.find("Injected: 1")) << response_str;
+}
+
+TEST(HttpMessageTest, serialize_content_type_with_crlf_is_not_injected) {
+    // Content-Type goes through the same emission path and must be dropped
+    // (not written) when it carries CR/LF.
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:1234", &ep));
+
+    brpc::HttpHeader req_header;
+    req_header.set_method(brpc::HTTP_METHOD_POST);
+    req_header.set_content_type("text/plain\r\nInjected: 1");
+    butil::IOBuf req_content;
+    req_content.append("data");
+    butil::IOBuf request;
+    MakeRawHttpRequest(&request, &req_header, ep, &req_content);
+    std::string request_str = request.to_string();
+    ASSERT_EQ(std::string::npos, request_str.find("Injected: 1")) << request_str;
+
+    brpc::HttpHeader res_header;
+    res_header.set_content_type("text/plain\r\nInjected: 1");
+    butil::IOBuf res_content;
+    res_content.append("data");
+    butil::IOBuf response;
+    MakeRawHttpResponse(&response, &res_header, &res_content);
+    std::string response_str = response.to_string();
+    ASSERT_EQ(std::string::npos, response_str.find("Injected: 1")) << response_str;
+}
+
 TEST(HttpMessageTest, http_1_1_request_without_host) {
     brpc::FLAGS_allow_http_1_1_request_without_host = false;
     {
@@ -731,7 +783,7 @@ TEST(HttpMessageTest, http_1_1_request_without_host) {
 
         brpc::HttpMessage http_message;
         ASSERT_GE(http_message.ParseFromIOBuf(request), 0);
-        ASSERT_GE(http_message.ParseFromArray(NULL, 0), 0);
+        ASSERT_GE(http_message.ParseFromArray(nullptr, 0), 0);
         ASSERT_TRUE(http_message.Completed());
         ASSERT_EQ("text/plain", http_message.header().content_type());
     }

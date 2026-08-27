@@ -81,13 +81,13 @@ static void* sender(void* void_args) {
     brpc::MysqlRequest request;
     if (!request.Query(command.str())) {
         LOG(ERROR) << "Fail to execute command";
-        return NULL;
+        return nullptr;
     }
 
     while (!brpc::IsAskedToQuit()) {
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        args->mysql_channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+        args->mysql_channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
         const int64_t elp = cntl.latency_us();
         if (!cntl.Failed()) {
             g_latency_recorder << elp;
@@ -109,7 +109,7 @@ static void* sender(void* void_args) {
             bthread_usleep(50000);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char* argv[]) {
@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
 
-    // Initialize the channel, NULL means using default options.
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MYSQL;
     options.connection_type = FLAGS_connection_type;
@@ -146,7 +146,7 @@ int main(int argc, char* argv[]) {
         }
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         if (!cntl.Failed()) {
             std::cout << response << std::endl;
         } else {
@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
         }
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
         if (!cntl.Failed()) {
             std::cout << response << std::endl;
         } else {
@@ -183,7 +183,7 @@ int main(int argc, char* argv[]) {
             }
             brpc::MysqlResponse response;
             brpc::Controller cntl;
-            channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+            channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
             if (cntl.Failed()) {
                 LOG(ERROR) << cntl.ErrorText();
                 return -1;
@@ -210,12 +210,12 @@ int main(int argc, char* argv[]) {
         args[i].base_index = i;
         args[i].mysql_channel = &channel;
         if (!FLAGS_use_bthread) {
-            if (pthread_create(&pids[i], NULL, sender, &args[i]) != 0) {
+            if (pthread_create(&pids[i], nullptr, sender, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
         } else {
-            if (bthread_start_background(&bids[i], NULL, sender, &args[i]) != 0) {
+            if (bthread_start_background(&bids[i], nullptr, sender, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -232,9 +232,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "mysql_client is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(pids[i], NULL);
+            pthread_join(pids[i], nullptr);
         } else {
-            bthread_join(bids[i], NULL);
+            bthread_join(bids[i], nullptr);
         }
     }
 

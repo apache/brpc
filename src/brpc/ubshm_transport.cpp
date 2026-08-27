@@ -29,15 +29,9 @@ DECLARE_bool(usercode_in_pthread);
 extern SocketVarsCollector *g_vars;
 
 void UBShmTransport::Init(Socket *socket, const SocketOptions &options) {
-    CHECK(_ub_ep == NULL);
+    CHECK(_ub_ep == nullptr);
     if (options.socket_mode == SOCKET_MODE_UBRING) {
-        _ub_ep = new(std::nothrow)ubring::UBShmEndpoint(socket);
-        if (!_ub_ep) {
-            const int saved_errno = errno;
-            PLOG(ERROR) << "Fail to create UBShmEndpoint";
-            socket->SetFailed(
-                saved_errno, "Fail to create UBShmEndpoint: %s", berror(saved_errno));
-        }
+        _ub_ep = new ubring::UBShmEndpoint(socket);
         _ub_state = UB_UNKNOWN;
     } else {
         _ub_state = UB_OFF;
@@ -46,7 +40,7 @@ void UBShmTransport::Init(Socket *socket, const SocketOptions &options) {
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
-    if (options.need_on_edge_trigger && _on_edge_trigger == NULL) {
+    if (options.need_on_edge_trigger && _on_edge_trigger == nullptr) {
         _on_edge_trigger = ubring::UBShmEndpoint::OnNewDataFromTcp;
     }
     _tcp_transport = std::make_shared<TcpTransport>();
@@ -56,7 +50,7 @@ void UBShmTransport::Init(Socket *socket, const SocketOptions &options) {
 void UBShmTransport::Release() {
     if (_ub_ep) {
         delete _ub_ep;
-        _ub_ep = NULL;
+        _ub_ep = nullptr;
         _ub_state = UB_UNKNOWN;
     }
 }
@@ -94,17 +88,15 @@ ssize_t UBShmTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
 
 int UBShmTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                                     bool pollin, const timespec duetime) {
-    // LOG(INFO) << "mwj pollin4=" << pollin << " duetime=" << butil::timespec_to_microseconds(duetime);
     if (_ub_state == UB_ON) {
-        // LOG(INFO) << "mwj pollin1=" << pollin;
         const int expected_val = _epollout_butex->load(butil::memory_order_acquire);
-        CHECK(_ub_ep != NULL);
+        CHECK(_ub_ep != nullptr);
         if (!_ub_ep->IsWritable()) {
             g_vars->nwaitepollout << 1;
             _ub_ep->PollerRegisterEpollOut(pollin);
-            auto mwj_ret = bthread::butex_wait(_epollout_butex, expected_val, &duetime);
-            // LOG(INFO) << "mwj pollin2=" << pollin << " mwj_ret=" << mwj_ret;
-            if (mwj_ret < 0) {
+            const int wait_rc = bthread::butex_wait(
+                _epollout_butex, expected_val, &duetime);
+            if (wait_rc < 0) {
                 if (errno != EAGAIN && errno != ETIMEDOUT) {
                     const int saved_errno = errno;
                     PLOG(WARNING) << "Fail to wait ub window of " << _socket;
@@ -126,7 +118,6 @@ int UBShmTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
     } else {
         return _tcp_transport->WaitEpollOut(_epollout_butex, pollin, duetime);
     }
-    // LOG(INFO) << "mwj return 0";
     return 0;
 }
 

@@ -31,7 +31,7 @@ namespace ubring {
 
 int32_t g_epoll_fd = -1;
 std::atomic<uint32_t> g_total_timer_num(0);
-TimerFdCtx *g_timer_fd_ctx_map = NULL;
+TimerFdCtx *g_timer_fd_ctx_map = nullptr;
 uint32_t g_max_system_fd = 0;
 static pthread_t g_epoll_execute_thread = 0;
 static int32_t g_timer_module_initialized = 0;
@@ -44,7 +44,7 @@ static int timerfd_settime_macosx(int fd, int flags,
 #endif
 
 static RETURN_CODE DeleteTimerInner(uint32_t fd) {
-    if (g_timer_fd_ctx_map == NULL) {
+    if (g_timer_fd_ctx_map == nullptr) {
         return UBRING_OK;
     }
 
@@ -58,26 +58,26 @@ static RETURN_CODE DeleteTimerInner(uint32_t fd) {
     }
 
     g_timer_fd_ctx_map[fd].status = TIMER_CONTEXT_NOT_USING;
-    g_timer_fd_ctx_map[fd].cb = NULL;
-    g_timer_fd_ctx_map[fd].args = NULL;
+    g_timer_fd_ctx_map[fd].cb = nullptr;
+    g_timer_fd_ctx_map[fd].args = nullptr;
     g_timer_fd_ctx_map[fd].periodical = 0;
     g_timer_fd_ctx_map[fd].fd = 0;
 
     pthread_spin_unlock(&g_timer_fd_ctx_map[fd].spin_lock);
 
 #if defined(OS_LINUX)
-    epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, (int)fd, NULL);
+    epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, (int)fd, nullptr);
 #elif defined(OS_MACOSX)
     struct kevent evt;
-    EV_SET(&evt, fd, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
-    kevent(g_epoll_fd, &evt, 1, NULL, 0, NULL);
+    EV_SET(&evt, fd, EVFILT_TIMER, EV_DELETE, 0, 0, nullptr);
+    kevent(g_epoll_fd, &evt, 1, nullptr, 0, nullptr);
 #endif
 
     uint64_t exp = 0;
     read((int)fd, &exp, sizeof(exp));
 
     close((int)fd);
-    std::atomic_fetch_sub(&g_total_timer_num, 1);
+    std::atomic_fetch_sub(&g_total_timer_num, 1U);
     return UBRING_OK;
 }
 
@@ -92,7 +92,7 @@ static RETURN_CODE StartTimeEpoll(void) {
         return UBRING_ERR;
     }
 
-    int ret = pthread_create(&g_epoll_execute_thread, NULL, TimerEpoll, NULL);
+    int ret = pthread_create(&g_epoll_execute_thread, nullptr, TimerEpoll, nullptr);
     if (UNLIKELY(ret != 0)) {
         LOG(ERROR) << "Failed to create thread err=" << ret;
         return UBRING_ERR;
@@ -101,7 +101,7 @@ static RETURN_CODE StartTimeEpoll(void) {
 }
 
 static RETURN_CODE TimerSpinLocksInit(void) {
-    if (g_timer_fd_ctx_map == NULL) {
+    if (g_timer_fd_ctx_map == nullptr) {
         LOG(ERROR) << "Timer module is not fully initialized.";
         return UBRING_ERR;
     }
@@ -150,7 +150,7 @@ RETURN_CODE TimerInit(void) {
     }
     g_max_system_fd = (uint32_t)rlim.rlim_cur;
 
-    if (g_timer_fd_ctx_map == NULL) {
+    if (g_timer_fd_ctx_map == nullptr) {
         g_timer_fd_ctx_map = (TimerFdCtx *)malloc(sizeof(TimerFdCtx) * g_max_system_fd);
         if (UNLIKELY(!g_timer_fd_ctx_map)) {
             LOG(ERROR) << "Fail to malloc space for timer modules. errno=%d", errno;
@@ -161,7 +161,7 @@ RETURN_CODE TimerInit(void) {
         if (ret != UBRING_OK) {
             LOG(ERROR) << "Failed to init main data structure of Time Module. ret=" << ret;
             free(g_timer_fd_ctx_map);
-            g_timer_fd_ctx_map = NULL;
+            g_timer_fd_ctx_map = nullptr;
             return UBRING_ERR;
         }
     }
@@ -169,7 +169,7 @@ RETURN_CODE TimerInit(void) {
     RETURN_CODE ret = StartTimeEpoll();
     if (ret != UBRING_OK) {
         LOG(ERROR) << "Failed to start Timer Epoll. ret=" << ret;
-        if (LIKELY(g_timer_fd_ctx_map != NULL)) {
+        if (LIKELY(g_timer_fd_ctx_map != nullptr)) {
             FREE_PTR(g_timer_fd_ctx_map);
         }
         return UBRING_ERR;
@@ -181,12 +181,12 @@ RETURN_CODE TimerInit(void) {
 void *UnifiedCallback(void *args) {
     TimerFdCtx *ctx = (TimerFdCtx *)args;
     if (pthread_spin_lock(&ctx->spin_lock) != 0) {
-        return NULL;
+        return nullptr;
     }
 
     if (ctx->status == TIMER_CONTEXT_NOT_USING) {
         pthread_spin_unlock(&ctx->spin_lock);
-        return NULL;
+        return nullptr;
     }
 
     void *(*cb)(void *) = ctx->cb;
@@ -202,7 +202,7 @@ void *UnifiedCallback(void *args) {
     if (!is_periodical) {
         DeleteTimerInner(fd);
     }
-    return NULL;
+    return nullptr;
 }
 
 void *TimerEpoll(void *args) {
@@ -224,7 +224,7 @@ void *TimerEpoll(void *args) {
                                       TIMER_EPOLL_WAIT_TIMEOUT);
 #elif defined(OS_MACOSX)
         struct timespec timeout = {0, TIMER_EPOLL_WAIT_TIMEOUT * 1000000};
-        int32_t ready_num = kevent(g_epoll_fd, NULL, 0, ready_events, MAX_TIMER, &timeout);
+        int32_t ready_num = kevent(g_epoll_fd, nullptr, 0, ready_events, MAX_TIMER, &timeout);
 #endif
 
         if (UNLIKELY(ready_num == -1)) {
@@ -268,11 +268,11 @@ void *TimerEpoll(void *args) {
             }
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 void DeleteTimerSafe(uint32_t fd) {
-    if (g_timer_fd_ctx_map == NULL) {
+    if (g_timer_fd_ctx_map == nullptr) {
         return;
     }
 
@@ -286,30 +286,30 @@ void DeleteTimerSafe(uint32_t fd) {
     }
 
     g_timer_fd_ctx_map[fd].status = TIMER_CONTEXT_NOT_USING;
-    g_timer_fd_ctx_map[fd].cb = NULL;
-    g_timer_fd_ctx_map[fd].args = NULL;
+    g_timer_fd_ctx_map[fd].cb = nullptr;
+    g_timer_fd_ctx_map[fd].args = nullptr;
     g_timer_fd_ctx_map[fd].periodical = 0;
     g_timer_fd_ctx_map[fd].fd = 0;
 
     pthread_spin_unlock(&g_timer_fd_ctx_map[fd].spin_lock);
 
 #if defined(OS_LINUX)
-    epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, (int)fd, NULL);
+    epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, (int)fd, nullptr);
 #elif defined(OS_MACOSX)
     struct kevent evt;
-    EV_SET(&evt, fd, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
-    kevent(g_epoll_fd, &evt, 1, NULL, 0, NULL);
+    EV_SET(&evt, fd, EVFILT_TIMER, EV_DELETE, 0, 0, nullptr);
+    kevent(g_epoll_fd, &evt, 1, nullptr, 0, nullptr);
 #endif
 
     uint64_t exp = 0;
     read((int)fd, &exp, sizeof(exp));
 
     close((int)fd);
-    std::atomic_fetch_sub(&g_total_timer_num, 1);
+    std::atomic_fetch_sub(&g_total_timer_num, 1U);
 }
 
 void DeleteTimer(uint32_t fd) {
-    if (g_timer_fd_ctx_map == NULL) {
+    if (g_timer_fd_ctx_map == nullptr) {
         LOG(WARNING) << "The timer is not initialized.";
         return;
     }
@@ -355,8 +355,8 @@ int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args) {
     uint64_t timeout_nsec = time->it_value.tv_sec * 1000000000ULL + time->it_value.tv_nsec;
     uint64_t interval_nsec = time->it_interval.tv_sec * 1000000000ULL + time->it_interval.tv_nsec;
     EV_SET(&event, timer_fd, EVFILT_TIMER, EV_ADD | EV_ENABLE, 0,
-           timeout_nsec / 1000000, NULL);
-    int32_t ret = kevent(g_epoll_fd, &event, 1, NULL, 0, NULL);
+           timeout_nsec / 1000000, nullptr);
+    int32_t ret = kevent(g_epoll_fd, &event, 1, nullptr, 0, nullptr);
 #endif
 
     if (UNLIKELY(ret != 0)) {
@@ -365,26 +365,26 @@ int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args) {
         return -1;
     }
 
-    std::atomic_fetch_add(&g_total_timer_num, 1);
+    std::atomic_fetch_add(&g_total_timer_num, 1U);
 
 #if defined(OS_LINUX)
-    ret = timerfd_settime(timer_fd, 0, time, NULL);
+    ret = timerfd_settime(timer_fd, 0, time, nullptr);
 #elif defined(OS_MACOSX)
-    ret = timerfd_settime_macosx(timer_fd, 0, time, NULL);
+    ret = timerfd_settime_macosx(timer_fd, 0, time, nullptr);
 #endif
 
     if (UNLIKELY(ret != 0)) {
 #if defined(OS_LINUX)
-        if (epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, timer_fd, NULL) != 0) {
+        if (epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, timer_fd, nullptr) != 0) {
 #elif defined(OS_MACOSX)
         struct kevent evt;
-        EV_SET(&evt, timer_fd, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
-        if (kevent(g_epoll_fd, &evt, 1, NULL, 0, NULL) != 0) {
+        EV_SET(&evt, timer_fd, EVFILT_TIMER, EV_DELETE, 0, 0, nullptr);
+        if (kevent(g_epoll_fd, &evt, 1, nullptr, 0, nullptr) != 0) {
 #endif
             LOG(ERROR) << "Failed to delete the timer fd=" << timer_fd << " with errno=" << errno;
         }
         CloseTimerFd(timer_fd);
-        std::atomic_fetch_sub(&g_total_timer_num, 1);
+        std::atomic_fetch_sub(&g_total_timer_num, 1U);
         LOG(ERROR) << "Failed to set timer";
         return -1;
     }
@@ -397,8 +397,8 @@ uint32_t GetActiveTimerNum(void) {
 }
 
 void CloseTimerFd(int fd) {
-    g_timer_fd_ctx_map[fd].cb = NULL;
-    g_timer_fd_ctx_map[fd].args = NULL;
+    g_timer_fd_ctx_map[fd].cb = nullptr;
+    g_timer_fd_ctx_map[fd].args = nullptr;
     g_timer_fd_ctx_map[fd].status = TIMER_CONTEXT_NOT_USING;
     g_timer_fd_ctx_map[fd].fd = 0;
     g_timer_fd_ctx_map[fd].periodical = 0;
@@ -421,7 +421,7 @@ void TimerModuleDestroy(void) {
     g_epoll_fd = -1;
     g_total_timer_num = 0;
     g_timer_module_initialized = 0;
-    int32_t ret = pthread_join(g_epoll_execute_thread, NULL);
+    int32_t ret = pthread_join(g_epoll_execute_thread, nullptr);
     if (ret != EOK) {
         LOG(ERROR) << "Failed to join pthread, during destroying timer module. ret=" << ret;
         return;
@@ -437,7 +437,7 @@ RETURN_CODE TimerFdCtxValidate(uint32_t fd) {
         LOG(ERROR) << "TimerFd=" << fd << " has wrong status=" << g_timer_fd_ctx_map[fd].status;
         return UBRING_ERR;
     }
-    if (g_timer_fd_ctx_map[fd].cb == NULL) {
+    if (g_timer_fd_ctx_map[fd].cb == nullptr) {
         LOG(ERROR) << "The callback is not set.";
         return UBRING_ERR;
     }
@@ -457,7 +457,7 @@ static int timerfd_create_macosx(int clockid, int flags) {
 static int timerfd_settime_macosx(int fd, int flags,
                                    const itimerspec *new_value,
                                    itimerspec *old_value) {
-    if (old_value != NULL) {
+    if (old_value != nullptr) {
         memset(old_value, 0, sizeof(itimerspec));
     }
     return 0;

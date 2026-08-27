@@ -48,7 +48,7 @@ std::string SysWideToNativeMB(const std::wstring& wide) {
   memset(&ps, 0, sizeof(ps));
   for (size_t i = 0; i < wide.size(); ++i) {
     const wchar_t src = wide[i];
-    // Use a temp buffer since calling wcrtomb with an output of NULL does not
+    // Use a temp buffer since calling wcrtomb with an output of nullptr does not
     // calculate the output length.
     char buf[16];
     // Skip NULLs to avoid wcrtomb's special handling of them.
@@ -108,7 +108,7 @@ std::wstring SysNativeMBToWide(const StringPiece& native_mb) {
   memset(&ps, 0, sizeof(ps));
   for (size_t i = 0; i < native_mb.size(); ) {
     const char* src = native_mb.data() + i;
-    size_t res = mbrtowc(NULL, src, native_mb.size() - i, &ps);
+    size_t res = mbrtowc(nullptr, src, native_mb.size() - i, &ps);
     switch (res) {
       // Handle any errors and return an empty string.
       case static_cast<size_t>(-2):

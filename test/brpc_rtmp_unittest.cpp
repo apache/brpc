@@ -28,6 +28,8 @@
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/fd_guard.h"
+#include "brpc/policy/rtmp_protocol.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -267,7 +269,7 @@ public:
                       << " ms before responding play request";
             bthread_usleep(_sleep_ms * 1000L);
         }
-        int rc = bthread_start_background(&_play_thread, NULL,
+        int rc = bthread_start_background(&_play_thread, nullptr,
                                           RunSendData, this);
         if (rc) {
             status->set_error(rc, "Fail to create thread");
@@ -277,7 +279,7 @@ public:
         if (!_state.compare_exchange_strong(expected, STATE_PLAYING)) {
             if (expected == STATE_STOPPED) {
                 bthread_stop(_play_thread);
-                bthread_join(_play_thread, NULL);
+                bthread_join(_play_thread, nullptr);
             } else {
                 CHECK(false) << "Impossible";
             }
@@ -288,7 +290,7 @@ public:
         LOG(INFO) << "OnStop of PlayingDummyStream=" << this;
         if (_state.exchange(STATE_STOPPED) == STATE_PLAYING) {
             bthread_stop(_play_thread);
-            bthread_join(_play_thread, NULL);
+            bthread_join(_play_thread, nullptr);
         }
     }
 
@@ -297,7 +299,7 @@ public:
 private:
     static void* RunSendData(void* arg) {
         ((PlayingDummyStream*)arg)->SendData();
-        return NULL;
+        return nullptr;
     }
 
     butil::atomic<State> _state;
@@ -419,7 +421,7 @@ private:
 class PublishService : public brpc::RtmpService {
 public:
     PublishService(int64_t sleep_ms = 0) : _sleep_ms(sleep_ms) {
-        pthread_mutex_init(&_mutex, NULL);
+        pthread_mutex_init(&_mutex, nullptr);
     }
     ~PublishService() {
         pthread_mutex_destroy(&_mutex);
@@ -748,6 +750,33 @@ TEST(RtmpTest, avc_seq_header_sps_without_zero_byte) {
     avc.Create(buf);
 }
 
+// The Exp-Golomb decoder used by ParseSPS placed every value bit at the same
+// shift (leadingZeroBits-1) instead of the descending (leadingZeroBits-1-i)
+// position, so any ue(v) code with leadingZeroBits>=2 decoded to the wrong
+// number (and a crafted code could overflow the int32 accumulator). Here the
+// SPS encodes pic_width/pic_height as ue(4); the old code decoded 5 (width 96),
+// the correct value is 4 (width 80).
+TEST(RtmpTest, avc_seq_header_sps_exp_golomb) {
+    butil::IOBuf buf;
+    // configurationVersion, profile, compat, level, lengthSizeMinusOne=3, numSPS=1
+    const char head[6] = { 0x01, 0x42, 0x00, 0x1E, (char)0xff, (char)0xe1 };
+    buf.append(head, sizeof(head));
+    // Baseline SPS (profile_idc=66 skips the chroma block). The bitstream after
+    // profile/flags/level encodes: seq_parameter_set_id=0, log2_max_frame_num=0,
+    // pic_order_cnt_type=2, max_num_ref_frames=0, gaps_flag=0, then
+    // pic_width_in_mbs_minus1=ue(4) and pic_height_in_map_units_minus1=ue(4).
+    const char sps[7] = { 0x67, 0x42, 0x00, 0x1E, (char)0xdc, 0x52, (char)0xc0 };
+    const char len_be[2] = { 0x00, (char)sizeof(sps) };
+    buf.append(len_be, sizeof(len_be));
+    buf.append(sps, sizeof(sps));
+    buf.push_back('\0'); // numPPS=0
+
+    brpc::AVCDecoderConfigurationRecord avc;
+    ASSERT_TRUE(avc.Create(buf).ok());
+    ASSERT_EQ(80, avc.width);
+    ASSERT_EQ(80, avc.height);
+}
+
 static void AppendBigEndian3Bytes(std::string* s, uint32_t v) {
     s->push_back((char)((v >> 16) & 0xFF));
     s->push_back((char)((v >> 8) & 0xFF));
@@ -803,6 +832,63 @@ TEST(RtmpTest, flv_reader_rejects_zero_datasize_audio_tag) {
     brpc::RtmpAudioMessage amsg;
     ASSERT_FALSE(reader.Read(&amsg).ok());
     ASSERT_EQ(before, buf.size());
+}
+
+// A crafted Abort message that names the chunk stream currently being parsed
+// (itself) used to make ClearChunkStream delete the RtmpChunkStream while its
+// Feed() is still running, which caused a heap-use-after-free right after
+// OnMessage() returned.
+TEST(RtmpTest, abort_message_naming_own_chunk_stream) {
+    int pipe_fds[2];
+    ASSERT_EQ(0, pipe(pipe_fds));
+    butil::fd_guard guard0(pipe_fds[0]);   // read end, closed by this guard
+    butil::fd_guard guard1(pipe_fds[1]);   // write end, handed over to Socket
+
+    brpc::SocketId id;
+    brpc::SocketOptions options;
+    options.fd = guard1.release();         // Socket takes ownership of the fd
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr sock;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
+
+    brpc::policy::RtmpContext ctx(nullptr, nullptr);
+    ctx.SetState(sock->remote_side(),
+                 brpc::policy::RtmpContext::STATE_RECEIVED_C2);
+
+    // fmt0 chunk on chunk stream 2 carrying an Abort message (type 2) whose
+    // payload is the same chunk stream id (2).
+    std::string chunk;
+    chunk.push_back((char)0x02);   // basic header: fmt=0, cs_id=2
+    chunk.append(3, '\0');         // timestamp = 0
+    chunk.push_back('\0');         // message_length (3 bytes) = 4
+    chunk.push_back('\0');
+    chunk.push_back((char)0x04);
+    chunk.push_back((char)0x02);   // message_type = Abort
+    chunk.append(4, '\0');         // stream_id = 0 (little endian)
+    chunk.push_back('\0');         // payload: cs_id = 2 (big endian)
+    chunk.push_back('\0');
+    chunk.push_back('\0');
+    chunk.push_back((char)0x02);
+
+    butil::IOBuf buf;
+    buf.append(chunk);
+    ASSERT_EQ(brpc::PARSE_OK, ctx.Feed(&buf, sock.get()).error());
+
+    // A following type-1 chunk inherits the message header from the previous
+    // message on the same stream. If the abort had wrongly deleted the chunk
+    // stream, the freshly recreated stream would have no last header and this
+    // chunk would be rejected; instead it must be parsed successfully.
+    std::string cont;
+    cont.push_back((char)0x42);   // basic header: fmt=1, cs_id=2
+    cont.append(3, '\0');         // timestamp delta = 0
+    cont.push_back('\0');         // message_length (3 bytes) = 4
+    cont.push_back('\0');
+    cont.push_back((char)0x04);
+    cont.push_back((char)0x03);   // message_type = Ack
+    cont.append(4, '\0');         // payload: bytes_received = 0
+    butil::IOBuf buf2;
+    buf2.append(cont);
+    ASSERT_EQ(brpc::PARSE_OK, ctx.Feed(&buf2, sock.get()).error());
 }
 
 TEST(RtmpTest, successfully_play_streams) {

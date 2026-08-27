@@ -74,7 +74,7 @@ public:
 
     // Returns the number of underlying blocks in the SingleIOBuf,
     // which is either 1 if a block exists or 0 if none.
-    size_t backing_block_num() const { return _cur_ref.block != NULL ? 1 : 0; }
+    size_t backing_block_num() const { return _cur_ref.block != nullptr ? 1 : 0; }
     
     // Assigns user date to the SingleIOBuf,
     // updates _cur_ref to point to the block storing the data.

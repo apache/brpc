@@ -54,14 +54,14 @@ static const uint32_t kMaxPayloadLen = (1u << 24) - 1;
 //
 // 0xFB is the protocol's NULL marker (a NULL column value in a result
 // row), NOT an ordinary integer: when |buf| begins with 0xFB the value is
-// NULL, *out is set to 0, *is_null (when non-NULL) is set to true, and 1
+// NULL, *out is set to 0, *is_null (when non-nullptr) is set to true, and 1
 // (the single byte consumed) is returned.  For every non-NULL result
 // *is_null is set to false.
 //
 // Returns 0 on failure: an empty buffer, a truncated multi-byte value, or
 // the reserved 0xFF marker.  On failure *out is set to 0 and *is_null
-// (when non-NULL) to false, so a caller that forgets to check the return
-// value never reads an uninitialized result.  |is_null| may be NULL when
+// (when non-nullptr) to false, so a caller that forgets to check the return
+// value never reads an uninitialized result.  |is_null| may be nullptr when
 // the caller does not need to distinguish NULL from 0.
 size_t DecodeLengthEncodedInt(const butil::StringPiece& buf, uint64_t* out,
                               bool* is_null = nullptr);
@@ -71,10 +71,10 @@ void EncodeLengthEncodedInt(uint64_t value, std::string* out);
 
 // Decodes a length-encoded string into |out_value| and returns the
 // number of bytes consumed.  A leading 0xFB encodes the protocol NULL
-// value: when present *out_value is cleared, *is_null (when non-NULL) is
+// value: when present *out_value is cleared, *is_null (when non-nullptr) is
 // set to true, and 1 (the marker byte) is returned.  For a non-NULL
 // string *is_null is set to false.  Returns 0 if the leading lenenc-int
-// is invalid or the declared payload is truncated.  |is_null| may be NULL.
+// is invalid or the declared payload is truncated.  |is_null| may be nullptr.
 size_t DecodeLengthEncodedString(const butil::StringPiece& buf,
                                  std::string* out_value,
                                  bool* is_null = nullptr);

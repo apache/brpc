@@ -64,9 +64,11 @@ BAIDU_CASSERT(!(SUB_MAP_COUNT & (SUB_MAP_COUNT - 1)), must_be_power_of_2);
 
 class VarEntry {
 public:
-    VarEntry() : var(nullptr), display_filter(DISPLAY_ON_ALL) {}
+    VarEntry() : display_filter(DISPLAY_ON_ALL) {}
 
-    Variable* var;
+    // Indirection handle shared with the Variable. describe_exposed() acquires
+    // it under the VarMap lock and calls describe() outside the lock.
+    Variable::SharedExposedRef ref;
     DisplayFilter display_filter;
 };
 
@@ -79,12 +81,7 @@ struct VarMapWithLock : public VarMap {
         if (init(1024) != 0) {
             LOG(WARNING) << "Fail to init VarMap";
         }
-
-        pthread_mutexattr_t attr;
-        pthread_mutexattr_init(&attr);
-        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-        pthread_mutex_init(&mutex, &attr);
-        pthread_mutexattr_destroy(&attr);
+        pthread_mutex_init(&mutex, nullptr);
     }
 };
 
@@ -104,7 +101,8 @@ inline size_t sub_map_index(const std::string& str) {
         return 0;
     }
     size_t h = 0;
-    // we're assume that str is ended with '\0', which may not be in general
+    // We assume that str is ended with '\0', which may not be in general;
+    // otherwise the hash stops early.
     for (const char* p  = str.c_str(); *p; ++p) {
         h = h * 5 + *p;
     }
@@ -140,8 +138,12 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
     // expose a variable more than once and calls to expose() are unlikely
     // to contend heavily.
 
-    // remove previous pointer from the map if needed.
+    // Remove previous exposure if needed (hide() waits for in-flight readers
+    // and invalidates `_ref`).
+    // Always start the new exposure with a fresh `_ref`,  because a previous
+    // hide() may have permanently hidden the old `_ref`.
     hide();
+    _ref = detail::make_exposed_ref(this);
 
     // Build the name.
     _name.clear();
@@ -160,7 +162,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         VarEntry* entry = m.seek(_name);
         if (entry == nullptr) {
             entry = &m[_name];
-            entry->var = this;
+            entry->ref = _ref;
             entry->display_filter = display_filter;
             return 0;
         }
@@ -189,14 +191,23 @@ bool Variable::hide() {
         return false;
     }
     VarMapWithLock& m = get_var_map(_name);
-    BAIDU_SCOPED_LOCK(m.mutex);
-    VarEntry* entry = m.seek(_name);
-    if (entry) {
-        CHECK_EQ(1UL, m.erase(_name));
-    } else {
-        CHECK(false) << "`" << _name << "' must exist";
+    {
+        BAIDU_SCOPED_LOCK(m.mutex);
+        VarEntry* entry = m.seek(_name);
+        if (entry) {
+            CHECK_EQ(1UL, m.erase(_name));
+        } else {
+            CHECK(false) << "`" << _name << "' must exist";
+        }
     }
     _name.clear();
+    // Remove previous exposure if needed (hide() waits for in-flight readers
+    // and invalidates `_ref`).
+    // Always start the new exposure with a fresh `_ref`,  because a previous
+    // hide() may have permanently hidden the old `_ref`.
+    if (_ref != nullptr) {
+        _ref->hide_and_wait();
+    }
     return true;
 }
 
@@ -249,15 +260,28 @@ int Variable::describe_exposed(const std::string& name, std::ostream& os,
                                bool quote_string,
                                DisplayFilter display_filter) {
     VarMapWithLock& m = get_var_map(name);
-    BAIDU_SCOPED_LOCK(m.mutex);
-    VarEntry* p = m.seek(name);
-    if (p == nullptr) {
+    Variable* var = nullptr;
+    SharedExposedRef ref;
+    {
+        BAIDU_SCOPED_LOCK(m.mutex);
+        VarEntry* p = m.seek(name);
+        if (p == nullptr) {
+            return -1;
+        }
+        if (!(display_filter & p->display_filter)) {
+            return -1;
+        }
+        ref = p->ref;
+        var = ref->acquire();
+    }
+    if (var == nullptr) {
+        // The variable is being destructed.
         return -1;
     }
-    if (!(display_filter & p->display_filter)) {
-        return -1;
-    }
-    p->var->describe(os, quote_string);
+    // Call describe() outside the VarMap lock to avoid deadlock when the user
+    // callback (e.g. PassiveStatus) yields the bthread.
+    var->describe(os, quote_string);
+    ref->release();
     return 0;
 }
 
@@ -289,23 +313,44 @@ int Variable::describe_series_exposed(const std::string& name,
                                       std::ostream& os,
                                       const SeriesOptions& options) {
     VarMapWithLock& m = get_var_map(name);
-    BAIDU_SCOPED_LOCK(m.mutex);
-    VarEntry* p = m.seek(name);
-    if (p == nullptr) {
+    Variable* var = nullptr;
+    SharedExposedRef ref;
+    {
+        BAIDU_SCOPED_LOCK(m.mutex);
+        VarEntry* p = m.seek(name);
+        if (p == nullptr) {
+            return -1;
+        }
+        ref = p->ref;
+        var = ref->acquire();
+    }
+    if (var == nullptr) {
         return -1;
     }
-    return p->var->describe_series(os, options);
+    const int rc = var->describe_series(os, options);
+    ref->release();
+    return rc;
 }
 
 #ifdef BAIDU_INTERNAL
 int Variable::get_exposed(const std::string& name, boost::any* value) {
     VarMapWithLock& m = get_var_map(name);
-    BAIDU_SCOPED_LOCK(m.mutex);
-    VarEntry* p = m.seek(name);
-    if (p == nullptr) {
+    Variable* var = nullptr;
+    SharedExposedRef ref;
+    {
+        BAIDU_SCOPED_LOCK(m.mutex);
+        VarEntry* p = m.seek(name);
+        if (p == nullptr) {
+            return -1;
+        }
+        ref = p->ref;
+        var = ref->acquire();
+    }
+    if (var == nullptr) {
         return -1;
     }
-    p->var->get_value(value);
+    var->get_value(value);
+    ref->release();
     return 0;
 }
 #endif

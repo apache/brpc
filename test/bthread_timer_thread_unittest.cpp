@@ -36,7 +36,7 @@ long timespec_diff_us(const timespec& ts1, const timespec& ts2) {
 class TimeKeeper {
 public:
     TimeKeeper(timespec run_time)
-        : _expect_run_time(run_time), _name(NULL), _sleep_ms(0) {}
+        : _expect_run_time(run_time), _name(nullptr), _sleep_ms(0) {}
     TimeKeeper(timespec run_time, const char* name/*must be string constant*/)
         : _expect_run_time(run_time), _name(name), _sleep_ms(0) {}
     TimeKeeper(timespec run_time, const char* name/*must be string constant*/,
@@ -109,7 +109,7 @@ private:
 
 TEST(TimerThreadTest, RunTasks) {
     bthread::TimerThread timer_thread;
-    ASSERT_EQ(0, timer_thread.start(NULL));
+    ASSERT_EQ(0, timer_thread.start(nullptr));
 
     timespec _2s_later = butil::seconds_from_now(2);
     TimeKeeper keeper1(_2s_later, "keeper1");
@@ -167,7 +167,7 @@ TEST(TimerThreadTest, start_after_schedule) {
     TimeKeeper keeper(past_time, "keeper1");
     keeper.schedule(&timer_thread);
     ASSERT_EQ(bthread::TimerThread::INVALID_TASK_ID, keeper._task_id);
-    ASSERT_EQ(0, timer_thread.start(NULL));
+    ASSERT_EQ(0, timer_thread.start(nullptr));
     keeper.schedule(&timer_thread);
     ASSERT_NE(bthread::TimerThread::INVALID_TASK_ID, keeper._task_id);
     timespec current_time = butil::seconds_from_now(0);
@@ -221,7 +221,7 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     TimeKeeper keeper4(past_time, "keeper4");
     TimeKeeper keeper5(_500ms_after, "keeper5", 10000/*10s*/);
 
-    ASSERT_EQ(0, timer_thread.start(NULL));
+    ASSERT_EQ(0, timer_thread.start(nullptr));
     keeper1.schedule(&timer_thread);  // start keeper1
     keeper3.schedule(&timer_thread);  // start keeper3
     timespec keeper3_addtime = butil::seconds_from_now(0);
@@ -288,7 +288,7 @@ TEST(TimerThreadTest, sweep_unscheduled_tasks_in_heap) {
     ScopedFlag sweep_flag("brpc_timer_heap_sweep_min_size", "512");
 
     bthread::TimerThread timer_thread;
-    ASSERT_EQ(0, timer_thread.start(NULL));
+    ASSERT_EQ(0, timer_thread.start(nullptr));
 
     // Run far enough in the future that these tasks never fire on their own.
     const timespec far = butil::seconds_from_now(100000);
@@ -300,11 +300,11 @@ TEST(TimerThreadTest, sweep_unscheduled_tasks_in_heap) {
         std::vector<bthread::TimerThread::TaskId> ids;
         ids.reserve(kBatch);
         for (size_t i = 0; i < kBatch; ++i) {
-            ids.push_back(timer_thread.schedule(noop_routine, NULL, far));
+            ids.push_back(timer_thread.schedule(noop_routine, nullptr, far));
         }
         // A near-term task forces the timer thread to wake up and consume the
         // buckets, so the far tasks above land in the heap (alive).
-        timer_thread.schedule(noop_routine, NULL,
+        timer_thread.schedule(noop_routine, nullptr,
                               butil::milliseconds_from_now(1));
         usleep(20000);  // let the timer thread consume the buckets
 
@@ -315,7 +315,7 @@ TEST(TimerThreadTest, sweep_unscheduled_tasks_in_heap) {
         }
         // Another near-term task wakes the timer thread again, triggering the
         // sweep that reclaims the dead tasks.
-        timer_thread.schedule(noop_routine, NULL,
+        timer_thread.schedule(noop_routine, nullptr,
                               butil::milliseconds_from_now(1));
         usleep(20000);
 
@@ -346,12 +346,12 @@ TEST(TimerThreadTest, periodic_wakeup_drains_buckets) {
     ScopedFlag wakeup_flag("brpc_timer_max_wakeup_interval_ms", "50");
 
     bthread::TimerThread timer_thread;
-    ASSERT_EQ(0, timer_thread.start(NULL));
+    ASSERT_EQ(0, timer_thread.start(nullptr));
 
     // Anchor task an hour out: it becomes the nearest task, so the tasks below
     // (with even later run_times) are never the "earliest" and thus never wake
     // the timer via schedule() -- only the periodic wakeup can drain them.
-    timer_thread.schedule(noop_routine, NULL, butil::seconds_from_now(3600));
+    timer_thread.schedule(noop_routine, nullptr, butil::seconds_from_now(3600));
     usleep(100000);  // let the anchor be consumed into the heap
     // Only the anchor is in the heap so far.
     ASSERT_EQ(1, timer_thread._npending.load(butil::memory_order_relaxed));
@@ -360,7 +360,7 @@ TEST(TimerThreadTest, periodic_wakeup_drains_buckets) {
     // of these wake the timer.
     const int kN = 2000;
     for (int i = 0; i < kN; ++i) {
-        timer_thread.schedule(noop_routine, NULL,
+        timer_thread.schedule(noop_routine, nullptr,
                               butil::seconds_from_now(3600 + 1 + i));
     }
 

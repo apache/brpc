@@ -1,4 +1,6 @@
 ./example/build_with_bazel
+./example/build_with_bazel_module
+./example/build_with_old_bazel
 
 # `registry/` is brpc's self-maintained Bzlmod registry. Its overlay
 # BUILD.bazel files reference sources from the libunwind tarball that is

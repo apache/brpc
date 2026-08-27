@@ -31,15 +31,9 @@ DECLARE_bool(usercode_in_pthread);
 extern SocketVarsCollector *g_vars;
 
 void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
-    CHECK(_rdma_ep == NULL);
+    CHECK(_rdma_ep == nullptr);
     if (options.socket_mode == SOCKET_MODE_RDMA) {
-        _rdma_ep = new(std::nothrow)rdma::RdmaEndpoint(socket);
-        if (!_rdma_ep) {
-            const int saved_errno = errno;
-            PLOG(ERROR) << "Fail to create RdmaEndpoint";
-            socket->SetFailed(
-                saved_errno, "Fail to create RdmaEndpoint: %s", berror(saved_errno));
-        }
+        _rdma_ep = new rdma::RdmaEndpoint(socket);
         _rdma_state = RDMA_UNKNOWN;
     } else {
         _rdma_state = RDMA_OFF;
@@ -48,7 +42,7 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
-    if (options.need_on_edge_trigger && _on_edge_trigger == NULL) {
+    if (options.need_on_edge_trigger && _on_edge_trigger == nullptr) {
         // Server-side RDMA sockets drive the handshake through the standard
         // InputMessenger path (ParseRdmaHandshake), so they use OnNewMessages
         // just like TCP sockets. Only client-side sockets, whose handshake
@@ -67,7 +61,7 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
 void RdmaTransport::Release() {
     if (_rdma_ep) {
         delete _rdma_ep;
-        _rdma_ep = NULL;
+        _rdma_ep = nullptr;
         _rdma_state = RDMA_UNKNOWN;
     }
 }
@@ -112,7 +106,7 @@ int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                                     bool pollin, const timespec duetime) {
     if (_rdma_state == RDMA_ON) {
         const int expected_val = _epollout_butex->load(butil::memory_order_acquire);
-        CHECK(_rdma_ep != NULL);
+        CHECK(_rdma_ep != nullptr);
         if (!_rdma_ep->IsWritable()) {
             g_vars->nwaitepollout << 1;
             if (bthread::butex_wait(_epollout_butex, expected_val, &duetime) < 0) {

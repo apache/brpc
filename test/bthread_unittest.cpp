@@ -22,9 +22,12 @@
 #include "butil/macros.h"
 #include "butil/logging.h"
 #include "gperftools_helper.h"
+#include <vector>
+#include <sstream>
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
 #include "bthread/task_meta.h"
+#include "bvar/bvar.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -67,8 +70,8 @@ void* unrelated_pthread(void*) {
 
 TEST_F(BthreadTest, unrelated_pthread) {
     pthread_t th;
-    ASSERT_EQ(0, pthread_create(&th, NULL, unrelated_pthread, NULL));
-    void* ret = NULL;
+    ASSERT_EQ(0, pthread_create(&th, nullptr, unrelated_pthread, nullptr));
+    void* ret = nullptr;
     ASSERT_EQ(0, pthread_join(th, &ret));
     ASSERT_EQ(1, (intptr_t)ret);
 }
@@ -89,7 +92,7 @@ static void f(intptr_t param) {
 }
 
 TEST_F(BthreadTest, context_sanity) {
-    fcm = NULL;
+    fcm = nullptr;
     std::size_t size(8192);
     void* sp = malloc(size);
 
@@ -106,7 +109,7 @@ TEST_F(BthreadTest, context_sanity) {
 
 TEST_F(BthreadTest, call_bthread_functions_before_tls_created) {
     ASSERT_EQ(0, bthread_usleep(1000));
-    ASSERT_EQ(EINVAL, bthread_join(0, NULL));
+    ASSERT_EQ(EINVAL, bthread_join(0, nullptr));
     ASSERT_EQ(0UL, bthread_self());
 }
 
@@ -117,14 +120,14 @@ void* sleep_for_awhile(void* arg) {
     LOG(INFO) << "sleep_for_awhile(" << arg << ")";
     bthread_usleep(100000L);
     LOG(INFO) << "sleep_for_awhile(" << arg << ") wakes up";
-    return NULL;
+    return nullptr;
 }
 
 void* just_exit(void* arg) {
     LOG(INFO) << "just_exit(" << arg << ")";
-    bthread_exit(NULL);
+    bthread_exit(nullptr);
     EXPECT_TRUE(false) << "just_exit(" << arg << ") should never be here";
-    return NULL;
+    return nullptr;
 }
 
 void* repeated_sleep(void* arg) {
@@ -133,7 +136,7 @@ void* repeated_sleep(void* arg) {
         LOG(INFO) << "repeated_sleep(" << arg << ") i=" << i;
         bthread_usleep(1000000L);
     }
-    return NULL;
+    return nullptr;
 }
 
 void* spin_and_log(void* arg) {
@@ -146,22 +149,22 @@ void* spin_and_log(void* arg) {
             LOG(INFO) << "spin_and_log(" << arg << ")=" << i++;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 void* do_nothing(void* arg) {
     LOG(INFO) << "do_nothing(" << arg << ")";
-    return NULL;
+    return nullptr;
 }
 
 void* launcher(void* arg) {
     LOG(INFO) << "launcher(" << arg << ")";
     for (size_t i = 0; !stop; ++i) {
         bthread_t th;
-        bthread_start_urgent(&th, NULL, do_nothing, (void*)i);
+        bthread_start_urgent(&th, nullptr, do_nothing, (void*)i);
         bthread_usleep(1000000L);
     }
-    return NULL;
+    return nullptr;
 }
 
 void* stopper(void*) {
@@ -171,32 +174,32 @@ void* stopper(void*) {
     bthread_usleep(5*1000000L);
     LOG(INFO) << "about to stop";
     stop = true;
-    return NULL;
+    return nullptr;
 }
 
 void* misc(void* arg) {
     LOG(INFO) << "misc(" << arg << ")";
     bthread_t th[8];
-    EXPECT_EQ(0, bthread_start_urgent(&th[0], NULL, sleep_for_awhile, (void*)2));
-    EXPECT_EQ(0, bthread_start_urgent(&th[1], NULL, just_exit, (void*)3));
-    EXPECT_EQ(0, bthread_start_urgent(&th[2], NULL, repeated_sleep, (void*)4));
-    EXPECT_EQ(0, bthread_start_urgent(&th[3], NULL, repeated_sleep, (void*)68));
-    EXPECT_EQ(0, bthread_start_urgent(&th[4], NULL, spin_and_log, (void*)5));
-    EXPECT_EQ(0, bthread_start_urgent(&th[5], NULL, spin_and_log, (void*)85));
-    EXPECT_EQ(0, bthread_start_urgent(&th[6], NULL, launcher, (void*)6));
-    EXPECT_EQ(0, bthread_start_urgent(&th[7], NULL, stopper, NULL));
+    EXPECT_EQ(0, bthread_start_urgent(&th[0], nullptr, sleep_for_awhile, (void*)2));
+    EXPECT_EQ(0, bthread_start_urgent(&th[1], nullptr, just_exit, (void*)3));
+    EXPECT_EQ(0, bthread_start_urgent(&th[2], nullptr, repeated_sleep, (void*)4));
+    EXPECT_EQ(0, bthread_start_urgent(&th[3], nullptr, repeated_sleep, (void*)68));
+    EXPECT_EQ(0, bthread_start_urgent(&th[4], nullptr, spin_and_log, (void*)5));
+    EXPECT_EQ(0, bthread_start_urgent(&th[5], nullptr, spin_and_log, (void*)85));
+    EXPECT_EQ(0, bthread_start_urgent(&th[6], nullptr, launcher, (void*)6));
+    EXPECT_EQ(0, bthread_start_urgent(&th[7], nullptr, stopper, nullptr));
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        EXPECT_EQ(0, bthread_join(th[i], NULL));
+        EXPECT_EQ(0, bthread_join(th[i], nullptr));
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, sanity) {
     LOG(INFO) << "main thread " << pthread_self();
     bthread_t th1;
-    ASSERT_EQ(0, bthread_start_urgent(&th1, NULL, misc, (void*)1));
+    ASSERT_EQ(0, bthread_start_urgent(&th1, nullptr, misc, (void*)1));
     LOG(INFO) << "back to main thread " << th1 << " " << pthread_self();
-    ASSERT_EQ(0, bthread_join(th1, NULL));
+    ASSERT_EQ(0, bthread_join(th1, nullptr));
 }
 
 const size_t BT_SIZE = 64;
@@ -216,13 +219,13 @@ void * tf (void*) {
     if (call_do_bt () != 57) {
         return (void *) 1L;
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, backtrace) {
     bthread_t th;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, tf, NULL));
-    ASSERT_EQ(0, bthread_join (th, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, tf, nullptr));
+    ASSERT_EQ(0, bthread_join (th, nullptr));
 
     char **text = backtrace_symbols (bt_array, bt_cnt);
     ASSERT_TRUE(text);
@@ -235,42 +238,42 @@ TEST_F(BthreadTest, backtrace) {
 void* show_self(void*) {
     EXPECT_NE(0ul, bthread_self());
     LOG(INFO) << "bthread_self=" << bthread_self();
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, bthread_self) {
     ASSERT_EQ(0ul, bthread_self());
     bthread_t bth;
-    ASSERT_EQ(0, bthread_start_urgent(&bth, NULL, show_self, NULL));
-    ASSERT_EQ(0, bthread_join(bth, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&bth, nullptr, show_self, nullptr));
+    ASSERT_EQ(0, bthread_join(bth, nullptr));
 }
 
 void* join_self(void*) {
-    EXPECT_EQ(EINVAL, bthread_join(bthread_self(), NULL));
-    return NULL;
+    EXPECT_EQ(EINVAL, bthread_join(bthread_self(), nullptr));
+    return nullptr;
 }
 
 TEST_F(BthreadTest, bthread_join) {
     // Invalid tid
-    ASSERT_EQ(EINVAL, bthread_join(0, NULL));
+    ASSERT_EQ(EINVAL, bthread_join(0, nullptr));
     
     // Unexisting tid
-    ASSERT_EQ(EINVAL, bthread_join((bthread_t)-1, NULL));
+    ASSERT_EQ(EINVAL, bthread_join((bthread_t)-1, nullptr));
 
     // Joining self
     bthread_t th;
-    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, join_self, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, join_self, nullptr));
 }
 
 void* change_errno(void* arg) {
     errno = (intptr_t)arg;
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, errno_not_changed) {
     bthread_t th;
     errno = 1;
-    bthread_start_urgent(&th, NULL, change_errno, (void*)(intptr_t)2);
+    bthread_start_urgent(&th, nullptr, change_errno, (void*)(intptr_t)2);
     ASSERT_EQ(1, errno);
 }
 
@@ -290,7 +293,7 @@ void* adding_func(void* arg) {
     } else {
         s->fetch_add(1);
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, small_threads) {
@@ -325,7 +328,7 @@ TEST_F(BthreadTest, small_threads) {
                 ProfilerStop();
             }
             for (size_t i = 0; i < N; ++i) {
-                bthread_join(th[i], NULL);
+                bthread_join(th[i], nullptr);
             }
             LOG(INFO) << "[Round " << j + 1 << "] bthread_start_urgent takes "
                       << tm.n_elapsed()/N << "ns, sum=" << s;
@@ -342,13 +345,13 @@ void* bthread_starter(void* void_counter) {
     std::vector<bthread_t> ths;
     while (!stop.load(butil::memory_order_relaxed)) {
         bthread_t th;
-        EXPECT_EQ(0, bthread_start_urgent(&th, NULL, adding_func, void_counter));
+        EXPECT_EQ(0, bthread_start_urgent(&th, nullptr, adding_func, void_counter));
         ths.push_back(th);
     }
     for (size_t i = 0; i < ths.size(); ++i) {
-        EXPECT_EQ(0, bthread_join(ths[i], NULL));
+        EXPECT_EQ(0, bthread_join(ths[i], nullptr));
     }
-    return NULL;
+    return nullptr;
 }
 
 struct BAIDU_CACHELINE_ALIGNMENT AlignedCounter {
@@ -372,14 +375,14 @@ TEST_F(BthreadTest, start_bthreads_frequently) {
         for (int i = 0; i < cur_con; ++i) {
             counters[i].value = 0;
             ASSERT_EQ(0, bthread_start_urgent(
-                          &th[i], NULL, bthread_starter, &counters[i].value));
+                          &th[i], nullptr, bthread_starter, &counters[i].value));
         }
         butil::Timer tm;
         tm.start();
         bthread_usleep(200000L);
         stop = true;
         for (int i = 0; i < cur_con; ++i) {
-            bthread_join(th[i], NULL);
+            bthread_join(th[i], nullptr);
         }
         tm.stop();
         size_t sum = 0;
@@ -396,7 +399,7 @@ TEST_F(BthreadTest, start_bthreads_frequently) {
 void* log_start_latency(void* void_arg) {
     butil::Timer* tm = static_cast<butil::Timer*>(void_arg);
     tm->stop();
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, start_latency_when_high_idle) {
@@ -408,13 +411,13 @@ TEST_F(BthreadTest, start_latency_when_high_idle) {
         butil::Timer tm;
         tm.start();
         bthread_t th;
-        bthread_start_urgent(&th, NULL, log_start_latency, &tm);
-        bthread_join(th, NULL);
+        bthread_start_urgent(&th, nullptr, log_start_latency, &tm);
+        bthread_join(th, nullptr);
         bthread_t th2;
         butil::Timer tm2;
         tm2.start();
-        bthread_start_background(&th2, NULL, log_start_latency, &tm2);
-        bthread_join(th2, NULL);
+        bthread_start_background(&th2, nullptr, log_start_latency, &tm2);
+        bthread_join(th2, nullptr);
         if (!warmup) {
             ++REP;
             elp1 += tm.n_elapsed();
@@ -429,18 +432,18 @@ TEST_F(BthreadTest, start_latency_when_high_idle) {
 
 void* sleep_for_awhile_with_sleep(void* arg) {
     bthread_usleep((intptr_t)arg);
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, stop_sleep) {
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(
-                  &th, NULL, sleep_for_awhile_with_sleep, (void*)1000000L));
+                  &th, nullptr, sleep_for_awhile_with_sleep, (void*)1000000L));
     butil::Timer tm;
     tm.start();
     bthread_usleep(10000);
     ASSERT_EQ(0, bthread_stop(th));
-    ASSERT_EQ(0, bthread_join(th, NULL));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
     tm.stop();
     ASSERT_LE(labs(tm.m_elapsed() - 10), 10);
 }
@@ -453,34 +456,34 @@ TEST_F(BthreadTest, bthread_exit) {
     bthread_t th5;
     const bthread_attr_t attr = BTHREAD_ATTR_PTHREAD;
 
-    ASSERT_EQ(0, bthread_start_urgent(&th1, NULL, just_exit, NULL));
-    ASSERT_EQ(0, bthread_start_background(&th2, NULL, just_exit, NULL));
-    ASSERT_EQ(0, pthread_create(&th3, NULL, just_exit, NULL));
-    EXPECT_EQ(0, bthread_start_urgent(&th4, &attr, just_exit, NULL));
-    EXPECT_EQ(0, bthread_start_background(&th5, &attr, just_exit, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th1, nullptr, just_exit, nullptr));
+    ASSERT_EQ(0, bthread_start_background(&th2, nullptr, just_exit, nullptr));
+    ASSERT_EQ(0, pthread_create(&th3, nullptr, just_exit, nullptr));
+    EXPECT_EQ(0, bthread_start_urgent(&th4, &attr, just_exit, nullptr));
+    EXPECT_EQ(0, bthread_start_background(&th5, &attr, just_exit, nullptr));
 
-    ASSERT_EQ(0, bthread_join(th1, NULL));
-    ASSERT_EQ(0, bthread_join(th2, NULL));
-    ASSERT_EQ(0, pthread_join(th3, NULL));
-    ASSERT_EQ(0, bthread_join(th4, NULL));
-    ASSERT_EQ(0, bthread_join(th5, NULL));
+    ASSERT_EQ(0, bthread_join(th1, nullptr));
+    ASSERT_EQ(0, bthread_join(th2, nullptr));
+    ASSERT_EQ(0, pthread_join(th3, nullptr));
+    ASSERT_EQ(0, bthread_join(th4, nullptr));
+    ASSERT_EQ(0, bthread_join(th5, nullptr));
 }
 
 TEST_F(BthreadTest, bthread_equal) {
     bthread_t th1;
-    ASSERT_EQ(0, bthread_start_urgent(&th1, NULL, do_nothing, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th1, nullptr, do_nothing, nullptr));
     bthread_t th2;
-    ASSERT_EQ(0, bthread_start_urgent(&th2, NULL, do_nothing, NULL));
+    ASSERT_EQ(0, bthread_start_urgent(&th2, nullptr, do_nothing, nullptr));
     ASSERT_EQ(0, bthread_equal(th1, th2));
     bthread_t th3 = th2;
     ASSERT_EQ(1, bthread_equal(th3, th2));
-    ASSERT_EQ(0, bthread_join(th1, NULL));
-    ASSERT_EQ(0, bthread_join(th2, NULL));
+    ASSERT_EQ(0, bthread_join(th1, nullptr));
+    ASSERT_EQ(0, bthread_join(th2, nullptr));
 }
 
 void* mark_run(void* run) {
     *static_cast<pthread_t*>(run) = pthread_self();
-    return NULL;
+    return nullptr;
 }
 
 void* check_sleep(void* pthread_task) {
@@ -506,12 +509,12 @@ void* check_sleep(void* pthread_task) {
         // current thread.
         EXPECT_EQ(pid, run);             // should run in the same pthread
     }
-    EXPECT_EQ(0, bthread_join(th1, NULL));
+    EXPECT_EQ(0, bthread_join(th1, nullptr));
     if (pthread_task) {
         EXPECT_EQ(pid, pthread_self());
         EXPECT_NE((pthread_t)0, run); // the mark_run should run.
     }
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, bthread_usleep) {
@@ -522,29 +525,29 @@ TEST_F(BthreadTest, bthread_usleep) {
     bthread_t th1;
     ASSERT_EQ(0, bthread_start_urgent(&th1, &BTHREAD_ATTR_PTHREAD,
                                       check_sleep, (void*)1));
-    ASSERT_EQ(0, bthread_join(th1, NULL));
+    ASSERT_EQ(0, bthread_join(th1, nullptr));
     
     bthread_t th2;
-    ASSERT_EQ(0, bthread_start_urgent(&th2, NULL,
+    ASSERT_EQ(0, bthread_start_urgent(&th2, nullptr,
                                       check_sleep, (void*)0));
-    ASSERT_EQ(0, bthread_join(th2, NULL));
+    ASSERT_EQ(0, bthread_join(th2, nullptr));
 }
 
 static const bthread_attr_t BTHREAD_ATTR_NORMAL_WITH_SPAN =
-{ BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, NULL, BTHREAD_TAG_INVALID };
+{ BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, nullptr, BTHREAD_TAG_INVALID };
 
 void* test_parent_span(void* p) {
     uint64_t *q = (uint64_t *)p;
     *q = (uint64_t)(bthread::tls_bls_ptr()->rpcz_parent_span);
     LOG(INFO) << "span id in thread is " << *q;
-    return NULL;
+    return nullptr;
 }
 
 void* test_grandson_parent_span(void* p) {
     uint64_t* q = (uint64_t*)p;
     *q = (uint64_t)(bthread::tls_bls_ptr()->rpcz_parent_span);
     LOG(INFO) << "parent span id in thread is " << *q;
-    return NULL;
+    return nullptr;
 }
 
 void* test_son_parent_span(void* p) {
@@ -554,8 +557,8 @@ void* test_son_parent_span(void* p) {
     bthread_t th;
     uint64_t multi_p;
     bthread_start_urgent(&th, &BTHREAD_ATTR_NORMAL_WITH_SPAN, test_grandson_parent_span, &multi_p);
-    bthread_join(th, NULL);
-    return NULL;
+    bthread_join(th, nullptr);
+    return nullptr;
 }
 
 static uint64_t targets[] = {0xBADBEB0UL, 0xBADBEB1UL, 0xBADBEB2UL, 0xBADBEB3UL};
@@ -583,11 +586,11 @@ TEST_F(BthreadTest, test_span) {
     bthread::tls_bls_ptr()->rpcz_parent_span = (void*)target;
     bthread_t th1;
     ASSERT_EQ(0, bthread_start_urgent(&th1, &BTHREAD_ATTR_NORMAL_WITH_SPAN, test_parent_span, &p1));
-    ASSERT_EQ(0, bthread_join(th1, NULL));
+    ASSERT_EQ(0, bthread_join(th1, nullptr));
 
     bthread_t th2;
-    ASSERT_EQ(0, bthread_start_background(&th2, NULL, test_parent_span, &p2));
-    ASSERT_EQ(0, bthread_join(th2, NULL));
+    ASSERT_EQ(0, bthread_start_background(&th2, nullptr, test_parent_span, &p2));
+    ASSERT_EQ(0, bthread_join(th2, nullptr));
 
     ASSERT_EQ(p1, target);
     ASSERT_NE(p2, target);
@@ -604,36 +607,36 @@ TEST_F(BthreadTest, test_span) {
                                           test_son_parent_span, &multi_p1));
     ASSERT_EQ(0, bthread_start_background(&multi_th2, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
                                           test_son_parent_span, &multi_p2));
-    ASSERT_EQ(0, bthread_join(multi_th1, NULL));
-    ASSERT_EQ(0, bthread_join(multi_th2, NULL));
+    ASSERT_EQ(0, bthread_join(multi_th1, nullptr));
+    ASSERT_EQ(0, bthread_join(multi_th2, nullptr));
     ASSERT_NE(multi_p1, multi_p2);
     ASSERT_NE(std::find(targets, targets + 4, multi_p1), targets + 4);
     ASSERT_NE(std::find(targets, targets + 4, multi_p2), targets + 4);
 
-    ASSERT_EQ(0, bthread_set_span_funcs(NULL, NULL, NULL));
+    ASSERT_EQ(0, bthread_set_span_funcs(nullptr, nullptr, nullptr));
 }
 
 void* dummy_thread(void*) {
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, too_many_nosignal_threads) {
     for (size_t i = 0; i < 100000; ++i) {
         bthread_attr_t attr = BTHREAD_ATTR_NORMAL | BTHREAD_NOSIGNAL;
         bthread_t tid;
-        ASSERT_EQ(0, bthread_start_urgent(&tid, &attr, dummy_thread, NULL));
+        ASSERT_EQ(0, bthread_start_urgent(&tid, &attr, dummy_thread, nullptr));
     }
 }
 
 static void* yield_thread(void*) {
     bthread_yield();
-    return NULL;
+    return nullptr;
 }
 
 TEST_F(BthreadTest, yield_single_thread) {
     bthread_t tid;
-    ASSERT_EQ(0, bthread_start_background(&tid, NULL, yield_thread, NULL));
-    ASSERT_EQ(0, bthread_join(tid, NULL));
+    ASSERT_EQ(0, bthread_start_background(&tid, nullptr, yield_thread, nullptr));
+    ASSERT_EQ(0, bthread_join(tid, nullptr));
 }
 
 #ifdef BRPC_BTHREAD_TRACER
@@ -643,7 +646,7 @@ void spin_and_log_trace() {
         start = false;
         stop = false;
         bthread_t th;
-        ASSERT_EQ(0, bthread_start_urgent(&th, NULL, spin_and_log, (void*)1));
+        ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, spin_and_log, (void*)1));
         while (!start) {
             usleep(10 * 1000);
         }
@@ -653,7 +656,7 @@ void spin_and_log_trace() {
         ok = st1.find("spin_and_log") != std::string::npos;
 
         stop = true;
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
 
         std::string st2 = bthread::stack_trace(th);
         LOG(INFO) << "ended bthread stack trace:\n" << st2;
@@ -672,7 +675,7 @@ void repeated_sleep_trace() {
         start = false;
         stop = false;
         bthread_t th;
-        ASSERT_EQ(0, bthread_start_urgent(&th, NULL, repeated_sleep, (void*)1));
+        ASSERT_EQ(0, bthread_start_urgent(&th, nullptr, repeated_sleep, (void*)1));
         while (!start) {
             usleep(10 * 1000);
         }
@@ -682,7 +685,7 @@ void repeated_sleep_trace() {
         ok = st1.find("repeated_sleep") != std::string::npos;
 
         stop = true;
-        ASSERT_EQ(0, bthread_join(th, NULL));
+        ASSERT_EQ(0, bthread_join(th, nullptr));
 
         std::string st2 = bthread::stack_trace(th);
         LOG(INFO) << "ended bthread stack trace:\n" << st2;
@@ -700,5 +703,42 @@ TEST_F(BthreadTest, trace) {
     repeated_sleep_trace();
 }
 #endif // BRPC_BTHREAD_TRACER
+
+// Regression test for https://github.com/apache/brpc/issues/2888 .
+// Reproduce the real deadlock: many bthreads (>> bthread_concurrency) call
+// describe_exposed() on the same variable concurrently, and the user callback
+// yields the bthread. In the buggy version describe() runs while holding the
+// global VarMap pthread mutex, so once a bthread yields inside the callback the
+// pthread worker picks up another describing bthread that blocks on the same
+// submap mutex; with enough bthreads all workers get stuck and the process
+// deadlocks. With the fix (describe() runs OUTSIDE the lock) this finishes.
+int yielding_getfn(void*) {
+    bthread_usleep(500);
+    return 0;
+}
+
+void* describe_same_var(void*) {
+    std::ostringstream os;
+    bvar::Variable::describe_exposed("bthread_describe_deadlock", os);
+    return nullptr;
+}
+
+TEST_F(BthreadTest, describe_exposed_yields_in_bthread_no_deadlock) {
+    bvar::PassiveStatus<int> ps(
+        "bthread_describe_deadlock", yielding_getfn, nullptr);
+
+    // n >> bthread_concurrency, so that in the buggy version every worker ends
+    // up blocked on the same submap mutex held by a yielded bthread.
+    const int N = 1000;
+    std::vector<bthread_t> tids(N);
+    for (int i = 0; i < N; ++i) {
+        ASSERT_EQ(0, bthread_start_background(
+            &tids[i], nullptr, describe_same_var, nullptr));
+    }
+    for (int i = 0; i < N; ++i) {
+        ASSERT_EQ(0, bthread_join(tids[i], nullptr));
+    }
+    // Reaching here (instead of hanging) means there was no deadlock.
+}
 
 } // namespace

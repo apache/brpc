@@ -60,69 +60,69 @@ static void* access_mysql(void* void_args) {
         brpc::MysqlRequest request(stmt);
         for (size_t i = 1; i < commands.size(); i += 2) {
             if (commands[i] == "int8") {
-                int8_t val = strtol(commands[i + 1].c_str(), NULL, 10);
+                int8_t val = strtol(commands[i + 1].c_str(), nullptr, 10);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add int8 param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "uint8") {
-                uint8_t val = strtoul(commands[i + 1].c_str(), NULL, 10);
+                uint8_t val = strtoul(commands[i + 1].c_str(), nullptr, 10);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add uint8 param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "int16") {
-                int16_t val = strtol(commands[i + 1].c_str(), NULL, 10);
+                int16_t val = strtol(commands[i + 1].c_str(), nullptr, 10);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add uint16 param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "uint16") {
-                uint16_t val = strtoul(commands[i + 1].c_str(), NULL, 10);
+                uint16_t val = strtoul(commands[i + 1].c_str(), nullptr, 10);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add uint16 param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "int32") {
-                int32_t val = strtol(commands[i + 1].c_str(), NULL, 10);
+                int32_t val = strtol(commands[i + 1].c_str(), nullptr, 10);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add int32 param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "uint32") {
-                uint32_t val = strtoul(commands[i + 1].c_str(), NULL, 10);
+                uint32_t val = strtoul(commands[i + 1].c_str(), nullptr, 10);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add uint32 param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "int64") {
-                int64_t val = strtol(commands[i + 1].c_str(), NULL, 10);
+                int64_t val = strtol(commands[i + 1].c_str(), nullptr, 10);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add int64 param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "uint64") {
-                uint64_t val = strtoul(commands[i + 1].c_str(), NULL, 10);
+                uint64_t val = strtoul(commands[i + 1].c_str(), nullptr, 10);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add uint64 param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "float") {
-                float val = strtof(commands[i + 1].c_str(), NULL);
+                float val = strtof(commands[i + 1].c_str(), nullptr);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add float param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "double") {
-                double val = strtod(commands[i + 1].c_str(), NULL);
+                double val = strtod(commands[i + 1].c_str(), nullptr);
                 if (!request.AddParam(val)) {
                     LOG(ERROR) << "Fail to add double param";
-                    return NULL;
+                    return nullptr;
                 }
             } else if (commands[i] == "string") {
                 if (!request.AddParam(commands[i + 1])) {
                     LOG(ERROR) << "Fail to add string param";
-                    return NULL;
+                    return nullptr;
                 }
             } else {
                 LOG(ERROR) << "Wrong param type " << commands[i];
@@ -131,16 +131,16 @@ static void* access_mysql(void* void_args) {
 
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+        channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to access mysql, " << cntl.ErrorText();
-            return NULL;
+            return nullptr;
         }
 
         std::cout << response << std::endl;
     }
 
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char* argv[]) {
@@ -151,7 +151,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
 
-    // Initialize the channel, NULL means using default options.
+    // Initialize the channel, nullptr means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MYSQL;
     options.connection_type = FLAGS_connection_type;
@@ -174,7 +174,7 @@ int main(int argc, char* argv[]) {
             commands.push_back(argv[i]);
         }
         auto stmt(brpc::NewMysqlStatement(channel, commands[0]));
-        if (stmt == NULL) {
+        if (stmt == nullptr) {
             LOG(ERROR) << "Fail to create mysql statement";
             return -1;
         }
@@ -188,14 +188,14 @@ int main(int argc, char* argv[]) {
             args[i].mysql_channel = &channel;
             args[i].mysql_stmt = stmt.get();
             args[i].commands = commands;
-            if (bthread_start_background(&bids[i], NULL, access_mysql, &args[i]) != 0) {
+            if (bthread_start_background(&bids[i], nullptr, access_mysql, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
         }
 
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            bthread_join(bids[i], NULL);
+            bthread_join(bids[i], nullptr);
         }
     }
 

@@ -7,6 +7,8 @@
 # Quick facts
 
 - Channel.Init() is not thread-safe.
+- A Channel can be initialized successfully only once. Failed Init() calls may
+  be retried.
 - Channel.CallMethod() is thread-safe and a Channel can be used by multiple threads simultaneously.
 - Channel can be put on stack.
 - Channel can be destructed just after sending asynchronous request.
@@ -23,7 +25,7 @@ Some RPC implementations have so-called "ClientManager", including configuration
 2. Share resources. For example, servers and channels in brpc share background workers (of bthread).
 3. Better management of Lifetime. Destructing a "ClientManager" is very error-prone, which is managed by brpc right now.
 
-Like most classes, Channel must be **Init()**-ed before usage. Parameters take default values when `options` is NULL. If you want non-default values, code as follows:
+Like most classes, Channel must be **Init()**-ed before usage. Parameters take default values when `options` is nullptr. If you want non-default values, code as follows:
 ```c++
 brpc::ChannelOptions options;  // including default values
 options.xxx = yyy;
@@ -32,12 +34,16 @@ channel.Init(..., &options);
 ```
 Note that Channel neither modifies `options` nor accesses `options` after completion of Init(), thus options can be put on stack safely as in above code. Channel.options() gets options being used by the Channel.
 
+Init() may be retried after a failure. Once it succeeds, the Channel's target
+and options are fixed and every later Init() call returns -1. Create a new
+Channel to use a different target or configuration.
+
 Init() can connect one server or a cluster(multiple servers).
 
 # Connect to a server
 
 ```c++
-// Take default values when options is NULL.
+// Take default values when options is nullptr.
 int Init(EndPoint server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr, int port, const ChannelOptions* options);
@@ -64,7 +70,7 @@ Channels created by above Init() get server list from the NamingService specifie
 
 You **should not** create such channels ad-hocly each time before a RPC, because creation and destroying of such channels relate to many resources, say NamingService needs to be accessed once at creation otherwise server candidates are unknown. On the other hand, channels are able to be shared by multiple threads safely and has no need to be created frequently.
 
-If `load_balancer_name` is NULL or empty, this Init() is just the one for connecting single server and `naming_service_url` should be "ip:port" or "host:port" of the server. Thus you can unify initialization of all channels with this Init(). For example, you can put values of `naming_service_url` and `load_balancer_name` in configuration file, and set `load_balancer_name` to empty for single server and a valid algorithm for a cluster.
+If `load_balancer_name` is nullptr or empty, this Init() is just the one for connecting single server and `naming_service_url` should be "ip:port" or "host:port" of the server. Thus you can unify initialization of all channels with this Init(). For example, you can put values of `naming_service_url` and `load_balancer_name` in configuration file, and set `load_balancer_name` to empty for single server and a valid algorithm for a cluster.
 
 ## Naming Service
 
@@ -206,7 +212,7 @@ struct ServerNode {
 ```
 The most common usage is filtering by server tags.
 
-Customized filter is set to ChannelOptions to take effects. NULL by default means not filter.
+Customized filter is set to ChannelOptions to take effects. nullptr by default means not filter.
 
 ```c++
 class MyNamingServiceFilter : public brpc::NamingServiceFilter {
@@ -306,7 +312,7 @@ Or even:
 ```c++
 XXX_Stub(&channel).some_method(controller, request, response, done);
 ```
-A exception is http/h2 client, which is not related to protobuf much. Call CallMethod directly to make a http call, setting all parameters to NULL except for `Controller` and `done`, check [Access http/h2](http_client.md) for details.
+A exception is http/h2 client, which is not related to protobuf much. Call CallMethod directly to make a http call, setting all parameters to nullptr except for `Controller` and `done`, check [Access http/h2](http_client.md) for details.
 
 ## Synchronous call
 
@@ -321,7 +327,7 @@ XXX_Stub stub(&channel);
 
 request.set_foo(...);
 cntl.set_timeout_ms(...);
-stub.some_method(&cntl, &request, &response, NULL);
+stub.some_method(&cntl, &request, &response, nullptr);
 if (cntl.Failed()) {
     // RPC failed. fields in response are undefined, don't use.
 } else {

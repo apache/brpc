@@ -39,9 +39,9 @@ DEFINE_bool(usercode_in_pthread, false,
 DEFINE_bool(usercode_in_coroutine, false,
             "User's callback are run in coroutine, no bthread or pthread blocking call");
 
-static EventDispatcher* g_edisp = NULL;
-static bvar::LatencyRecorder* g_edisp_read_lantency = NULL;
-static bvar::LatencyRecorder* g_edisp_write_lantency = NULL;
+static EventDispatcher* g_edisp = nullptr;
+static bvar::LatencyRecorder* g_edisp_read_lantency = nullptr;
+static bvar::LatencyRecorder* g_edisp_write_lantency = nullptr;
 static pthread_once_t g_edisp_once = PTHREAD_ONCE_INIT;
 
 bool EventDispatcherUnsched() {
@@ -100,7 +100,7 @@ int IOEventData::OnCreated(const IOEventDataOptions& options) {
 }
 
 void IOEventData::BeforeRecycled() {
-    _options = { NULL, NULL, NULL };
+    _options = { nullptr, nullptr, nullptr };
 }
 
 } // namespace brpc

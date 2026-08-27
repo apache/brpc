@@ -78,7 +78,7 @@ protected:
         brpc::policy::SerializeEspRequest(&req_buf, &cntl, &req);
     
         butil::IOBuf packet_buf;
-        brpc::policy::PackEspRequest(&packet_buf, NULL, cntl.call_id().value, NULL, &cntl, req_buf, NULL);
+        brpc::policy::PackEspRequest(&packet_buf, nullptr, cntl.call_id().value, nullptr, &cntl, req_buf, nullptr);
     
         packet_buf.cut_into_file_descriptor(_pipe_fds[1], packet_buf.size());
     }
@@ -107,7 +107,7 @@ TEST_F(EspTest, complete_flow) {
 
     const brpc::Authenticator* auth = brpc::policy::global_esp_authenticator();
     butil::IOBuf packet_buf;
-    brpc::policy::PackEspRequest(&packet_buf, NULL, cntl.call_id().value, NULL, &cntl, req_buf, auth);
+    brpc::policy::PackEspRequest(&packet_buf, nullptr, cntl.call_id().value, nullptr, &cntl, req_buf, auth);
 
     std::string auth_str;
     auth->GenerateCredential(&auth_str);
@@ -121,7 +121,7 @@ TEST_F(EspTest, complete_flow) {
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
 
     brpc::ParseResult res_pr =
-            brpc::policy::ParseEspMessage(&response_buf, NULL, false, NULL);
+            brpc::policy::ParseEspMessage(&response_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, res_pr.error());
 
     brpc::InputMessageBase* res_msg = res_pr.message();
@@ -145,7 +145,7 @@ TEST_F(EspTest, wrong_response_head) {
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
 
     brpc::ParseResult res_pr =
-            brpc::policy::ParseEspMessage(&response_buf, NULL, false, NULL);
+            brpc::policy::ParseEspMessage(&response_buf, nullptr, false, nullptr);
     ASSERT_EQ(brpc::PARSE_OK, res_pr.error());
 
     brpc::InputMessageBase* res_msg = res_pr.message();

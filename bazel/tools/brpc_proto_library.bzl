@@ -70,17 +70,13 @@ def brpc_proto_library(
       include: protoc `-I` root AND the resulting cc_library `includes`
                root, relative to the current package.
                When omitted, "" or None, the include root is the
-               current package itself (suitable for .proto files
-               sitting directly under the package root, as in `test/`
-               and `example/...`). The root `BUILD.bazel` of brpc must
-               pass `"src"` so that code can reference the protos as
-               `import "brpc/foo.proto"`.
+               current package itself.
       proto_deps: list of native `proto_library` dependencies
                   (well-known protos or external .proto libraries).
                   Defaults to
                   `["@com_google_protobuf//:descriptor_proto"]`.
-                  Pass `[]` explicitly to disable the default; pass
-                  None (the default) to use it.
+                  Pass `[]` explicitly to disable the default.
+                  Pass None (the default) to use it.
       visibility: same semantics as cc_library.
       testonly: same semantics as cc_library.
     """
@@ -127,11 +123,11 @@ def brpc_proto_library(
         # cc_library `includes` is required, otherwise the .pb.cc
         # files inside this cc_library cannot find the .pb.h headers
         # they just generated (the headers live under
-        # bazel-bin/<package>/<include>/...). When include="" we pass
-        # "." to mean "the current package itself"; Bazel then exposes
-        # both `-I <package>` and `-I bazel-bin/<package>`
-        # automatically to dependents.
-        includes = [real_include if real_include else "."],
+        # bazel-bin/<package>/<include>/...). For a non-root package
+        # with include="", "." exposes the current package's source
+        # and bazel-bin directories. The root package needs no extra
+        # include because those roots are already on the search path.
+        includes = [real_include] if real_include else (["."] if native.package_name() else []),
         deps = deps + ["@com_google_protobuf//:protobuf"],
         visibility = visibility,
         testonly = testonly,

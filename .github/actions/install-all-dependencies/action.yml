@@ -2,11 +2,13 @@ runs:
   using: "composite"
   steps:
     - uses: ./.github/actions/install-essential-dependencies
-    - run: sudo apt-get update && sudo apt-get install -y libunwind-dev libgoogle-glog-dev automake bison flex libboost-all-dev libevent-dev libtool pkg-config libibverbs-dev
-      shell: bash
+      with:
+        extra-packages: >-
+          ccache libunwind-dev libgoogle-glog-dev automake bison flex
+          libboost-all-dev libevent-dev libtool pkg-config
     - run: | 
         wget https://archive.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz && tar -xf thrift-0.11.0.tar.gz && cd thrift-0.11.0/
-        ./configure --prefix=/usr --with-rs=no --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no --with-haskell=no --with-dotnetcore=no CXXFLAGS="-Wno-unused-variable"
+        ./configure --prefix=/usr --disable-tests --with-rs=no --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no --with-haskell=no --with-dotnetcore=no CXXFLAGS="-Wno-unused-variable"
         make -j ${{env.proc_num}} && sudo make install
       shell: bash
     - run: |

@@ -52,11 +52,11 @@ void BthreadsService::default_method(::google::protobuf::RpcController* cntl_bas
         bool enable_trace = false;
 #ifdef BRPC_BTHREAD_TRACER
             const std::string* st = cntl->http_request().uri().GetQuery("st");
-            if (NULL != st && *st == "1") {
+            if (nullptr != st && *st == "1") {
                 enable_trace = true;
             }
 #endif // BRPC_BTHREAD_TRACER
-        char* endptr = NULL;
+        char* endptr = nullptr;
         bthread_t tid = strtoull(constraint.c_str(), &endptr, 10);
         if (*endptr == '\0' || *endptr == '/' || *endptr == '?') {
             ::bthread::print_task(os, tid, enable_trace);

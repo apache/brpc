@@ -47,7 +47,7 @@ struct LocalStorage {
     void* rpcz_parent_span;  // Points to std::weak_ptr<brpc::Span>* (managed by brpc)
 };
 
-#define BTHREAD_LOCAL_STORAGE_INITIALIZER { NULL, NULL, NULL }
+#define BTHREAD_LOCAL_STORAGE_INITIALIZER { nullptr, nullptr, nullptr }
 
 const static LocalStorage LOCAL_STORAGE_INIT = BTHREAD_LOCAL_STORAGE_INITIALIZER;
 
@@ -70,7 +70,7 @@ enum TaskStatus {
 
 struct TaskMeta {
     // [Not Reset]
-    butil::atomic<ButexWaiter*> current_waiter{NULL};
+    butil::atomic<ButexWaiter*> current_waiter{nullptr};
     uint64_t current_sleep{TimerThread::INVALID_TASK_ID};
 
     // A flag to mark if the Timer scheduling failed.
@@ -89,7 +89,7 @@ struct TaskMeta {
     pthread_spinlock_t version_lock{};
     
     // [Not Reset] only modified by one bthread at any time, no need to be atomic
-    uint32_t* version_butex{NULL};
+    uint32_t* version_butex{nullptr};
 
     // The identifier. It does not have to be here, however many code is
     // simplified if they can get tid from TaskMeta.
@@ -98,11 +98,11 @@ struct TaskMeta {
     int priority_index{-1};
 
     // User function and argument
-    void* (*fn)(void*){NULL};
-    void* arg{NULL};
+    void* (*fn)(void*){nullptr};
+    void* arg{nullptr};
 
     // Stack of this task.
-    ContextualStack* stack{NULL};
+    ContextualStack* stack{nullptr};
 
     // Attributes creating this task
     bthread_attr_t attr{BTHREAD_ATTR_NORMAL};
@@ -133,13 +133,13 @@ public:
         pthread_spin_init(&version_lock, 0);
         version_butex = butex_create_checked<uint32_t>();
         *version_butex = 1;
-        pthread_mutex_init(&trace_lock, NULL);
+        pthread_mutex_init(&trace_lock, nullptr);
     }
         
     ~TaskMeta() {
         pthread_mutex_destroy(&trace_lock);
         butex_destroy(version_butex);
-        version_butex = NULL;
+        version_butex = nullptr;
         pthread_spin_destroy(&version_lock);
     }
 
@@ -149,7 +149,7 @@ public:
 
     ContextualStack* release_stack() {
         ContextualStack* tmp = stack;
-        stack = NULL;
+        stack = nullptr;
         return tmp;
     }
 
@@ -162,7 +162,7 @@ public:
 // This is set by brpc layer. When a bthread is created with BTHREAD_INHERIT_SPAN,
 // this callback is invoked to create a new span for the bthread.
 // The returned void* points to a heap-allocated weak_ptr<Span>* managed by brpc layer.
-// Returns NULL if span creation is disabled or fails.
+// Returns nullptr if span creation is disabled or fails.
 extern void* (*g_create_bthread_span)();
 
 // Global destructor callback for rpcz_parent_span.

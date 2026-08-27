@@ -32,7 +32,7 @@ void *signaler(void *arg) {
     Arg* a = (Arg*)arg;
     a->num_sig.fetch_sub(1, butil::memory_order_relaxed);
     a->event.signal();
-    return NULL;
+    return nullptr;
 }
 
 TEST(CountdonwEventTest, sanity) {
@@ -43,14 +43,14 @@ TEST(CountdonwEventTest, sanity) {
         a.event.reset(n);
         for (int i = 0; i < n; ++i) {
             bthread_t tid;
-            ASSERT_EQ(0, bthread_start_urgent(&tid, NULL, signaler, &a));
+            ASSERT_EQ(0, bthread_start_urgent(&tid, nullptr, signaler, &a));
             tids.push_back(tid);
         }
         a.event.wait();
         ASSERT_EQ(0, a.num_sig.load(butil::memory_order_relaxed));
     }
     for (size_t i = 0; i < tids.size(); ++i) {
-        bthread_join(tids[i], NULL);
+        bthread_join(tids[i], nullptr);
     }
 }
 

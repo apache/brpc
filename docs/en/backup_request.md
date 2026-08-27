@@ -79,7 +79,7 @@ channel.Init(..., &options);
 | `window_size_seconds` | 10 | Sliding window width in seconds; range [1, 3600] |
 | `update_interval_seconds` | 5 | Cached-ratio refresh interval in seconds; must be >= 1 |
 
-`CreateRateLimitedBackupPolicy` returns `NULL` if any parameter is invalid.
+`CreateRateLimitedBackupPolicy` returns `nullptr` if any parameter is invalid.
 
 ### Using a custom BackupRequestPolicy
 
