@@ -19,6 +19,9 @@
 #include "gperftools_helper.h"
 #include "butil/atomicops.h"
 #include <bthread/rwlock.h>
+#include <bthread/condition_variable.h>
+#include <functional>
+#include <vector>
 
 namespace {
 
@@ -705,4 +708,339 @@ TEST(RWLockTest, pthread_rdlock_performance) {
     pthread_mutex_destroy(&lock1);
 #endif
 }
+
+// Drives multiple bthread worker threads concurrently, each running a
+// task added via AddTask(). Used by the RWLock semantics tests below to
+// spawn readers/writers and join them once done.
+class RwlockTaskRunner {
+public:
+    void AddTask(std::function<void()>&& task) {
+        _tasks.push_back(std::move(task));
+    }
+
+    void RunTask() {
+        _tids.resize(_tasks.size());
+        for (size_t i = 0; i < _tasks.size(); ++i) {
+            ASSERT_EQ(0, bthread_start_urgent(&_tids[i], nullptr,
+                                              RunSingleTask, &_tasks[i]));
+        }
+    }
+
+    void Join() {
+        for (size_t i = 0; i < _tids.size(); ++i) {
+            bthread_join(_tids[i], nullptr);
+        }
+    }
+
+private:
+    static void* RunSingleTask(void* arg) {
+        (*(std::function<void()>*)arg)();
+        return nullptr;
+    }
+
+    std::vector<std::function<void()>> _tasks;
+    std::vector<bthread_t> _tids;
+};
+
+#define CHECK_RWLOCK_LOCKED_VALUE_EQUAL(mutex_name, value, expected_value) \
+    {                                                                      \
+        std::unique_lock<bthread::Mutex> lock(mutex_name);                 \
+        ASSERT_EQ(value, expected_value);                                  \
+    }
+
+void RwlockLockingThreadFunc(bthread_rwlock_t* rw, bool read_lock,
+                             unsigned* unblocked_count,
+                             bthread::Mutex* unblocked_count_mutex,
+                             bthread::ConditionVariable* unblocked_condition,
+                             bthread::Mutex* finish_mutex,
+                             unsigned* simultaneous_running_count,
+                             unsigned* max_simultaneous_running) {
+    // acquire lock
+    if (read_lock) {
+        EXPECT_EQ(0, bthread_rwlock_rdlock(rw));
+    } else {
+        EXPECT_EQ(0, bthread_rwlock_wrlock(rw));
+    }
+
+    // increment count to show we're unblocked
+    {
+        std::unique_lock<bthread::Mutex> ublock(*unblocked_count_mutex);
+        ++(*unblocked_count);
+        unblocked_condition->notify_one();
+        ++(*simultaneous_running_count);
+        *max_simultaneous_running =
+            std::max(*simultaneous_running_count, *max_simultaneous_running);
+    }
+
+    // wait to finish
+    std::unique_lock<bthread::Mutex> finish_lock(*finish_mutex);
+    {
+        std::unique_lock<bthread::Mutex> ublock(*unblocked_count_mutex);
+        --(*simultaneous_running_count);
+    }
+
+    EXPECT_EQ(0, bthread_rwlock_unlock(rw));
+}
+
+// Multiple readers should be able to hold the read lock and run inside
+// the critical section at the same time.
+TEST(RWLockTest, boost_style_multiple_readers) {
+    unsigned const number_of_threads = 10;
+
+    RwlockTaskRunner task_runner;
+
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
+    unsigned unblocked_count = 0;
+    unsigned simultaneous_running_count = 0;
+    unsigned max_simultaneous_running = 0;
+    bthread::Mutex unblocked_count_mutex;
+    bthread::ConditionVariable unblocked_condition;
+    bthread::Mutex finish_mutex;
+    std::unique_lock<bthread::Mutex> finish_lock(finish_mutex);
+
+    for (unsigned i = 0; i < number_of_threads; ++i) {
+        task_runner.AddTask(
+            std::bind(RwlockLockingThreadFunc, &rw, true,
+                      &unblocked_count, &unblocked_count_mutex,
+                      &unblocked_condition, &finish_mutex,
+                      &simultaneous_running_count, &max_simultaneous_running));
+    }
+    task_runner.RunTask();
+
+    {
+        std::unique_lock<bthread::Mutex> lk(unblocked_count_mutex);
+        while (unblocked_count < number_of_threads) {
+            unblocked_condition.wait(lk);
+        }
+    }
+
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
+                                    number_of_threads);
+
+    finish_lock.unlock();
+    task_runner.Join();
+
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex,
+                                    max_simultaneous_running,
+                                    number_of_threads);
+
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
+// Only one writer should be allowed to hold the write lock and run
+// inside the critical section at a time; the rest must stay blocked.
+TEST(RWLockTest, boost_style_only_one_writer_permitted) {
+    unsigned const number_of_threads = 10;
+
+    RwlockTaskRunner task_runner;
+
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
+    unsigned unblocked_count = 0;
+    unsigned simultaneous_running_count = 0;
+    unsigned max_simultaneous_running = 0;
+    bthread::Mutex unblocked_count_mutex;
+    bthread::ConditionVariable unblocked_condition;
+    bthread::Mutex finish_mutex;
+    std::unique_lock<bthread::Mutex> finish_lock(finish_mutex);
+
+    for (unsigned i = 0; i < number_of_threads; ++i) {
+        task_runner.AddTask(
+            std::bind(RwlockLockingThreadFunc, &rw, false,
+                      &unblocked_count, &unblocked_count_mutex,
+                      &unblocked_condition, &finish_mutex,
+                      &simultaneous_running_count, &max_simultaneous_running));
+    }
+    task_runner.RunTask();
+
+    bthread_usleep(200 * 1000);
+
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count, 1u);
+
+    finish_lock.unlock();
+    task_runner.Join();
+
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
+                                    number_of_threads);
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex,
+                                    max_simultaneous_running, 1u);
+
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
+// A reader holding the read lock must block a writer that arrives
+// afterwards, until the reader releases the lock.
+TEST(RWLockTest, boost_style_reader_blocks_writer) {
+    RwlockTaskRunner reader_runner;
+    RwlockTaskRunner writer_runner;
+
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
+    unsigned unblocked_count = 0;
+    unsigned simultaneous_running_count = 0;
+    unsigned max_simultaneous_running = 0;
+    bthread::Mutex unblocked_count_mutex;
+    bthread::ConditionVariable unblocked_condition;
+    bthread::Mutex finish_mutex;
+    std::unique_lock<bthread::Mutex> finish_lock(finish_mutex);
+
+    reader_runner.AddTask(
+        std::bind(RwlockLockingThreadFunc, &rw, true,
+                  &unblocked_count, &unblocked_count_mutex,
+                  &unblocked_condition, &finish_mutex,
+                  &simultaneous_running_count, &max_simultaneous_running));
+    reader_runner.RunTask();
+    {
+        std::unique_lock<bthread::Mutex> lk(unblocked_count_mutex);
+        while (unblocked_count < 1) {
+            unblocked_condition.wait(lk);
+        }
+    }
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count, 1u);
+    writer_runner.AddTask(
+        std::bind(RwlockLockingThreadFunc, &rw, false,
+                  &unblocked_count, &unblocked_count_mutex,
+                  &unblocked_condition, &finish_mutex,
+                  &simultaneous_running_count, &max_simultaneous_running));
+    writer_runner.RunTask();
+
+    bthread_usleep(100 * 1000);
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count, 1u);
+
+    finish_lock.unlock();
+    reader_runner.Join();
+    writer_runner.Join();
+
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count, 2u);
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex,
+                                    max_simultaneous_running, 1u);
+
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
+// Releasing the write lock must unblock every reader that was waiting
+// behind it, letting them all proceed concurrently.
+TEST(RWLockTest, boost_style_unlocking_writer_unblocks_all_readers) {
+    unsigned const reader_count = 10;
+    RwlockTaskRunner task_runner;
+
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
+    ASSERT_EQ(0, bthread_rwlock_wrlock(&rw));
+    unsigned unblocked_count = 0;
+    unsigned simultaneous_running_count = 0;
+    unsigned max_simultaneous_running = 0;
+    bthread::Mutex unblocked_count_mutex;
+    bthread::ConditionVariable unblocked_condition;
+    bthread::Mutex finish_mutex;
+    std::unique_lock<bthread::Mutex> finish_lock(finish_mutex);
+
+    for (unsigned i = 0; i < reader_count; ++i) {
+        task_runner.AddTask(
+            std::bind(RwlockLockingThreadFunc, &rw, true,
+                      &unblocked_count, &unblocked_count_mutex,
+                      &unblocked_condition, &finish_mutex,
+                      &simultaneous_running_count, &max_simultaneous_running));
+    }
+    task_runner.RunTask();
+
+    bthread_usleep(100 * 1000);
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count, 0u);
+
+    ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+    {
+        std::unique_lock<bthread::Mutex> lk(unblocked_count_mutex);
+        while (unblocked_count < reader_count) {
+            unblocked_condition.wait(lk);
+        }
+    }
+
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
+                                    reader_count);
+    finish_lock.unlock();
+    task_runner.Join();
+
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex,
+                                    max_simultaneous_running, reader_count);
+
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
+// Once the last reader releases the read lock, only a single queued
+// writer should be unblocked (not all of the queued writers).
+TEST(RWLockTest, boost_style_unlocking_last_reader_only_unblocks_one_writer) {
+    unsigned const reader_count = 10;
+    unsigned const writer_count = 10;
+    RwlockTaskRunner reader_runner;
+    RwlockTaskRunner writer_runner;
+
+    bthread_rwlock_t rw;
+    ASSERT_EQ(0, bthread_rwlock_init(&rw, nullptr));
+    unsigned unblocked_count = 0;
+    unsigned simultaneous_running_readers = 0;
+    unsigned max_simultaneous_readers = 0;
+    unsigned simultaneous_running_writers = 0;
+    unsigned max_simultaneous_writers = 0;
+    bthread::Mutex unblocked_count_mutex;
+    bthread::ConditionVariable unblocked_condition;
+    bthread::Mutex finish_reading_mutex;
+    std::unique_lock<bthread::Mutex> finish_reading_lock(finish_reading_mutex);
+    bthread::Mutex finish_writing_mutex;
+    std::unique_lock<bthread::Mutex> finish_writing_lock(finish_writing_mutex);
+
+    for (unsigned i = 0; i < reader_count; ++i) {
+        reader_runner.AddTask(
+            std::bind(RwlockLockingThreadFunc, &rw, true,
+                      &unblocked_count, &unblocked_count_mutex,
+                      &unblocked_condition, &finish_reading_mutex,
+                      &simultaneous_running_readers, &max_simultaneous_readers));
+    }
+    reader_runner.RunTask();
+    {
+        std::unique_lock<bthread::Mutex> lk(unblocked_count_mutex);
+        while (unblocked_count < reader_count) {
+            unblocked_condition.wait(lk);
+        }
+    }
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
+                                    reader_count);
+
+    for (unsigned i = 0; i < writer_count; ++i) {
+        writer_runner.AddTask(
+            std::bind(RwlockLockingThreadFunc, &rw, false,
+                      &unblocked_count, &unblocked_count_mutex,
+                      &unblocked_condition, &finish_writing_mutex,
+                      &simultaneous_running_writers, &max_simultaneous_writers));
+    }
+    writer_runner.RunTask();
+
+    bthread_usleep(100 * 1000);
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
+                                    reader_count);
+
+    finish_reading_lock.unlock();
+    reader_runner.Join();
+    {
+        std::unique_lock<bthread::Mutex> lk(unblocked_count_mutex);
+        while (unblocked_count < (reader_count + 1)) {
+            unblocked_condition.wait(lk);
+        }
+    }
+    bthread_usleep(100 * 1000);
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
+                                    reader_count + 1);
+
+    finish_writing_lock.unlock();
+    writer_runner.Join();
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
+                                    reader_count + writer_count);
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex,
+                                    max_simultaneous_readers, reader_count);
+    CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex,
+                                    max_simultaneous_writers, 1u);
+
+    ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
+}
+
 } // namespace
