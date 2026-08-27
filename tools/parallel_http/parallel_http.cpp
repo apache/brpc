@@ -207,5 +207,7 @@ int main(int argc, char** argv) {
             usleep(10000);
         }
     }
+
+    delete[] args;
     return 0;
 }
