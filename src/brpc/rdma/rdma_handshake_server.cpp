@@ -153,6 +153,11 @@ static int SendUnnegotiableHello(Socket* socket, int version) {
 }
 
 // Fallback handshake for connections that are NOT in RDMA mode.
+//
+// Unlike the RDMA-mode path, which turns handshake bytes away once its endpoint
+// has left the handshake (the state >= ESTABLISHED guard in
+// RdmaEndpoint::ExecuteServerHandshake), this one keeps no record of having
+// run. See the tail of phase 2.
 static ParseResult FallbackServerHandshake(butil::IOBuf* source, Socket* socket) {
     if (socket->parsing_context() == nullptr) {
         if (source->size() < HELLO_MAGIC_LEN) {
@@ -192,8 +197,8 @@ static ParseResult FallbackServerHandshake(butil::IOBuf* source, Socket* socket)
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     CHECK_EQ(source->pop_front(HELLO_ACK_LEN), HELLO_ACK_LEN);
-    // Handshake done (downgraded to TCP); drop the context and let
-    // InputMessenger parse the following real RPC.
+    // Handshake done.
+    // Drop the context and let InputMessenger parse the following real RPC.
     socket->reset_parsing_context(nullptr);
     return MakeParseError(PARSE_ERROR_TRY_OTHERS);
 }

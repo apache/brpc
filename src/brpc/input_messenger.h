@@ -23,6 +23,7 @@
 #include "brpc/socket.h"              // SocketId, SocketUser
 #include "brpc/parse_result.h"        // ParseResult
 #include "brpc/input_message_base.h"  // InputMessageBase
+#include "brpc/input_messenger_processor.h"  // InputMessengerProcessor
 
 
 namespace brpc {
@@ -94,11 +95,11 @@ private:
 // Process messages from connections.
 // `Message' corresponds to a client's request or a server's response.
 class InputMessenger : public SocketUser {
-friend class Socket;
 friend class TcpTransport;
 friend class RdmaTransport;
 friend class rdma::RdmaEndpoint;
 friend class ubring::UBShmEndpoint;
+friend class InputMessengerProcessor;
 public:
     explicit InputMessenger(size_t capacity = 128);
     ~InputMessenger();
@@ -136,17 +137,6 @@ protected:
     static void OnNewMessages(Socket* m);
     
 private:
-
-    // Find a valid scissor from `handlers' to cut off `header' and `payload'
-    // from m->read_buf, save index of the scissor into `index'.
-    ParseResult CutInputMessage(Socket* m, size_t* index, bool read_eof);
-
-    // Process a new message just received in OnNewMessages
-    // Return value >= 0 means success
-    int ProcessNewMessage(
-            Socket* m, ssize_t bytes, bool read_eof,
-            const uint64_t received_us, const uint64_t base_realtime,
-            InputMessageClosure& last_msg);
 
     // User-supplied scissors and handlers.
     // the index of handler is exactly the same as the protocol
