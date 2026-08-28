@@ -252,21 +252,23 @@ static int ParseRecursivePayloadWith1MBStack(const std::string& payload,
     ParseArgs args = { &payload, false };
     pthread_attr_t attr;
     int rc = pthread_attr_init(&attr);
-    if (rc == 0) {
-        rc = pthread_attr_setstacksize(&attr, 1024 * 1024);
-    }
-    int stack_rc = rc;
-    pthread_t tid;
-    if (stack_rc == 0) {
-        stack_rc = pthread_create(&tid, &attr, ParseOnSmallStack, &args);
-    }
-    if (stack_rc == 0) {
-        rc = pthread_join(tid, nullptr);
-    }
-    pthread_attr_destroy(&attr);
-    if (stack_rc != 0) {
+    if (rc != 0) {
         return -1;
     }
+    rc = pthread_attr_setstacksize(&attr, 1024 * 1024);
+    if (rc != 0) {
+        pthread_attr_destroy(&attr);
+        return -1;
+    }
+    pthread_t tid;
+    rc = pthread_create(&tid, &attr, ParseOnSmallStack, &args);
+    // The attribute is not needed right after create, destroy it here so
+    // that every path below shares one cleanup point.
+    pthread_attr_destroy(&attr);
+    if (rc != 0) {
+        return -1;
+    }
+    rc = pthread_join(tid, nullptr);
     if (rc != 0) {
         return -2;
     }

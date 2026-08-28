@@ -173,7 +173,7 @@ public:
     // nested in one container). Input nested deeper than MAX_DEPTH is
     // rejected to avoid stack overflow on unbounded recursion (CWE-674),
     // mirroring the serializer's limit.
-    ObjectIterator(InputStream* stream, size_t n, size_t depth = 0)
+    ObjectIterator(InputStream* stream, size_t n, size_t depth = 1)
     { init(stream, n, depth); }
     explicit ObjectIterator(UnparsedValue& value)
     { init(value.stream(), value.size(), value.depth() + 1); }
@@ -215,7 +215,7 @@ class ArrayIterator {
 public:
     typedef UnparsedValue Field;
 
-    ArrayIterator(InputStream* stream, size_t size, size_t depth = 0)
+    ArrayIterator(InputStream* stream, size_t size, size_t depth = 1)
     { init(stream, size, depth); }
     explicit ArrayIterator(UnparsedValue& value)
     { init(value.stream(), value.size(), value.depth() + 1); }
