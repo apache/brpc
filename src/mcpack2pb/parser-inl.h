@@ -128,20 +128,27 @@ struct IsoItemsHead {
 } __attribute__((__packed__));
 
 inline ObjectIterator UnparsedValue::as_object() {
-    return ObjectIterator(_stream, _size);
+    return ObjectIterator(_stream, _size, _depth + 1);
 }
 
 inline ArrayIterator UnparsedValue::as_array() {
-    return ArrayIterator(_stream, _size);
+    return ArrayIterator(_stream, _size, _depth + 1);
 }
 
 inline ISOArrayIterator UnparsedValue::as_iso_array() {
     return ISOArrayIterator(_stream, _size);
 }
 
-inline void ObjectIterator::init(InputStream* stream, size_t size) {
+inline void ObjectIterator::init(InputStream* stream, size_t size, size_t depth) {
+    _depth = depth;
     _field_count = 0;
     _stream = stream;
+    if (_depth > (size_t)MAX_DEPTH) {
+        // The input is nested too deep. Parsing it would recurse until the
+        // stack overflows (CWE-674), so fail like the serializer does when
+        // the nesting level exceeds MAX_DEPTH.
+        return set_bad();
+    }
     _expected_popped_bytes = _stream->popped_bytes() + sizeof(ItemsHead);
     _expected_popped_end = _stream->popped_bytes() + size;
     ItemsHead items_head;
@@ -153,9 +160,16 @@ inline void ObjectIterator::init(InputStream* stream, size_t size) {
     operator++();
 }
 
-inline void ArrayIterator::init(InputStream* stream, size_t size) {
+inline void ArrayIterator::init(InputStream* stream, size_t size, size_t depth) {
+    _depth = depth;
     _item_count = 0;
     _stream = stream;
+    if (_depth > (size_t)MAX_DEPTH) {
+        // The input is nested too deep. Parsing it would recurse until the
+        // stack overflows (CWE-674), so fail like the serializer does when
+        // the nesting level exceeds MAX_DEPTH.
+        return set_bad();
+    }
     _expected_popped_bytes = _stream->popped_bytes() + sizeof(ItemsHead);
     _expected_popped_end = _stream->popped_bytes() + size;
     if (size < sizeof(ItemsHead)) {
