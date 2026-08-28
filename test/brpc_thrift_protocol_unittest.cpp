@@ -60,16 +60,14 @@ protected:
 
     virtual void SetUp() {}
     virtual void TearDown() {
-        // Close the pipe fds and destroy the test socket so no OS resources
-        // are leaked across tests.
+        // The test socket owns `_pipe_fds[1]` (SocketOptions::fd takes
+        // ownership and Socket closes it on destruction), so only the read
+        // end `_pipe_fds[0]` is closed here to avoid double-close.
         if (_pipe_fds[0] >= 0) {
             close(_pipe_fds[0]);
             _pipe_fds[0] = -1;
         }
-        if (_pipe_fds[1] >= 0) {
-            close(_pipe_fds[1]);
-            _pipe_fds[1] = -1;
-        }
+        _pipe_fds[1] = -1;
         _socket.reset();
     }
 
