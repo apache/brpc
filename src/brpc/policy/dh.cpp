@@ -81,9 +81,9 @@ int DHWrapper::copy_shared_key(const void* ppkey, int ppkey_size,
     }
     // @see https://github.com/ossrs/srs/issues/165
     int key_size = DH_compute_key((unsigned char*)skey, ppk, _pdh);
+    BN_free(ppk);
     if (key_size < 0 || key_size > *skey_size) {
         LOG(ERROR) << "Fail to compute shared key";
-        BN_free(ppk);
         return -1;
     }
     *skey_size = key_size;
