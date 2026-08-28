@@ -381,6 +381,8 @@ Set `ServerOptions.redis_max_connections` to limit simultaneous connections on a
 
 The acceptor reserves a slot before creating a brpc Socket, so idle connections count toward the limit and concurrent accepts cannot exceed it. An over-limit plaintext connection receives `-ERR max number of clients reached`; an SSL-enabled listener closes it before starting a TLS handshake. Internal listeners and other Server instances are unaffected. `ServerStatistics.rejected_redis_connection_count` reports the cumulative number of rejected connections.
 
+Call `Server::SetRedisMaxConnections()` to atomically update the limit on a running Redis-only Server. Raising the limit affects subsequent admission checks. Lowering it does not close existing connections; new connections are accepted again after the active count falls below the limit. Set the limit to 0 to disable it. A Redis-only Server started with an unlimited value can enable the limit later.
+
 ## pid_file
 
 If this field is non-empty, Server creates a file named so at start-up, with pid as the content. Empty by default.
