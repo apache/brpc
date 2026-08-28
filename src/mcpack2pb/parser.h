@@ -94,12 +94,16 @@ struct UnparsedValue {
         : _type(FIELD_UNKNOWN), _stream(NULL), _size(0), _depth(0) {}
     UnparsedValue(FieldType type, InputStream* stream, size_t size)
         : _type(type), _stream(stream), _size(size), _depth(0) {}
-    // `depth' is the nesting level of this value (0 for the top-level
-    // object). Iterators derive it from the value they iterate over and
-    // reject input deeper than MAX_DEPTH, so that parsing a deeply nested
+    // `depth' is the number of containers this value is nested in
+    // (0 for the top-level object). An iterator unfolded from a value gets
+    // depth+1, i.e. the nesting level of the container itself. Input nested
+    // deeper than MAX_DEPTH is rejected, so that parsing a deeply nested
     // object fails instead of recursing until the stack overflows.
     UnparsedValue(FieldType type, InputStream* stream, size_t size, size_t depth)
         : _type(type), _stream(stream), _size(size), _depth(depth) {}
+    // Sets the value, keeping the depth of the previous value (a reused
+    // value stays at the same nesting level). Internal code populates
+    // nested values with the 4-arg overload below.
     void set(FieldType type, InputStream* stream, size_t size) {
         set(type, stream, size, _depth);
     }
@@ -164,10 +168,11 @@ public:
     };
 
     // Parse `n' bytes from `stream' as fields of an object.
-    // `depth' is the nesting level of the object; the top-level object
-    // starts at 0 and each nested iterator adds 1. Input nested deeper
-    // than MAX_DEPTH is rejected to avoid stack overflow on unbounded
-    // recursion (CWE-674), mirroring the serializer's limit.
+    // `depth' is the nesting level of the container being iterated
+    // (1 for the top-level object, since the provided value is already
+    // nested in one container). Input nested deeper than MAX_DEPTH is
+    // rejected to avoid stack overflow on unbounded recursion (CWE-674),
+    // mirroring the serializer's limit.
     ObjectIterator(InputStream* stream, size_t n, size_t depth = 0)
     { init(stream, n, depth); }
     explicit ObjectIterator(UnparsedValue& value)

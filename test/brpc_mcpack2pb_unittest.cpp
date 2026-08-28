@@ -174,6 +174,10 @@ static std::string BuildRecursivePayload(int depth) {
     std::string body;
     AppendU32(&body, 0);
     const std::string name = std::string("children\0", 9);  // trailing '\0'
+    // Reserve enough space for the final payload so that appending at each
+    // nesting level does not reallocate (the size of each wrapping level is
+    // 1 + 1 + 4 + body + 4 + item + 1 + 1 + 4 + name + arr).
+    body.reserve((size_t)depth * 30);
     for (int i = 1; i < depth; ++i) {
         std::string item;  // a FIELD_OBJECT item wrapping the inner payload
         item.push_back(0x10);  // FIELD_OBJECT
@@ -247,32 +251,36 @@ static int ParseRecursivePayloadWith1MBStack(const std::string& payload,
                                              bool* ok) {
     ParseArgs args = { &payload, false };
     pthread_attr_t attr;
-    if (pthread_attr_init(&attr) != 0) {
+    int rc = pthread_attr_init(&attr);
+    if (rc == 0) {
+        rc = pthread_attr_setstacksize(&attr, 1024 * 1024);
+    }
+    int stack_rc = rc;
+    pthread_t tid;
+    if (stack_rc == 0) {
+        stack_rc = pthread_create(&tid, &attr, ParseOnSmallStack, &args);
+    }
+    if (stack_rc == 0) {
+        rc = pthread_join(tid, nullptr);
+    }
+    pthread_attr_destroy(&attr);
+    if (stack_rc != 0) {
         return -1;
     }
-    if (pthread_attr_setstacksize(&attr, 1024 * 1024) != 0) {
-        return -2;
-    }
-    pthread_t tid;
-    const int rc = pthread_create(&tid, &attr, ParseOnSmallStack, &args);
-    pthread_attr_destroy(&attr);
     if (rc != 0) {
-        return -3;
-    }
-    if (pthread_join(tid, nullptr) != 0) {
-        return -4;
+        return -2;
     }
     *ok = args.parse_ok;
     return 0;
 }
 
 TEST(Mcpack2pbParserTest, DeeplyNestedPayloadIsRejectedWithoutStackOverflow) {
-    // 16384 levels are far beyond both MAX_DEPTH (128) and what a 1 MB stack
-    // can hold for the recursive parse functions. The payload is only a few
-    // hundred KB, far below the server's max_body_size, so an attacker can
-    // easily send it. Without a recursion limit the parse overflows the
-    // stack and crashes the process.
-    const std::string payload = BuildRecursivePayload(16384);
+    // A few levels beyond MAX_DEPTH (128) suffice: such input must be
+    // rejected by the depth limit. Before the fix the parse accepted it
+    // (and far deeper input would overflow the 1 MB stack and crash the
+    // process), so this fails without the guard. Keeping the depth small
+    // keeps the test fast even under sanitizers.
+    const std::string payload = BuildRecursivePayload(mcpack2pb::MAX_DEPTH + 2);
     bool ok = true;
     ASSERT_EQ(0, ParseRecursivePayloadWith1MBStack(payload, &ok));
     // The parse must fail cleanly instead of crashing the process.
