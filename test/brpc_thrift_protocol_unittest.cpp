@@ -19,6 +19,7 @@
 
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
+#include <unistd.h>
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -48,6 +49,7 @@ static const uint32_t THRIFT_HEAD_VERSION_1 = 0x80010000;
 class ThriftProtocolTest : public ::testing::Test {
 protected:
     ThriftProtocolTest() {
+        _pipe_fds[0] = _pipe_fds[1] = -1;
         EXPECT_EQ(0, pipe(_pipe_fds));
         brpc::SocketId id;
         brpc::SocketOptions options;
@@ -57,7 +59,19 @@ protected:
     }
 
     virtual void SetUp() {}
-    virtual void TearDown() {}
+    virtual void TearDown() {
+        // Close the pipe fds and destroy the test socket so no OS resources
+        // are leaked across tests.
+        if (_pipe_fds[0] >= 0) {
+            close(_pipe_fds[0]);
+            _pipe_fds[0] = -1;
+        }
+        if (_pipe_fds[1] >= 0) {
+            close(_pipe_fds[1]);
+            _pipe_fds[1] = -1;
+        }
+        _socket.reset();
+    }
 
     // Attach the test socket to the message so that ProcessThriftResponse
     // can read the correlation_id out of it.

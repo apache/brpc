@@ -194,10 +194,10 @@ void ReadThriftException(const butil::IOBuf& body,
         x->read(&iprot);
         iprot.readMessageEnd();
         iprot.getTransport()->readEnd();
-    } catch (std::exception& e) {
-        LOG(WARNING) << "Catched thrift exception while parsing T_EXCEPTION reply: " << e.what();
+    } catch (const std::exception& e) {
+        LOG(WARNING) << "Caught thrift exception while parsing T_EXCEPTION reply: " << e.what();
     } catch (...) {
-        LOG(WARNING) << "Catched unknown thrift exception while parsing T_EXCEPTION reply";
+        LOG(WARNING) << "Caught unknown thrift exception while parsing T_EXCEPTION reply";
     }
 }
 
