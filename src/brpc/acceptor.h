@@ -104,6 +104,7 @@ private:
 
     bool TryAcquireRedisConnectionSlot();
     void RejectRedisConnection(int fd);
+    void SetRedisMaxConnections(size_t max_connections);
 
     bthread_keytable_pool_t* _keytable_pool; // owned by Server
     Status _status;
@@ -126,7 +127,7 @@ private:
     // relaxed memory ordering is sufficient.
     butil::atomic<size_t> _connection_count;
     butil::atomic<size_t> _rejected_redis_connection_count;
-    size_t _redis_max_connections;
+    butil::atomic<size_t> _redis_max_connections;
 
     bool _force_ssl;
     std::shared_ptr<SocketSSLContext> _ssl_ctx;

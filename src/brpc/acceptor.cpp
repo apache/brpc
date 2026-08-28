@@ -100,7 +100,7 @@ int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
     _idle_timeout_sec = idle_timeout_sec;
     _force_ssl = force_ssl;
     _ssl_ctx = ssl_ctx;
-    _redis_max_connections = redis_max_connections;
+    SetRedisMaxConnections(redis_max_connections);
     
     // Creation of _acception_id is inside lock so that OnNewConnections
     // (which may run immediately) should see sane fields set below.
@@ -224,13 +224,21 @@ size_t Acceptor::RejectedRedisConnectionCount() const {
 bool Acceptor::TryAcquireRedisConnectionSlot() {
     size_t count = _connection_count.load(butil::memory_order_relaxed);
     do {
-        if (_redis_max_connections != 0 &&
-            count >= _redis_max_connections) {
+        const size_t max_connections =
+            _redis_max_connections.load(butil::memory_order_relaxed);
+        if (max_connections != 0 && count >= max_connections) {
             return false;
         }
     } while (!_connection_count.compare_exchange_weak(
         count, count + 1, butil::memory_order_relaxed));
     return true;
+}
+
+void Acceptor::SetRedisMaxConnections(size_t max_connections) {
+    // The limit controls only future numeric admission decisions and does not
+    // publish socket state, so a relaxed store is sufficient.
+    _redis_max_connections.store(
+        max_connections, butil::memory_order_relaxed);
 }
 
 void Acceptor::RejectRedisConnection(int fd) {
