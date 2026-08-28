@@ -393,6 +393,134 @@ public:
     std::atomic<int> failure_code{0};
 };
 
+class FeedbackValidationHandler : public brpc::StreamInputHandler {
+public:
+    int on_received_messages(brpc::StreamId,
+                             butil::IOBuf* const[],
+                             size_t) override {
+        return 0;
+    }
+
+    void on_idle_timeout(brpc::StreamId) override {}
+    void on_closed(brpc::StreamId) override {
+        closed.store(true, std::memory_order_release);
+    }
+    void on_failed(brpc::StreamId, int error_code,
+                   const std::string&) override {
+        failure_code.store(error_code, std::memory_order_release);
+    }
+
+    std::atomic<int> failure_code{0};
+    std::atomic<bool> closed{false};
+};
+
+TEST_F(StreamingRpcTest, reject_malformed_feedback_frames) {
+    brpc::Server server;
+    MyServiceWithStream service;
+    ASSERT_EQ(0, server.AddService(
+        &service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), nullptr));
+    test::EchoService_Stub stub(&channel);
+
+    auto check_feedback = [&](int max_buf_size, bool add_payload,
+                              FeedbackValidationHandler* handler) {
+        brpc::Controller cntl;
+        brpc::StreamOptions options;
+        options.handler = handler;
+        options.min_buf_size = max_buf_size;
+        options.max_buf_size = max_buf_size;
+        brpc::StreamId request_stream;
+        ASSERT_EQ(0, brpc::StreamCreate(&request_stream, cntl, &options));
+        brpc::ScopedStream stream_guard(request_stream);
+        test::EchoResponse rpc_response;
+        stub.Echo(&cntl, &request, &rpc_response, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+        brpc::StreamUniquePtr stream;
+        ASSERT_EQ(0, brpc::Stream::Address(request_stream, &stream));
+        ASSERT_TRUE(stream->_connected.load(butil::memory_order_acquire));
+        ASSERT_NE(nullptr, stream->_host_socket);
+
+        brpc::StreamFrameMeta feedback;
+        feedback.set_stream_id(request_stream);
+        feedback.set_frame_type(brpc::FRAME_TYPE_FEEDBACK);
+        feedback.mutable_feedback()->set_consumed_size(1);
+        butil::IOBuf payload;
+        if (add_payload) {
+            payload.append("unexpected payload");
+        }
+        ASSERT_EQ(-1, stream->OnReceived(
+            feedback, &payload, stream->_host_socket));
+        ASSERT_TRUE(WaitForTrue([handler]() {
+            return handler->failure_code.load(std::memory_order_acquire) != 0;
+        }, 2000));
+        ASSERT_EQ(EPROTO,
+                  handler->failure_code.load(std::memory_order_relaxed));
+    };
+
+    FeedbackValidationHandler payload_handler;
+    check_feedback(1024, true, &payload_handler);
+
+    FeedbackValidationHandler disabled_handler;
+    check_feedback(0, false, &disabled_handler);
+
+    std::string old_socket_limit;
+    ASSERT_TRUE(GFLAGS_NAMESPACE::GetCommandLineOption(
+        "socket_max_streams_unconsumed_bytes", &old_socket_limit));
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+        "socket_max_streams_unconsumed_bytes", "1").empty());
+    BRPC_SCOPE_EXIT {
+        GFLAGS_NAMESPACE::SetCommandLineOption(
+            "socket_max_streams_unconsumed_bytes",
+            old_socket_limit.c_str());
+    };
+
+    FeedbackValidationHandler valid_handler;
+    brpc::Controller cntl;
+    brpc::StreamOptions options;
+    options.handler = &valid_handler;
+    options.min_buf_size = 0;
+    options.max_buf_size = 1;
+    brpc::StreamId request_stream;
+    ASSERT_EQ(0, brpc::StreamCreate(&request_stream, cntl, &options));
+    brpc::ScopedStream stream_guard(request_stream);
+    test::EchoResponse rpc_response;
+    stub.Echo(&cntl, &request, &rpc_response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    brpc::StreamUniquePtr stream;
+    ASSERT_EQ(0, brpc::Stream::Address(request_stream, &stream));
+    ASSERT_TRUE(stream->_connected.load(butil::memory_order_acquire));
+    ASSERT_NE(nullptr, stream->_host_socket);
+    brpc::SocketUniquePtr host_socket;
+    stream->_host_socket->ReAddress(&host_socket);
+    const int64_t old_unconsumed =
+        host_socket->_total_streams_unconsumed_size.exchange(
+            2, butil::memory_order_relaxed);
+    BRPC_SCOPE_EXIT {
+        host_socket->_total_streams_unconsumed_size.store(
+            old_unconsumed, butil::memory_order_relaxed);
+    };
+
+    brpc::StreamFrameMeta feedback;
+    feedback.set_stream_id(request_stream);
+    feedback.set_frame_type(brpc::FRAME_TYPE_FEEDBACK);
+    feedback.mutable_feedback()->set_consumed_size(1);
+    butil::IOBuf payload;
+    ASSERT_EQ(0, stream->OnReceived(
+        feedback, &payload, host_socket.get()));
+    ASSERT_EQ(1u, stream->_cur_buf_size);
+    ASSERT_EQ(0, valid_handler.failure_code.load(
+                     std::memory_order_acquire));
+    stream.reset();
+    ASSERT_EQ(0, brpc::StreamClose(request_stream));
+    ASSERT_EQ(request_stream, stream_guard.release());
+    ASSERT_TRUE(WaitForTrue(valid_handler.closed, 2000));
+}
+
 TEST_F(StreamingRpcTest, limit_reassembled_message_size) {
     std::string old_max_body_size;
     std::string old_segment_size;
