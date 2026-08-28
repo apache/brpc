@@ -137,6 +137,7 @@ ServerOptions::ServerOptions()
     , server_owns_interceptor(false)
     , num_threads(8)
     , max_concurrency(0)
+    , redis_max_connections(0)
     , session_local_data_factory(nullptr)
     , reserved_session_local_data(0)
     , thread_local_data_factory(nullptr)
@@ -635,6 +636,13 @@ Acceptor* Server::BuildAcceptor() {
             // The protocol does not support server-side.
             continue;
         }
+        if (_options.redis_max_connections != 0 &&
+            strcmp(protocols[i].name, "redis") != 0) {
+            // A pre-TLS connection limit cannot inspect the protocol. The
+            // validated Redis-only listener must therefore install no RPC or
+            // HTTP parser that could make this port a shared interface.
+            continue;
+        }
         if (has_whitelist &&
             !is_http_protocol(protocols[i].name) &&
             !is_rdma_handshake_protocol(protocols[i].name) &&
@@ -866,6 +874,27 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     // FREE_PTR_IF_NOT_REUSED, crashing (see RdmaTest.server_option_invalid).
     const ServerOptions default_opt;
     const ServerOptions& real_opt = opt ? *opt : default_opt;
+
+    // Admission happens before protocol parsing (and, importantly, before a
+    // TLS handshake), so it is only safe on a listener dedicated to Redis.
+    // Reject ambiguous configurations instead of accidentally limiting RPCs
+    // sharing the public port.
+    if (real_opt.redis_max_connections != 0 &&
+        (real_opt.redis_service == nullptr ||
+         real_opt.enabled_protocols != "redis" ||
+         real_opt.has_builtin_services ||
+         service_count() != 0 ||
+         real_opt.nshead_service != nullptr ||
+         real_opt.thrift_service != nullptr ||
+         real_opt.mongo_service_adaptor != nullptr ||
+         real_opt.baidu_master_service != nullptr ||
+         real_opt.http_master_service != nullptr ||
+         real_opt.rtmp_service != nullptr)) {
+        LOG(ERROR) << "redis_max_connections requires a Redis-only public "
+                      "listener (redis_service set, enabled_protocols=redis, "
+                      "no RPC or builtin services)";
+        return -1;
+    }
 
     if (!real_opt.h2_settings.IsValid(true/*log_error*/)) {
         LOG(ERROR) << "Invalid h2_settings";
@@ -1164,7 +1193,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         // Pass ownership of `sockfd' to `_am'
         if (_am->StartAccept(sockfd, _options.idle_timeout_sec,
                              _default_ssl_ctx,
-                             _options.force_ssl) != 0) {
+                             _options.force_ssl,
+                             _options.redis_max_connections) != 0) {
             LOG(ERROR) << "Fail to start acceptor";
             return -1;
         }
@@ -1206,7 +1236,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         // Pass ownership of `sockfd' to `_internal_am'
         if (_internal_am->StartAccept(sockfd, _options.idle_timeout_sec,
                                       _default_ssl_ctx,
-                                      false) != 0) {
+                                      false,
+                                      0) != 0) {
             LOG(ERROR) << "Fail to start internal_acceptor";
             return -1;
         }
@@ -1788,8 +1819,11 @@ google::protobuf::Service* Server::FindServiceByName(
 
 void Server::GetStat(ServerStatistics* stat) const {
     stat->connection_count = 0;
+    stat->rejected_redis_connection_count = 0;
     if (_am) {
         stat->connection_count += _am->ConnectionCount();
+        stat->rejected_redis_connection_count +=
+            _am->RejectedRedisConnectionCount();
     }
     if (_internal_am) {
         stat->connection_count += _internal_am->ConnectionCount();

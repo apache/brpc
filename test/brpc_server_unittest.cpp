@@ -50,6 +50,7 @@
 #include "brpc/server.h"
 #include "brpc/restful.h"
 #include "brpc/channel.h"
+#include "brpc/redis.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
 #include "brpc/compress.h"
@@ -1288,6 +1289,125 @@ TEST_F(ServerTest, close_idle_connections) {
     usleep(2500000);
     server.GetStat(&stat);
     ASSERT_EQ(0ul, stat.connection_count);
+}
+
+TEST_F(ServerTest, redis_connection_limit_requires_dedicated_listener) {
+    brpc::Server server;
+    EchoServiceImpl echo_service;
+    ASSERT_EQ(0, server.AddService(
+        &echo_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+
+    brpc::ServerOptions opt;
+    opt.redis_service = new brpc::RedisService;
+    opt.redis_max_connections = 1;
+    opt.enabled_protocols = "redis";
+    opt.has_builtin_services = false;
+    const int rc = server.Start("127.0.0.1:0", &opt);
+    if (rc != 0) {
+        delete opt.redis_service;
+        opt.redis_service = nullptr;
+    }
+    EXPECT_EQ(-1, rc);
+}
+
+TEST_F(ServerTest, reject_redis_connections_over_limit) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.redis_service = new brpc::RedisService;
+    opt.redis_max_connections = 1;
+    opt.enabled_protocols = "redis";
+    opt.has_builtin_services = false;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+
+    const butil::EndPoint ep = server.listen_address();
+    butil::fd_guard first_client(tcp_connect(ep, nullptr));
+    ASSERT_GT(first_client, 0);
+
+    brpc::ServerStatistics stat;
+    for (int retry = 0; retry < 100; ++retry) {
+        server.GetStat(&stat);
+        if (stat.connection_count == 1) {
+            break;
+        }
+        usleep(1000);
+    }
+    ASSERT_EQ(1ul, stat.connection_count);
+
+    // The Redis limit belongs to this acceptor, not to the process. A separate
+    // RPC Server must remain reachable while the Redis listener is full.
+    EchoServiceImpl rpc_service;
+    brpc::Server rpc_server;
+    ASSERT_EQ(0, rpc_server.AddService(
+        &rpc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, rpc_server.Start("127.0.0.1:0", nullptr));
+    SendSleepRPC(rpc_server.listen_address(), 0, true);
+
+    butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
+    ASSERT_GT(rejected_client, 0);
+    struct timeval timeout = {1, 0};
+    ASSERT_EQ(0, setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO,
+                           &timeout, sizeof(timeout)));
+    char response[64];
+    const ssize_t nr = recv(rejected_client, response, sizeof(response), 0);
+    const std::string expected = "-ERR max number of clients reached\r\n";
+    ASSERT_EQ(expected.size(), (size_t)nr);
+    EXPECT_EQ(expected, std::string(response, (size_t)nr));
+
+    server.GetStat(&stat);
+    EXPECT_EQ(1ul, stat.connection_count);
+    EXPECT_EQ(1ul, stat.rejected_redis_connection_count);
+
+    first_client.reset(-1);
+    for (int retry = 0; retry < 100; ++retry) {
+        server.GetStat(&stat);
+        if (stat.connection_count == 0) {
+            break;
+        }
+        usleep(1000);
+    }
+    EXPECT_EQ(0ul, stat.connection_count);
+}
+
+TEST_F(ServerTest, reject_redis_connection_before_tls_handshake) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.redis_service = new brpc::RedisService;
+    opt.redis_max_connections = 1;
+    opt.enabled_protocols = "redis";
+    opt.has_builtin_services = false;
+    opt.force_ssl = true;
+    brpc::CertInfo& cert = opt.mutable_ssl_options()->default_cert;
+    cert.certificate = "cert1.crt";
+    cert.private_key = "cert1.key";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+
+    const butil::EndPoint ep = server.listen_address();
+    // Holding an idle TCP socket consumes the only slot without initiating a
+    // TLS handshake.
+    butil::fd_guard first_client(tcp_connect(ep, nullptr));
+    ASSERT_GT(first_client, 0);
+    brpc::ServerStatistics stat;
+    for (int retry = 0; retry < 100; ++retry) {
+        server.GetStat(&stat);
+        if (stat.connection_count == 1) {
+            break;
+        }
+        usleep(1000);
+    }
+    ASSERT_EQ(1ul, stat.connection_count);
+
+    butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
+    ASSERT_GT(rejected_client, 0);
+    struct timeval timeout = {1, 0};
+    ASSERT_EQ(0, setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO,
+                           &timeout, sizeof(timeout)));
+    char response;
+    // EOF without sending a ClientHello proves that rejection happened in
+    // accept, before brpc created a Socket or entered TLS authentication.
+    EXPECT_EQ(0, recv(rejected_client, &response, sizeof(response), 0));
+
+    server.GetStat(&stat);
+    EXPECT_EQ(1ul, stat.rejected_redis_connection_count);
 }
 
 TEST_F(ServerTest, logoff_and_multiple_start) {

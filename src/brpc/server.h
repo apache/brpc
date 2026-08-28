@@ -132,6 +132,14 @@ struct ServerOptions {
     // Default: 0 (unlimited)
     int max_concurrency;
 
+    // Maximum number of connections accepted by a Redis-only public
+    // listener. This option is rejected unless redis_service is configured,
+    // enabled_protocols is exactly "redis", no protobuf/RPC services are
+    // registered, and builtin services are disabled. The internal listener
+    // and other Server instances are never subject to this limit.
+    // Default: 0 (unlimited)
+    size_t redis_max_connections;
+
     // Default value of method-level max concurrencies,
     // Overridable by Server.MaxConcurrencyOf().
     AdaptiveMaxConcurrency method_max_concurrency;
@@ -303,6 +311,7 @@ private:
 // server. But bvar contains more stats and is more convenient.
 struct ServerStatistics {
     size_t connection_count;
+    size_t rejected_redis_connection_count;
     int user_service_count;
     int builtin_service_count;
 };
