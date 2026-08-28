@@ -17,20 +17,27 @@
 
 // brpc - A framework to host and access services throughout Baidu.
 
-#include <arpa/inet.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include "butil/macros.h"
-#include "brpc/socket.h"
-#include "brpc/controller.h"
-#include "brpc/policy/most_common_message.h"
-#include "brpc/policy/thrift_protocol.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
+
+// The malformed T_EXCEPTION reply is decoded by the Thrift framed protocol,
+// which is only compiled in when the build has THRIFT support enabled (the
+// WITH_THRIFT build flag / brpc_with_thrift config, off by default). Keep this
+// test a trivial pass on builds without Thrift so it links cleanly there too.
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+
+#include <arpa/inet.h>
+#include "butil/macros.h"
+#include "brpc/socket.h"
+#include "brpc/controller.h"
+#include "brpc/policy/most_common_message.h"
+#include "brpc/policy/thrift_protocol.h"
 
 namespace {
 
@@ -118,3 +125,14 @@ TEST_F(ThriftProtocolTest, malformed_exception_reply_sets_failed) {
 }
 
 }  // namespace
+
+#else
+
+namespace {
+// Trivial placeholder so the test links successfully on builds without
+// THRIFT support (the guarded code above is compiled out).
+class ThriftProtocolTest : public ::testing::Test {};
+TEST_F(ThriftProtocolTest, skipped_without_thrift_support) {}
+}  // namespace
+
+#endif
