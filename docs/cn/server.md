@@ -378,6 +378,12 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
 | log_idle_connection_close | false | Print log when an idle connection is closed | src/brpc/socket.cpp |
 
+## 限制Redis连接数
+
+设置`ServerOptions.redis_max_connections`可以限制Redis专用公网监听端口上的并发连接数。默认值为0，表示不限制。非零值要求设置`redis_service`，将`enabled_protocols`严格设置为`"redis"`，关闭内置服务，并且不能在同一个Server上注册RPC或其他协议服务。
+
+Acceptor会在创建brpc Socket前预留连接名额，因此空闲连接也计入上限，并发accept不会突破限制。超过限制的明文连接会收到`-ERR max number of clients reached`；启用SSL的监听端口会在TLS握手前直接关闭连接。内部监听端口和其他Server实例不受影响。`ServerStatistics.rejected_redis_connection_count`记录累计拒绝的连接数。
+
 ## pid_file
 
 如果设置了此字段，Server启动时会创建一个同名文件，内容为进程号。默认为空。
