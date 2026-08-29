@@ -254,13 +254,21 @@ void Acceptor::RejectRedisConnection(int fd) {
 
     static const char response[] =
         "-ERR max number of clients reached\r\n";
-    ssize_t nwritten;
-    do {
-        nwritten = send(fd,
-                        response,
-                        sizeof(response) - 1,
-                        MSG_DONTWAIT | MSG_NOSIGNAL);
-    } while (nwritten < 0 && errno == EINTR);
+    const size_t response_size = sizeof(response) - 1;
+    size_t offset = 0;
+    while (offset < response_size) {
+        const ssize_t nwritten = send(fd,
+                                      response + offset,
+                                      response_size - offset,
+                                      MSG_DONTWAIT | MSG_NOSIGNAL);
+        if (nwritten > 0) {
+            offset += nwritten;
+        } else if (nwritten < 0 && errno == EINTR) {
+            continue;
+        } else {
+            break;
+        }
+    }
 }
 
 void Acceptor::ListConnections(std::vector<SocketId>* conn_list,
