@@ -24,12 +24,7 @@ COPTS = [
     "-Wno-unused-parameter",
     "-fno-omit-frame-pointer",
     "-fno-access-control",
-] + select({
-    # The thrift framed protocol (and the unit test that exercises it) is only
-    # compiled when the build has Thrift support enabled, matching src/BUILD.
-    "//bazel/config:brpc_with_thrift": ["-DENABLE_THRIFT_FRAMED_PROTOCOL=1"],
-    "//conditions:default": [],
-})
+]
 
 TEST_BUTIL_SOURCES = [
     "at_exit_unittest.cc",
