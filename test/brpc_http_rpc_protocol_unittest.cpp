@@ -62,6 +62,7 @@ DECLARE_int32(rpc_dump_max_requests_in_one_file);
 DECLARE_bool(allow_chunked_length);
 DECLARE_int32(max_connection_pool_size);
 DECLARE_uint64(max_body_size);
+DECLARE_int64(socket_max_unwritten_bytes);
 extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
 }
 
@@ -1775,6 +1776,11 @@ TEST_F(HttpTest, http2_window_used_up_buffers_request) {
 
     char settingsbuf[brpc::policy::FRAME_HEAD_SIZE + 36];
     brpc::H2Settings h2_settings;
+    // The fake server advertises an unlimited stream count so the test can
+    // fill the flow-control window with many streams: this test exercises
+    // WINDOW_UPDATE buffering, not SETTINGS_MAX_CONCURRENT_STREAMS (which
+    // defaults to a bounded value now).
+    h2_settings.max_concurrent_streams = std::numeric_limits<uint32_t>::max();
     const size_t nb = brpc::policy::SerializeH2Settings(h2_settings, settingsbuf + brpc::policy::FRAME_HEAD_SIZE);
     brpc::policy::SerializeFrameHead(settingsbuf, nb, brpc::policy::H2_FRAME_SETTINGS, 0, 0);
     butil::IOBuf buf;
@@ -1834,6 +1840,227 @@ TEST_F(HttpTest, http2_settings) {
     ASSERT_TRUE(ctx->_remote_settings.header_table_size == 8192);
     ASSERT_TRUE(ctx->_remote_settings.max_concurrent_streams == 1024);
     ASSERT_TRUE(ctx->_remote_settings.stream_window_size == (1u << 29) - 1);
+}
+
+TEST_F(HttpTest, http2_header_list_size_limit) {
+    // HPACK bomb regression: 1-byte indexed references to a large
+    // dynamic-table entry amplify a tiny HEADERS frame into an unbounded
+    // decoded header list. SETTINGS_MAX_HEADER_LIST_SIZE is advertise-but-
+    // never-enforce without the fix, so ConsumeHeaders accepts the overflow.
+    // The default must be bounded, not unlimited.
+    brpc::H2Settings default_settings;
+    ASSERT_EQ(brpc::H2Settings::DEFAULT_MAX_HEADER_LIST_SIZE,
+              default_settings.max_header_list_size);
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+    // Tiny limit so the amplification is visible in a few bytes.
+    ctx->_unack_local_settings.max_header_list_size = 4096;
+
+    brpc::policy::H2StreamContext sctx(false);
+    sctx.Init(ctx, 1);
+
+    // Literal header field with incremental indexing: name "x", value 3000
+    // bytes, entry size = 3000 + 1 + 32 = 3033, which fits both the dynamic
+    // table (4096) and the decoded-list budget (4096).
+    butil::IOBuf buf;
+    const uint8_t literal_prefix[] = { 0x40, 0x01, 'x', 0x7F, 0xB9, 0x16 };
+    buf.append(literal_prefix, sizeof(literal_prefix));
+    buf.append(std::string(3000, 'v'));
+    {
+        butil::IOBufBytesIterator it(buf);
+        ASSERT_EQ(0, sctx.ConsumeHeaders(it));
+    }
+
+    // One more header referencing the table entry (dynamic index 62) costs
+    // another 3033 decoded bytes and must be refused: the decoded list would
+    // reach 6066 > 4096.
+    butil::IOBuf ref_buf;
+    const uint8_t indexed_ref[] = { 0xBE };  // indexed entry 62
+    ref_buf.append(indexed_ref, sizeof(indexed_ref));
+    {
+        butil::IOBufBytesIterator it(ref_buf);
+        ASSERT_LT(sctx.ConsumeHeaders(it), 0);
+    }
+
+    // A list that stays within the limit keeps working.
+    brpc::policy::H2StreamContext sctx2(false);
+    sctx2.Init(ctx, 3);
+    butil::IOBuf ok_buf;
+    const uint8_t ok_prefix[] = { 0x40, 0x01, 'y', 0x01, 'v' };
+    ok_buf.append(ok_prefix, sizeof(ok_prefix));
+    {
+        butil::IOBufBytesIterator it(ok_buf);
+        ASSERT_EQ(0, sctx2.ConsumeHeaders(it));
+    }
+}
+
+TEST_F(HttpTest, h2_header_list_budget_resets_per_block) {
+    // The decoded header-list budget is per header block (RFC 7540
+    // section 10.5.1): trailing headers on the same stream start a fresh
+    // block. The counter must be reset at the start of a new block, otherwise
+    // legit trailers are rejected once the first block used most of the
+    // budget.
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+    ctx->_unack_local_settings.max_header_list_size = 4096;
+
+    brpc::policy::H2StreamContext* sctx =
+        new brpc::policy::H2StreamContext(false);
+    sctx->Init(ctx, 1);
+
+    // First block: a 3000-byte header costs 3033 of the 4096 budget.
+    butil::IOBuf first;
+    const uint8_t p1[] = { 0x40, 0x01, 'x', 0x7F, 0xB9, 0x16 };
+    first.append(p1, sizeof(p1));
+    first.append(std::string(3000, 'v'));
+    butil::IOBufBytesIterator it1(first);
+    ASSERT_EQ(0, sctx->ConsumeHeaders(it1));
+
+    // Second block (trailers) on the same stream: a 2000-byte header (2033
+    // bytes) exceeds the remaining budget (4096 - 3033 = 1063) but must be
+    // accepted because its counter starts at zero.
+    butil::IOBuf second;
+    const uint8_t p2[] = { 0x40, 0x01, 'x', 0x7F, 0xD1, 0x0E };
+    second.append(p2, sizeof(p2));
+    second.append(std::string(2000, 'v'));
+    butil::IOBufBytesIterator it2(second);
+    brpc::policy::H2FrameHead head;
+    head.payload_size = second.size();
+    head.type = brpc::policy::H2_FRAME_HEADERS;
+    head.flags = 0x4;  // H2_FLAGS_END_HEADERS
+    head.stream_id = 1;
+    const brpc::policy::H2ParseResult res =
+        sctx->OnHeaders(it2, head, second.size(), 0);
+    ASSERT_TRUE(res.is_ok());
+    delete sctx;
+}
+
+TEST_F(HttpTest, h2_oversized_single_headers_block_rejected) {
+    // A single HEADERS frame whose decoded header list exceeds
+    // max_header_list_size must be rejected at the block boundary (before
+    // any CONTINUATION), not accepted into _remaining_header_fragment.
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+    ctx->_unack_local_settings.max_header_list_size = 64;
+
+    brpc::policy::H2StreamContext* sctx =
+        new brpc::policy::H2StreamContext(false);
+    sctx->Init(ctx, 1);
+
+    // One literal-with-incremental-indexing header with a 200-byte value:
+    // its decoded cost (200 + 1 + 32 = 233) exceeds the 64-byte budget.
+    butil::IOBuf payload;
+    const uint8_t p[] = { 0x40, 0x01, 'x', 0x7F, 0xC1, 0x01 };
+    payload.append(p, sizeof(p));
+    payload.append(std::string(200, 'v'));
+    butil::IOBufBytesIterator it(payload);
+    brpc::policy::H2FrameHead head;
+    head.payload_size = payload.size();
+    head.type = brpc::policy::H2_FRAME_HEADERS;
+    head.flags = 0x4;  // H2_FLAGS_END_HEADERS
+    head.stream_id = 1;
+    const brpc::policy::H2ParseResult res =
+        sctx->OnHeaders(it, head, payload.size(), 0);
+    ASSERT_FALSE(res.is_ok());
+    delete sctx;
+}
+
+TEST_F(HttpTest, http2_server_enforces_max_concurrent_streams) {
+    // The server advertises SETTINGS_MAX_CONCURRENT_STREAMS but never
+    // enforced it: every odd stream id was accepted, so a peer could pin an
+    // unbounded number of streams per connection. Pending streams beyond the
+    // limit must be refused.
+    // The default must be bounded, not unlimited.
+    brpc::H2Settings default_settings;
+    ASSERT_EQ(brpc::H2Settings::DEFAULT_MAX_CONCURRENT_STREAMS,
+              default_settings.max_concurrent_streams);
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+    ASSERT_TRUE(ctx->is_server_side());
+    ctx->_unack_local_settings.max_concurrent_streams = 2;
+
+    brpc::policy::H2StreamContext* s1 = new brpc::policy::H2StreamContext(false);
+    s1->Init(ctx, 1);
+    ASSERT_EQ(0, ctx->TryToInsertStream(1, s1));
+    brpc::policy::H2StreamContext* s3 = new brpc::policy::H2StreamContext(false);
+    s3->Init(ctx, 3);
+    ASSERT_EQ(0, ctx->TryToInsertStream(3, s3));
+
+    // The third concurrent stream must be refused (rc=2 -> REFUSED_STREAM)
+    // instead of inserted.
+    brpc::policy::H2StreamContext s5(false);
+    s5.Init(ctx, 5);
+    ASSERT_EQ(2, ctx->TryToInsertStream(5, &s5));
+    ASSERT_EQ(2u, ctx->VolatilePendingStreamSize());
+
+    // Closing a stream frees a slot again.
+    delete ctx->RemoveStreamAndDeferWU(1);
+    brpc::policy::H2StreamContext* s7 = new brpc::policy::H2StreamContext(false);
+    s7->Init(ctx, 7);
+    ASSERT_EQ(0, ctx->TryToInsertStream(7, s7));
+}
+
+TEST_F(HttpTest, h2_ping_ack_respects_socket_write_cap) {
+    // A peer flooding PING frames while withholding TCP reads must not make
+    // this side queue PONGs past -socket_max_unwritten_bytes. Use a dedicated
+    // pipe so the fixture pipe stays readable for other tests.
+    int fds[2];
+    ASSERT_EQ(0, pipe(fds));
+    brpc::SocketOptions options;
+    options.fd = fds[1];
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr sock;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
+
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_socket_max_unwritten_bytes = 64;
+
+    // Write far more than the pipe capacity (nobody reads the other end), so
+    // bytes stay queued well past the cap and the socket is overcrowded.
+    butil::IOBuf big;
+    big.append(std::string(1024 * 1024, 'x'));
+    brpc::Socket::WriteOptions wopt;
+    wopt.ignore_eovercrowded = false;
+    ASSERT_EQ(0, sock->Write(&big, &wopt));
+    ASSERT_TRUE(sock->_overcrowded);
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(sock.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    sock->initialize_parsing_context(&ctx);
+    ctx->_conn_state = brpc::policy::H2_CONNECTION_READY;
+
+    // The PING must not be answered by bypassing the write cap: when the
+    // connection is overcrowded the ack write fails, the connection errors
+    // out (RFC 7540 5.4.1) and no PONG is queued. Before the fix the ack
+    // write always succeeded (ignore_eovercrowded) and the connection kept
+    // asking for more data, so this parse ended with NOT_ENOUGH_DATA.
+    butil::IOBuf ping;
+    char pingbuf[brpc::policy::FRAME_HEAD_SIZE + 8];
+    brpc::policy::SerializeFrameHead(
+        pingbuf, 8, brpc::policy::H2_FRAME_PING, 0, 0);
+    ping.append(pingbuf, sizeof(pingbuf));
+    ping.append(std::string(8, '\0'));  // opaque payload
+    const int64_t before =
+        sock->_unwritten_bytes.load(butil::memory_order_relaxed);
+    const brpc::ParseResult pr =
+        brpc::policy::ParseH2Message(&ping, sock.get(), false, nullptr);
+    ASSERT_EQ(before,
+              sock->_unwritten_bytes.load(butil::memory_order_relaxed));
+    // The overcrowded connection must terminate parsing instead of accepting
+    // the PING and queueing a PONG past the socket write cap.
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
 }
 
 TEST_F(HttpTest, http2_goaway_with_debug_data) {
