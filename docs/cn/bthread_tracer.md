@@ -1,3 +1,5 @@
+[English version](../en/bthread_tracer.md)
+
 gdb（ptrace）+ gdb_bthread_stack.py主要的缺点是要慢和阻塞进程，需要一种高效的追踪bthread调用栈的方法。
 
 bRPC框架的协作式用户态协程无法像Golang内建的抢占式协程一样实现高效的STW（Stop the World），框架也无法干预用户逻辑的执行，所以要追踪bthread调用栈是比较困难的。
