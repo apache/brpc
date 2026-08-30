@@ -62,6 +62,50 @@ protected:
     std::string buffer;
 };
 
+TEST(HelloFormatExtensionTest, serialize_deserialize_roundtrip) {
+    brpc::ubring::HelloFormatExtension extension = {
+        brpc::ubring::HelloFormatExtension::WIRE_SIZE,
+        brpc::ubring::UBR_DATA_FORMAT_LEGACY_64};
+    char buffer[brpc::ubring::HelloFormatExtension::WIRE_SIZE] = {};
+
+    extension.Serialize(buffer);
+
+    brpc::ubring::HelloFormatExtension decoded = {};
+    decoded.Deserialize(buffer);
+    EXPECT_EQ(extension.extension_len, decoded.extension_len);
+    EXPECT_EQ(extension.format_id, decoded.format_id);
+}
+
+TEST(HelloFormatExtensionTest, serialize_uses_network_byte_order) {
+    brpc::ubring::HelloFormatExtension extension = {0x0102, 0x0304};
+    char buffer[brpc::ubring::HelloFormatExtension::WIRE_SIZE] = {};
+    const unsigned char expected[] = {0x01, 0x02, 0x03, 0x04};
+
+    extension.Serialize(buffer);
+
+    EXPECT_EQ(0, memcmp(expected, buffer, sizeof(expected)));
+}
+
+TEST(HelloFormatExtensionTest, deserialize_none_format) {
+    const unsigned char buffer[] = {0x00, 0x04, 0x00, 0x00};
+    brpc::ubring::HelloFormatExtension extension = {};
+
+    extension.Deserialize(buffer);
+
+    EXPECT_EQ(4, extension.extension_len);
+    EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE, extension.format_id);
+}
+
+TEST(HelloFormatExtensionTest, deserialize_unknown_format) {
+    const unsigned char buffer[] = {0x00, 0x04, 0x12, 0x34};
+    brpc::ubring::HelloFormatExtension extension = {};
+
+    extension.Deserialize(buffer);
+
+    EXPECT_EQ(4, extension.extension_len);
+    EXPECT_EQ(0x1234, extension.format_id);
+}
+
 TEST_F(HelloMessageTest, serialize_deserialize_roundtrip) {
     msg.msg_len = 64;
     msg.hello_ver = 2;
@@ -224,6 +268,17 @@ using brpc::ubring::UBShmEndpointTest;
 
 TEST_F(UBShmEndpointTest, construct_initial_state) {
     ASSERT_NE(nullptr, _ep);
+    EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE,
+              _ep->_negotiated_data_format);
+}
+
+TEST_F(UBShmEndpointTest, reset_clears_negotiated_data_format) {
+    _ep->_negotiated_data_format = brpc::ubring::UBR_DATA_FORMAT_LEGACY_64;
+
+    _ep->Reset();
+
+    EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE,
+              _ep->_negotiated_data_format);
 }
 
 TEST_F(UBShmEndpointTest, allocate_client_resources_real_shm) {

@@ -61,12 +61,32 @@ static const size_t MAGIC_STR_LEN = 2;
 static const size_t HELLO_MSG_LEN_MIN = 64;
 static const size_t ACK_MSG_LEN = 4;
 static uint16_t g_ub_hello_msg_len = 64;
-static uint16_t g_ub_hello_version = 2;
+static uint16_t g_ub_hello_version = 3;
 static uint16_t g_ub_impl_version = 1;
 
 static const uint32_t ACK_MSG_UB_OK = 0x1;
 
 static butil::Mutex* g_ubring_resource_mutex = nullptr;
+
+void HelloFormatExtension::Serialize(void* data) const {
+    char* current_pos = static_cast<char*>(data);
+    const uint16_t net_extension_len = butil::HostToNet16(extension_len);
+    memcpy(current_pos, &net_extension_len, sizeof(net_extension_len));
+    current_pos += sizeof(net_extension_len);
+    const uint16_t net_format_id = butil::HostToNet16(format_id);
+    memcpy(current_pos, &net_format_id, sizeof(net_format_id));
+}
+
+void HelloFormatExtension::Deserialize(const void* data) {
+    const char* current_pos = static_cast<const char*>(data);
+    uint16_t net_extension_len;
+    memcpy(&net_extension_len, current_pos, sizeof(net_extension_len));
+    extension_len = butil::NetToHost16(net_extension_len);
+    current_pos += sizeof(net_extension_len);
+    uint16_t net_format_id;
+    memcpy(&net_format_id, current_pos, sizeof(net_format_id));
+    format_id = butil::NetToHost16(net_format_id);
+}
 
 void HelloMessage::Serialize(void* data) const {
     char* current_pos = static_cast<char*>(data);
@@ -142,6 +162,7 @@ void UBShmEndpoint::Reset() {
     delete _ub_ring;
     _ub_ring = nullptr;
     _poller_sid = INVALID_SOCKET_ID;
+    _negotiated_data_format = UBR_DATA_FORMAT_NONE;
     _state = UNINIT;
 }
 
@@ -330,6 +351,7 @@ inline void UBShmEndpoint::TryReadOnTcp() {
 
 void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     UBShmEndpoint* ep = static_cast<UBShmEndpoint*>(arg);
+    ep->_negotiated_data_format = UBR_DATA_FORMAT_NONE;
     SocketUniquePtr s(ep->_socket);
     UBConnect::RunGuard rg((UBConnect*)s->_app_connect.get());
 
@@ -352,7 +374,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
 
     ep->_state = C_HELLO_SEND;
-    HelloMessage local_msg;
+    HelloMessage local_msg = {};
     local_msg.msg_len = g_ub_hello_msg_len;
     local_msg.hello_ver = g_ub_hello_version;
     local_msg.impl_ver = g_ub_impl_version;
@@ -397,7 +419,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
     HelloMessage remote_msg;
     remote_msg.Deserialize(data);
-    if (remote_msg.msg_len < HELLO_MSG_LEN_MIN) {
+    if (remote_msg.msg_len != HELLO_MSG_LEN_MIN) {
         LOG(WARNING) << "Fail to parse Hello Message length from server:"
                      << s->description();
         s->SetFailed(EPROTO, "Fail to complete ubring handshake from %s: %s",
@@ -406,22 +428,56 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         return nullptr;
     }
 
-    if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
-        // TODO: Read Hello Message customized data
-        // Just for future use, should not happen now
-    }
-
+    UbrDataFormat selected_format = UBR_DATA_FORMAT_NONE;
     if (!HelloNegotiationValid(remote_msg)) {
         LOG(WARNING) << "Fail to negotiate with server, fallback to tcp:"
                      << s->description();
         ub_transport->_ub_state = UBShmTransport::UB_OFF;
     } else {
-        ep->_state = C_MAP_REMOTE_SHM;
-        if (ep->_ub_ring->UbrMapRemoteShm(&local_trx_shm, shm_name) < 0) {
-            LOG(WARNING) << "Fail to map the remote shm, fallback to tcp:" << s->description();
+        HelloFormatExtension local_extension = {
+            HelloFormatExtension::WIRE_SIZE, UBR_DATA_FORMAT_LEGACY_64};
+        local_extension.Serialize(data);
+        ep->_state = C_FORMAT_SEND;
+        if (ep->WriteToFd(data, HelloFormatExtension::WIRE_SIZE) < 0) {
+            const int saved_errno = errno;
+            PLOG(WARNING) << "Fail to send format extension to server:"
+                          << s->description();
+            s->SetFailed(saved_errno,
+                    "Fail to complete ubring handshake from %s: %s",
+                    s->description().c_str(), berror(saved_errno));
+            ep->_state = FAILED;
+            return nullptr;
+        }
+
+        ep->_state = C_FORMAT_WAIT;
+        if (ep->ReadFromFd(data, HelloFormatExtension::WIRE_SIZE) < 0) {
+            const int saved_errno = errno;
+            PLOG(WARNING) << "Fail to read format extension from server:"
+                          << s->description();
+            s->SetFailed(saved_errno,
+                    "Fail to complete ubring handshake from %s: %s",
+                    s->description().c_str(), berror(saved_errno));
+            ep->_state = FAILED;
+            return nullptr;
+        }
+        HelloFormatExtension remote_extension;
+        remote_extension.Deserialize(data);
+        if (remote_extension.extension_len != HelloFormatExtension::WIRE_SIZE ||
+            remote_extension.format_id == UBR_DATA_FORMAT_NONE ||
+            remote_extension.format_id != local_extension.format_id) {
+            LOG(WARNING) << "Fail to negotiate data format with server, "
+                         << "fallback to tcp:" << s->description();
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
         } else {
-            ub_transport->_ub_state = UBShmTransport::UB_ON;
+            selected_format = UBR_DATA_FORMAT_LEGACY_64;
+            ep->_state = C_MAP_REMOTE_SHM;
+            if (ep->_ub_ring->UbrMapRemoteShm(&local_trx_shm, shm_name) < 0) {
+                LOG(WARNING) << "Fail to map the remote shm, fallback to tcp:"
+                             << s->description();
+                ub_transport->_ub_state = UBShmTransport::UB_OFF;
+            } else {
+                ub_transport->_ub_state = UBShmTransport::UB_ON;
+            }
         }
     }
 
@@ -442,6 +498,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
 
     if (ub_transport->_ub_state == UBShmTransport::UB_ON) {
+        ep->_negotiated_data_format = selected_format;
         ep->_state = ESTABLISHED;
         ep->_ub_ring->UbrUnlinkLocalShm();
         LOG_IF(INFO, FLAGS_ub_trace_verbose) 
@@ -459,6 +516,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
 
 void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
     UBShmEndpoint* ep = static_cast<UBShmEndpoint*>(arg);
+    ep->_negotiated_data_format = UBR_DATA_FORMAT_NONE;
     SocketUniquePtr s(ep->_socket);
 
     LOG_IF(INFO, FLAGS_ub_trace_verbose)
@@ -499,7 +557,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
     HelloMessage remote_msg;
     remote_msg.Deserialize(data);
     LOG_IF(INFO, FLAGS_ub_trace_verbose) << "server receive handshake message : " << remote_msg.toString();
-    if (remote_msg.msg_len < HELLO_MSG_LEN_MIN) {
+    if (remote_msg.msg_len != HELLO_MSG_LEN_MIN) {
         LOG(WARNING) << "Fail to parse Hello Message length from client:"
                      << s->description();
         s->SetFailed(EPROTO, "Fail to complete ubring handshake from %s: %s",
@@ -507,11 +565,6 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->_state = FAILED;
         return nullptr;
     }
-    if (remote_msg.msg_len > HELLO_MSG_LEN_MIN) {
-        // TODO: Read Hello Message customized header
-        // Just for future use, should not happen now
-    }
-
     if (!HelloNegotiationValid(remote_msg)) {
         LOG(WARNING) << "Fail to negotiate with client, fallback to tcp:"
                      << s->description();
@@ -545,7 +598,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
     }
 
     ep->_state = S_HELLO_SEND;
-    HelloMessage local_msg;
+    HelloMessage local_msg = {};
     local_msg.msg_len = g_ub_hello_msg_len;
     if (ub_transport->_ub_state == UBShmTransport::UB_OFF) {
         local_msg.impl_ver = 0;
@@ -567,6 +620,45 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         return nullptr;
     }
 
+    UbrDataFormat selected_format = UBR_DATA_FORMAT_NONE;
+    if (HelloNegotiationValid(remote_msg) &&
+        HelloNegotiationValid(local_msg)) {
+        ep->_state = S_FORMAT_WAIT;
+        if (ep->ReadFromFd(data, HelloFormatExtension::WIRE_SIZE) < 0) {
+            const int saved_errno = errno;
+            PLOG(WARNING) << "Fail to read format extension from client:"
+                          << s->description();
+            s->SetFailed(saved_errno,
+                    "Fail to complete ubring handshake from %s: %s",
+                    s->description().c_str(), berror(saved_errno));
+            ep->_state = FAILED;
+            return nullptr;
+        }
+        HelloFormatExtension remote_extension;
+        remote_extension.Deserialize(data);
+        HelloFormatExtension local_extension = {
+            HelloFormatExtension::WIRE_SIZE, UBR_DATA_FORMAT_NONE};
+        if (remote_extension.extension_len == HelloFormatExtension::WIRE_SIZE &&
+            remote_extension.format_id == UBR_DATA_FORMAT_LEGACY_64) {
+            local_extension.format_id = UBR_DATA_FORMAT_LEGACY_64;
+            selected_format = UBR_DATA_FORMAT_LEGACY_64;
+        } else {
+            ub_transport->_ub_state = UBShmTransport::UB_OFF;
+        }
+        local_extension.Serialize(data);
+        ep->_state = S_FORMAT_SEND;
+        if (ep->WriteToFd(data, HelloFormatExtension::WIRE_SIZE) < 0) {
+            const int saved_errno = errno;
+            PLOG(WARNING) << "Fail to send format extension to client:"
+                          << s->description();
+            s->SetFailed(saved_errno,
+                    "Fail to complete ubring handshake from %s: %s",
+                    s->description().c_str(), berror(saved_errno));
+            ep->_state = FAILED;
+            return nullptr;
+        }
+    }
+
     ep->_state = S_ACK_WAIT;
     if (ep->ReadFromFd(data, ACK_MSG_LEN) < 0) {
         const int saved_errno = errno;
@@ -580,8 +672,9 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
     uint32_t* tmp = (uint32_t*)data;
     uint32_t flags = butil::NetToHost32(*tmp);
     if (flags & ACK_MSG_UB_OK) {
-        if (ub_transport->_ub_state == UBShmTransport::UB_OFF) {
-            LOG(WARNING) << "Fail to parse Hello Message length from client:"
+        if (ub_transport->_ub_state == UBShmTransport::UB_OFF ||
+            selected_format == UBR_DATA_FORMAT_NONE) {
+            LOG(WARNING) << "Invalid successful ACK from client:"
                          << s->description();
             s->SetFailed(EPROTO, "Fail to complete ub handshake from %s: %s",
                     s->description().c_str(), berror(EPROTO));
@@ -589,6 +682,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
             return nullptr;
         } else {
             ub_transport->_ub_state = UBShmTransport::UB_ON;
+            ep->_negotiated_data_format = selected_format;
             ep->_state = ESTABLISHED;
             ep->_ub_ring->UbrUnlinkLocalShm();
             LOG_IF(INFO, FLAGS_ub_trace_verbose) 
