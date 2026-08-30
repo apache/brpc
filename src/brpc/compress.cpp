@@ -16,6 +16,8 @@
 // under the License.
 
 
+#include <limits>
+#include <gflags/gflags.h>
 #include "butil/logging.h"
 #include "json2pb/json_to_pb.h"
 #include "brpc/compress.h"
@@ -23,6 +25,24 @@
 #include "brpc/proto_base.pb.h"
 
 namespace brpc {
+
+DEFINE_uint64(max_decompressed_body_size, 0,
+              "Maximum size (in bytes) that a single compressed message body"
+              " may decompress to, guarding against decompression bombs."
+              " 0 (the default) means 32 times -max_body_size. Raise this"
+              " flag explicitly if larger decompressed messages are expected");
+
+uint64_t MaxDecompressedBodySize() {
+    const uint64_t limit = FLAGS_max_decompressed_body_size;
+    if (limit > 0) {
+        return limit;
+    }
+    const uint64_t base = FLAGS_max_body_size;
+    if (base > std::numeric_limits<uint64_t>::max() / 32) {
+        return std::numeric_limits<uint64_t>::max();
+    }
+    return base * 32;
+}
 
 static const int MAX_HANDLER_SIZE = 1024;
 static CompressHandler s_handler_map[MAX_HANDLER_SIZE] = { { nullptr, nullptr, nullptr } };

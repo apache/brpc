@@ -227,14 +227,14 @@ bool generate_declarations(const std::set<std::string>& ref_msgs,
     "  $msg$* const msg = static_cast<$msg$*>(msg_base);\n"             \
     "  if (value.type() == ::mcpack2pb::FIELD_ISOARRAY) {\n"               \
     "    ::mcpack2pb::ISOArrayIterator it(value);\n"                       \
-    "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n"         \
+    "    msg->mutable_$lcfield$()->Reserve(::mcpack2pb::capped_reserve_count(it.item_count()));\n"         \
     "    for (; it != NULL; ++it) {\n"                                  \
     "      msg->add_$lcfield$(it.as_"#fntype "());\n"                   \
     "    }\n"                                                           \
     "    return value.stream()->good();\n"                              \
     "  } else if (value.type() == ::mcpack2pb::FIELD_ARRAY) {\n"           \
     "    ::mcpack2pb::ArrayIterator it(value);\n"                          \
-    "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n"         \
+    "    msg->mutable_$lcfield$()->Reserve(::mcpack2pb::capped_reserve_count(it.item_count()));\n"         \
     "    for (; it != NULL; ++it) {\n"                                  \
     "      msg->add_$lcfield$(it->as_"#fntype "(\"$field$\"));\n" \
     "    }\n"                                                           \
@@ -323,14 +323,14 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "  $msg$* const msg = static_cast<$msg$*>(msg_base);\n"
                     "  if (value.type() == ::mcpack2pb::FIELD_ISOARRAY) {\n"
                     "    ::mcpack2pb::ISOArrayIterator it(value);\n"
-                    "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n" 
+                    "    msg->mutable_$lcfield$()->Reserve(::mcpack2pb::capped_reserve_count(it.item_count()));\n" 
                     "    for (; it != NULL; ++it) {\n"
                     "      msg->add_$lcfield$(($enum$)it.as_int32());\n"
                     "    }\n"
                     "    return value.stream()->good();\n"
                     "  } else if (value.type() == ::mcpack2pb::FIELD_ARRAY) {\n"            
                     "    ::mcpack2pb::ArrayIterator it(value);\n"
-                    "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n"
+                    "    msg->mutable_$lcfield$()->Reserve(::mcpack2pb::capped_reserve_count(it.item_count()));\n"
                     "    for (; it != NULL; ++it) {\n"
                     "      msg->add_$lcfield$(($enum$)it->as_int32(\"$enum$\"));\n"
                     "    }\n"
@@ -361,7 +361,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "  $msg$* const msg = static_cast<$msg$*>(msg_base);\n"
                     "  if (value.type() == ::mcpack2pb::FIELD_ARRAY) {\n"
                     "    ::mcpack2pb::ArrayIterator it(value);\n"
-                    "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n"
+                    "    msg->mutable_$lcfield$()->Reserve(::mcpack2pb::capped_reserve_count(it.item_count()));\n"
                     "    for (; it != NULL; ++it) {\n"
                     "      if (it->type() == ::mcpack2pb::FIELD_STRING) {\n"
                     "        it->as_string(msg->add_$lcfield$(), \"$field$\");\n"
@@ -457,7 +457,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                     "    return value.stream()->good();\n"
                     "  } else if (value.type() == ::mcpack2pb::FIELD_ARRAY) {\n"
                     "    ::mcpack2pb::ArrayIterator it(value);\n"
-                    "    msg->mutable_$lcfield$()->Reserve(it.item_count());\n"
+                    "    msg->mutable_$lcfield$()->Reserve(::mcpack2pb::capped_reserve_count(it.item_count()));\n"
                     "    for (; it != NULL; ++it) {\n"
                     "      if (it->type() == ::mcpack2pb::FIELD_OBJECT) {\n"
                     "        if (!parse_$vmsg2$_body_internal(msg->add_$lcfield$(), *it)) {\n"

@@ -297,4 +297,41 @@ TEST(Mcpack2pbParserTest, ModeratelyNestedPayloadParses) {
     EXPECT_TRUE(ok);
 }
 
+TEST(Mcpack2pbParserTest, ObjectItemCountIsRejectedWhenInconsistentWithSize) {
+    // An mcpack object whose ItemsHead declares an absurd field count for
+    // the given payload must be rejected instead of being trusted: the
+    // count is copied verbatim from the wire and every field head takes at
+    // least 2 bytes, so a valid item count never exceeds half of the
+    // remaining bytes.
+    const unsigned char data[] = {
+        0xff, 0xff, 0xff, 0x7f,  // item_count = 0x7fffffff
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    mcpack2pb::ObjectIterator it(&stream, sizeof(data));
+    EXPECT_TRUE(it == NULL);
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, EmptyObjectStillParses) {
+    // A consistent empty object head (item_count 0) must still initialize
+    // an empty iterator normally.
+    const unsigned char data[] = {
+        0x00, 0x00, 0x00, 0x00,  // item_count = 0
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    mcpack2pb::ObjectIterator it(&stream, sizeof(data));
+    EXPECT_TRUE(it == NULL);
+    EXPECT_TRUE(stream.good());
+}
+
 }  // namespace

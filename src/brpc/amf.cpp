@@ -16,6 +16,7 @@
 // under the License.
 
 
+#include <algorithm>
 #include <google/protobuf/descriptor.h>
 #include "butil/sys_byteorder.h"
 #include "butil/logging.h"
@@ -286,6 +287,31 @@ AMFArray* AMFObject::MutableArray(const std::string& name) {
     return _fields[name].MutableArray();
 }
 
+// Read `len' bytes of string data in bounded chunks. The declared length
+// comes from the (untrusted) stream and may be much larger than the data
+// actually present, so growing the output as bytes arrive keeps a tiny
+// truncated message from forcing an allocation of up to
+// FLAGS_amf_max_string_size bytes before the availability check.
+static const size_t AMF_STRING_READ_CHUNK_SIZE = 64 * 1024;
+
+static bool ReadAMFStringData(std::string* str, AMFInputStream* stream,
+                              uint32_t len) {
+    str->clear();
+    size_t nread = 0;
+    while (nread < len) {
+        const size_t to_read =
+            std::min((size_t)len - nread, AMF_STRING_READ_CHUNK_SIZE);
+        str->resize(nread + to_read);
+        if (stream->cutn(&(*str)[nread], to_read) != to_read) {
+            str->clear();
+            LOG(ERROR) << "stream is not long enough";
+            return false;
+        }
+        nread += to_read;
+    }
+    return true;
+}
+
 static bool ReadAMFShortStringBody(std::string* str, AMFInputStream* stream) {
     uint16_t len = 0;
     if (stream->cut_u16(&len) != 2u) {
@@ -295,13 +321,7 @@ static bool ReadAMFShortStringBody(std::string* str, AMFInputStream* stream) {
     if (!CheckAMFStringSize(len)) {
         return false;
     }
-    str->resize(len);
-    if (len != 0 && stream->cutn(&(*str)[0], len) != len) {
-        str->clear();
-        LOG(ERROR) << "stream is not long enough";
-        return false;
-    }
-    return true;
+    return ReadAMFStringData(str, stream, len);
 }
 
 static bool ReadAMFLongStringBody(std::string* str, AMFInputStream* stream) {
@@ -313,13 +333,7 @@ static bool ReadAMFLongStringBody(std::string* str, AMFInputStream* stream) {
     if (!CheckAMFStringSize(len)) {
         return false;
     }
-    str->resize(len);
-    if (len != 0 && stream->cutn(&(*str)[0], len) != len) {
-        str->clear();
-        LOG(ERROR) << "stream is not long enough";
-        return false;
-    }
-    return true;
+    return ReadAMFStringData(str, stream, len);
 }
 
 bool ReadAMFString(std::string* str, AMFInputStream* stream) {

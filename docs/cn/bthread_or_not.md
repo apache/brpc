@@ -1,3 +1,5 @@
+[English version](../en/bthread_or_not.md)
+
 brpc提供了[异步接口](client.md#异步访问)，所以一个常见的问题是：我应该用异步接口还是bthread？
 
 短回答：延时不高时你应该先用简单易懂的同步接口，不行的话用异步接口，只有在需要多核并行计算时才用bthread。

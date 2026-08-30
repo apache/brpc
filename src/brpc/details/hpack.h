@@ -132,6 +132,11 @@ private:
 
     IndexTable* _encode_table;
     IndexTable* _decode_table;
+    // The max dynamic table size this decoder was initialized with, i.e.
+    // the SETTINGS_HEADER_TABLE_SIZE we advertised to the peer. Per RFC
+    // 7541 section 4.2/6.3 a dynamic table size update exceeding it must
+    // be treated as a decoding error.
+    size_t _max_table_size;
 };
 
 // Lowercase the input string, a fast implementation.
