@@ -2714,9 +2714,11 @@ bool RtmpChunkStream::OnCreateStream(const RtmpMessageHeader& mh,
         PLOG(WARNING) << socket->remote_side() << '[' << mh.stream_id
                       << "] Fail to respond createStream";
         // End the stream at server-side.
-        const bthread_id_t id = stream->_onfail_id;
-        if (id != INVALID_BTHREAD_ID) {
-            bthread_id_error(id, 0);
+        if (stream != nullptr) {
+            const bthread_id_t id = stream->_onfail_id;
+            if (id != INVALID_BTHREAD_ID) {
+                bthread_id_error(id, 0);
+            }
         }
         return false;
     }
