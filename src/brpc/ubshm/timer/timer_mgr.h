@@ -15,59 +15,58 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// bthread based timer facade for the ubring module. Callbacks run on the
+// process-wide bthread timer thread and must return quickly.
+
 #ifndef BRPC_TIMER_MGR_H
 #define BRPC_TIMER_MGR_H
-#include <pthread.h>
-#include <time.h>
+
+#include <stdint.h>
 #include "brpc/ubshm/common/common.h"
 
-#if defined(OS_LINUX)
-#include <sys/epoll.h>
-#include <sys/timerfd.h>
-#elif defined(OS_MACOSX)
-#include <sys/types.h>
-#include <sys/event.h>
-#include <sys/time.h>
-#endif
-
-#define MAX_TIMER 1024
-#define TIMER_EPOLL_WAIT_TIMEOUT 1000
-
-#if defined(OS_MACOSX)
-struct itimerspec
-{
-    struct timespec it_interval;
-    struct timespec it_value;
-};
-#endif
 namespace brpc {
 namespace ubring {
-typedef enum {
-    TIMER_CONTEXT_NOT_USING,
-    TIMER_CONTEXT_EPOLL_WAITING,
-    TIMER_CONTEXT_CALLBACK_ONGOING
-} TimerFdCtxStatus;
 
-typedef struct {
-    void *(*cb)(void*);
-    void *args;
-    uint32_t fd;
-    TimerFdCtxStatus status;
-    uint32_t periodical;
-    pthread_spinlock_t spin_lock;
-} TimerFdCtx;
+// Opaque timer handle. nullptr means "not started" (or already deleted /
+// fired for one-shot timers).
+typedef struct UbrTimerTask* UbrTimerId;
 
-RETURN_CODE TimerInit(void);
-void TimerModuleDestroy(void);
-void *UnifiedCallback(void *args);
-void *TimerEpoll(void *args);
-int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args);
-uint32_t GetActiveTimerNum(void);
-void CloseTimerFd(int fd);
+// Maps the current re-arm interval of a periodic timer to the next one.
+// Runs on the timer thread only.
+typedef uint64_t (*UbrTimerBackoffFn)(void* arg, uint64_t cur_interval_us);
 
-void DeleteTimerSafe(uint32_t fd);
-void DeleteTimer(uint32_t fd);
-RETURN_CODE TimerFdCtxValidate(uint32_t fd);
-}
-}
+// Schedule `cb(arg)' to run after `delay_us' and, when `interval_us' > 0,
+// re-arm itself after every run until deleted. One-shot timers release
+// their handle slot before running the callback, so the callback may free
+// the object that stores the slot; the task object itself is released
+// automatically.
+RETURN_CODE UbrTimerStart(UbrTimerId* slot, uint64_t delay_us,
+                          uint64_t interval_us, void* (*cb)(void*),
+                          void* arg,
+                          UbrTimerBackoffFn backoff = nullptr);
+
+// Non-blocking delete, safe from inside the timer callback itself. Does
+// not wait for a running callback and does not protect `arg' on its own.
+// Returns 0 when the call won the slot competition: a one-shot callback
+// is guaranteed never to run, and the caller consumes any per-task
+// resources it tracks for this timer (ownership of them transfers to the
+// caller); for a periodic timer an already-started callback is not
+// interrupted. Returns 1 when the callback has been dispatched (it
+// consumes those resources itself on every exit) or its fate is still
+// being settled by the scheduler -- the caller must not consume anything
+// then.
+int UbrTimerDel(UbrTimerId* slot);
+
+// Delete and wait until a possibly running callback finished, so the
+// caller can free resources reachable from `arg'. Never call this on the
+// callback's own task. A one-shot callback that is already running holds
+// the ownership of `arg' by itself (mirroring bthread_timer_del returning
+// 1) and cannot be waited for through the slot. The wait polls with
+// bthread_usleep, which degrades to ::usleep on plain pthread callers
+// (e.g. process-exit paths).
+void UbrTimerDelAndWait(UbrTimerId* slot);
+
+}  // namespace ubring
+}  // namespace brpc
+
 #endif //BRPC_TIMER_MGR_H
