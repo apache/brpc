@@ -84,6 +84,13 @@ DEFINE_string(request_id_header, "x-request-id", "The http header to mark a sess
 DEFINE_bool(use_http_error_code, false, "Whether set the x-bd-error-code header "
                                         "of http response to brpc error code");
 
+DEFINE_bool(http_allow_empty_path_segments, false,
+            "Dispatch http paths containing empty segments (consecutive "
+            "slashes) as if the empty segments were absent. RFC 3986 treats "
+            "//foo and /foo as distinct paths, so accepting both lets a "
+            "request slip past a front proxy that only matches the collapsed "
+            "form. Turn this on to restore the old lenient behavior.");
+
 // Read user address from the header specified by -http_header_of_user_ip
 static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
                                          butil::EndPoint* user_addr) {
@@ -1159,6 +1166,17 @@ FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
 const Server::MethodProperty*
 FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
                         std::string* unresolved_path) {
+    // FindMethodPropertyByURIImpl() splits `uri_path` with a StringSplitter
+    // that skips empty fields, so //foo, /foo// and /foo//bar all resolve like
+    // their collapsed forms. A front proxy enforcing an ACL on the collapsed
+    // form does not match the padded ones and lets them through, which is how
+    // //flags?setvalue= reaches a builtin service that /flags cannot.
+    // Collapsing the path here would not help: the proxy has already passed
+    // the padded literal. Only rejecting it removes the differential.
+    if (!FLAGS_http_allow_empty_path_segments &&
+        uri_path.find("//") != std::string::npos) {
+        return nullptr;
+    }
     const Server::MethodProperty* mp =
         FindMethodPropertyByURIImpl(uri_path, server, unresolved_path);
     if (mp != nullptr) {

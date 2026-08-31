@@ -1273,6 +1273,16 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
             case 'p':
                 if (strcmp(name + 2, /*p*/"ath") == 0) {
                     matched = true;
+                    // RFC 9113 8.3.1: :path MUST NOT be empty and MUST begin
+                    // with '/', the only exception being the asterisk-form
+                    // that OPTIONS uses. '*' is accepted for any method here,
+                    // as http_parser does for HTTP/1: pinning it to OPTIONS
+                    // would take the whole header block, since HPACK does not
+                    // order pseudo-headers and :method may not have arrived.
+                    if (pair.value != "*" && (pair.value.empty() || pair.value[0] != '/')) {
+                        LOG(ERROR) << "Invalid path=" << pair.value;
+                        return -1;
+                    }
                     // Including path/query/fragment
                     h.uri().SetH2Path(pair.value);
                 }

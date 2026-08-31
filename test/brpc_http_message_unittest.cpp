@@ -38,6 +38,7 @@ int main(int argc, char* argv[]) {
 }
 
 namespace policy {
+DECLARE_bool(http_allow_empty_path_segments);
 Server::MethodProperty*
 FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
                         std::string* unknown_method_str);
@@ -442,8 +443,7 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     ASSERT_EQ("index", mp->method->service()->name());
 
     mp = FindMethodPropertyByURI("//", &server, nullptr);
-    ASSERT_TRUE(mp);
-    ASSERT_EQ("index", mp->method->service()->name());
+    ASSERT_FALSE(mp);
 
     mp = FindMethodPropertyByURI("flags", &server, &unknown_method);
     ASSERT_TRUE(mp);
@@ -482,6 +482,49 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     mp = FindMethodPropertyByURI("/test.EchoService/no_such_method",
                                  &server, &unknown_method);
     ASSERT_FALSE(mp);
+}
+
+// A path with empty segments is a different path per RFC 3986, but the
+// splitter used to resolve it skips them, so //flags used to reach the same
+// builtin service as /flags. That difference is what lets a request slip past
+// a front proxy whose ACL only matches the collapsed form, so such paths are
+// rejected rather than collapsed.
+TEST(HttpMessageTest, reject_empty_path_segments) {
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(new test::EchoService(),
+                                   brpc::SERVER_OWNS_SERVICE));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    std::string unknown_method;
+
+    const char* const kRejected[] = {
+        "//",
+        "//flags",
+        "///flags",
+        "/flags//port",
+        "//EchoService/Echo",
+        "/EchoService//Echo",
+        "/EchoService/Echo//",
+    };
+    for (const char* path : kRejected) {
+        ASSERT_FALSE(FindMethodPropertyByURI(path, &server, &unknown_method))
+            << "path=" << path;
+    }
+
+    // The collapsed forms keep working.
+    ASSERT_TRUE(FindMethodPropertyByURI("/", &server, nullptr));
+    ASSERT_TRUE(FindMethodPropertyByURI("/flags/port", &server,
+                                        &unknown_method));
+    ASSERT_TRUE(FindMethodPropertyByURI("/EchoService/Echo", &server,
+                                        &unknown_method));
+
+    // -http_allow_empty_path_segments restores the old lenient behavior for
+    // deployments that depend on it.
+    brpc::policy::FLAGS_http_allow_empty_path_segments = true;
+    for (const char* path : kRejected) {
+        ASSERT_TRUE(FindMethodPropertyByURI(path, &server, &unknown_method))
+            << "path=" << path;
+    }
+    brpc::policy::FLAGS_http_allow_empty_path_segments = false;
 }
 
 TEST(HttpMessageTest, http_header) {
