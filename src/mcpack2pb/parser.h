@@ -88,22 +88,48 @@ class ObjectIterator;
 class ArrayIterator;
 class ISOArrayIterator;
 
+// Bound the argument of RepeatedField::Reserve() calls that generated
+// parsing code derives from a wire-declared item count. The declared count
+// is under control of the remote side and is not necessarily backed by
+// actual bytes, so reserving it verbatim lets a tiny message trigger a huge
+// allocation. Repeated fields grow on demand past this bound, thus parsing
+// of genuinely large arrays is unaffected.
+inline int capped_reserve_count(uint32_t item_count) {
+    const uint32_t MAX_RESERVE_COUNT = 1024;
+    return (int)(item_count < MAX_RESERVE_COUNT ? item_count : MAX_RESERVE_COUNT);
+}
+
 // Represent a piece of unparsed(and unread) data of InputStream.
 struct UnparsedValue {
     UnparsedValue()
-        : _type(FIELD_UNKNOWN), _stream(NULL), _size(0) {}
+        : _type(FIELD_UNKNOWN), _stream(NULL), _size(0), _depth(0) {}
     UnparsedValue(FieldType type, InputStream* stream, size_t size)
-        : _type(type), _stream(stream), _size(size) {}
+        : _type(type), _stream(stream), _size(size), _depth(0) {}
+    // `depth' is the number of containers this value is nested in
+    // (0 for the top-level object). An iterator unfolded from a value gets
+    // depth+1, i.e. the nesting level of the container itself. Input nested
+    // deeper than MAX_DEPTH is rejected, so that parsing a deeply nested
+    // object fails instead of recursing until the stack overflows.
+    UnparsedValue(FieldType type, InputStream* stream, size_t size, size_t depth)
+        : _type(type), _stream(stream), _size(size), _depth(depth) {}
+    // Sets the value, keeping the depth of the previous value (a reused
+    // value stays at the same nesting level). Internal code populates
+    // nested values with the 4-arg overload below.
     void set(FieldType type, InputStream* stream, size_t size) {
+        set(type, stream, size, _depth);
+    }
+    void set(FieldType type, InputStream* stream, size_t size, size_t depth) {
         _type = type;
         _stream = stream;
         _size = size;
+        _depth = depth;
     }
     
     FieldType type() const { return _type; }
     InputStream* stream() { return _stream; }
     const InputStream* stream() const { return _stream; }
     size_t size() const { return _size; }
+    size_t depth() const { return _depth; }
 
     // Convert to concrete value. These functions can only be called once!
     ObjectIterator as_object();
@@ -127,10 +153,11 @@ private:
 friend class ObjectIterator;
 friend class ArrayIterator;
     void set_end() { _type = FIELD_UNKNOWN; }
-    
+
     FieldType _type;
     InputStream* _stream;
     size_t _size;
+    size_t _depth;
 };
 
 std::ostream& operator<<(std::ostream& os, const UnparsedValue& value);
@@ -152,9 +179,15 @@ public:
     };
 
     // Parse `n' bytes from `stream' as fields of an object.
-    ObjectIterator(InputStream* stream, size_t n) { init(stream, n); }
+    // `depth' is the nesting level of the container being iterated
+    // (1 for the top-level object, since the provided value is already
+    // nested in one container). Input nested deeper than MAX_DEPTH is
+    // rejected to avoid stack overflow on unbounded recursion (CWE-674),
+    // mirroring the serializer's limit.
+    ObjectIterator(InputStream* stream, size_t n, size_t depth = 1)
+    { init(stream, n, depth); }
     explicit ObjectIterator(UnparsedValue& value)
-    { init(value.stream(), value.size()); }
+    { init(value.stream(), value.size(), value.depth() + 1); }
     ~ObjectIterator() {}
 
     Field* operator->() { return &_current_field; }
@@ -166,7 +199,7 @@ public:
     uint32_t field_count() const { return _field_count; }
 
 private:
-    void init(InputStream* stream, size_t n);
+    void init(InputStream* stream, size_t n, size_t depth);
     void set_bad() {
         set_end();
         _stream->set_bad();
@@ -174,13 +207,14 @@ private:
     void set_end() { _current_field.value._type = FIELD_UNKNOWN; }
     size_t left_size() const
     { return _expected_popped_end - _expected_popped_bytes; }
-    
+
     Field _current_field;
     uint32_t _field_count;
     std::string _name_backup_string;
     InputStream* _stream;
     size_t _expected_popped_bytes;
     size_t _expected_popped_end;
+    size_t _depth;
 };
 
 // Iterator all items in a (mcpack) array which should be created like this:
@@ -192,9 +226,10 @@ class ArrayIterator {
 public:
     typedef UnparsedValue Field;
 
-    ArrayIterator(InputStream* stream, size_t size) { init(stream, size); }
+    ArrayIterator(InputStream* stream, size_t size, size_t depth = 1)
+    { init(stream, size, depth); }
     explicit ArrayIterator(UnparsedValue& value)
-    { init(value.stream(), value.size()); }
+    { init(value.stream(), value.size(), value.depth() + 1); }
     ~ArrayIterator() {}
 
     Field* operator->() { return &_current_field; }
@@ -206,7 +241,7 @@ public:
     uint32_t item_count() const { return _item_count; }
     
 private:
-    void init(InputStream* stream, size_t n);
+    void init(InputStream* stream, size_t n, size_t depth);
     void set_bad() {
         set_end();
         _stream->set_bad();
@@ -220,6 +255,7 @@ private:
     InputStream* _stream;
     size_t _expected_popped_bytes;
     size_t _expected_popped_end;
+    size_t _depth;
 };
 
 // Iterator all items in an isomorphic array which should be created like this:

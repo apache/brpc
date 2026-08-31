@@ -88,7 +88,7 @@ friend class VersionedRefWithId<Stream>;
     void BeforeRecycled();
     std::string OnDescription() const;
 
-    void SetRemoteConsumed(size_t _remote_consumed);
+    int SetRemoteConsumed(size_t _remote_consumed);
     void Wait(void (*on_writable)(StreamId, void*, int), void* arg, 
               const timespec* due_time, bool new_thread, bthread_id_t *join_id);
     void SendFeedback(int64_t _consumed_bytes);

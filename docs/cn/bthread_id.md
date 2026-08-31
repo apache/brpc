@@ -1,3 +1,5 @@
+[English version](../en/bthread_id.md)
+
 bthread_id是一个特殊的同步结构，它可以互斥RPC过程中的不同环节，也可以O(1)时间内找到RPC上下文(即Controller)。注意，这里我们谈论的是bthread_id_t，不是bthread_t（bthread的tid），这个名字起的确实不太好，容易混淆。
 
 具体来说，bthread_id解决的问题有：

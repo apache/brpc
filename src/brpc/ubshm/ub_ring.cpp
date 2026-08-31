@@ -594,6 +594,12 @@ int UBRing::UbrTrxRecvBlockMode(uint8_t *dest, uint32_t buf_len)
         }
         uint8_t chunk_msg_len = current_chunk->header[UBR_MSG_LEN_INDEX];
         uint8_t cur_index = current_chunk->header[UBR_MSG_CUR_INDEX];
+        if (UNLIKELY(!IsRecvChunkHeaderValid(chunk_msg_len, cur_index))) {
+            LOG(ERROR) << "Trx recv failed, invalid chunk header msg_len="
+                       << (uint32_t)chunk_msg_len << " cur_index=" << (uint32_t)cur_index;
+            errno = EBADMSG;
+            return UBRING_ERR;
+        }
         uint8_t available_data = chunk_msg_len - cur_index;
 
         int32_t copy_len = (remaining_len < available_data) ? remaining_len : available_data;
@@ -1253,6 +1259,12 @@ ssize_t UBRing::StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, siz
         }
         uint8_t chunk_msg_len = current_chunk->header[UBR_MSG_LEN_INDEX];
         uint8_t cur_index = current_chunk->header[UBR_MSG_CUR_INDEX];
+        if (UNLIKELY(!IsRecvChunkHeaderValid(chunk_msg_len, cur_index))) {
+            LOG(ERROR) << "Trx readv failed, invalid chunk header msg_len="
+                       << (uint32_t)chunk_msg_len << " cur_index=" << (uint32_t)cur_index;
+            errno = EBADMSG;
+            return UBRING_ERR;
+        }
         uint8_t recv_len =
             remain_buf_len > (size_t)(chunk_msg_len - cur_index) ? (chunk_msg_len - cur_index) : (uint8_t)remain_buf_len;
         while (iov_index < iovcnt && recv_len > 0) {

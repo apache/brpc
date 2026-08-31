@@ -28,6 +28,8 @@
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/shm/shm_mgr.h"
 #include "brpc/ubshm/ub_ring_manager.h"
+#include "brpc/ubshm/ub_ring.h"
+#include "brpc/ubshm/ubr_msg.h"
 
 namespace brpc {
 namespace ubring {
@@ -246,6 +248,46 @@ TEST_F(UBShmEndpointTest, reset_cleans_up_resources) {
 TEST_F(UBShmEndpointTest, reset_is_idempotent) {
     _ep->Reset();
     _ep->Reset();
+}
+
+// The receive paths (UbrTrxRecvBlockMode / StartReadv) read `msg_len' and
+// `cur_index' out of a chunk header the remote peer writes into the ring, then
+// copy `msg_len - cur_index' bytes from the 60-byte `payload.inner'. A peer
+// that writes msg_len > 60, or cur_index > msg_len (which underflows the
+// uint8_t subtraction), makes that copy over-read the payload into adjacent
+// shared memory. IsRecvChunkHeaderValid is the guard both paths now apply.
+TEST(UBRingRecvChunkHeaderTest, reject_out_of_range_len_and_index) {
+    using brpc::ubring::UBRing;
+    // Legitimate values a well-formed peer produces: full payload, partial
+    // consume, and the fully-consumed boundary.
+    EXPECT_TRUE(UBRing::IsRecvChunkHeaderValid(UBR_MSG_PAYLOAD_LEN, 0));
+    EXPECT_TRUE(UBRing::IsRecvChunkHeaderValid(10, 5));
+    EXPECT_TRUE(UBRing::IsRecvChunkHeaderValid(0, 0));
+    EXPECT_TRUE(UBRing::IsRecvChunkHeaderValid(UBR_MSG_PAYLOAD_LEN,
+                                               UBR_MSG_PAYLOAD_LEN));
+    // msg_len past the payload capacity -> over-read source.
+    EXPECT_FALSE(UBRing::IsRecvChunkHeaderValid(UBR_MSG_PAYLOAD_LEN + 1, 0));
+    EXPECT_FALSE(UBRing::IsRecvChunkHeaderValid(255, 0));
+    // cur_index past msg_len -> `msg_len - cur_index' underflows to a large
+    // uint8_t.
+    EXPECT_FALSE(UBRing::IsRecvChunkHeaderValid(0, 1));
+    EXPECT_FALSE(UBRing::IsRecvChunkHeaderValid(10, 20));
+}
+
+// A crafted chunk laid out exactly like one in the ring: the guard rejects it
+// so the recv loop never reaches the over-reading memcpy.
+TEST(UBRingRecvChunkHeaderTest, crafted_chunk_is_rejected) {
+    brpc::ubring::UbrMsgFormat chunk;
+    memset(&chunk, 0xAB, sizeof(chunk));
+    chunk.header[UBR_MSG_LEN_INDEX] = 255;  // peer claims 255 bytes in a 60-byte payload
+    chunk.header[UBR_MSG_CUR_INDEX] = 0;
+    EXPECT_FALSE(brpc::ubring::UBRing::IsRecvChunkHeaderValid(
+        chunk.header[UBR_MSG_LEN_INDEX], chunk.header[UBR_MSG_CUR_INDEX]));
+
+    chunk.header[UBR_MSG_LEN_INDEX] = UBR_MSG_PAYLOAD_LEN;
+    chunk.header[UBR_MSG_CUR_INDEX] = 0;
+    EXPECT_TRUE(brpc::ubring::UBRing::IsRecvChunkHeaderValid(
+        chunk.header[UBR_MSG_LEN_INDEX], chunk.header[UBR_MSG_CUR_INDEX]));
 }
 
 #else

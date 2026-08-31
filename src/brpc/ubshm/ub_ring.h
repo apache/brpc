@@ -162,6 +162,21 @@ public:
         return UBRING_OK;
     }
 
+    // The message length and current offset of a received chunk are read out
+    // of the receive ring, which the remote peer writes. The peer is trusted
+    // to keep msg_len within the payload capacity and cur_index within msg_len
+    // (the send path clamps msg_len to UBR_MSG_PAYLOAD_LEN), but nothing
+    // enforces that on the receive side. When msg_len > UBR_MSG_PAYLOAD_LEN or
+    // cur_index > msg_len, reading `payload.inner + cur_index' for
+    // `msg_len - cur_index' bytes runs past the 60-byte payload (the uint8_t
+    // subtraction also wraps when cur_index > msg_len), so validate the header
+    // before using it.
+    static inline bool IsRecvChunkHeaderValid(uint8_t chunk_msg_len,
+                                              uint8_t cur_index)
+    {
+        return chunk_msg_len <= UBR_MSG_PAYLOAD_LEN && cur_index <= chunk_msg_len;
+    }
+
     static inline void UpdateDataQTail(UbrTrx *trx)
     {
         ((UbrDataStatusQMsg *)trx->ubr_rx.remote_data_status_q.addr)->tail = trx->ubr_rx.read_pos;

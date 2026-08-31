@@ -16,7 +16,9 @@
 // under the License.
 
 
+#include <limits>
 #include <google/protobuf/io/gzip_stream.h>    // GzipXXXStream
+#include <google/protobuf/io/zero_copy_stream.h>   // ZeroCopyInputStream
 #include <google/protobuf/text_format.h>
 #include "butil/logging.h"
 #include "brpc/policy/gzip_compress.h"
@@ -25,6 +27,81 @@
 
 namespace brpc {
 namespace policy {
+
+namespace {
+
+// A ZeroCopyInputStream wrapper that stops reading from the underlying stream
+// once a limit of bytes has been handed out. Different protobuf releases
+// disagree on the availability/location of the stock LimitingInputStream (it
+// does not exist before ~3.19), so implement the same behaviour locally to
+// stay portable across the protobuf versions CI builds against.
+class DelegatingLimitingInputStream : public google::protobuf::io::ZeroCopyInputStream {
+public:
+    DelegatingLimitingInputStream(google::protobuf::io::ZeroCopyInputStream* input,
+                                  int64_t limit)
+        : _input(input), _limit(limit), _bytes_read(0), _excess(0) {}
+
+    bool Next(const void** data, int* size) override {
+        if (_bytes_read >= _limit) {
+            return false;
+        }
+        if (!_input->Next(data, size)) {
+            return false;
+        }
+        const int64_t total = _bytes_read + *size;
+        if (total > _limit) {
+            // Clip the tail that does not fit below the limit and record how
+            // much of the wrapped stream's block is being withheld instead of
+            // calling BackUp() right now: a consumer backing up the exposed
+            // prefix would otherwise trigger a second BackUp() on the
+            // wrapped stream without an intervening Next(), which violates
+            // the ZeroCopyInputStream contract.
+            _excess = (int)(total - _limit);
+            *size -= _excess;
+            _bytes_read = _limit;
+        } else {
+            _excess = 0;
+            _bytes_read = total;
+        }
+        return true;
+    }
+
+    void BackUp(int count) override {
+        _bytes_read -= count;
+        if (_excess > 0) {
+            // Give back the requested prefix together with the clipped tail
+            // in the single BackUp() the wrapped stream allows after the last
+            // Next(), landing both at the right offset.
+            _input->BackUp(count + _excess);
+            _excess = 0;
+        } else {
+            _input->BackUp(count);
+        }
+    }
+
+    bool Skip(int count) override {
+        // Bound the skip by what still fits below the limit.
+        const int64_t remaining = _limit - _bytes_read;
+        if (count > remaining) {
+            return false;
+        }
+        if (_input->Skip(count)) {
+            _bytes_read += count;
+            return true;
+        }
+        return false;
+    }
+
+    int64_t ByteCount() const override { return _bytes_read; }
+
+private:
+    google::protobuf::io::ZeroCopyInputStream* _input;
+    int64_t _limit;
+    int64_t _bytes_read;
+    int _excess;
+};
+
+}  // namespace
 
 const char* Format2CStr(google::protobuf::io::GzipOutputStream::Format format) {
     switch (format) {
@@ -73,11 +150,26 @@ static bool Decompress(const butil::IOBuf& data, google::protobuf::Message* msg,
                        google::protobuf::io::GzipInputStream::Format format) {
     butil::IOBufAsZeroCopyInputStream wrapper(data);
     google::protobuf::io::GzipInputStream gzip(&wrapper, format);
+    // Cap the decompressed size: zlib expands up to ~1032x, so a body that
+    // passes -max_body_size in compressed form may still decompress to tens
+    // of GiB (decompression bomb). The limiting stream stops feeding the
+    // parser once the cap is hit, bounding the memory materialized here.
+    const uint64_t limit = MaxDecompressedBodySize();
+    const int64_t hard_limit =
+        limit < (uint64_t)std::numeric_limits<int64_t>::max()
+        ? (int64_t)limit + 1 : std::numeric_limits<int64_t>::max();
+    DelegatingLimitingInputStream limited_in(&gzip, hard_limit);
     bool ok;
     if (msg->GetDescriptor() == Deserializer::descriptor()) {
-        ok = ((Deserializer*)msg)->DeserializeFrom(&gzip);
+        ok = ((Deserializer*)msg)->DeserializeFrom(&limited_in);
     } else {
-        ok = msg->ParseFromZeroCopyStream(&gzip);
+        ok = msg->ParseFromZeroCopyStream(&limited_in);
+    }
+    if (ok && (uint64_t)limited_in.ByteCount() > limit) {
+        LOG(WARNING) << "Decompressed size exceeds"
+                        " -max_decompressed_body_size=" << limit
+                     << ", format=" << Format2CStr(format);
+        return false;
     }
     if (!ok) {
         LOG(WARNING) << "Fail to deserialize input message="
@@ -141,6 +233,11 @@ inline bool GzipDecompressBase(
     butil::IOBufAsZeroCopyInputStream wrapper(data);
     google::protobuf::io::GzipInputStream in(&wrapper, format);
     butil::IOBufAsZeroCopyOutputStream out(msg);
+    // Cap the decompressed size: zlib expands up to ~1032x, so a body that
+    // passes -max_body_size in compressed form may still decompress to tens
+    // of GiB (decompression bomb).
+    const uint64_t limit = MaxDecompressedBodySize();
+    uint64_t total_out = 0;
     const void* data_in = nullptr;
     int size_in = 0;
     void* data_out = nullptr;
@@ -154,6 +251,17 @@ inline bool GzipDecompressBase(
         }
         const int size_cp = std::min(size_in, size_out);
         memcpy(data_out, data_in, size_cp);
+        total_out += size_cp;
+        if (total_out > limit) {
+            LOG(WARNING) << "Decompressed size exceeds"
+                            " -max_decompressed_body_size=" << limit
+                         << ", format=" << Format2CStr(format);
+            // out.Next() already moved the whole output block into `msg';
+            // give back the unwritten tail (still uninitialized) before
+            // leaving, otherwise it stays in the caller's IOBuf.
+            out.BackUp(size_out);
+            return false;
+        }
         size_in -= size_cp;
         data_in = (char*)data_in + size_cp;
         size_out -= size_cp;
