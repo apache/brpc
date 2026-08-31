@@ -60,6 +60,10 @@ public:
         return _on_edge_trigger;
     }
 protected:
+    void QueueInputMessageBatch(InputMessageBatch* input_msgs,
+                                int* num_bthread_created,
+                                bool run_inline);
+
     Socket* _socket;
     std::shared_ptr<AppConnect> _default_connect;
     OnEdgeTrigger _on_edge_trigger;

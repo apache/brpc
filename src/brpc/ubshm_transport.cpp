@@ -176,30 +176,8 @@ void UBShmTransport::QueueMessage(InputMessageClosure& input_msg,
 
 void UBShmTransport::QueueMessages(InputMessageBatch* input_msgs,
                                    int* num_bthread_created) {
-    if (!input_msgs || input_msgs->empty()) {
-        delete input_msgs;
-        return;
-    }
-    if (ubring::FLAGS_ub_disable_bthread) {
-        input_msgs->Run();
-        delete input_msgs;
-        return;
-    }
-
-    bthread_t th;
-    bthread_attr_t tmp =
-        (FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) |
-        BTHREAD_NOSIGNAL;
-    tmp.keytable_pool = _socket->keytable_pool();
-    tmp.tag = bthread_self_tag();
-    bthread_attr_set_name(&tmp, "ProcessInputMessageBatch");
-    if (!FLAGS_usercode_in_coroutine && bthread_start_background(
-            &th, &tmp, ProcessInputMessageBatch, input_msgs) == 0) {
-        ++*num_bthread_created;
-    } else {
-        input_msgs->Run();
-        delete input_msgs;
-    }
+    QueueInputMessageBatch(
+        input_msgs, num_bthread_created, ubring::FLAGS_ub_disable_bthread);
 }
 
 void UBShmTransport::Debug(std::ostream &os) {}
