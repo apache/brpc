@@ -714,13 +714,13 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         google::protobuf::Service* svc = nullptr;
         google::protobuf::MethodDescriptor* method = nullptr;
         if (nullptr != server->options().baidu_master_service) {
-          if (socket->is_overcrowded() &&
+            if (socket->is_overcrowded() &&
               !server->options().ignore_eovercrowded &&
               !server->options().baidu_master_service->ignore_eovercrowded()) {
-            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
-                            butil::endpoint2str(socket->remote_side()).c_str());
+                cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                                butil::endpoint2str(socket->remote_side()).c_str());
             break;
-          }
+            }
             svc = server->options().baidu_master_service;
             auto sampled_request = new SampledRequest;
             sampled_request->meta.set_service_name(request_meta.service_name());
@@ -732,10 +732,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             if (method_status) {
                 int rejected_cc = 0;
                 if (!method_status->OnRequested(&rejected_cc, cntl.get())) {
-                    cntl->SetFailed(
-                        ELIMIT,
-                        "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                        butil::class_name<BaiduMasterService>(), rejected_cc);
+                    cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                                    butil::class_name<BaiduMasterService>(), rejected_cc);
                     break;
                 }
             }
@@ -744,9 +742,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             messages = BaiduProxyPBMessages::Get();
-            msg->payload.cutn(
-                &((SerializedRequest*)messages->Request())->serialized_data(),
-                req_size - meta.attachment_size());
+            msg->payload.cutn(&((SerializedRequest*)messages->Request())->serialized_data(),
+                              req_size - meta.attachment_size());
             if (!msg->payload.empty()) {
                 cntl->request_attachment().swap(msg->payload);
             }
@@ -759,7 +756,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                     server_accessor.FindServicePropertyByName(svc_name);
                 if (nullptr == sp) {
                     cntl->SetFailed(ENOSERVICE, "Fail to find service=%s",
-                        request_meta.service_name().c_str());
+                                    request_meta.service_name().c_str());
                     break;
                 }
                 svc_name = sp->service->GetDescriptor()->full_name();
@@ -772,7 +769,11 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                                 request_meta.service_name().c_str(),
                                 request_meta.method_name().c_str());
                 break;
-            } else if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {
+            }
+            if (RejectBuiltinAccess(cntl.get(), *server, mp)) {
+                break;
+            }
+            if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {
                 BadMethodRequest breq;
                 BadMethodResponse bres;
                 breq.set_service_name(request_meta.service_name());

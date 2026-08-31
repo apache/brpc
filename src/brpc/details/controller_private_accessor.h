@@ -71,31 +71,31 @@ public:
         return _cntl->_current_call.stream_user_data;
     }
 
-    ControllerPrivateAccessor &set_security_mode(bool security_mode) {
+    ControllerPrivateAccessor& set_security_mode(bool security_mode) {
         _cntl->set_flag(Controller::FLAGS_SECURITY_MODE, security_mode);
         return *this;
     }
 
-    ControllerPrivateAccessor &set_remote_side(const butil::EndPoint& pt) {
+    ControllerPrivateAccessor& set_remote_side(const butil::EndPoint& pt) {
         _cntl->_remote_side = pt;
         return *this;
     }
 
-    ControllerPrivateAccessor &set_local_side(const butil::EndPoint& pt) {
+    ControllerPrivateAccessor& set_local_side(const butil::EndPoint& pt) {
         _cntl->_local_side = pt;
         return *this;
     }
  
-    ControllerPrivateAccessor &set_auth_context(const AuthContext* ctx) {
+    ControllerPrivateAccessor& set_auth_context(const AuthContext* ctx) {
         _cntl->set_auth_context(ctx);
         return *this;
     }
 
     // Overloaded set_span methods to support both shared_ptr and raw pointer
-    ControllerPrivateAccessor &set_span(const std::shared_ptr<Span>& span);
-    ControllerPrivateAccessor &set_span(Span* span);
+    ControllerPrivateAccessor& set_span(const std::shared_ptr<Span>& span);
+    ControllerPrivateAccessor& set_span(Span* span);
     
-    ControllerPrivateAccessor &set_request_protocol(ProtocolType protocol) {
+    ControllerPrivateAccessor& set_request_protocol(ProtocolType protocol) {
         _cntl->_request_protocol = protocol;
         return *this;
     }
@@ -196,7 +196,7 @@ private:
 // utility only useable by brpc developers.
 class RPCSender {
 public:
-    virtual ~RPCSender() {}
+    virtual ~RPCSender() = default;
     virtual int IssueRPC(int64_t start_realtime_us) = 0;
 };
 
