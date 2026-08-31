@@ -98,7 +98,11 @@ void* ProcessInputMessage(void* void_arg) {
 void* ProcessInputMessageBatch(void* void_arg) {
     std::unique_ptr<InputMessageBatch> batch(
         static_cast<InputMessageBatch*>(void_arg));
-    batch->Run();
+    try {
+        batch->Run();
+    } catch (...) {
+        LOG(ERROR) << "An input message handler threw while processing a batch";
+    }
     return nullptr;
 }
 
@@ -108,8 +112,13 @@ InputMessageBatch::InputMessageBatch(size_t capacity) {
         capacity, static_cast<size_t>(MAX_ADAPTIVE_INPUT_BATCH_SIZE)));
 }
 
-InputMessageBatch::~InputMessageBatch() noexcept(false) {
-    Run();
+InputMessageBatch::~InputMessageBatch() noexcept {
+    try {
+        Run();
+    } catch (...) {
+        LOG(ERROR) << "An input message handler threw during batch cleanup";
+        DestroyRemainingMessages();
+    }
 }
 
 void InputMessageBatch::add(InputMessageBase* msg) {
@@ -120,7 +129,27 @@ void InputMessageBatch::add(InputMessageBase* msg) {
 
 void InputMessageBatch::Run() {
     for (size_t i = 0; i < _msgs.size(); ++i) {
-        ProcessInputMessage(_msgs[i]);
+        InputMessageBase* msg = _msgs[i];
+        _msgs[i] = nullptr;
+        if (msg == nullptr) {
+            continue;
+        }
+        ProcessInputMessage(msg);
+    }
+    _msgs.clear();
+}
+
+void InputMessageBatch::DestroyRemainingMessages() noexcept {
+    for (size_t i = 0; i < _msgs.size(); ++i) {
+        if (_msgs[i] == nullptr) {
+            continue;
+        }
+        try {
+            _msgs[i]->Destroy();
+        } catch (...) {
+            LOG(ERROR) << "Failed to destroy an unprocessed input message";
+        }
+        _msgs[i] = nullptr;
     }
     _msgs.clear();
 }

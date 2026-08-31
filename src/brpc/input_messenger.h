@@ -99,7 +99,7 @@ class InputMessageBatch {
 public:
     InputMessageBatch() {}
     explicit InputMessageBatch(size_t capacity);
-    ~InputMessageBatch() noexcept(false);
+    ~InputMessageBatch() noexcept;
 
     void add(InputMessageBase* msg);
     void Run();
@@ -107,6 +107,8 @@ public:
     size_t size() const { return _msgs.size(); }
 
 private:
+    void DestroyRemainingMessages() noexcept;
+
     std::vector<InputMessageBase*> _msgs;
 };
 

@@ -394,10 +394,11 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
     // method for processing messages may call synchronization primitives,
     // causing the polling bthread to be scheduled out.
     if (batch_process) {
+        QueueLastMessageOrBatch(
+            last_msg, &input_batch, &num_bthread_created, batch_size);
         QueueInputMessageBatch(&input_batch, &num_bthread_created);
-    }
-    if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
-        _socket->_socket_mode == SOCKET_MODE_UBRING) {
+    } else if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
+               _socket->_socket_mode == SOCKET_MODE_UBRING) {
         _socket->_transport->QueueMessage(last_msg, &num_bthread_created, true);
     }
     if (adaptive_batch_process && batchable_message_count != 0) {
