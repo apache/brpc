@@ -279,6 +279,24 @@ extern int bthread_rwlock_timedwrlock(bthread_rwlock_t* __restrict rwlock,
 // Unlock `rwlock'.
 extern int bthread_rwlock_unlock(bthread_rwlock_t* rwlock);
 
+// ---------------------------------------------------
+// Functions for handling read-write lock attributes.
+// ---------------------------------------------------
+// TODO: Implement these APIs. bthread_rwlock_init() currently ignores attr.
+
+// Initialize attribute object `attr' with default values.
+// extern int bthread_rwlockattr_init(bthread_rwlockattr_t* attr);
+
+// Destroy attribute object `attr'.
+// extern int bthread_rwlockattr_destroy(bthread_rwlockattr_t* attr);
+
+// Return current setting of reader/writer preference.
+// extern int bthread_rwlockattr_getkind_np(const bthread_rwlockattr_t* attr,
+//                                          int* pref);
+
+// Set reader/write preference.
+// extern int bthread_rwlockattr_setkind_np(bthread_rwlockattr_t* attr, int pref);
+
 // -------------------------------------------
 // Functions for handling semaphore.
 // -------------------------------------------
@@ -325,6 +343,19 @@ extern int bthread_sem_post(bthread_sem_t* sem);
 // `n' semaphore unlock operation on that semaphore.
 // Return 0 on success, errno otherwise.
 extern int bthread_sem_post_n(bthread_sem_t* sem, size_t n);
+
+// ----------------------------------------------------------------------
+// Functions for handling barrier which is a new feature in 1003.1j-2000.
+// ----------------------------------------------------------------------
+// TODO: Implement bthread barrier.
+
+// extern int bthread_barrier_init(bthread_barrier_t* __restrict barrier,
+//                                 const bthread_barrierattr_t* __restrict attr,
+//                                 unsigned count);
+
+// extern int bthread_barrier_destroy(bthread_barrier_t* barrier);
+
+// extern int bthread_barrier_wait(bthread_barrier_t* barrier);
 
 // ---------------------------------------------------------------------
 // Functions for handling thread-specific data. 

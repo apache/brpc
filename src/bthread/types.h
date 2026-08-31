@@ -247,10 +247,18 @@ typedef struct bthread_rwlock_t {
     unsigned* lock_word;
 } bthread_rwlock_t;
 
-// Kept for ABI compatibility with bthread_rwlock_init(). There is no
-// bthread_rwlockattr_* API; pass nullptr to use the default.
+// Kept for ABI compatibility with bthread_rwlock_init(). Pass nullptr
+// for the default. See TODO on bthread_rwlockattr_* in bthread.h.
 typedef struct {
 } bthread_rwlockattr_t;
+
+// TODO: Implement bthread barrier.
+// typedef struct {
+//     unsigned int count;
+// } bthread_barrier_t;
+//
+// typedef struct {
+// } bthread_barrierattr_t;
 
 #if defined(__cplusplus)
 class bthread_once_t;
