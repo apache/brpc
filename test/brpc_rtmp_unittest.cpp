@@ -355,6 +355,14 @@ private:
     int64_t _sleep_ms;
 };
 
+class RejectingRtmpService : public brpc::RtmpService {
+private:
+    brpc::RtmpServerStream* NewStream(
+        const brpc::RtmpConnectRequest&) override {
+        return nullptr;
+    }
+};
+
 class PublishStream : public brpc::RtmpServerStream {
 public:
     PublishStream(int64_t sleep_ms)
@@ -965,6 +973,43 @@ TEST(RtmpTest, abort_message_naming_own_chunk_stream) {
     butil::IOBuf buf2;
     buf2.append(cont);
     ASSERT_EQ(brpc::PARSE_OK, ctx.Feed(&buf2, sock.get()).error());
+}
+
+TEST(RtmpTest, rejected_create_stream_with_response_write_failure) {
+    RejectingRtmpService rtmp_service;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.rtmp_service = &rtmp_service;
+    ASSERT_EQ(0, server.Start(0, &server_options));
+
+    brpc::SocketId socket_id;
+    brpc::SocketOptions socket_options;
+    ASSERT_EQ(0, brpc::Socket::Create(socket_options, &socket_id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+    ASSERT_EQ(0, socket->SetFailed());
+
+    brpc::policy::RtmpContext ctx(nullptr, &server);
+    brpc::policy::RtmpChunkStream chunk_stream(
+        &ctx, brpc::policy::RTMP_CONTROL_CHUNK_STREAM_ID);
+
+    std::string request;
+    google::protobuf::io::StringOutputStream zc_stream(&request);
+    brpc::AMFOutputStream ostream(&zc_stream);
+    brpc::WriteAMFNumber(1, &ostream);
+    brpc::AMFObject command;
+    brpc::WriteAMFObject(command, &ostream);
+    ASSERT_TRUE(ostream.good());
+
+    google::protobuf::io::ArrayInputStream input(
+        request.data(), request.size());
+    brpc::AMFInputStream istream(&input);
+    brpc::policy::RtmpMessageHeader message_header;
+    ASSERT_FALSE(chunk_stream.OnCreateStream(
+        message_header, &istream, socket.get()));
+
+    server.Stop(0);
+    server.Join();
 }
 
 TEST(RtmpTest, successfully_play_streams) {
