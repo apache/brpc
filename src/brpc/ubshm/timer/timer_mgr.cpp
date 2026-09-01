@@ -236,8 +236,10 @@ int UbrTimerDel(UbrTimerId* slot) {
     }                                            // ==1: dispatched, OnFire (owned==false)
                                                  // releases it
     ReleaseRef(task);                            // owner
-    return 0;            // the callback is guaranteed never to run: the caller
-                         // consumes the timer/callback reference
+    return 0;       // This call won the slot competition. For a one-shot timer,
+                    // the callback will not run. For a periodic timer, future
+                    // rearming is stopped, but an already dispatched or running
+                    // callback may still complete.
 }
 
 void UbrTimerDelAndWait(UbrTimerId* slot) {

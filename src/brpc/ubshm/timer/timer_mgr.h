@@ -45,16 +45,20 @@ RETURN_CODE UbrTimerStart(UbrTimerId* slot, uint64_t delay_us,
                           void* arg,
                           UbrTimerBackoffFn backoff = nullptr);
 
-// Non-blocking delete, safe from inside the timer callback itself. Does
-// not wait for a running callback and does not protect `arg' on its own.
-// Returns 0 when the call won the slot competition: a one-shot callback
-// is guaranteed never to run, and the caller consumes any per-task
-// resources it tracks for this timer (ownership of them transfers to the
-// caller); for a periodic timer an already-started callback is not
-// interrupted. Returns 1 when the callback has been dispatched (it
-// consumes those resources itself on every exit) or its fate is still
-// being settled by the scheduler -- the caller must not consume anything
-// then.
+// Non-blocking delete, safe to call from inside the timer callback itself.
+// This function does not wait for an already running callback and does not
+// protect resources reachable from `arg` on its own.
+//
+// Returns 0 when this call wins the handle-slot competition.
+// - For a one-shot timer, the callback will not run.
+// - For a periodic timer, future rearming is stopped, but an already
+//   dispatched or running callback may still execute once more. Callers
+//   must not reclaim resources reachable from `arg` based on this return
+//   alone; use UbrTimerDelAndWait when teardown needs to wait for callbacks.
+//
+// Returns 1 when this caller did not acquire timer ownership. The callback,
+// another deleter, or the scheduling path is responsible for settling the
+// timer resources, so this caller must not reclaim them.
 int UbrTimerDel(UbrTimerId* slot);
 
 // Delete and wait until a possibly running callback finished, so the
