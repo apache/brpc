@@ -860,7 +860,7 @@ RtmpChunkStream* RtmpContext::GetChunkStream(uint32_t cs_id) {
     return cstream;
 }
 
-void RtmpContext::ClearChunkStream(uint32_t cs_id) {
+void RtmpContext::AbortChunkStream(uint32_t cs_id) {
     if (cs_id > RTMP_MAX_CHUNK_STREAM_ID) {
         LOG(ERROR) << "Invalid chunk_stream_id=" << cs_id;
         return;
@@ -879,8 +879,7 @@ void RtmpContext::ClearChunkStream(uint32_t cs_id) {
         LOG(ERROR) << "chunk_stream_id=" << cs_id << " does not exist";
         return;
     }
-    delete sub_array->ptrs[index2].exchange(
-        nullptr, butil::memory_order_acquire);
+    cstream->OnAbort();
 }
 
 void RtmpContext::AllocateChunkStreamId(uint32_t* chunk_stream_id) {
@@ -1773,6 +1772,12 @@ int RtmpChunkStream::SerializeMessage(butil::IOBuf* buf,
     return 0;
 }
 
+void RtmpChunkStream::OnAbort() {
+    _r.msg_body.clear();
+    _r.left_message_length = _r.last_msg_header.message_length;
+    _r.first_chunk_of_message = true;
+}
+
 static const RtmpChunkStream::MessageHandler s_msg_handlers[] = {
     &RtmpChunkStream::OnSetChunkSize, // 1
     &RtmpChunkStream::OnAbortMessage, // 2
@@ -1903,12 +1908,7 @@ bool RtmpChunkStream::OnAbortMessage(
         RTMP_ERROR(socket, mh) << "Invalid chunk_stream_id=" << cs_id;
         return false;
     }
-    // Do not delete the chunk stream that is currently being parsed (i.e.
-    // the one running this Feed). Clearing it here would free `this' while
-    // Feed() still holds and later touches it, causing a use-after-free.
-    if (cs_id != _cs_id) {
-        connection_context()->ClearChunkStream(cs_id);
-    }
+    connection_context()->AbortChunkStream(cs_id);
     return true;
 }
 
