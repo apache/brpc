@@ -22,6 +22,7 @@
 #include "brpc/socket.h"                             // SocketUser
 #include "brpc/load_balancer.h"                      // LoadBalancer
 #include "brpc/details/controller_private_accessor.h"        // RPCSender
+#include "brpc/nonreflectable_message.h"
 #include "brpc/selective_channel.h"
 #include "brpc/global.h"
 
@@ -394,8 +395,14 @@ void SubDone::Run() {
         main_cntl->_error_code = _cntl._error_code;
     } else {
         if (_cntl._response != main_cntl->_response) {
-            main_cntl->_response->GetReflection()->Swap(
-                main_cntl->_response, _cntl._response);
+            NonreflectableMessageBase* nr_msg =
+                dynamic_cast<NonreflectableMessageBase*>(main_cntl->_response);
+            if (nr_msg != nullptr) {
+                CHECK(nr_msg->CopyFromSameType(*_cntl._response));
+            } else {
+                main_cntl->_response->GetReflection()->Swap(
+                    main_cntl->_response, _cntl._response);
+            }
         }
     }
     const Controller::CompletionInfo info = { _cid, true };
