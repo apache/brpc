@@ -467,6 +467,8 @@ Socket::Socket(Forbidden f)
     , _hc_count(0)
     , _last_msg_size(0)
     , _avg_msg_size(0)
+    , _input_messages_per_read_ema_q8(0)
+    , _adaptive_input_message_batch_size(0)
     , _last_readtime_us(0)
     , _parsing_context(nullptr)
     , _correlation_id(0)
@@ -571,9 +573,11 @@ void Socket::ReleaseAllFailedWriteRequests(Socket::WriteRequest* req) {
 }
 
 int Socket::ResetFileDescriptor(int fd) {
-    // Reset message sizes when fd is changed.
+    // Reset input heuristics when fd is changed.
     _last_msg_size = 0;
     _avg_msg_size = 0;
+    _input_messages_per_read_ema_q8 = 0;
+    _adaptive_input_message_batch_size = 0;
     // MUST store `_fd' before adding itself into epoll device to avoid
     // race conditions with the callback function inside epoll
     static butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT fd_version(0);
@@ -2384,6 +2388,10 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     const int64_t cpuwide_now = butil::cpuwide_time_us();
     os << "\nhc_count=" << ptr->_hc_count
        << "\navg_input_msg_size=" << ptr->_avg_msg_size
+       << "\navg_input_messages_per_read="
+       << ((ptr->_input_messages_per_read_ema_q8 + 128) >> 8)
+       << "\nadaptive_input_message_batch_size="
+       << ptr->_adaptive_input_message_batch_size
         // NOTE: We're assuming that butil::IOBuf.size() is thread-safe, it is now
         // however it's not guaranteed.
        << "\nread_buf=" << ptr->_read_buf.size()

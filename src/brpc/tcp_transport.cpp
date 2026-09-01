@@ -103,4 +103,9 @@ void TcpTransport::QueueMessage(InputMessageClosure& input_msg,
     }
 }
 
+void TcpTransport::QueueMessages(InputMessageBatch* input_msgs,
+                                 int* num_bthread_created) {
+    QueueInputMessageBatch(input_msgs, num_bthread_created, false);
+}
+
 } // namespace brpc

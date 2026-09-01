@@ -183,6 +183,12 @@ void RdmaTransport::QueueMessage(InputMessageClosure& input_msg,
     }
 }
 
+void RdmaTransport::QueueMessages(InputMessageBatch* input_msgs,
+                                  int* num_bthread_created) {
+    QueueInputMessageBatch(
+        input_msgs, num_bthread_created, rdma::FLAGS_rdma_disable_bthread);
+}
+
 void RdmaTransport::Debug(std::ostream &os) {
     if (_rdma_state == RDMA_ON && _rdma_ep) {
         _rdma_ep->DebugInfo(os);
