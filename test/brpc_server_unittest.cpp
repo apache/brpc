@@ -70,6 +70,7 @@ DECLARE_bool(enable_dir_service);
 
 namespace policy {
 DECLARE_bool(use_http_error_code);
+DECLARE_bool(http_allow_empty_path_segments);
 
 extern bool SerializeRpcMessage(const google::protobuf::Message& serializer,
                                 Controller& cntl, ContentType content_type,
@@ -95,6 +96,22 @@ void* RunClosure(void* arg) {
 
 bool g_verify_success = true;
 const std::string g_unauthorized_error_text = "unauthorized";
+
+// Paths with empty segments (consecutive slashes) are rejected by default,
+// see -http_allow_empty_path_segments. Turns the leniency back on for the
+// duration of the scope.
+class AllowEmptyPathSegmentsScope {
+public:
+    AllowEmptyPathSegmentsScope()
+        : _saved(brpc::policy::FLAGS_http_allow_empty_path_segments) {
+        brpc::policy::FLAGS_http_allow_empty_path_segments = true;
+    }
+    ~AllowEmptyPathSegmentsScope() {
+        brpc::policy::FLAGS_http_allow_empty_path_segments = _saved;
+    }
+private:
+    const bool _saved;
+};
 
 class MyAuthenticator : public brpc::Authenticator {
 public:
@@ -527,8 +544,21 @@ TEST_F(ServerTest, various_forms_of_uri_paths) {
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"foo\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << cntl.response_attachment();
-    ASSERT_EQ(2, service_v1.ncalled.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(1, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = "/EchoService///Echo//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"foo\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << cntl.response_attachment();
+        ASSERT_EQ(2, service_v1.ncalled.load());
+    }
 
     cntl.Reset();
     cntl.http_request().uri() = "/EchoService /Echo/";
@@ -783,15 +813,31 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_EQ(2, service_v1.ncalled.load());
     ASSERT_EQ("{\"message\":\"bar_v1\"}", cntl.response_attachment());
 
-    // Adding extra slashes (and heading/trailing spaces) is OK.
+    // Heading/trailing spaces are OK, extra slashes are not: //v1/echo and
+    // /v1/echo are different paths per RFC 3986, and dispatching both to the
+    // same method lets a request slip past a front proxy whose ACL only
+    // matches the collapsed form.
     cntl.Reset();
     cntl.http_request().uri() = " //v1///echo////  ";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"hello\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ(3, service_v1.ncalled.load());
-    ASSERT_EQ("{\"message\":\"hello_v1\"}", cntl.response_attachment());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(2, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = " //v1///echo////  ";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"hello\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(3, service_v1.ncalled.load());
+        ASSERT_EQ("{\"message\":\"hello_v1\"}", cntl.response_attachment());
+    }
 
     // /v3/echo must be exactly matched.
     cntl.Reset();
@@ -896,24 +942,53 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_EQ("{\"message\":\"1.flv_v1_Echo4\"}", cntl.response_attachment());
     ASSERT_EQ(1, service_v1.ncalled_echo4.load());
 
+    // A path with empty segments is rejected by default, even when a restful
+    // mapping would match the collapsed form: //v6/d.flv and /v6/d.flv are
+    // different paths per RFC 3986, and dispatching both to the same method
+    // lets a request slip past a front proxy whose ACL only matches the
+    // collapsed form.
     cntl.Reset();
     cntl.http_request().uri() = "//v6//d.flv//";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"d.flv\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ("{\"message\":\"d.flv_v1_Echo5\"}", cntl.response_attachment());
-    ASSERT_EQ(1, service_v1.ncalled_echo5.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(0, service_v1.ncalled_echo5.load());
 
-    // matched the global restful map.
+    // Ditto for the global restful map.
     cntl.Reset();
     cntl.http_request().uri() = "//d.flv//";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"d.flv\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ("{\"message\":\"d.flv_v1\"}", cntl.response_attachment());
-    ASSERT_EQ(9, service_v1.ncalled.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(8, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = "//v6//d.flv//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"d.flv\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ("{\"message\":\"d.flv_v1_Echo5\"}", cntl.response_attachment());
+        ASSERT_EQ(1, service_v1.ncalled_echo5.load());
+
+        // matched the global restful map.
+        cntl.Reset();
+        cntl.http_request().uri() = "//d.flv//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"d.flv\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ("{\"message\":\"d.flv_v1\"}", cntl.response_attachment());
+        ASSERT_EQ(9, service_v1.ncalled.load());
+    }
 
     cntl.Reset();
     cntl.http_request().uri() = "/v7/e.flv";

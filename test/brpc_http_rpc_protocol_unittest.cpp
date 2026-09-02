@@ -2356,6 +2356,56 @@ TEST_F(HttpTest, http2_handle_goaway_streams) {
     }
 }
 
+// RFC 9113 8.3.1: :path MUST NOT be empty and MUST begin with '/', the only
+// exception being the asterisk-form that OPTIONS uses.
+TEST_F(HttpTest, http2_reject_path_not_starting_with_slash) {
+    brpc::policy::H2Context* h2_ctx =
+        new brpc::policy::H2Context(_socket.get(), &_server);
+    ASSERT_EQ(0, h2_ctx->Init());
+    _socket->initialize_parsing_context(&h2_ctx);
+
+    // Encoding and decoding go through the same HPacker here, which is fine:
+    // it keeps the encoding and decoding tables apart and the header below is
+    // indexed into neither.
+    brpc::HPackOptions options;
+    options.index_policy = brpc::HPACK_NOT_INDEX_HEADER;
+
+    struct PathCase {
+        const char* path;
+        bool accepted;
+    };
+    const PathCase kCases[] = {
+        { "/flags", true },
+        { "/", true },
+        { "/flags?setvalue=1", true },
+        // Asterisk-form. Only OPTIONS may use it, but it is taken from any
+        // method here, see the comment on the check.
+        { "*", true },
+        { "flags", false },
+        { "", false },
+        { "flags/port", false },
+        { "*/flags", false },
+        { "http://somewhere/flags", false },  // absolute-form
+    };
+    int stream_id = 1;
+    for (const PathCase& c : kCases) {
+        butil::IOBufAppender appender;
+        brpc::HPacker::Header header(":path", c.path);
+        h2_ctx->hpacker().Encode(&appender, header, options);
+        butil::IOBuf buf;
+        appender.move_to(buf);
+        butil::IOBufBytesIterator it(buf);
+
+        brpc::policy::H2StreamContext* h2_msg =
+            new brpc::policy::H2StreamContext(false);
+        h2_msg->Init(h2_ctx, stream_id);
+        stream_id += 2;
+        ASSERT_EQ(c.accepted ? 0 : -1, h2_msg->ConsumeHeaders(it))
+            << "path=`" << c.path << '\'';
+        h2_msg->Destroy();
+    }
+}
+
 TEST_F(HttpTest, spring_protobuf_content_type) {
     const int port = 8923;
     brpc::Server server;
