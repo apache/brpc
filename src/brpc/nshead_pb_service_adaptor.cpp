@@ -122,6 +122,9 @@ void NsheadPbServiceAdaptor::ProcessNsheadRequest(
                                   meta->full_method_name().c_str());
             break;
         }
+        if (RejectBuiltinAccess(controller, server, sp)) {
+            break;
+        }
         pbdone->status = sp->status;
         sp->status->OnRequested();
 

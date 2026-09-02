@@ -1573,11 +1573,21 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
         return;
     } else if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {
+        // NOTE: Unlike pb protocols, a http request falls back to
+        // BadMethodService whenever the URL only carries a service name,
+        // no matter whether the service is builtin or not. Rejecting it here
+        // would turn a helpful "missing method name" hint into a confusing
+        // "not allowed to access builtin services" for normal services, so the
+        // request is dispatched instead and BadMethodService itself hides the
+        // list of available methods in security mode.
         BadMethodRequest breq;
         BadMethodResponse bres;
         butil::StringSplitter split(path.c_str(), '/');
         breq.set_service_name(std::string(split.field(), split.length()));
         mp->service->CallMethod(mp->method, cntl, &breq, &bres, nullptr);
+        return;
+    }
+    if (RejectBuiltinAccess(cntl, *server, mp)) {
         return;
     }
     // Switch to service-specific error.
@@ -1620,11 +1630,6 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         if (!server->AcceptRequest(cntl)) {
             return;
         }
-    } else if (security_mode) {
-        cntl->SetFailed(EPERM, "Not allowed to access builtin services, try "
-                        "ServerOptions.internal_port=%d instead if you're in"
-                        " internal network", server->options().internal_port);
-        return;
     }
 
     google::protobuf::Service* svc = mp->service;
