@@ -2239,11 +2239,13 @@ int Socket::OnInputEvent(void* user_data, uint32_t events,
         return 0;
     }
     if (s->fd() < 0) {
-#if defined(OS_LINUX)
-        CHECK(!(events & EPOLLIN)) << "epoll_events=" << events;
-#elif defined(OS_MACOSX)
-        CHECK((short)events != EVFILT_READ) << "kqueue filter=" << events;
-#endif
+        // The event is stale: the fd that it was reported on has been closed
+        // by `WaitAndReset` after the event dispatcher fetched the event but
+        // before the event was dispatched to here. `Address` succeeds again
+        // because a successful health check revived the Socket in between.
+        // There's nothing to read from a closed fd, just drop the event. The
+        // new fd (if any) is watched separately and reports its own events.
+        RPC_VLOG << "Ignore stale event on " << *s << ", events=" << events;
         return -1;
     }
 
