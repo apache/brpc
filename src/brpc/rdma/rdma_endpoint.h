@@ -129,7 +129,6 @@ public:
                    butil::StringPiece connector = "\n") const;
 
     // Callback when there is new epollin event on TCP fd.
-    // Only used by client-side RDMA sockets.
     static void OnNewDataFromTcp(Socket* m);
 
     // Real handshake for RDMA-mode sockets.
@@ -164,6 +163,11 @@ private:
     // Process handshake at the client
     static void* ProcessHandshakeAtClient(void* arg);
 
+    static void OnNewDataFromTcpAtClient(Socket* m);
+    static void OnNewDataFromTcpAtServer(Socket* m);
+
+    bool HandleTcpEventAfterEstablished();
+
     // Allocate resources. On failure the endpoint is left with no RDMA
     // resource attached, so that the handshake can safely fall back to TCP.
     // Return 0 if success, -1 if failed and errno set
@@ -176,6 +180,27 @@ private:
 
     // Release resources
     void DeallocateResources();
+
+    // Create the Socket wrapping the CQ (and register it with the poller in
+    // polling mode), which is what makes CQ events reachable and thus starts
+    // PollCq.
+    //
+    // Must not be called before the handshake has reached ESTABLISHED, nor
+    // from within the fd stream's parsing path: PollCq() parses the input
+    // stream carried by the QP, and the Socket's `parsing_context` and
+    // `preferred_index` belong to the fd stream until the handshake is over
+    // and CutInputMessage has returned. It keeps writing both after the
+    // handshake handler hands the stream back. Those two are per-Socket,
+    // so letting PollCq in early makes two streams parse through one context.
+    // The server therefore calls this from OnNewDataFromTcpAtServer(), after
+    // OnNewMessages() returns, not from ExecuteServerHandshake().
+    //
+    // No CQE is lost by deferring: BringUpQp() fills the RQ before the QP
+    // reaches RTS, both CQs are armed by DoAllocateResources(), and adding an
+    // already readable fd to an edge-triggered epoll reports it immediately.
+    //
+    // Return 0 if success, -1 if failed and errno set
+    int StartCqEvents();
 
     // Send Imm data to the remote side
     // Arguments:
@@ -268,7 +293,7 @@ private:
     Socket* _socket;
 
     // State of Handshake. FALLBACK_TCP publishes RdmaTransport::_rdma_state
-    // with release ordering and is consumed by OnNewDataFromTcp with acquire
+    // with release ordering and is consumed by OnNewDataFromTcpAtClient with acquire
     // ordering. Other state accesses do not publish data and use relaxed
     // ordering.
     butil::atomic<State> _state;
@@ -300,6 +325,9 @@ private:
     // Capacity of local Send Queue and local Recv Queue
     uint16_t _sq_size;
     uint16_t _rq_size;
+
+    // The input stream carried by the QP.
+    InputMessengerProcessor _input_processor;
 
     // Act as sendbuf and recvbuf, but requires no memcpy
     std::vector<butil::IOBuf> _sbuf;
