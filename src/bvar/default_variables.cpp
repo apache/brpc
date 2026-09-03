@@ -20,6 +20,7 @@
 #include <unistd.h>                        // getpagesize
 #include <sys/types.h>
 #include <sys/resource.h>                  // getrusage
+#include <sys/utsname.h>                   // uname
 #include <dirent.h>                        // dirent
 #include <iomanip>                         // setw
 #include <stdio.h>
@@ -617,11 +618,15 @@ static void get_cmdline(std::ostream& os, void*) {
 struct ReadVersion {
     std::string content;
     ReadVersion() {
-        std::ostringstream oss;
-        if (butil::read_command_output(oss, "uname -ap") != 0) {
+        struct utsname buf;
+        if (uname(&buf) != 0) {
             LOG(ERROR) << "Fail to read kernel version";
             return;
         }
+        std::ostringstream oss;
+        oss << buf.sysname << ' ' << buf.nodename << ' '
+            << buf.release << ' ' << buf.version << ' '
+            << buf.machine << ' ' << buf.machine;
         content.append(oss.str());
     }
 };

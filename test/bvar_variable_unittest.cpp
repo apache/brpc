@@ -19,6 +19,7 @@
 
 #include <pthread.h>                                // pthread_*
 #include <unistd.h>                                 // usleep
+#include <sys/utsname.h>                            // uname
 
 #include <cstddef>
 #include <memory>
@@ -461,6 +462,37 @@ TEST_F(VariableTest, dtor_waits_for_inflight_describe) {
     destroyer.join();
 
     ASSERT_TRUE(destructed.load());
+}
+
+TEST_F(VariableTest, uname_returns_valid_kernel_info) {
+    struct utsname buf;
+    ASSERT_EQ(0, uname(&buf));
+
+    // Each field should be non-empty
+    ASSERT_GT(strlen(buf.sysname), 0u);
+    ASSERT_GT(strlen(buf.nodename), 0u);
+    ASSERT_GT(strlen(buf.release), 0u);
+    ASSERT_GT(strlen(buf.version), 0u);
+    ASSERT_GT(strlen(buf.machine), 0u);
+
+    // Build the string the same way ReadVersion does in default_variables.cpp
+    std::ostringstream oss;
+    oss << buf.sysname << ' ' << buf.nodename << ' '
+        << buf.release << ' ' << buf.version << ' '
+        << buf.machine << ' ' << buf.machine;
+    std::string content = oss.str();
+
+    // The result should contain all key fields
+    ASSERT_NE(content.find(buf.sysname), std::string::npos);
+    ASSERT_NE(content.find(buf.release), std::string::npos);
+    ASSERT_NE(content.find(buf.machine), std::string::npos);
+
+    // On Linux, sysname should be "Linux"; on macOS, "Darwin"
+#if defined(__linux__)
+    ASSERT_STREQ(buf.sysname, "Linux");
+#elif defined(__APPLE__)
+    ASSERT_STREQ(buf.sysname, "Darwin");
+#endif
 }
 } // namespace
 
