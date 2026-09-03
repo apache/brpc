@@ -33,6 +33,7 @@
 
 namespace brpc {
 DECLARE_double(lb_warmup_curve);
+DECLARE_double(lb_warmup_min_weight);
 }
 
 namespace {
@@ -62,7 +63,7 @@ std::map<brpc::SocketId, int> CountShares(
     for (int i = 0; i < count; ++i) {
         brpc::LoadBalancer::SelectIn in = {
             now_us, changable_weights, with_request_code,
-            with_request_code ? butil::fast_rand() % UINT_MAX : 0u, NULL };
+            with_request_code ? butil::fast_rand() % UINT_MAX : 0u, nullptr };
         brpc::SocketUniquePtr ptr;
         brpc::LoadBalancer::SelectOut out(&ptr);
         if (lb->SelectServer(in, &out) != 0) {
@@ -74,7 +75,7 @@ std::map<brpc::SocketId, int> CountShares(
             info.begin_time_us = now_us;
             info.server_id = ptr->id();
             info.error_code = 0;
-            info.controller = NULL;
+            info.controller = nullptr;
             lb->Feedback(info);
         }
     }
@@ -86,14 +87,17 @@ protected:
     void SetUp() override {
         _saved_warmup_ms = brpc::FLAGS_lb_warmup_ms;
         _saved_curve = brpc::FLAGS_lb_warmup_curve;
+        _saved_min_weight = brpc::FLAGS_lb_warmup_min_weight;
     }
     void TearDown() override {
         brpc::FLAGS_lb_warmup_ms = _saved_warmup_ms;
         brpc::FLAGS_lb_warmup_curve = _saved_curve;
+        brpc::FLAGS_lb_warmup_min_weight = _saved_min_weight;
     }
 
     int64_t _saved_warmup_ms;
     double _saved_curve;
+    double _saved_min_weight;
 };
 
 TEST_F(LbWarmupTest, disabled_by_default) {
@@ -134,6 +138,15 @@ TEST_F(LbWarmupTest, multiplier_math) {
     ASSERT_DOUBLE_EQ(0.25, brpc::WarmupMultiplier(join_us, join_us + 5000000));
     brpc::FLAGS_lb_warmup_curve = 0.5;
     ASSERT_DOUBLE_EQ(0.5, brpc::WarmupMultiplier(join_us, join_us + 2500000));
+    brpc::FLAGS_lb_warmup_curve = 1.0;
+
+    // The floor is configurable.
+    brpc::FLAGS_lb_warmup_min_weight = 0.3;
+    ASSERT_DOUBLE_EQ(0.3, brpc::WarmupMultiplier(join_us, join_us));
+    ASSERT_DOUBLE_EQ(0.3, brpc::WarmupMultiplier(join_us, join_us + 1000000));
+    ASSERT_DOUBLE_EQ(0.5, brpc::WarmupMultiplier(join_us, join_us + 5000000));
+    brpc::FLAGS_lb_warmup_min_weight = 1.0;
+    ASSERT_DOUBLE_EQ(1.0, brpc::WarmupMultiplier(join_us, join_us));
 
     brpc::FLAGS_lb_warmup_curve = 1.0;
     brpc::FLAGS_lb_warmup_ms = 0;

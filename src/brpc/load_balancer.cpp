@@ -35,20 +35,26 @@ DEFINE_int32(default_weight_of_wlb, 0, "Default weight value of Weighted LoadBal
              "their weights. wlb policy degradation is not enabled by default.");
 DEFINE_int64(lb_warmup_ms, 0,
              "When positive, a server newly added to a LoadBalancer gets "
-             "about 10% of its normal traffic share at first and ramps up "
-             "to 100% over this period(ms). 0 disables the warm-up");
+             "lb_warmup_min_weight of its normal traffic share at first and "
+             "ramps up to 100% over this period(ms). 0 disables the warm-up");
 DEFINE_double(lb_warmup_curve, 1.0,
               "Shape of the warm-up ramp: the weight multiplier is "
-              "max(0.1, progress^lb_warmup_curve) where progress rises "
+              "max(lb_warmup_min_weight, progress^lb_warmup_curve) where progress rises "
               "linearly from 0 to 1 over lb_warmup_ms. 1 ramps linearly, "
               "larger values keep a new server colder for longer");
 BRPC_VALIDATE_GFLAG(show_lb_in_vars, PassValidate);
 BRPC_VALIDATE_GFLAG(lb_warmup_ms, PassValidate);
+DEFINE_double(lb_warmup_min_weight, 0.1,
+              "Floor of the warm-up multiplier, in (0, 1]: the share of "
+              "normal traffic a server gets right after joining, so that "
+              "it still receives a trickle and latency-based policies keep "
+              "observing it");
+static bool ValidateWarmupMinWeight(const char*, double v) {
+    return v > 0.0 && v <= 1.0;
+}
 BRPC_VALIDATE_GFLAG(lb_warmup_curve, PassValidate);
+BRPC_VALIDATE_GFLAG(lb_warmup_min_weight, ValidateWarmupMinWeight);
 
-// Floor of the warm-up multiplier so that a warming server still gets a
-// trickle of traffic and latency-based policies keep observing it.
-static const double WARMUP_MIN_RATIO = 0.1;
 
 double WarmupMultiplierImpl(int64_t join_time_us, int64_t now_us) {
     const int64_t warmup_us = FLAGS_lb_warmup_ms * 1000L;
@@ -62,15 +68,16 @@ double WarmupMultiplierImpl(int64_t join_time_us, int64_t now_us) {
     if (elapsed_us >= warmup_us) {
         return 1.0;
     }
+    const double min_weight = std::min(std::max(FLAGS_lb_warmup_min_weight, 1e-9), 1.0);
     if (elapsed_us <= 0) {
         // The clock went backwards, be conservative.
-        return WARMUP_MIN_RATIO;
+        return min_weight;
     }
     double progress = (double)elapsed_us / (double)warmup_us;
     if (FLAGS_lb_warmup_curve > 0 && FLAGS_lb_warmup_curve != 1.0) {
         progress = std::pow(progress, FLAGS_lb_warmup_curve);
     }
-    return std::max(progress, WARMUP_MIN_RATIO);
+    return std::max(progress, min_weight);
 }
 
 bool WarmupAcceptImpl(int64_t join_time_us, int64_t now_us) {
