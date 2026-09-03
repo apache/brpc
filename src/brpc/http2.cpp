@@ -23,14 +23,20 @@
 
 namespace brpc {
 
+// Out-of-class definitions for the in-class initialized integral constants:
+// required when the constants are odr-used (e.g. passed by reference in
+// ASSERT_EQ).
+const uint32_t H2Settings::DEFAULT_MAX_CONCURRENT_STREAMS;
+const uint32_t H2Settings::DEFAULT_MAX_HEADER_LIST_SIZE;
+
 H2Settings::H2Settings()
     : header_table_size(DEFAULT_HEADER_TABLE_SIZE)
     , enable_push(false)
-    , max_concurrent_streams(std::numeric_limits<uint32_t>::max())
+    , max_concurrent_streams(DEFAULT_MAX_CONCURRENT_STREAMS)
     , stream_window_size(256 * 1024)
     , connection_window_size(1024 * 1024)
     , max_frame_size(DEFAULT_MAX_FRAME_SIZE)
-    , max_header_list_size(std::numeric_limits<uint32_t>::max()) {
+    , max_header_list_size(DEFAULT_MAX_HEADER_LIST_SIZE) {
 }
 
 bool H2Settings::IsValid(bool log_error) const {

@@ -60,7 +60,12 @@ struct H2Settings {
     // for any limit that is exhausted with active streams. Servers SHOULD only
     // set a zero value for short durations; if a server does not wish to
     // accept requests, closing the connection is more appropriate.
-    // Default: unlimited
+    // The server enforces this limit: streams opened beyond it are rejected
+    // with RST_STREAM(REFUSED_STREAM). Set to
+    // std::numeric_limits<uint32_t>::max() explicitly to restore the old
+    // unlimited (unenforced) behavior.
+    // Default: 1024
+    static const uint32_t DEFAULT_MAX_CONCURRENT_STREAMS = 1024;
     uint32_t max_concurrent_streams;
 
     // Sender's initial window size (in octets) for stream-level flow control.
@@ -92,7 +97,14 @@ struct H2Settings {
     // and value in octets plus an overhead of 32 octets for each header field.
     // For any given request, a lower limit than what is advertised MAY be
     // enforced.
-    // Default: unlimited.
+    // brpc enforces this limit on received header blocks to bound per-stream
+    // memory: HPACK indexed references would otherwise let a small
+    // HEADERS/CONTINUATION frame expand into an unbounded header list
+    // ("HPACK bomb"). Set to std::numeric_limits<uint32_t>::max() to restore
+    // the old unlimited behavior (not recommended for servers exposed to
+    // untrusted peers).
+    // Default: 1MB
+    static const uint32_t DEFAULT_MAX_HEADER_LIST_SIZE = 1024 * 1024;
     uint32_t max_header_list_size;
 };
 

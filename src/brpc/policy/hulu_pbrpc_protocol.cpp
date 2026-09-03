@@ -449,8 +449,11 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             cntl->SetFailed(ENOMETHOD, "Fail to find method=%d of service=%s",
                             meta.method_index(), meta.service_name().c_str());
             break;
-        } else if (sp->service->GetDescriptor()
-                   == BadMethodService::descriptor()) {
+        }
+        if (RejectBuiltinAccess(cntl.get(), *server, sp)) {
+            break;
+        }
+        if (sp->service->GetDescriptor() == BadMethodService::descriptor()) {
             BadMethodRequest breq;
             BadMethodResponse bres;
             breq.set_service_name(meta.service_name());

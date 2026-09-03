@@ -70,6 +70,7 @@ DECLARE_bool(enable_dir_service);
 
 namespace policy {
 DECLARE_bool(use_http_error_code);
+DECLARE_bool(http_allow_empty_path_segments);
 
 extern bool SerializeRpcMessage(const google::protobuf::Message& serializer,
                                 Controller& cntl, ContentType content_type,
@@ -95,6 +96,22 @@ void* RunClosure(void* arg) {
 
 bool g_verify_success = true;
 const std::string g_unauthorized_error_text = "unauthorized";
+
+// Paths with empty segments (consecutive slashes) are rejected by default,
+// see -http_allow_empty_path_segments. Turns the leniency back on for the
+// duration of the scope.
+class AllowEmptyPathSegmentsScope {
+public:
+    AllowEmptyPathSegmentsScope()
+        : _saved(brpc::policy::FLAGS_http_allow_empty_path_segments) {
+        brpc::policy::FLAGS_http_allow_empty_path_segments = true;
+    }
+    ~AllowEmptyPathSegmentsScope() {
+        brpc::policy::FLAGS_http_allow_empty_path_segments = _saved;
+    }
+private:
+    const bool _saved;
+};
 
 class MyAuthenticator : public brpc::Authenticator {
 public:
@@ -527,8 +544,21 @@ TEST_F(ServerTest, various_forms_of_uri_paths) {
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"foo\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << cntl.response_attachment();
-    ASSERT_EQ(2, service_v1.ncalled.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(1, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = "/EchoService///Echo//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"foo\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << cntl.response_attachment();
+        ASSERT_EQ(2, service_v1.ncalled.load());
+    }
 
     cntl.Reset();
     cntl.http_request().uri() = "/EchoService /Echo/";
@@ -783,15 +813,31 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_EQ(2, service_v1.ncalled.load());
     ASSERT_EQ("{\"message\":\"bar_v1\"}", cntl.response_attachment());
 
-    // Adding extra slashes (and heading/trailing spaces) is OK.
+    // Heading/trailing spaces are OK, extra slashes are not: //v1/echo and
+    // /v1/echo are different paths per RFC 3986, and dispatching both to the
+    // same method lets a request slip past a front proxy whose ACL only
+    // matches the collapsed form.
     cntl.Reset();
     cntl.http_request().uri() = " //v1///echo////  ";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"hello\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ(3, service_v1.ncalled.load());
-    ASSERT_EQ("{\"message\":\"hello_v1\"}", cntl.response_attachment());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(2, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = " //v1///echo////  ";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"hello\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(3, service_v1.ncalled.load());
+        ASSERT_EQ("{\"message\":\"hello_v1\"}", cntl.response_attachment());
+    }
 
     // /v3/echo must be exactly matched.
     cntl.Reset();
@@ -896,24 +942,53 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_EQ("{\"message\":\"1.flv_v1_Echo4\"}", cntl.response_attachment());
     ASSERT_EQ(1, service_v1.ncalled_echo4.load());
 
+    // A path with empty segments is rejected by default, even when a restful
+    // mapping would match the collapsed form: //v6/d.flv and /v6/d.flv are
+    // different paths per RFC 3986, and dispatching both to the same method
+    // lets a request slip past a front proxy whose ACL only matches the
+    // collapsed form.
     cntl.Reset();
     cntl.http_request().uri() = "//v6//d.flv//";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"d.flv\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ("{\"message\":\"d.flv_v1_Echo5\"}", cntl.response_attachment());
-    ASSERT_EQ(1, service_v1.ncalled_echo5.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(0, service_v1.ncalled_echo5.load());
 
-    // matched the global restful map.
+    // Ditto for the global restful map.
     cntl.Reset();
     cntl.http_request().uri() = "//d.flv//";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"d.flv\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ("{\"message\":\"d.flv_v1\"}", cntl.response_attachment());
-    ASSERT_EQ(9, service_v1.ncalled.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(8, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = "//v6//d.flv//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"d.flv\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ("{\"message\":\"d.flv_v1_Echo5\"}", cntl.response_attachment());
+        ASSERT_EQ(1, service_v1.ncalled_echo5.load());
+
+        // matched the global restful map.
+        cntl.Reset();
+        cntl.http_request().uri() = "//d.flv//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"d.flv\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ("{\"message\":\"d.flv_v1\"}", cntl.response_attachment());
+        ASSERT_EQ(9, service_v1.ncalled.load());
+    }
 
     cntl.Reset();
     cntl.http_request().uri() = "/v7/e.flv";
@@ -1481,6 +1556,228 @@ TEST_F(ServerTest, add_builtin_service) {
     if (brpc::FLAGS_enable_dir_service) {
         TestAddBuiltinService(brpc::DirService::descriptor());
     }
+}
+
+// Call the builtin `brpc.version` service through a pb protocol.
+void CallVersionByPb(const butil::EndPoint& ep,
+                     brpc::ProtocolType protocol,
+                     brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = protocol;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    brpc::VersionRequest req;
+    brpc::VersionResponse res;
+    brpc::version_Stub stub(&chan);
+    stub.default_method(cntl, &req, &res, nullptr);
+}
+
+// Call the same builtin service the way a browser would.
+void CallVersionByHttp(const butil::EndPoint& ep,
+                       brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl->http_request().uri() = "/version";
+    chan.CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
+}
+
+// Call an ordinary (non-builtin) service through a pb protocol.
+void CallEchoByPb(const butil::EndPoint& ep,
+                  brpc::ProtocolType protocol,
+                  brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = protocol;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&chan);
+    stub.Echo(cntl, &req, &res, nullptr);
+}
+
+// Builtin services must be gated by ServerOptions.internal_port no matter
+// which protocol carries the request.
+TEST_F(ServerTest, builtin_services_are_gated_by_internal_port) {
+    const struct {
+        brpc::ProtocolType protocol;
+        const char* name;
+    } cases[] = {
+        { brpc::PROTOCOL_BAIDU_STD, "baidu_std" },
+        { brpc::PROTOCOL_HULU_PBRPC, "hulu_pbrpc" },
+        { brpc::PROTOCOL_SOFA_PBRPC, "sofa_pbrpc" },
+    };
+
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+    butil::EndPoint internal_ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8614", &internal_ep));
+
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.internal_port = internal_ep.port;
+    ASSERT_EQ(0, server.Start(ep, &opt));
+    ASSERT_TRUE(server.options().security_mode());
+
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        // Not reachable from the public port ...
+        brpc::Controller cntl;
+        CallVersionByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(EPERM, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        // ... but reachable from internal_port.
+        cntl.Reset();
+        CallVersionByPb(internal_ep, cases[i].protocol, &cntl);
+        ASSERT_FALSE(cntl.Failed())
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        // Ordinary services on the public port are unaffected.
+        cntl.Reset();
+        CallEchoByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_FALSE(cntl.Failed())
+            << cases[i].name << ": " << cntl.ErrorText();
+    }
+
+    // http was gated before, make sure it stays that way.
+    brpc::Controller cntl;
+    CallVersionByHttp(ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    cntl.Reset();
+    CallVersionByHttp(internal_ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// A service-name-only URL is dispatched to the builtin BadMethodService which
+// lists the methods of the service.
+void CallServiceWithoutMethodByHttp(const butil::EndPoint& ep,
+                                    brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl->http_request().uri() = "/EchoService";
+    chan.CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
+}
+
+// Ask for the builtin BadMethodService on purpose, which a pb client can do
+// since the service is registered like any other builtin service.
+void CallBadMethodByPb(const butil::EndPoint& ep,
+                       brpc::ProtocolType protocol,
+                       brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = protocol;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    brpc::BadMethodRequest req;
+    brpc::BadMethodResponse res;
+    req.set_service_name("EchoService");
+    brpc::badmethod_Stub stub(&chan);
+    stub.no_method(cntl, &req, &res, nullptr);
+}
+
+// BadMethodService is builtin as well and it lists the methods of a service,
+// so it must not be reachable from the public port in security mode. The http
+// fallback to BadMethodService is an exception: it must keep reporting the
+// missing method name, only without listing the methods.
+TEST_F(ServerTest, bad_method_does_not_leak_methods_in_security_mode) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+    butil::EndPoint internal_ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8614", &internal_ep));
+
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.internal_port = internal_ep.port;
+    ASSERT_EQ(0, server.Start(ep, &opt));
+    ASSERT_TRUE(server.options().security_mode());
+
+    const struct {
+        brpc::ProtocolType protocol;
+        const char* name;
+    } cases[] = {
+        { brpc::PROTOCOL_BAIDU_STD, "baidu_std" },
+        { brpc::PROTOCOL_HULU_PBRPC, "hulu_pbrpc" },
+        { brpc::PROTOCOL_SOFA_PBRPC, "sofa_pbrpc" },
+    };
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        brpc::Controller cntl;
+        CallBadMethodByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(EPERM, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+        ASSERT_EQ(std::string::npos, cntl.ErrorText().find("Available methods"))
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        cntl.Reset();
+        CallBadMethodByPb(internal_ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(brpc::ENOMETHOD, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+        ASSERT_NE(std::string::npos, cntl.ErrorText().find("Available methods"))
+            << cases[i].name << ": " << cntl.ErrorText();
+    }
+
+    // http still tells that the method name is missing, but without listing
+    // the methods of the service.
+    brpc::Controller cntl;
+    CallServiceWithoutMethodByHttp(ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_NOT_FOUND, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    ASSERT_NE(std::string::npos, cntl.ErrorText().find("Missing method name"))
+        << cntl.ErrorText();
+    ASSERT_EQ(std::string::npos, cntl.ErrorText().find("Available methods"))
+        << cntl.ErrorText();
+
+    cntl.Reset();
+    CallServiceWithoutMethodByHttp(internal_ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_NOT_FOUND, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    ASSERT_NE(std::string::npos, cntl.ErrorText().find("Available methods"))
+        << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// Without internal_port the server is not in security mode and builtin
+// services stay reachable from the only port, which is the default behavior.
+TEST_F(ServerTest, builtin_services_are_open_without_internal_port) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(ep, nullptr));
+    ASSERT_FALSE(server.options().security_mode());
+
+    brpc::Controller cntl;
+    CallVersionByPb(ep, brpc::PROTOCOL_BAIDU_STD, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    cntl.Reset();
+    CallVersionByHttp(ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
 }
 
 TEST_F(ServerTest, base64_to_string) {

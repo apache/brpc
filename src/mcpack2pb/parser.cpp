@@ -122,7 +122,7 @@ void ObjectIterator::operator++() {
         if (!_current_field.name.empty()) {
             _current_field.name.remove_suffix(1);
         }
-        _current_field.value.set((FieldType)head.type(), _stream, head.value_size());
+        _current_field.value.set((FieldType)head.type(), _stream, head.value_size(), _depth);
     } else if (first_byte & FIELD_SHORT_MASK) {
         FieldShortHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldShortHead) ||
@@ -143,7 +143,7 @@ void ObjectIterator::operator++() {
         if (!_current_field.name.empty()) {
             _current_field.name.remove_suffix(1);
         }
-        _current_field.value.set(type, _stream, head.value_size());
+        _current_field.value.set(type, _stream, head.value_size(), _depth);
     } else {
         FieldLongHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldLongHead) ||
@@ -162,7 +162,7 @@ void ObjectIterator::operator++() {
         if (!_current_field.name.empty()) {
             _current_field.name.remove_suffix(1);
         }
-        _current_field.value.set((FieldType)head.type(), _stream, head.value_size());
+        _current_field.value.set((FieldType)head.type(), _stream, head.value_size(), _depth);
     }
 }
 
@@ -206,7 +206,7 @@ void ArrayIterator::operator++() {
         if (name_size) {
             _stream->popn(name_size);
         }
-        _current_field.set((FieldType)head.type(), _stream, head.value_size());
+        _current_field.set((FieldType)head.type(), _stream, head.value_size(), _depth);
     } else if (first_byte & FIELD_SHORT_MASK) {
         FieldShortHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldShortHead) ||
@@ -227,7 +227,7 @@ void ArrayIterator::operator++() {
         if (name_size) {
             _stream->popn(name_size);
         }
-        _current_field.set(type, _stream, head.value_size());
+        _current_field.set(type, _stream, head.value_size(), _depth);
     } else {
         FieldLongHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldLongHead) ||
@@ -246,7 +246,7 @@ void ArrayIterator::operator++() {
         if (name_size) {
             _stream->popn(name_size);
         }
-        _current_field.set((FieldType)head.type(), _stream, head.value_size());
+        _current_field.set((FieldType)head.type(), _stream, head.value_size(), _depth);
     }
 }
 

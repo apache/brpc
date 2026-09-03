@@ -184,9 +184,21 @@ void ReadThriftException(const butil::IOBuf& body,
             ::apache::thrift::transport::TMemoryBuffer::TAKE_OWNERSHIP);
     apache::thrift::protocol::TBinaryProtocolT<apache::thrift::transport::TMemoryBuffer> iprot(in_buffer);
 
-    x->read(&iprot);
-    iprot.readMessageEnd();
-    iprot.getTransport()->readEnd();
+    // A malformed exception struct may make the underlying thrift code throw
+    // (e.g. TProtocolException on a bad field or TTransportException /
+    // std::length_error on a bad length). Such an exception must be contained
+    // here: if it propagated out, it would unwind through ProcessThriftResponse
+    // up to the bthread task frame and call std::terminate(), taking down the
+    // whole process along with every other in-flight RPC on it.
+    try {
+        x->read(&iprot);
+        iprot.readMessageEnd();
+        iprot.getTransport()->readEnd();
+    } catch (const std::exception& e) {
+        LOG(WARNING) << "Caught thrift exception while parsing T_EXCEPTION reply: " << e.what();
+    } catch (...) {
+        LOG(WARNING) << "Caught unknown thrift exception while parsing T_EXCEPTION reply";
+    }
 }
 
 // The continuation of request processing. Namely send response back to client.

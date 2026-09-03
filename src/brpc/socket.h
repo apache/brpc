@@ -43,6 +43,7 @@
 #include "brpc/versioned_ref_with_id.h"
 #include "brpc/health_check_option.h"
 #include "brpc/socket_mode.h"
+#include "brpc/input_messenger_processor.h"  // InputMessengerProcessor
 
 namespace brpc {
 namespace policy {
@@ -328,6 +329,7 @@ struct SocketOptions {
 class BAIDU_CACHELINE_ALIGNMENT/*note*/ Socket : public VersionedRefWithId<Socket> {
 friend class EventDispatcher;
 friend class InputMessenger;
+friend class InputMessengerProcessor;
 friend class Acceptor;
 friend class ConnectionsService;
 friend class SocketUser;
@@ -740,11 +742,24 @@ private:
     // Returns 0 on success, -1 otherwise
     int SSLHandshake(int fd, bool server_mode);
 
+    // The input stream carried by `_fd`.
+    InputMessengerProcessor& fd_input_processor() { return _fd_input_processor; }
+    void set_parsing_stream_type(InputMessengerProcessor::StreamType type) {
+        _parsing_stream_type.store(type, butil::memory_order_relaxed);
+    }
+
+    // Which of this Socket's input streams the parse callbacks running right
+    // now were called for, STREAM_NONE while none are. Only meaningful with a
+    // parse callback on the stack.
+    InputMessengerProcessor::StreamType parsing_stream_type() const {
+        return _parsing_stream_type.load(butil::memory_order_relaxed);
+    }
+
     // Based upon whether the underlying channel is using SSL (if
     // SSLState is SSL_UNKNOWN, try to detect at first), read data
-    // using the corresponding method into `_read_buf'. Returns read
+    // using the corresponding method into `read_buf`. Returns read
     // bytes on success, 0 on EOF, -1 otherwise and errno is set
-    ssize_t DoRead(size_t size_hint);
+    ssize_t DoRead(butil::IOPortal* read_buf, size_t size_hint);
 
     // Based upon whether the underlying channel is using SSL, write
     // `req' using the corresponding method. Returns written bytes on
@@ -908,7 +923,7 @@ private:
 
     IOEvent<Socket> _io_event;
 
-    // last chosen index of the protocol as a heuristic value to avoid
+    // Last chosen index of the protocol as a heuristic value to avoid
     // iterating all protocol handlers each time.
     int _preferred_index;
 
@@ -916,19 +931,19 @@ private:
     // socket is revived. Only set in HealthCheckTask::OnTriggeringTask()
     int _hc_count;
 
-    // Size of current incomplete message, set to 0 on complete.
-    uint32_t _last_msg_size;
-    // Average message size of last #MSG_SIZE_WINDOW messages (roughly)
-    uint32_t _avg_msg_size;
-
-    // Storing data read from `_fd' but cut-off yet.
-    butil::IOPortal _read_buf;
+    // The input stream carried by `_fd`, holding the data read from it but not cut off
+    // yet. Only the bthread draining the fd (InputMessenger:: OnNewMessages) may touch
+    // it, see InputMessengerProcessor.
+    InputMessengerProcessor _fd_input_processor;
 
     // Set with cpuwide_time_us() at last read operation
     butil::atomic<int64_t> _last_readtime_us;
 
     // Saved context for parsing, reset before trying other protocols.
     butil::atomic<Destroyable*> _parsing_context;
+
+    // The stream whose data the handlers are currently cutting.
+    butil::atomic<InputMessengerProcessor::StreamType> _parsing_stream_type;
 
     // Saving the correlation_id of RPC on protocols that cannot put
     // correlation_id on-wire and do not send multiple requests on one

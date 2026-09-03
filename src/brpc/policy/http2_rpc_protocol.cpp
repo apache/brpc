@@ -42,11 +42,21 @@ DEFINE_int32(h2_client_connection_window_size, 1024 * 1024,
 DEFINE_int32(h2_client_max_frame_size,
              H2Settings::DEFAULT_MAX_FRAME_SIZE,
              "Size of the largest frame payload that client is willing to receive");
+DEFINE_int32(h2_client_max_header_list_size,
+             H2Settings::DEFAULT_MAX_HEADER_LIST_SIZE,
+             "Maximum decoded size of a header list that the client accepts"
+             " on a received stream, 0 or negative means unlimited");
 
 DEFINE_bool(h2_hpack_encode_name, false,
             "Encode name in HTTP2 headers with huffman encoding");
 DEFINE_bool(h2_hpack_encode_value, false,
             "Encode value in HTTP2 headers with huffman encoding");
+
+DEFINE_bool(h2_ack_ignore_eovercrowded, false,
+            "Let h2 control-frame replies (PING/SETTINGS acks, RST_STREAM, "
+            "GOAWAY, WINDOW_UPDATE) bypass -socket_max_unwritten_bytes. "
+            "Dangerous: a peer flooding PING frames while withholding TCP "
+            "reads then grows this process's memory without bound.");
 
 static bool CheckStreamWindowSize(const char*, int32_t val) {
     return val >= 0;
@@ -144,13 +154,19 @@ static int WriteAck(Socket* s, const void* data, size_t n) {
     butil::IOBuf sendbuf;
     sendbuf.append(data, n);
     Socket::WriteOptions wopt;
-    wopt.ignore_eovercrowded = true;
+    // These writes historically ignored EOVERCROWDED so control replies
+    // could always be queued, but that defeats the explicit memory bound of
+    // -socket_max_unwritten_bytes: a peer flooding PING/SETTINGS frames
+    // while withholding TCP reads makes this process buffer ack frames
+    // without limit. Respect the bound by default; callers treat a failed
+    // ack write as a connection error and close the overcrowded connection.
+    wopt.ignore_eovercrowded = FLAGS_h2_ack_ignore_eovercrowded;
     return s->Write(&sendbuf, &wopt);
 }
 
 static int WriteAck(Socket* s, butil::IOBuf* data) {
     Socket::WriteOptions wopt;
-    wopt.ignore_eovercrowded = true;
+    wopt.ignore_eovercrowded = FLAGS_h2_ack_ignore_eovercrowded;
     return s->Write(data, &wopt);
 }
 
@@ -338,6 +354,10 @@ H2Context::H2Context(Socket* socket, const Server* server)
     // SETTINGS_INITIAL_WINDOW_SIZE defaults to 65535 until the peer sends a
     // different value. Larger requests are resumed by WINDOW_UPDATE.
     _remote_settings.stream_window_size = H2Settings::DEFAULT_INITIAL_WINDOW_SIZE;
+    // RFC 7540 section 6.5.2: the peer's SETTINGS_MAX_CONCURRENT_STREAMS
+    // defaults to unlimited until its SETTINGS frame is received.
+    _remote_settings.max_concurrent_streams =
+        std::numeric_limits<uint32_t>::max();
     if (server) {
         _unack_local_settings = server->options().h2_settings;
     } else {
@@ -345,6 +365,10 @@ H2Context::H2Context(Socket* socket, const Server* server)
         _unack_local_settings.stream_window_size = FLAGS_h2_client_stream_window_size;
         _unack_local_settings.max_frame_size = FLAGS_h2_client_max_frame_size;
         _unack_local_settings.connection_window_size = FLAGS_h2_client_connection_window_size;
+        _unack_local_settings.max_header_list_size =
+            FLAGS_h2_client_max_header_list_size > 0
+            ? (uint32_t)FLAGS_h2_client_max_header_list_size
+            : std::numeric_limits<uint32_t>::max();
     }
 #if defined(UNIT_TEST)
     // In ut, we hope _last_sent_stream_id run out quickly to test the correctness
@@ -443,6 +467,16 @@ int H2Context::TryToInsertStream(int stream_id, H2StreamContext* ctx) {
     std::unique_lock<butil::Mutex> mu(_stream_mutex);
     if (_goaway_stream_id >= 0 && stream_id > _goaway_stream_id) {
         return 1;
+    }
+    // Enforce the SETTINGS_MAX_CONCURRENT_STREAMS value the server
+    // advertised. Use _unack_local_settings so that a client which never
+    // ACKs our SETTINGS frame cannot dodge the limit (_local_settings is
+    // only synchronized on ACK). Client-side streams are already bounded
+    // against the remote peer's setting before insertion (see
+    // H2UnsentRequest::AppendAndDestroySelf).
+    if (is_server_side() &&
+        _pending_streams.size() >= _unack_local_settings.max_concurrent_streams) {
+        return 2;
     }
     H2StreamContext*& sctx = _pending_streams[stream_id];
     if (sctx == nullptr) {
@@ -555,7 +589,11 @@ ParseResult H2Context::Consume(
                 LOG(WARNING) << "Fail to send GOAWAY to " << *_socket;
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
-            return MakeMessage(nullptr);
+            // https://tools.ietf.org/html/rfc7540#section-5.4.1
+            // A connection error is unrecoverable: close the connection
+            // after sending GOAWAY instead of continuing to parse (and
+            // buffer) whatever the misbehaving peer keeps sending.
+            return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
     } else {
         return MakeParseError(PARSE_ERROR_NO_RESOURCE);
@@ -610,6 +648,18 @@ H2ParseResult H2Context::OnHeaders(
             delete sctx;
             LOG(ERROR) << "Fail to insert existing stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
+        } else if (rc == 2) {
+            delete sctx;
+            LOG_EVERY_SECOND(WARNING)
+                << "Refused stream_id=" << frame_head.stream_id
+                << " since concurrent streams reached max_concurrent_streams="
+                << _unack_local_settings.max_concurrent_streams
+                << " on " << *_socket;
+            // A stream error (RST_STREAM) rather than a connection error:
+            // RFC 7540 section 5.1.2 requires REFUSED_STREAM (or
+            // PROTOCOL_ERROR) for streams exceeding the advertised limit,
+            // and REFUSED_STREAM lets a compliant client retry later.
+            return MakeH2Error(H2_REFUSED_STREAM, frame_head.stream_id);
         } else if (rc > 0) {
             delete sctx;
             return MakeH2Error(H2_REFUSED_STREAM);
@@ -633,6 +683,11 @@ H2ParseResult H2Context::OnHeaders(
     return sctx->OnHeaders(it, frame_head, frag_size, pad_length);
 }
 
+bool H2StreamContext::HeaderFragmentTooLarge() const {
+    return _remaining_header_fragment.size() >
+        _conn_ctx->_unack_local_settings.max_header_list_size;
+}
+
 H2ParseResult H2StreamContext::OnHeaders(
     butil::IOBufBytesIterator& it, const H2FrameHead& frame_head,
     uint32_t frag_size, uint8_t pad_length) {
@@ -640,6 +695,12 @@ H2ParseResult H2StreamContext::OnHeaders(
 #if defined(BRPC_H2_STREAM_STATE)
     SetState(H2_STREAM_OPEN);
 #endif
+    // A new HEADERS block (which may be an initial request header set, or
+    // trailing headers on the same stream) starts here. The decoded header
+    // list budget is per header block (RFC 7540 section 10.5.1), so reset the
+    // counter; it stays cumulative across the CONTINUATION frames that finish
+    // this same block.
+    _decoded_header_list_size = 0;
     butil::IOBufBytesIterator it2(it, frag_size);
     if (ConsumeHeaders(it2) < 0) {
         LOG(ERROR) << "Invalid header, frag_size=" << frag_size
@@ -651,6 +712,15 @@ H2ParseResult H2StreamContext::OnHeaders(
     if (it2.bytes_left()) {
         it.append_and_forward(&_remaining_header_fragment,
                               it2.bytes_left());
+        // A single HEADERS frame can carry more than max_header_list_size of
+        // an incomplete header field; cap it here just like CONTINUATION.
+        if (HeaderFragmentTooLarge()) {
+            LOG(ERROR) << "Accumulated header fragment exceeds"
+                          " max_header_list_size="
+                       << _conn_ctx->_unack_local_settings.max_header_list_size
+                       << ", stream_id=" << frame_head.stream_id;
+            return MakeH2Error(H2_ENHANCE_YOUR_CALM);
+        }
     }
     it.forward(pad_length);
     if (frame_head.flags & H2_FLAGS_END_HEADERS) {
@@ -695,6 +765,18 @@ H2ParseResult H2StreamContext::OnContinuation(
     butil::IOBufBytesIterator& it, const H2FrameHead& frame_head) {
     _parsed_length += FRAME_HEAD_SIZE + frame_head.payload_size;
     it.append_and_forward(&_remaining_header_fragment, frame_head.payload_size);
+    // A header block may span many CONTINUATION frames; ConsumeHeaders()
+    // drains complete fields, so the fragment only buffers one incomplete
+    // field, whose wire size never legitimately exceeds the decoded header
+    // list limit. Without this cap a never-completed field (e.g. a huge
+    // declared string length) accumulates unbounded memory.
+    if (HeaderFragmentTooLarge()) {
+        LOG(ERROR) << "Accumulated header fragment exceeds"
+                      " max_header_list_size="
+                   << _conn_ctx->_unack_local_settings.max_header_list_size
+                   << ", stream_id=" << frame_head.stream_id;
+        return MakeH2Error(H2_ENHANCE_YOUR_CALM);
+    }
     const size_t size = _remaining_header_fragment.size();
     butil::IOBufBytesIterator it2(_remaining_header_fragment);
     if (ConsumeHeaders(it2) < 0) {
@@ -1130,6 +1212,10 @@ void H2Context::DeferWindowUpdate(int64_t size) {
             SaveUint32(winbuf + FRAME_HEAD_SIZE, conn_wu);
             if (WriteAck(_socket, winbuf, sizeof(winbuf)) != 0) {
                 LOG(WARNING) << "Fail to send WINDOW_UPDATE";
+                // Retry on a later DATA frame instead of silently losing
+                // the window bytes (the peer would stall otherwise).
+                _deferred_window_update.fetch_add(
+                    conn_wu, butil::memory_order_relaxed);
             }
         }
     }
@@ -1207,7 +1293,8 @@ H2StreamContext::H2StreamContext(bool read_body_progressively)
     , _stream_ended(false)
     , _remote_window_left(0)
     , _deferred_window_update(0)
-    , _correlation_id(INVALID_BTHREAD_ID.value) {
+    , _correlation_id(INVALID_BTHREAD_ID.value)
+    , _decoded_header_list_size(0) {
     header().set_version(2, 0);
 #ifndef NDEBUG
     get_h2_bvars()->h2_stream_context_count << 1;
@@ -1240,6 +1327,13 @@ void H2StreamContext::SetState(H2StreamState state) {
 int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
     HPacker& hpacker = _conn_ctx->hpacker();
     HttpHeader& h = header();
+    // https://tools.ietf.org/html/rfc7540#section-10.5.1
+    // Bound the cumulative decoded size of the header list. Without this
+    // check nothing limits header bytes (-max_body_size covers DATA only)
+    // and 1-byte HPACK indexed references to a large dynamic-table entry
+    // amplify a small HEADERS/CONTINUATION frame ~4000x ("HPACK bomb").
+    const uint32_t max_header_list_size =
+        _conn_ctx->_unack_local_settings.max_header_list_size;
     while (it) {
         HPacker::Header pair;
         const int rc = hpacker.Decode(it, &pair);
@@ -1248,6 +1342,12 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
         }
         if (rc == 0) {
             break;
+        }
+        _decoded_header_list_size += pair.name.size() + pair.value.size() + 32;
+        if (_decoded_header_list_size > max_header_list_size) {
+            LOG(ERROR) << "Decoded header list exceeds max_header_list_size="
+                       << max_header_list_size << ", stream_id=" << _stream_id;
+            return -1;
         }
         const char* const name = pair.name.c_str();
         bool matched = false;
@@ -1273,6 +1373,16 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
             case 'p':
                 if (strcmp(name + 2, /*p*/"ath") == 0) {
                     matched = true;
+                    // RFC 9113 8.3.1: :path MUST NOT be empty and MUST begin
+                    // with '/', the only exception being the asterisk-form
+                    // that OPTIONS uses. '*' is accepted for any method here,
+                    // as http_parser does for HTTP/1: pinning it to OPTIONS
+                    // would take the whole header block, since HPACK does not
+                    // order pseudo-headers and :method may not have arrived.
+                    if (pair.value != "*" && (pair.value.empty() || pair.value[0] != '/')) {
+                        LOG(ERROR) << "Invalid path=" << pair.value;
+                        return -1;
+                    }
                     // Including path/query/fragment
                     h.uri().SetH2Path(pair.value);
                 }

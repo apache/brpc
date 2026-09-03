@@ -465,10 +465,9 @@ Socket::Socket(Forbidden f)
     , _conn(nullptr)
     , _preferred_index(-1)
     , _hc_count(0)
-    , _last_msg_size(0)
-    , _avg_msg_size(0)
     , _last_readtime_us(0)
     , _parsing_context(nullptr)
+    , _parsing_stream_type(InputMessengerProcessor::STREAM_NONE)
     , _correlation_id(0)
     , _health_check_interval_s(-1)
     , _is_hc_related_ref_held(false)
@@ -499,6 +498,7 @@ Socket::Socket(Forbidden f)
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, nullptr);
     _epollout_butex = bthread::butex_create_checked<butil::atomic<int> >();
+    _fd_input_processor.Init(this, InputMessengerProcessor::STREAM_TCP_FD);
 }
 
 Socket::~Socket() {
@@ -572,8 +572,7 @@ void Socket::ReleaseAllFailedWriteRequests(Socket::WriteRequest* req) {
 
 int Socket::ResetFileDescriptor(int fd) {
     // Reset message sizes when fd is changed.
-    _last_msg_size = 0;
-    _avg_msg_size = 0;
+    _fd_input_processor.ResetMsgSizeStats();
     // MUST store `_fd' before adding itself into epoll device to avoid
     // race conditions with the callback function inside epoll
     static butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT fd_version(0);
@@ -751,7 +750,9 @@ int Socket::OnCreated(const SocketOptions& options) {
     _app_connect = _transport->Connect();
     _preferred_index = -1;
     _hc_count = 0;
-    CHECK(_read_buf.empty());
+    CHECK(_fd_input_processor.read_buf().empty());
+    _parsing_stream_type.store(InputMessengerProcessor::STREAM_NONE,
+                               butil::memory_order_relaxed);
     const int64_t cpuwide_now = butil::cpuwide_time_us();
     _last_readtime_us.store(cpuwide_now, butil::memory_order_relaxed);
     reset_parsing_context(options.initial_parsing_context);
@@ -861,7 +862,7 @@ void Socket::BeforeRecycled() {
     }
     _transport->Release();
     reset_parsing_context(nullptr);
-    _read_buf.clear();
+    _fd_input_processor.read_buf().clear();
 
     _auth_flag_error.store(0, butil::memory_order_relaxed);
     bthread_id_error(_auth_id, 0);
@@ -1023,9 +1024,11 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     // parsing_context is very likely to be associated with the fd,
     // removing it is a safer choice and required by http2.
     reset_parsing_context(nullptr);
-    // Must clear _read_buf otehrwise even if the connections is recovered,
-    // the kept old data is likely to make parsing fail.
-    _read_buf.clear();
+    _parsing_stream_type.store(InputMessengerProcessor::STREAM_NONE,
+                               butil::memory_order_relaxed);
+    // Must clear the read buffer otehrwise even if the connections is
+    // recovered, the kept old data is likely to make parsing fail.
+    _fd_input_processor.read_buf().clear();
     _ninprocess.store(1, butil::memory_order_relaxed);
     _auth_flag_error.store(0, butil::memory_order_relaxed);
     bthread_id_error(_auth_id, 0);
@@ -2080,7 +2083,7 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
     }
 }
 
-ssize_t Socket::DoRead(size_t size_hint) {
+ssize_t Socket::DoRead(butil::IOPortal* read_buf, size_t size_hint) {
     if (ssl_state() == SSL_UNKNOWN) {
         int error_code = 0;
         _ssl_state = DetectSSLState(fd(), &error_code);
@@ -2114,7 +2117,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
             errno = ESSL;
             return -1;
         }
-        return _read_buf.append_from_file_descriptor(fd(), size_hint);
+        return read_buf->append_from_file_descriptor(fd(), size_hint);
     }
 
     CHECK_EQ(SSL_CONNECTED, ssl_state());
@@ -2122,7 +2125,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
     ssize_t nr = 0;
     {
         BAIDU_SCOPED_LOCK(_ssl_session_mutex);
-        nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
+        nr = read_buf->append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
     }
     switch (ssl_error) {
     case SSL_ERROR_NONE:  // `nr' > 0
@@ -2236,11 +2239,13 @@ int Socket::OnInputEvent(void* user_data, uint32_t events,
         return 0;
     }
     if (s->fd() < 0) {
-#if defined(OS_LINUX)
-        CHECK(!(events & EPOLLIN)) << "epoll_events=" << events;
-#elif defined(OS_MACOSX)
-        CHECK((short)events != EVFILT_READ) << "kqueue filter=" << events;
-#endif
+        // The event is stale: the fd that it was reported on has been closed
+        // by `WaitAndReset` after the event dispatcher fetched the event but
+        // before the event was dispatched to here. `Address` succeeds again
+        // because a successful health check revived the Socket in between.
+        // There's nothing to read from a closed fd, just drop the event. The
+        // new fd (if any) is watched separately and reports its own events.
+        RPC_VLOG << "Ignore stale event on " << *s << ", events=" << events;
         return -1;
     }
 
@@ -2382,11 +2387,12 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         os << " (" << messenger->NameOfProtocol(preferred_index) << ')';
     }
     const int64_t cpuwide_now = butil::cpuwide_time_us();
+    InputMessengerProcessor& input_processor = ptr->fd_input_processor();
     os << "\nhc_count=" << ptr->_hc_count
-       << "\navg_input_msg_size=" << ptr->_avg_msg_size
+       << "\navg_input_msg_size=" << input_processor.avg_msg_size()
         // NOTE: We're assuming that butil::IOBuf.size() is thread-safe, it is now
         // however it's not guaranteed.
-       << "\nread_buf=" << ptr->_read_buf.size()
+       << "\nread_buf=" << input_processor.read_buf().size()
        << "\nlast_read_to_now=" << cpuwide_now - ptr->_last_readtime_us << "us"
        << "\nlast_write_to_now=" << cpuwide_now - ptr->_last_writetime_us << "us"
        << "\novercrowded=" << ptr->_overcrowded;

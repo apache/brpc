@@ -118,6 +118,24 @@ class CheckRecycle : public brpc::SocketUser {
     }
 };
 
+// Never hardcode a port in tests: it may be taken by another process or by
+// another test in this binary, making the test fail for unrelated reasons.
+// Listen on port 0 and ask the kernel which port it picked instead.
+void ListenOnFreePort(butil::EndPoint* point, butil::fd_guard* listening_fd) {
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", point));
+    listening_fd->reset(tcp_listen(*point));
+    ASSERT_GT(*listening_fd, 0) << berror();
+    ASSERT_EQ(0, butil::get_local_side(*listening_fd, point));
+}
+
+// Returns an EndPoint that nobody is listening on, for tests expecting
+// ECONNREFUSED or starting to listen later on. The port is allocated by the
+// kernel and released before returning.
+void PickUnusedEndPoint(butil::EndPoint* point) {
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(point, &listening_fd));
+}
+
 TEST_F(SocketTest, not_recycle_until_zero_nref) {
     std::cout << "sizeof(Socket)=" << sizeof(brpc::Socket) << std::endl;
     int fds[2];
@@ -342,16 +360,11 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
           EchoProcessHuluRequest, nullptr, nullptr, "dummy_hulu" }
     };
 
-    int listening_fd = -1;
-    butil::EndPoint point(butil::IP_ANY, 7878);
-    for (int i = 0; i < 100; ++i) {
-        point.port += i;
-        listening_fd = tcp_listen(point);
-        if (listening_fd >= 0) {
-            break;
-        }
-    }
-    ASSERT_GT(listening_fd, 0) << berror();
+    butil::EndPoint point;
+    butil::fd_guard listening_fd_guard;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd_guard));
+    // `StartAccept' takes over the fd below.
+    const int listening_fd = listening_fd_guard.release();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
@@ -480,7 +493,8 @@ void* FailedWriter(void* void_arg) {
 
 TEST_F(SocketTest, fail_to_connect) {
     const size_t REP = 10;
-    butil::EndPoint point(butil::IP_ANY, 7563/*not listened*/);
+    butil::EndPoint point/*not listened*/;
+    ASSERT_NO_FATAL_FAILURE(PickUnusedEndPoint(&point));
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
     options.remote_side = point;
@@ -522,7 +536,8 @@ TEST_F(SocketTest, fail_to_connect) {
 
 TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
     brpc::SocketId id = 8888;
-    butil::EndPoint point(butil::IP_ANY, 7584/*not listened*/);
+    butil::EndPoint point/*not listened*/;
+    ASSERT_NO_FATAL_FAILURE(PickUnusedEndPoint(&point));
     brpc::SocketOptions options;
     options.remote_side = point;
     options.user = new CheckRecycle;
@@ -609,7 +624,8 @@ TEST_F(SocketTest, app_level_health_check) {
     GFLAGS_NAMESPACE::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
     GFLAGS_NAMESPACE::SetCommandLineOption("health_check_interval", "1");
 
-    butil::EndPoint point(butil::IP_ANY, 7777);
+    butil::EndPoint point/*not listened yet*/;
+    ASSERT_NO_FATAL_FAILURE(PickUnusedEndPoint(&point));
     brpc::ChannelOptions options;
     options.protocol = "http";
     options.max_retry = 0;
@@ -627,6 +643,7 @@ TEST_F(SocketTest, app_level_health_check) {
     // sending-rpc state. Because the remote is not down, so hc rpc would keep
     // sending.
     int listening_fd = tcp_listen(point);
+    ASSERT_GT(listening_fd, 0) << berror();
     bthread_usleep(2000000);
 
     // 2s to make sure HealthCheckTask find socket is failed and correct impl
@@ -672,7 +689,8 @@ TEST_F(SocketTest, health_check) {
     ANNOTATE_LEAKING_OBJECT_PTR(messenger);
 
     brpc::SocketId id = 8888;
-    butil::EndPoint point(butil::IP_ANY, 7878);
+    butil::EndPoint point;
+    ASSERT_NO_FATAL_FAILURE(PickUnusedEndPoint(&point));
     const int kCheckInteval = 1;
     brpc::SocketOptions options;
     options.remote_side = point;
@@ -816,6 +834,90 @@ TEST_F(SocketTest, health_check) {
     // The id is invalid.
     brpc::SocketUniquePtr ptr;
     ASSERT_EQ(-1, brpc::Socket::Address(id, &ptr));
+}
+
+static void DoNothingOnEdgeTriggeredEvents(brpc::Socket*) {}
+
+// Regression test for https://github.com/apache/brpc/issues/3492
+// `CheckHealth` closes the fd that it probed with, thus a Socket revived by
+// the health check is addressable again while its fd is still -1, until the
+// next write connects it on demand. An input event of the old fd may have
+// been fetched by the event dispatcher before `WaitAndReset` closed the fd,
+// and get dispatched within that window. `OnInputEvent` must drop such a
+// stale event instead of crashing.
+TEST_F(SocketTest, input_event_on_revived_socket) {
+    const int kCheckInteval = 1;
+    butil::EndPoint point;
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd));
+
+    brpc::SocketId id = 8888;
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    options.health_check_interval_s = kCheckInteval;
+    // `OnInputEvent` returns early without an edge-triggered handler.
+    options.on_edge_triggered_events = DoNothingOnEdgeTriggeredEvents;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+
+    brpc::Socket* s = nullptr;
+    {
+        // `WaitAndReset' inside the health check waits until nref drops back
+        // to 2, thus no SocketUniquePtr may be held across `SetFailed'.
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        s = ptr.get();
+    }
+    ASSERT_EQ(-1, s->fd());
+
+    // Connect on demand so that the Socket owns a real fd watched by the
+    // event dispatcher, just like a Socket serving normal traffic.
+    butil::IOBuf src;
+    src.append("hello");
+    ASSERT_EQ(0, s->Write(&src));
+    int64_t start_time = butil::cpuwide_time_us();
+    while (s->fd() < 0) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L);
+    }
+
+    // `WaitAndReset` closes the fd and the health check revives the Socket
+    // right after a successful probe, leaving it addressable but fd-less.
+    ASSERT_EQ(0, s->SetFailed());
+    start_time = butil::cpuwide_time_us();
+    while (brpc::Socket::Status(id) != 0) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(),
+                  start_time + kCheckInteval * 1000000L + 1000000L);
+    }
+    ASSERT_EQ(-1, s->fd());
+
+    // A stale input event of the closed fd must be dropped silently.
+#if defined(OS_LINUX)
+    const uint32_t events = EPOLLIN;
+#elif defined(OS_MACOSX)
+    const uint32_t events = EVFILT_READ;
+#endif
+#if !BRPC_WITH_GLOG
+    // LOG(FATAL) does not abort unless -crash_on_fatal_log is on, catch the
+    // logs to tell a silently dropped event from a failed CHECK.
+    logging::StringSink log_str;
+    logging::LogSink* old_sink = logging::SetLogSink(&log_str);
+#endif
+    const int rc = brpc::Socket::OnInputEvent(reinterpret_cast<void*>(id),
+                                              events, BTHREAD_ATTR_NORMAL);
+#if !BRPC_WITH_GLOG
+    ASSERT_EQ(&log_str, logging::SetLogSink(old_sink));
+    ASSERT_EQ(std::string::npos, log_str.find("Check failed")) << log_str;
+#endif
+    ASSERT_EQ(-1, rc);
+    // The Socket is left intact.
+    ASSERT_EQ(0, brpc::Socket::Status(id));
+
+    s->ReleaseHCRelatedReference();
+    // Must close the listening fd before SetFailed, otherwise the health
+    // check still has chance to get reconnected and revive the id.
+    listening_fd.reset(-1);
+    ASSERT_EQ(0, brpc::Socket::SetFailed(id));
 }
 
 void* Writer(void* void_arg) {
@@ -1286,16 +1388,11 @@ TEST_F(SocketTest, keepalive_input_message) {
     // It is intentionally never deleted; mark it so it is not a reported leak.
     brpc::Acceptor* messenger = new brpc::Acceptor;
     ANNOTATE_LEAKING_OBJECT_PTR(messenger);
-    int listening_fd = -1;
-    butil::EndPoint point(butil::IP_ANY, 7878);
-    for (int i = 0; i < 100; ++i) {
-        point.port += i;
-        listening_fd = tcp_listen(point);
-        if (listening_fd >= 0) {
-            break;
-        }
-    }
-    ASSERT_GT(listening_fd, 0) << berror();
+    butil::EndPoint point;
+    butil::fd_guard listening_fd_guard;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd_guard));
+    // `StartAccept' takes over the fd below.
+    const int listening_fd = listening_fd_guard.release();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
 
@@ -1477,10 +1574,8 @@ TEST_F(SocketTest, socket_buffer_options_before_connect) {
     GetExpectedSocketBufferValues(buffer_size, &expected);
 
     butil::EndPoint point;
-    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &point));
-    butil::fd_guard listening_fd(tcp_listen(point));
-    ASSERT_GT(listening_fd, 0) << berror();
-    ASSERT_EQ(0, butil::get_local_side(listening_fd, &point));
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd));
 
     brpc::SocketOptions options;
     options.remote_side = point;
@@ -1570,16 +1665,11 @@ TEST_F(SocketTest, tcp_user_timeout) {
     // It is intentionally never deleted; mark it so it is not a reported leak.
     brpc::Acceptor* messenger = new brpc::Acceptor;
     ANNOTATE_LEAKING_OBJECT_PTR(messenger);
-    int listening_fd = -1;
-    butil::EndPoint point(butil::IP_ANY, 7878);
-    for (int i = 0; i < 100; ++i) {
-        point.port += i;
-        listening_fd = tcp_listen(point);
-        if (listening_fd >= 0) {
-            break;
-        }
-    }
-    ASSERT_GT(listening_fd, 0) << berror();
+    butil::EndPoint point;
+    butil::fd_guard listening_fd_guard;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd_guard));
+    // `StartAccept' takes over the fd below.
+    const int listening_fd = listening_fd_guard.release();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
 

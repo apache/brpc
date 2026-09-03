@@ -410,6 +410,9 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
                             meta.method().c_str());
             break;
         }
+        if (RejectBuiltinAccess(cntl.get(), *server, sp)) {
+            break;
+        }
         if (socket->is_overcrowded() &&
             !server->options().ignore_eovercrowded &&
             !sp->ignore_eovercrowded) {

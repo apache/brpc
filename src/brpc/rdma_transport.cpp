@@ -43,12 +43,7 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
     if (options.need_on_edge_trigger && _on_edge_trigger == nullptr) {
-        // Server-side RDMA sockets drive the handshake through the standard
-        // InputMessenger path (ParseRdmaHandshake), so they use OnNewMessages
-        // just like TCP sockets. Only client-side sockets, whose handshake
-        // (ProcessHandshakeAtClient) is an active blocking bthread relying on
-        // _read_butex woken by OnNewDataFromTcp, still need OnNewDataFromTcp.
-        if (options.user == static_cast<SocketUser*>(get_client_side_messenger())) {
+        if (_rdma_ep != nullptr) {
             _on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
         } else {
             _on_edge_trigger = InputMessenger::OnNewMessages;

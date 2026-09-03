@@ -657,7 +657,8 @@ inline ssize_t DecodeString(butil::IOBufBytesIterator& iter, std::string* out) {
 
 HPacker::HPacker()
     : _encode_table(nullptr)
-    , _decode_table(nullptr) {
+    , _decode_table(nullptr)
+    , _max_table_size(0) {
     CreateStaticTableOnceOrDie();
 }
 
@@ -675,6 +676,7 @@ HPacker::~HPacker() {
 int HPacker::Init(size_t max_table_size) {
     CHECK(!_encode_table);
     CHECK(!_decode_table);
+    _max_table_size = max_table_size;
     IndexTableOptions encode_table_options;
     encode_table_options.max_size = max_table_size;
     encode_table_options.start_index = s_static_table->end_index();
@@ -842,7 +844,13 @@ decode_next:
             if (read_bytes <= 0) {
                 return read_bytes;
             }
-            if (max_size > H2Settings::DEFAULT_HEADER_TABLE_SIZE) {
+            if (max_size > _max_table_size) {
+                // RFC 7541 section 6.3: the new maximum size MUST be lower
+                // than or equal to the limit determined by the protocol using
+                // HPACK, i.e. the SETTINGS_HEADER_TABLE_SIZE this decoder
+                // advertised (what Init() was called with), not the protocol
+                // default. Growing past the Init-time size would also desync
+                // the fixed-capacity header queue from the byte accounting.
                 LOG(ERROR) << "Invalid max_size=" << max_size;
                 return -1;
             }

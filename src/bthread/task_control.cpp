@@ -258,12 +258,20 @@ int TaskControl::init(int concurrency) {
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
         _tagged_ngroup[i].store(0, std::memory_order_relaxed);
         auto tag_str = std::to_string(i);
-        _tagged_nworkers.push_back(new bvar::Adder<int64_t>("bthread_worker_count", tag_str));
-        _tagged_cumulated_worker_time.push_back(new bvar::PassiveStatus<double>(
-            get_cumulated_worker_time_from_this_with_tag, new CumulatedWithTagArgs{this, i}));
-        _tagged_worker_usage_second.push_back(new bvar::PerSecond<bvar::PassiveStatus<double>>(
-            "bthread_worker_usage", tag_str, _tagged_cumulated_worker_time[i], 1));
-        _tagged_nbthreads.push_back(new bvar::Adder<int64_t>("bthread_count", tag_str));
+        _tagged_nworkers.emplace_back(
+            std::make_unique<bvar::Adder<int64_t>>("bthread_worker_count", tag_str));
+        _tagged_cumulated_worker_time_args.emplace_back(
+            std::make_unique<CumulatedWithTagArgs>(this, i));
+        _tagged_cumulated_worker_time.emplace_back(
+            std::make_unique<bvar::PassiveStatus<double>>(
+                get_cumulated_worker_time_from_this_with_tag,
+                _tagged_cumulated_worker_time_args.back().get()));
+        _tagged_worker_usage_second.emplace_back(
+            std::make_unique<bvar::PerSecond<bvar::PassiveStatus<double>>>(
+                "bthread_worker_usage", tag_str,
+                _tagged_cumulated_worker_time.back().get(), 1));
+        _tagged_nbthreads.emplace_back(
+            std::make_unique<bvar::Adder<int64_t>>("bthread_count", tag_str));
     }
 
     if (init_ed_priority_queues() != 0) {

@@ -860,7 +860,7 @@ RtmpChunkStream* RtmpContext::GetChunkStream(uint32_t cs_id) {
     return cstream;
 }
 
-void RtmpContext::ClearChunkStream(uint32_t cs_id) {
+void RtmpContext::AbortChunkStream(uint32_t cs_id) {
     if (cs_id > RTMP_MAX_CHUNK_STREAM_ID) {
         LOG(ERROR) << "Invalid chunk_stream_id=" << cs_id;
         return;
@@ -879,8 +879,7 @@ void RtmpContext::ClearChunkStream(uint32_t cs_id) {
         LOG(ERROR) << "chunk_stream_id=" << cs_id << " does not exist";
         return;
     }
-    delete sub_array->ptrs[index2].exchange(
-        nullptr, butil::memory_order_acquire);
+    cstream->OnAbort();
 }
 
 void RtmpContext::AllocateChunkStreamId(uint32_t* chunk_stream_id) {
@@ -1460,6 +1459,23 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
         }
         timestamp_delta = mh.timestamp;
         mh.message_length = ReadBigEndian3Bytes(p + 3);
+        if (mh.message_length > FLAGS_max_body_size) {
+            LOG(ERROR) << socket->remote_side() << ": message_length="
+                       << mh.message_length << " in chunk_stream=" << _cs_id
+                       << " is too large";
+            return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
+        }
+        if (!_r.msg_body.empty()) {
+            // The new message header arrived before the previous message on
+            // this chunk stream completed. Drop the stale partial body,
+            // otherwise it would prefix the new message and, with repeated
+            // mid-message headers, grow `msg_body' without bound.
+            LOG(WARNING) << socket->remote_side() << ": Discard "
+                         << _r.msg_body.size() << " bytes of an incomplete"
+                         " message in chunk_stream=" << _cs_id
+                         << " overridden by a ChunkType0 header";
+            _r.msg_body.clear();
+        }
         _r.left_message_length = mh.message_length;
         cur_chunk_size = std::min(chunk_size_in, _r.left_message_length);
         if (source->size() < header_len + cur_chunk_size) {
@@ -1507,6 +1523,23 @@ ParseResult RtmpChunkStream::Feed(const RtmpBasicHeader& bh,
         }
         mh.timestamp = _r.last_msg_header.timestamp + timestamp_delta;
         mh.message_length = ReadBigEndian3Bytes(p + 3);
+        if (mh.message_length > FLAGS_max_body_size) {
+            LOG(ERROR) << socket->remote_side() << ": message_length="
+                       << mh.message_length << " in chunk_stream=" << _cs_id
+                       << " is too large";
+            return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
+        }
+        if (!_r.msg_body.empty()) {
+            // The new message header arrived before the previous message on
+            // this chunk stream completed. Drop the stale partial body,
+            // otherwise it would prefix the new message and, with repeated
+            // mid-message headers, grow `msg_body' without bound.
+            LOG(WARNING) << socket->remote_side() << ": Discard "
+                         << _r.msg_body.size() << " bytes of an incomplete"
+                         " message in chunk_stream=" << _cs_id
+                         << " overridden by a ChunkType1 header";
+            _r.msg_body.clear();
+        }
         _r.left_message_length = mh.message_length;
         cur_chunk_size = std::min(chunk_size_in, _r.left_message_length);
         if (source->size() < header_len + cur_chunk_size) {
@@ -1739,6 +1772,12 @@ int RtmpChunkStream::SerializeMessage(butil::IOBuf* buf,
     return 0;
 }
 
+void RtmpChunkStream::OnAbort() {
+    _r.msg_body.clear();
+    _r.left_message_length = _r.last_msg_header.message_length;
+    _r.first_chunk_of_message = true;
+}
+
 static const RtmpChunkStream::MessageHandler s_msg_handlers[] = {
     &RtmpChunkStream::OnSetChunkSize, // 1
     &RtmpChunkStream::OnAbortMessage, // 2
@@ -1869,12 +1908,7 @@ bool RtmpChunkStream::OnAbortMessage(
         RTMP_ERROR(socket, mh) << "Invalid chunk_stream_id=" << cs_id;
         return false;
     }
-    // Do not delete the chunk stream that is currently being parsed (i.e.
-    // the one running this Feed). Clearing it here would free `this' while
-    // Feed() still holds and later touches it, causing a use-after-free.
-    if (cs_id != _cs_id) {
-        connection_context()->ClearChunkStream(cs_id);
-    }
+    connection_context()->AbortChunkStream(cs_id);
     return true;
 }
 
@@ -2680,9 +2714,11 @@ bool RtmpChunkStream::OnCreateStream(const RtmpMessageHeader& mh,
         PLOG(WARNING) << socket->remote_side() << '[' << mh.stream_id
                       << "] Fail to respond createStream";
         // End the stream at server-side.
-        const bthread_id_t id = stream->_onfail_id;
-        if (id != INVALID_BTHREAD_ID) {
-            bthread_id_error(id, 0);
+        if (stream != nullptr) {
+            const bthread_id_t id = stream->_onfail_id;
+            if (id != INVALID_BTHREAD_ID) {
+                bthread_id_error(id, 0);
+            }
         }
         return false;
     }
