@@ -285,6 +285,7 @@ generate_unittests(
     per_test_size = {
         "brpc_channel_unittest.cpp": "large",
         "brpc_load_balancer_unittest.cpp": "large",
+        "brpc_protobuf_json_unittest.cpp": "large",
     },
 )
 
