@@ -460,9 +460,68 @@ TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     stub.Echo(&cntl, &req, &res, nullptr);
     ASSERT_TRUE(cntl.Failed());
     ASSERT_TRUE(cntl.ErrorText().find("Got EOF of ") != std::string::npos);
-    
+
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
+}
+
+// http, h2 and rdma_handshake are served whatever enabled_protocols says, but
+// naming them in it used to make Start() fail: the exemption was tested
+// before whitelist.erase() and `&&' short-circuited it, so the names survived
+// into the leftover check and came back as "unknown protocols=`http '".
+TEST_F(ServerTest, enabled_protocols_can_name_always_enabled_protocols) {
+    std::string cases[] = {
+        "baidu_std http",
+        "baidu_std h2",
+        "baidu_std rdma_handshake",
+        "baidu_std http h2 rdma_handshake",
+    };
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        brpc::Server server;
+        EchoServiceImpl echo_svc;
+        ASSERT_EQ(0, server.AddService(
+                      &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+        brpc::ServerOptions opt;
+        opt.enabled_protocols = cases[i];
+        ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt)) << cases[i];
+        butil::EndPoint ep = server.listen_address();
+
+        brpc::ChannelOptions copt;
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
+
+        // The protocol that actually needed whitelisting still serves.
+        copt.protocol = "baidu_std";
+        brpc::Channel chan;
+        ASSERT_EQ(0, chan.Init(ep, &copt));
+        test::EchoService_Stub stub(&chan);
+        stub.Echo(&cntl, &req, &res, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cases[i] << ": " << cntl.ErrorText();
+
+        // And so does http, as it does for any whitelist.
+        copt.protocol = "http";
+        brpc::Channel http_channel;
+        ASSERT_EQ(0, http_channel.Init(ep, &copt));
+        cntl.Reset();
+        cntl.http_request().uri() = "/version";
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cases[i] << ": " << cntl.ErrorText();
+
+        // A protocol left out of the whitelist is still refused.
+        copt.protocol = "hulu_pbrpc";
+        brpc::Channel hulu_channel;
+        ASSERT_EQ(0, hulu_channel.Init(ep, &copt));
+        cntl.Reset();
+        test::EchoService_Stub hulu_stub(&hulu_channel);
+        hulu_stub.Echo(&cntl, &req, &res, nullptr);
+        ASSERT_TRUE(cntl.Failed()) << cases[i];
+        LOG(INFO) << "Expected error: " << cntl.ErrorText();
+
+        ASSERT_EQ(0, server.Stop(0));
+        ASSERT_EQ(0, server.Join());
+    }
 }
 
 TEST_F(ServerTest, services_in_different_ns) {
