@@ -16,7 +16,9 @@
 // under the License.
 
 
+#include <errno.h>
 #include <inttypes.h>
+#include <sys/socket.h>
 #include <gflags/gflags.h>
 #include "butil/fd_guard.h"                 // fd_guard 
 #include "butil/fd_utility.h"               // make_close_on_exec
@@ -38,6 +40,9 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _listened_fd(-1)
     , _acception_id(0)
     , _empty_cond(&_map_mutex)
+    , _connection_count(0)
+    , _rejected_redis_connection_count(0)
+    , _redis_max_connections(0)
     , _force_ssl(false)
     , _ssl_ctx(nullptr) 
     , _socket_mode(SOCKET_MODE_TCP)
@@ -52,6 +57,14 @@ Acceptor::~Acceptor() {
 int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
                           const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                           bool force_ssl) {
+    return StartAccept(
+        listened_fd, idle_timeout_sec, ssl_ctx, force_ssl, 0);
+}
+
+int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
+                          const std::shared_ptr<SocketSSLContext>& ssl_ctx,
+                          bool force_ssl,
+                          size_t redis_max_connections) {
     if (listened_fd < 0) {
         LOG(FATAL) << "Invalid listened_fd=" << listened_fd;
         return -1;
@@ -87,6 +100,7 @@ int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
     _idle_timeout_sec = idle_timeout_sec;
     _force_ssl = force_ssl;
     _ssl_ctx = ssl_ctx;
+    SetRedisMaxConnections(redis_max_connections);
     
     // Creation of _acception_id is inside lock so that OnNewConnections
     // (which may run immediately) should see sane fields set below.
@@ -200,9 +214,61 @@ void Acceptor::Join() {
 }
 
 size_t Acceptor::ConnectionCount() const {
-    // Notice that _socket_map may be modified concurrently. This actually
-    // assumes that size() is safe to call concurrently.
-    return _socket_map.size();
+    return _connection_count.load(butil::memory_order_relaxed);
+}
+
+size_t Acceptor::RejectedRedisConnectionCount() const {
+    return _rejected_redis_connection_count.load(butil::memory_order_relaxed);
+}
+
+bool Acceptor::TryAcquireRedisConnectionSlot() {
+    size_t count = _connection_count.load(butil::memory_order_relaxed);
+    do {
+        const size_t max_connections =
+            _redis_max_connections.load(butil::memory_order_relaxed);
+        if (max_connections != 0 && count >= max_connections) {
+            return false;
+        }
+    } while (!_connection_count.compare_exchange_weak(
+        count, count + 1, butil::memory_order_relaxed));
+    return true;
+}
+
+void Acceptor::SetRedisMaxConnections(size_t max_connections) {
+    // The limit controls only future numeric admission decisions and does not
+    // publish socket state, so a relaxed store is sufficient.
+    _redis_max_connections.store(
+        max_connections, butil::memory_order_relaxed);
+}
+
+void Acceptor::RejectRedisConnection(int fd) {
+    _rejected_redis_connection_count.fetch_add(
+        1, butil::memory_order_relaxed);
+
+    // Reject SSL-capable listeners before doing any TLS work. Plaintext here
+    // would violate the TLS record protocol and could trigger an expensive
+    // handshake in a higher layer.
+    if (_ssl_ctx) {
+        return;
+    }
+
+    static const char response[] =
+        "-ERR max number of clients reached\r\n";
+    const size_t response_size = sizeof(response) - 1;
+    size_t offset = 0;
+    while (offset < response_size) {
+        const ssize_t nwritten = send(fd,
+                                      response + offset,
+                                      response_size - offset,
+                                      MSG_DONTWAIT | MSG_NOSIGNAL);
+        if (nwritten > 0) {
+            offset += nwritten;
+        } else if (nwritten < 0 && errno == EINTR) {
+            continue;
+        } else {
+            break;
+        }
+    }
 }
 
 void Acceptor::ListConnections(std::vector<SocketId>* conn_list,
@@ -275,7 +341,12 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
             acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
             return;
         }
-        
+
+        if (!am->TryAcquireRedisConnectionSlot()) {
+            am->RejectRedisConnection(in_fd);
+            continue;
+        }
+
         SocketId socket_id;
         SocketOptions options;
         options.keytable_pool = am->_keytable_pool;
@@ -288,6 +359,9 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.socket_mode = am->_socket_mode;
         options.bthread_tag = am->_bthread_tag;
         if (Socket::Create(options, &socket_id) != 0) {
+            const size_t previous = am->_connection_count.fetch_sub(
+                1, butil::memory_order_relaxed);
+            CHECK_GT(previous, 0u);
             LOG(ERROR) << "Fail to create Socket";
             continue;
         }
@@ -349,6 +423,9 @@ void Acceptor::BeforeRecycle(Socket* sock) {
     // If a Socket could not be addressed shortly after its creation, it
     // was not added into `_socket_map'.
     _socket_map.erase(sock->id());
+    const size_t previous =
+        _connection_count.fetch_sub(1, butil::memory_order_relaxed);
+    CHECK_GT(previous, 0u);
     if (_socket_map.empty()) {
         _empty_cond.Broadcast();
     }

@@ -19,6 +19,7 @@
 #define BRPC_ACCEPTOR_H
 
 #include "bthread/bthread.h"                       // bthread_t
+#include "butil/atomicops.h"                       // butil::atomic
 #include "butil/synchronization/condition_variable.h"
 #include "butil/containers/flat_map.h"
 #include "brpc/input_messenger.h"
@@ -58,6 +59,10 @@ public:
     int StartAccept(int listened_fd, int idle_timeout_sec,
                     const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                     bool force_ssl);
+    int StartAccept(int listened_fd, int idle_timeout_sec,
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx,
+                    bool force_ssl,
+                    size_t redis_max_connections);
 
     // [thread-safe] Stop accepting connections.
     // `closewait_ms' is not used anymore.
@@ -71,6 +76,10 @@ public:
 
     // Get number of existing connections.
     size_t ConnectionCount() const;
+
+    // Get the cumulative number of connections rejected by the Redis-only
+    // listener's connection limit.
+    size_t RejectedRedisConnectionCount() const;
 
     // Clear `conn_list' and append all connections into it.
     void ListConnections(std::vector<SocketId>* conn_list);
@@ -93,6 +102,10 @@ private:
     // Remove the accepted socket `sock' from inside
     void BeforeRecycle(Socket* sock) override;
 
+    bool TryAcquireRedisConnectionSlot();
+    void RejectRedisConnection(int fd);
+    void SetRedisMaxConnections(size_t max_connections);
+
     bthread_keytable_pool_t* _keytable_pool; // owned by Server
     Status _status;
     int _idle_timeout_sec;
@@ -107,6 +120,14 @@ private:
     
     // The map containing all the accepted sockets
     SocketMap _socket_map;
+
+    // A slot is reserved before Socket::Create(), closing the race where a
+    // socket starts processing before it is inserted into _socket_map. These
+    // atomics protect only numeric admission and publish no socket state, so
+    // relaxed memory ordering is sufficient.
+    butil::atomic<size_t> _connection_count;
+    butil::atomic<size_t> _rejected_redis_connection_count;
+    butil::atomic<size_t> _redis_max_connections;
 
     bool _force_ssl;
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
