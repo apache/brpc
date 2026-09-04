@@ -54,10 +54,34 @@ DEFINE_bool(bvar_abort_on_same_name, false, "Abort when names of bvar are same")
 BUTIL_VALIDATE_GFLAG(bvar_abort_on_same_name, validate_bvar_abort_on_same_name);
 
 
-DEFINE_bool(bvar_log_dumpped,  false,
-            "[For debugging] print dumpped info"
-            " into logstream before call Dumpper");
+DEFINE_bool(bvar_log_dumpped,  false, "[For debugging] print dumpped info "
+                                      "into logstream before call Dumpper");
 BUTIL_VALIDATE_GFLAG(bvar_log_dumpped, butil::PassValidate);
+
+DEFINE_bool(bvar_dump, false, "Create a background thread dumping all bvar periodically, "
+                              "all bvar_dump_* flags are not effective when this flag is off");
+DEFINE_int32(bvar_dump_interval, 10, "Seconds between consecutive dump");
+DEFINE_string(bvar_dump_file, "monitor/bvar.<app>.data",
+              "Dump bvar into this file, not settable at runtime");
+DEFINE_string(bvar_dump_include, "", "Dump bvar matching these wildcards, separated "
+                                     "by semicolon(;), empty means including all");
+DEFINE_string(bvar_dump_exclude, "", "Dump bvar excluded from these wildcards, "
+                                     "separated by semicolon(;), empty means no exclusion");
+DEFINE_string(bvar_dump_prefix, "<app>", "Every dumped name starts with this prefix");
+DEFINE_string(bvar_dump_tabs, "latency=*_latency*"
+                              ";qps=*_qps*"
+                              ";error=*_error*"
+                              ";system=*process_*,*malloc_*,*kernel_*",
+              "Dump bvar into different tabs according to the filters (separated by semicolon), "
+              "format: *(tab_name=wildcards;), not settable at runtime");
+
+DEFINE_bool(mbvar_dump, false, "Create a background thread dumping(shares the same thread as "
+                               "bvar_dump) all mbvar periodically, all mbvar_dump_* flags are "
+                               "not effective when this flag is off");
+DEFINE_string(mbvar_dump_file, "monitor/mbvar.<app>.data",
+              "Dump mbvar into this file, not settable at runtime");
+DEFINE_string(mbvar_dump_prefix, "<app>", "Every dumped name starts with this prefix");
+DEFINE_string(mbvar_dump_format, "common", "Dump mbvar write format");
 
 const size_t SUB_MAP_COUNT = 32;  // must be power of 2
 BAIDU_CASSERT(!(SUB_MAP_COUNT & (SUB_MAP_COUNT - 1)), must_be_power_of_2);
@@ -120,8 +144,8 @@ inline VarMapWithLock& get_var_map(const std::string& name) {
 }
 
 Variable::~Variable() {
-    CHECK(!hide()) << "Subclass of Variable MUST call hide() manually in their"
-        " dtors to avoid displaying a variable that is just destructing";
+    CHECK(!hide()) << "Subclass of Variable MUST call hide() manually in their "
+                      "dtors to avoid displaying a variable that is just destructing";
 }
 
 int Variable::expose_impl(const butil::StringPiece& prefix,
@@ -741,30 +765,6 @@ static bool created_dumping_thread = false;
 static pthread_mutex_t dump_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t dump_cond = PTHREAD_COND_INITIALIZER;
 
-DEFINE_bool(bvar_dump, false,
-            "Create a background thread dumping all bvar periodically, "
-            "all bvar_dump_* flags are not effective when this flag is off");
-DEFINE_int32(bvar_dump_interval, 10, "Seconds between consecutive dump");
-DEFINE_string(bvar_dump_file, "monitor/bvar.<app>.data", "Dump bvar into this file");
-DEFINE_string(bvar_dump_include, "", "Dump bvar matching these wildcards, "
-              "separated by semicolon(;), empty means including all");
-DEFINE_string(bvar_dump_exclude, "", "Dump bvar excluded from these wildcards, "
-              "separated by semicolon(;), empty means no exclusion");
-DEFINE_string(bvar_dump_prefix, "<app>", "Every dumped name starts with this prefix");
-DEFINE_string(bvar_dump_tabs, "latency=*_latency*"
-                              ";qps=*_qps*"
-                              ";error=*_error*"
-                              ";system=*process_*,*malloc_*,*kernel_*",
-              "Dump bvar into different tabs according to the filters (separated by semicolon), "
-              "format: *(tab_name=wildcards;)");
-
-DEFINE_bool(mbvar_dump, false,
-            "Create a background thread dumping(shares the same thread as bvar_dump) all mbvar periodically, "
-            "all mbvar_dump_* flags are not effective when this flag is off");
-DEFINE_string(mbvar_dump_file, "monitor/mbvar.<app>.data", "Dump mbvar into this file");
-DEFINE_string(mbvar_dump_prefix, "<app>", "Every dumped name starts with this prefix");
-DEFINE_string(mbvar_dump_format, "common", "Dump mbvar write format");
-
 #if !defined(BVAR_NOT_LINK_DEFAULT_VARIABLES)
 // Expose bvar-releated gflags so that they're collected by noah.
 // Maybe useful when debugging process of monitoring.
@@ -951,22 +951,16 @@ static bool wakeup_dumping_thread(const char*, const std::string&) {
     return true;
 }
 
-const bool ALLOW_UNUSED dummy_bvar_dump_file = GFLAGS_NAMESPACE::RegisterFlagValidator(
-    &FLAGS_bvar_dump_file, wakeup_dumping_thread);
 const bool ALLOW_UNUSED dummy_bvar_dump_filter = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_bvar_dump_include, wakeup_dumping_thread);
 const bool ALLOW_UNUSED dummy_bvar_dump_exclude = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_bvar_dump_exclude, wakeup_dumping_thread);
 const bool ALLOW_UNUSED dummy_bvar_dump_prefix = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_bvar_dump_prefix, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_tabs = GFLAGS_NAMESPACE::RegisterFlagValidator(
-    &FLAGS_bvar_dump_tabs, wakeup_dumping_thread);
 
 BUTIL_VALIDATE_GFLAG(mbvar_dump, validate_bvar_dump);
 const bool ALLOW_UNUSED dummy_mbvar_dump_prefix = GFLAGS_NAMESPACE::RegisterFlagValidator(
     &FLAGS_mbvar_dump_prefix, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dump_mbvar_dump_file = GFLAGS_NAMESPACE::RegisterFlagValidator(
-    &FLAGS_mbvar_dump_file, wakeup_dumping_thread);
 
 static bool validate_mbvar_dump_format(const char*, const std::string& format) {
     if (format != "common"

@@ -106,9 +106,6 @@ static std::string GeneratePerlScriptPath(const std::string& filename) {
 
 extern bool cpu_profiler_enabled;
 
-DEFINE_int32(max_profiling_seconds, 300, "upper limit of running time of profilers");
-BRPC_VALIDATE_GFLAG(max_profiling_seconds, NonNegativeInteger);
-
 DEFINE_int32(max_profiles_kept, 32,
              "max profiles kept for cpu/heap/growth/contention respectively");
 BRPC_VALIDATE_GFLAG(max_profiles_kept, PassValidate);

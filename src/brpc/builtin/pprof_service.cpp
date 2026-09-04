@@ -68,7 +68,7 @@ static int ReadSeconds(Controller* cntl) {
         }
     }
 
-    return seconds;
+    return std::min(seconds, FLAGS_max_profiling_seconds);
 }
 
 int MakeProfName(ProfilingType type, char* buf, size_t buf_len) {
