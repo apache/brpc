@@ -1619,6 +1619,11 @@ void RdmaEndpoint::PollCq(Socket* m) {
     if (Socket::Address(ep->_socket->id(), &s) < 0) {
         return;
     }
+    // A queued callback may outlive Reset() and see the main Socket after
+    // it has been revived with another CQ.
+    if (m->id() != ep->_cq_sid) {
+        return;
+    }
     auto* rdma_transport = static_cast<RdmaTransport*>(s->_transport.get());
     CHECK(ep == rdma_transport->_rdma_ep);
     CHECK_GE(ep->_state.load(butil::memory_order_acquire), ESTABLISHED);
