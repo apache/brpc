@@ -25,6 +25,11 @@
 
 namespace brpc {
 
+class NonreflectableMessageBase : public ::google::protobuf::Message {
+public:
+    virtual bool CopyFromSameType(const ::google::protobuf::Message& other) = 0;
+};
+
 //
 // In bRPC, some non-Protobuf based protocol messages are also designed to implement
 // Protobuf Message interfaces, to provide a unified protocol message.
@@ -38,7 +43,7 @@ namespace brpc {
 // and use only #if version_check #endif, to make maintenance easier.
 //
 template <typename T>
-class NonreflectableMessage : public ::google::protobuf::Message {
+class NonreflectableMessage : public NonreflectableMessageBase {
 public:
     inline NonreflectableMessage() = default;
     inline NonreflectableMessage(const NonreflectableMessage&) : NonreflectableMessage() {}
@@ -95,6 +100,18 @@ public:
         }
         Clear();
         MergeFrom(other);
+    }
+
+    bool CopyFromSameType(const ::google::protobuf::Message& other) override {
+        if (&other == this) {
+            return true;
+        }
+        if (other.GetDescriptor() != descriptor()) {
+            return false;
+        }
+        Clear();
+        MergeFrom(static_cast<const T&>(other));
+        return true;
     }
 
     void MergeFrom(const ::google::protobuf::Message& other) PB_526_OVERRIDE {
@@ -229,6 +246,17 @@ public:
 private:
     static T _instance;
 
+#if GOOGLE_PROTOBUF_VERSION >= 5029000
+    static void* PlacementNew_(const void*, void* mem,
+                               ::google::protobuf::Arena* arena) {
+        T* message = ::new (mem) T();
+        if (arena != nullptr) {
+            arena->OwnDestructor(message);
+        }
+        return message;
+    }
+#endif
+
 #if GOOGLE_PROTOBUF_VERSION >= 5027000
     struct NonreflectableMessageClassData : ClassDataFull {
         constexpr NonreflectableMessageClassData()
@@ -239,7 +267,10 @@ private:
                                 nullptr,    // tc_table
                                 nullptr,    // is_initialized
                                 nullptr,    // merge_to_from
-                                ::google::protobuf::internal::MessageCreator(), // message_creator
+                                ::google::protobuf::internal::MessageCreator(
+                                        &NonreflectableMessage::PlacementNew_,
+                                        sizeof(T),
+                                        static_cast<uint8_t>(alignof(T))), // message_creator
                                 0,     // cached_size_offset
                                 false, // is_lite
                         },
@@ -253,7 +284,10 @@ private:
                                 nullptr,    // on_demand_register_arena_dtor
                                 nullptr,    // is_initialized
                                 nullptr,    // merge_to_from
-                                ::google::protobuf::internal::MessageCreator(), // message_creator
+                                ::google::protobuf::internal::MessageCreator(
+                                        &NonreflectableMessage::PlacementNew_,
+                                        sizeof(T),
+                                        static_cast<uint8_t>(alignof(T))), // message_creator
                                 0,     // cached_size_offset
                                 false, // is_lite
                         },
