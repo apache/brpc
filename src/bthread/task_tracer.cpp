@@ -35,6 +35,23 @@
 
 namespace bthread {
 
+namespace {
+
+// These slots must match the Linux x86_64 frame built by
+// bthread_jump_fcontext in context.cpp. XMM6-XMM15 add 10 128-bit values,
+// or 20 uintptr_t slots, ahead of the previously saved registers.
+constexpr size_t kSavedXmmRegisterCount = 10;
+constexpr size_t kSavedXmmRegisterBytes = 16;
+constexpr size_t kSavedXmmRegisterSlots =
+    kSavedXmmRegisterCount * kSavedXmmRegisterBytes / sizeof(uintptr_t);
+constexpr size_t kRbpContextSlot = 6 + kSavedXmmRegisterSlots;
+constexpr size_t kRipContextSlot = 7 + kSavedXmmRegisterSlots;
+#if UNW_VERSION_MAJOR >= 1 && UNW_VERSION_MINOR >= 7
+constexpr size_t kRspContextSlot = 8 + kSavedXmmRegisterSlots;
+#endif
+
+}  // namespace
+
 DEFINE_uint32(signal_trace_timeout_ms, 50, "Timeout for signal trace in ms");
 BUTIL_VALIDATE_GFLAG(signal_trace_timeout_ms, butil::PositiveInteger<uint32_t>);
 // Note that SIGURG handler may be registered by some library such as cgo
@@ -280,16 +297,16 @@ unw_cursor_t TaskTracer::MakeCursor(bthread_fcontext_t fcontext) {
 
     // Only need RBP, RIP, RSP on x86_64.
     // The base pointer (RBP).
-    if (unw_set_reg(&cursor, UNW_X86_64_RBP, regs[6]) != 0) {
+    if (unw_set_reg(&cursor, UNW_X86_64_RBP, regs[kRbpContextSlot]) != 0) {
         LOG(ERROR) << "Fail to set RBP";
     }
     // The instruction pointer (RIP).
-    if (unw_set_reg(&cursor, UNW_REG_IP, regs[7]) != 0) {
+    if (unw_set_reg(&cursor, UNW_REG_IP, regs[kRipContextSlot]) != 0) {
         LOG(ERROR) << "Fail to set RIP";
     }
 #if UNW_VERSION_MAJOR >= 1 && UNW_VERSION_MINOR >= 7
     // The stack pointer (RSP).
-    if (unw_set_reg(&cursor, UNW_REG_SP, regs[8]) != 0) {
+    if (unw_set_reg(&cursor, UNW_REG_SP, regs[kRspContextSlot]) != 0) {
         LOG(ERROR) << "Fail to set RSP";
     }
 #endif
