@@ -63,6 +63,8 @@ DECLARE_bool(allow_chunked_length);
 DECLARE_int32(max_connection_pool_size);
 DECLARE_uint64(max_body_size);
 DECLARE_int64(socket_max_unwritten_bytes);
+DECLARE_uint32(http_max_header_count);
+DECLARE_uint32(http_max_query_count);
 extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
 }
 
@@ -698,10 +700,10 @@ TEST_F(HttpTest, complete_flow) {
 }
 
 TEST_F(HttpTest, chunked_uploading) {
-    const int port = 8923;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     // Send request via curl using chunked encoding
     const std::string req = "{\"message\":\"hello\"}";
@@ -860,11 +862,11 @@ private:
 };
     
 TEST_F(HttpTest, read_chunked_response_normally) {
-    const int port = 8923;
     brpc::Server server;
     DownloadServiceImpl svc;
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     for (int i = 0; i < 3; ++i) {
         svc.set_done_place((DonePlace)i);
@@ -884,11 +886,11 @@ TEST_F(HttpTest, read_chunked_response_normally) {
 }
 
 TEST_F(HttpTest, read_failed_chunked_response) {
-    const int port = 8923;
     brpc::Server server;
     DownloadServiceImpl svc;
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1007,10 +1009,10 @@ TEST_F(HttpTest, read_long_body_progressively) {
                             std::numeric_limits<size_t>::max());
     butil::intrusive_ptr<ReadBody> reader;
     {
-        const int port = 8923;
         brpc::Server server;
-        EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, server.Start(port, nullptr));
+        ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+        ASSERT_EQ(0, server.Start(0, nullptr));
+        int port = server.listen_address().port;
         {
             brpc::Channel channel;
             brpc::ChannelOptions options;
@@ -1053,12 +1055,12 @@ TEST_F(HttpTest, read_long_body_progressively) {
 
 TEST_F(HttpTest, read_short_body_progressively) {
     butil::intrusive_ptr<ReadBody> reader;
-    const int port = 8923;
     brpc::Server server;
     const int NREP = 10000;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, NREP);
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
     {
         brpc::Channel channel;
         brpc::ChannelOptions options;
@@ -1090,11 +1092,11 @@ TEST_F(HttpTest, read_short_body_progressively) {
 }
 
 TEST_F(HttpTest, progressive_read_timeout_keeps_active_reader_alive) {
-    const int port = 8923;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 8, 100000);
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1119,11 +1121,11 @@ TEST_F(HttpTest, progressive_read_timeout_keeps_active_reader_alive) {
 }
 
 TEST_F(HttpTest, progressive_read_timeout_closes_idle_http1_reader_once) {
-    const int port = 8923;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 2, 300000);
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     butil::intrusive_ptr<TimeoutReadBody> reader(new TimeoutReadBody);
     {
@@ -1153,11 +1155,11 @@ TEST_F(HttpTest, progressive_read_timeout_closes_idle_http1_reader_once) {
 }
 
 TEST_F(HttpTest, progressive_read_timeout_before_first_body_part) {
-    const int port = 8923;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 1, 0, 300000);
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     butil::intrusive_ptr<TimeoutReadBody> reader(new TimeoutReadBody);
     {
@@ -1186,11 +1188,11 @@ TEST_F(HttpTest, progressive_read_timeout_before_first_body_part) {
 }
 
 TEST_F(HttpTest, progressive_read_timeout_ignores_slow_user_callback) {
-    const int port = 8923;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 3, 50000);
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1216,11 +1218,11 @@ TEST_F(HttpTest, progressive_read_timeout_ignores_slow_user_callback) {
 }
 
 TEST_F(HttpTest, progressive_read_timeout_preserves_reader_error) {
-    const int port = 8923;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA, 10);
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1245,10 +1247,10 @@ TEST_F(HttpTest, progressive_read_timeout_preserves_reader_error) {
 }
 
 TEST_F(HttpTest, progressive_read_timeout_rejects_http2) {
-    const int port = 8923;
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1276,10 +1278,10 @@ TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
                             std::numeric_limits<size_t>::max());
     butil::intrusive_ptr<ReadBody> reader;
     {
-        const int port = 8923;
         brpc::Server server;
-        EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, server.Start(port, nullptr));
+        ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+        ASSERT_EQ(0, server.Start(0, nullptr));
+        int port = server.listen_address().port;
         {
             brpc::Channel channel;
             brpc::ChannelOptions options;
@@ -1322,10 +1324,10 @@ TEST_F(HttpTest, read_progressively_after_long_delay) {
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA,
                             std::numeric_limits<size_t>::max());
     {
-        const int port = 8923;
         brpc::Server server;
-        EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, server.Start(port, nullptr));
+        ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+        ASSERT_EQ(0, server.Start(0, nullptr));
+        int port = server.listen_address().port;
         {
             brpc::Channel channel;
             brpc::ChannelOptions options;
@@ -1370,10 +1372,10 @@ TEST_F(HttpTest, read_progressively_after_long_delay) {
 TEST_F(HttpTest, skip_progressive_reading) {
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA,
                             std::numeric_limits<size_t>::max());
-    const int port = 8923;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
@@ -1409,12 +1411,12 @@ public:
 };
 
 TEST_F(HttpTest, failed_on_read_one_part) {
-    const int port = 8923;
     brpc::Server server;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA,
                             std::numeric_limits<size_t>::max());
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
@@ -1435,12 +1437,12 @@ TEST_F(HttpTest, failed_on_read_one_part) {
 
 TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
     butil::intrusive_ptr<ReadBody> reader;
-    const int port = 8923;
     brpc::Server server;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA,
                             std::numeric_limits<size_t>::max());
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
         
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1558,14 +1560,14 @@ private:
 };
 
 TEST_F(HttpTest, server_end_read_short_body_progressively) {
-    const int port = 8923;
     brpc::ServiceOptions opt;
     opt.enable_progressive_read = true;
     opt.ownership = brpc::SERVER_DOESNT_OWN_SERVICE;
     UploadServiceImpl upsvc;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&upsvc, opt));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&upsvc, opt));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1597,14 +1599,14 @@ TEST_F(HttpTest, server_end_read_short_body_progressively) {
 // Fixme!!! Server progressive reader has a heap-use-after-free bug detected by ASan.
 // For details, see https://github.com/apache/brpc/issues/2145#issuecomment-2329413363
 TEST_F(HttpTest, server_end_read_failed) {
-    const int port = 8923;
     brpc::ServiceOptions opt;
     opt.enable_progressive_read = true;
     opt.ownership = brpc::SERVER_DOESNT_OWN_SERVICE;
     UploadServiceImpl upsvc;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&upsvc, opt));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&upsvc, opt));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1635,10 +1637,10 @@ TEST_F(HttpTest, server_end_read_failed) {
 #endif // BUTIL_USE_ASAN
 
 TEST_F(HttpTest, http2_sanity) {
-    const int port = 8923;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -1940,6 +1942,231 @@ TEST_F(HttpTest, h2_header_list_budget_resets_per_block) {
     delete sctx;
 }
 
+// Literal header field with a new name, with both lengths in a single 7-bit
+// prefix octet. `first_octet` selects the representation: 0x00 is "without
+// indexing" (RFC 7541 6.2.2), 0x40 is "with incremental indexing" (6.2.1)
+// which also adds the field to the dynamic table.
+// 0x80 of a length octet is the Huffman flag and a length of 128 or more needs
+// the multi-octet form, so refuse what does not fit instead of emitting a
+// corrupt header block.
+void AppendLiteralHeader(butil::IOBuf* out, const std::string& name,
+                         const std::string& value, uint8_t first_octet = 0x00) {
+    ASSERT_LT(name.size(), 0x80u);
+    ASSERT_LT(value.size(), 0x80u);
+    uint8_t prefix[] = { first_octet, (uint8_t)name.size() };
+    out->append(prefix, sizeof(prefix));
+    out->append(name);
+    uint8_t value_len = (uint8_t)value.size();
+    out->append(&value_len, 1);
+    out->append(value);
+}
+
+// Feed `payload` to `sctx` as one complete HEADERS block, the way
+// H2Context::Consume() would. A non-zero stream_id in the result means the
+// frame handler asked for a RST_STREAM, a zero one means a GOAWAY that closes
+// the whole connection.
+brpc::policy::H2ParseResult ConsumeHeadersBlock(
+        brpc::policy::H2StreamContext* sctx, const butil::IOBuf& payload,
+        int stream_id) {
+    brpc::policy::H2FrameHead head;
+    head.payload_size = payload.size();
+    head.type = brpc::policy::H2_FRAME_HEADERS;
+    head.flags = 0x4;  // H2_FLAGS_END_HEADERS
+    head.stream_id = stream_id;
+    butil::IOBufBytesIterator it(payload);
+    return sctx->OnHeaders(it, head, payload.size(), 0);
+}
+
+TEST_F(HttpTest, h2_too_many_headers) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_header_count = 8;
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+
+    {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, 1);
+        butil::IOBuf payload;
+        for (int i = 0; i < 8; ++i) {
+            AppendLiteralHeader(&payload, "h" + std::to_string(i), "v");
+        }
+        brpc::policy::H2ParseResult res =
+            ConsumeHeadersBlock(sctx.get(), payload, 1);
+        ASSERT_TRUE(res.is_ok()) << brpc::H2ErrorToString(res.error());
+        ASSERT_EQ(8u, sctx->header().HeaderCount());
+    }
+    {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, 3);
+        butil::IOBuf payload;
+        for (int i = 0; i < 9; ++i) {
+            AppendLiteralHeader(&payload, "h" + std::to_string(i), "v");
+        }
+        // Refusing the request must not cost the connection its other
+        // streams, so the frame handler asks for a RST_STREAM (non-zero
+        // stream_id) rather than a GOAWAY.
+        brpc::policy::H2ParseResult res =
+            ConsumeHeadersBlock(sctx.get(), payload, 3);
+        ASSERT_FALSE(res.is_ok());
+        ASSERT_EQ(brpc::H2_ENHANCE_YOUR_CALM, res.error());
+        ASSERT_EQ(3, res.stream_id());
+    }
+}
+
+TEST_F(HttpTest, h2_too_many_queries_in_path) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_query_count = 4;
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+
+    {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, 1);
+        butil::IOBuf payload;
+        AppendLiteralHeader(&payload, ":path", "/s?a=1&b=2&c=3&d=4");
+        brpc::policy::H2ParseResult res =
+            ConsumeHeadersBlock(sctx.get(), payload, 1);
+        ASSERT_TRUE(res.is_ok()) << brpc::H2ErrorToString(res.error());
+    }
+    {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, 3);
+        butil::IOBuf payload;
+        AppendLiteralHeader(&payload, ":path", "/s?a=1&b=2&c=3&d=4&e=5");
+        brpc::policy::H2ParseResult res =
+            ConsumeHeadersBlock(sctx.get(), payload, 3);
+        ASSERT_FALSE(res.is_ok());
+        ASSERT_EQ(brpc::H2_ENHANCE_YOUR_CALM, res.error());
+        ASSERT_EQ(3, res.stream_id());
+    }
+}
+
+// A refused header block still has to be fed to the HPACK decoder in full.
+// The dynamic table belongs to the connection, so dropping the tail of a block
+// would leave it out of step with the encoding table of the peer and turn
+// every later block into garbage, which is why RFC 9113 section 10.5.1 says
+// the field block MUST be processed unless the connection is closed.
+TEST_F(HttpTest, h2_refused_header_block_keeps_hpack_in_sync) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_header_count = 2;
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+
+    // Four headers with incremental indexing, two of them past the limit.
+    std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+        new brpc::policy::H2StreamContext(false));
+    sctx->Init(ctx, 1);
+    butil::IOBuf payload;
+    AppendLiteralHeader(&payload, "a", "1", 0x40);
+    AppendLiteralHeader(&payload, "b", "2", 0x40);
+    AppendLiteralHeader(&payload, "c", "3", 0x40);
+    AppendLiteralHeader(&payload, "d", "4", 0x40);
+    brpc::policy::H2ParseResult res =
+        ConsumeHeadersBlock(sctx.get(), payload, 1);
+    ASSERT_FALSE(res.is_ok());
+    ASSERT_EQ(brpc::H2_ENHANCE_YOUR_CALM, res.error());
+    ASSERT_EQ(1, res.stream_id());
+    // Everything after the offending field is decoded but thrown away.
+    ASSERT_EQ(3u, sctx->header().HeaderCount());
+
+    // The static table ends at index 61, so 62 names the newest dynamic entry.
+    // That is "d" only because decoding ran to the end of the block; had it
+    // stopped at the limit, 62 would still be "c".
+    std::unique_ptr<brpc::policy::H2StreamContext> sctx2(
+        new brpc::policy::H2StreamContext(false));
+    sctx2->Init(ctx, 3);
+    butil::IOBuf indexed;
+    const uint8_t indexed_field[] = { 0x80 | 62 };  // Indexed Header Field
+    indexed.append(indexed_field, sizeof(indexed_field));
+    brpc::policy::H2ParseResult res2 =
+        ConsumeHeadersBlock(sctx2.get(), indexed, 3);
+    ASSERT_TRUE(res2.is_ok()) << brpc::H2ErrorToString(res2.error());
+    const std::string* value = sctx2->header().GetHeader("d");
+    ASSERT_TRUE(value != nullptr);
+    ASSERT_EQ("4", *value);
+}
+
+// RFC 9113 section 8.1.1: "Malformed requests or responses that are detected
+// MUST be treated as a stream error (Section 5.4.2) of type PROTOCOL_ERROR."
+// A bad pseudo-header says nothing about the health of the connection, so it
+// must not cost the other streams theirs. :path has its own case table in
+// HttpTest.http2_reject_path_not_starting_with_slash.
+TEST_F(HttpTest, h2_malformed_pseudo_header_resets_stream_only) {
+    struct MalformedField {
+        const char* name;
+        const char* value;
+    };
+    MalformedField malformed[] = {
+        { ":method", "NOSUCH" },
+        { ":status", "20x" },
+        { ":nosuchheader", "1" },  // 8.3: undefined pseudo-header
+    };
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+
+    int stream_id = 1;
+    for (const auto& bad : malformed) {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, stream_id);
+        butil::IOBuf payload;
+        AppendLiteralHeader(&payload, bad.name, bad.value);
+        brpc::policy::H2ParseResult res =
+            ConsumeHeadersBlock(sctx.get(), payload, stream_id);
+        std::string desc = std::string(bad.name) + '=' + bad.value;
+        ASSERT_FALSE(res.is_ok()) << desc;
+        ASSERT_EQ(brpc::H2_PROTOCOL_ERROR, res.error())
+            << desc << ": " << brpc::H2ErrorToString(res.error());
+        ASSERT_EQ(stream_id, res.stream_id()) << desc;
+        stream_id += 2;
+    }
+
+    // A malformed block is drained like any other refusal, so a field that
+    // follows the bad pseudo-header still reaches the dynamic table. RFC 9113
+    // section 4.3 leaves no choice here: only a decoding error may take down
+    // the connection, so everything else has to be decoded to the end.
+    std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+        new brpc::policy::H2StreamContext(false));
+    sctx->Init(ctx, stream_id);
+    butil::IOBuf payload;
+    AppendLiteralHeader(&payload, ":path", "foo");
+    AppendLiteralHeader(&payload, "after-the-bad-one", "1", 0x40);
+    brpc::policy::H2ParseResult res =
+        ConsumeHeadersBlock(sctx.get(), payload, stream_id);
+    ASSERT_EQ(brpc::H2_PROTOCOL_ERROR, res.error());
+    ASSERT_EQ(stream_id, res.stream_id());
+
+    stream_id += 2;
+    std::unique_ptr<brpc::policy::H2StreamContext> sctx2(
+        new brpc::policy::H2StreamContext(false));
+    sctx2->Init(ctx, stream_id);
+    butil::IOBuf indexed;
+    const uint8_t indexed_field[] = { 0x80 | 62 };  // newest dynamic entry
+    indexed.append(indexed_field, sizeof(indexed_field));
+    brpc::policy::H2ParseResult res2 =
+        ConsumeHeadersBlock(sctx2.get(), indexed, stream_id);
+    ASSERT_TRUE(res2.is_ok()) << brpc::H2ErrorToString(res2.error());
+    const std::string* value = sctx2->header().GetHeader("after-the-bad-one");
+    ASSERT_TRUE(value != nullptr);
+    ASSERT_EQ("1", *value);
+}
+
 TEST_F(HttpTest, h2_oversized_single_headers_block_rejected) {
     // A single HEADERS frame whose decoded header list exceeds
     // max_header_list_size must be rejected at the block boundary (before
@@ -2098,29 +2325,29 @@ TEST_F(HttpTest, http2_invalid_settings) {
         brpc::Server server;
         brpc::ServerOptions options;
         options.h2_settings.stream_window_size = brpc::H2Settings::MAX_WINDOW_SIZE + 1;
-        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+        ASSERT_EQ(-1, server.Start("127.0.0.1:0", &options));
     }
     {
         brpc::Server server;
         brpc::ServerOptions options;
         options.h2_settings.max_frame_size =
             brpc::H2Settings::DEFAULT_MAX_FRAME_SIZE - 1;
-        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+        ASSERT_EQ(-1, server.Start("127.0.0.1:0", &options));
     }
     {
         brpc::Server server;
         brpc::ServerOptions options;
         options.h2_settings.max_frame_size =
             brpc::H2Settings::MAX_OF_MAX_FRAME_SIZE + 1;
-        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+        ASSERT_EQ(-1, server.Start("127.0.0.1:0", &options));
     }
 }
 
 TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
-    const int port = 8923;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = "h2";
@@ -2357,7 +2584,8 @@ TEST_F(HttpTest, http2_handle_goaway_streams) {
 }
 
 // RFC 9113 8.3.1: :path MUST NOT be empty and MUST begin with '/', the only
-// exception being the asterisk-form that OPTIONS uses.
+// exception being the asterisk-form that OPTIONS uses. Violating that makes
+// the request malformed, which 8.1.1 turns into a stream error.
 TEST_F(HttpTest, http2_reject_path_not_starting_with_slash) {
     brpc::policy::H2Context* h2_ctx =
         new brpc::policy::H2Context(_socket.get(), &_server);
@@ -2394,23 +2622,32 @@ TEST_F(HttpTest, http2_reject_path_not_starting_with_slash) {
         h2_ctx->hpacker().Encode(&appender, header, options);
         butil::IOBuf buf;
         appender.move_to(buf);
-        butil::IOBufBytesIterator it(buf);
 
         brpc::policy::H2StreamContext* h2_msg =
             new brpc::policy::H2StreamContext(false);
         h2_msg->Init(h2_ctx, stream_id);
+        brpc::policy::H2ParseResult res =
+            ConsumeHeadersBlock(h2_msg, buf, stream_id);
+        if (c.accepted) {
+            ASSERT_TRUE(res.is_ok()) << "path=`" << c.path << "': "
+                                     << brpc::H2ErrorToString(res.error());
+        } else {
+            // A bad :path makes the request malformed, not the connection
+            // unusable, so only this stream is reset.
+            ASSERT_EQ(brpc::H2_PROTOCOL_ERROR, res.error())
+                << "path=`" << c.path << '\'';
+            ASSERT_EQ(stream_id, res.stream_id()) << "path=`" << c.path << '\'';
+        }
         stream_id += 2;
-        ASSERT_EQ(c.accepted ? 0 : -1, h2_msg->ConsumeHeaders(it))
-            << "path=`" << c.path << '\'';
         h2_msg->Destroy();
     }
 }
 
 TEST_F(HttpTest, spring_protobuf_content_type) {
-    const int port = 8923;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -2454,10 +2691,10 @@ TEST_F(HttpTest, dump_http_request) {
     brpc::g_rpc_dump_sl.sampling_range = bvar::COLLECTOR_SAMPLING_BASE;
 
     // init channel
-    const int port = 8923;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -2526,10 +2763,10 @@ TEST_F(HttpTest, dump_http_request) {
 }
 
 TEST_F(HttpTest, proto_text_content_type) {
-    const int port = 8923;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -2564,10 +2801,10 @@ TEST_F(HttpTest, proto_text_content_type) {
 }
 
 TEST_F(HttpTest, proto_json_content_type) {
-    const int port = 8923;
     brpc::Server server;
-    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -2641,11 +2878,11 @@ class HttpServiceImpl : public ::test::HttpService {
 };
 
 TEST_F(HttpTest, http_head) {
-    const int port = 8923;
     brpc::Server server;
     HttpServiceImpl svc;
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    int port = server.listen_address().port;
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -2769,8 +3006,8 @@ void ReadOneResponse(brpc::SocketUniquePtr& sock,
 TEST_F(HttpTest, http_expect) {
     brpc::Server server;
     HttpServiceImpl svc;
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(0, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
 
     const butil::EndPoint ep = server.listen_address();
     brpc::SocketOptions options;
