@@ -18,23 +18,36 @@
 
 #include <algorithm>                                           // std::set_union
 #include <array>
+#include <cmath>                                               // std::ceil
+#include <limits>                                              // numeric_limits
 #include <gflags/gflags.h>
 #include <openssl/md5.h>
 #include "butil/containers/flat_map.h"
 #include "butil/errno.h"
 #include "butil/strings/string_number_conversions.h"
 #include "brpc/socket.h"
+#include "brpc/reloadable_flags.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
 
 namespace brpc {
 namespace policy {
 
-// TODO: or 160?
-DEFINE_int32(chash_num_replicas, 100, 
-             "default number of replicas per server in chash");
-DEFINE_bool(consistent_hashing_enable_server_tag, false, 
+DEFINE_int32(chash_num_replicas, 100,
+             "default number of replicas per server in chash, "
+             "overridable per channel with the `replicas' parameter");
+DEFINE_bool(consistent_hashing_enable_server_tag, false,
              "if consistent hashing enable server with tag");
+DEFINE_double(chash_bounded_load_factor, 1.25,
+              "default capacity factor of bounded-load consistent hashing"
+              "(c_*_bl): a server takes at most ceil(factor * average "
+              "in-flight) requests before overflowing to its ring successor, "
+              "overridable per channel with the `load_factor' parameter");
+
+static bool ValidateLoadFactor(const char*, double factor) {
+    return factor > 1.0;
+}
+BRPC_VALIDATE_GFLAG(chash_bounded_load_factor, ValidateLoadFactor);
 
 // Defined in hasher.cpp.
 const char* GetHashName(HashFunc hasher);
@@ -395,15 +408,222 @@ bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPiece& para
             LOG(ERROR) << "Empty value for " << sp.key() << " in lb parameter";
             return false;
         }
-        if (sp.key() == "replicas") {
-            if (!butil::StringToSizeT(sp.value(), &_num_replicas)) {
-                return false;
-            }
-            continue;
+        if (!SetParameter(sp.key(), sp.value())) {
+            return false;
         }
-        LOG(ERROR) << "Failed to set this unknown parameters " << sp.key_and_value();
     }
     return true;
+}
+
+bool ConsistentHashingLoadBalancer::SetParameter(
+    const butil::StringPiece& key, const butil::StringPiece& value) {
+    if (key == "replicas") {
+        return butil::StringToSizeT(value, &_num_replicas);
+    }
+    LOG(ERROR) << "Failed to set this unknown parameters " << key << '=' << value;
+    return true;
+}
+
+ConsistentHashingBoundedLoadBalancer::ConsistentHashingBoundedLoadBalancer(
+    ConsistentHashingLoadBalancerType type)
+    : ConsistentHashingLoadBalancer(type)
+    , _load_factor(FLAGS_chash_bounded_load_factor)
+    , _total_inflight(0) {}
+
+size_t ConsistentHashingBoundedLoadBalancer::ResetLoads(
+    LoadMap& bg, const LoadMap& fg, const std::vector<SocketId>& ids) {
+    bg.clear();
+    for (size_t i = 0; i < ids.size(); ++i) {
+        const std::shared_ptr<ServerLoad>* fg_load = fg.seek(ids[i]);
+        bg[ids[i]] = (fg_load != nullptr)
+            ? *fg_load : std::make_shared<ServerLoad>();
+    }
+    // Non-zero so that both buffers are always rebuilt.
+    return 1;
+}
+
+void ConsistentHashingBoundedLoadBalancer::SyncLoadMap() {
+    std::vector<SocketId> ids;
+    {
+        butil::DoublyBufferedData<std::vector<Node> >::ScopedPtr s;
+        if (_db_hash_ring.Read(&s) != 0) {
+            return;
+        }
+        butil::FlatSet<SocketId> id_set;
+        ids.reserve(s->size() / std::max(_num_replicas, (size_t)1));
+        for (size_t i = 0; i < s->size(); ++i) {
+            const SocketId id = (*s)[i].server_sock.id;
+            if (id_set.seek(id) == nullptr && id_set.insert(id) != nullptr) {
+                ids.push_back(id);
+            }
+        }
+    }
+    _db_load_map.ModifyWithForeground(ResetLoads, ids);
+}
+
+bool ConsistentHashingBoundedLoadBalancer::AddServer(const ServerId& server) {
+    if (!ConsistentHashingLoadBalancer::AddServer(server)) {
+        return false;
+    }
+    SyncLoadMap();
+    return true;
+}
+
+bool ConsistentHashingBoundedLoadBalancer::RemoveServer(const ServerId& server) {
+    if (!ConsistentHashingLoadBalancer::RemoveServer(server)) {
+        return false;
+    }
+    SyncLoadMap();
+    return true;
+}
+
+size_t ConsistentHashingBoundedLoadBalancer::AddServersInBatch(
+    const std::vector<ServerId>& servers) {
+    const size_t n = ConsistentHashingLoadBalancer::AddServersInBatch(servers);
+    if (n != 0) {
+        SyncLoadMap();
+    }
+    return n;
+}
+
+size_t ConsistentHashingBoundedLoadBalancer::RemoveServersInBatch(
+    const std::vector<ServerId>& servers) {
+    const size_t n = ConsistentHashingLoadBalancer::RemoveServersInBatch(servers);
+    if (n != 0) {
+        SyncLoadMap();
+    }
+    return n;
+}
+
+LoadBalancer* ConsistentHashingBoundedLoadBalancer::New(
+    const butil::StringPiece& params) const {
+    ConsistentHashingBoundedLoadBalancer* lb =
+        new (std::nothrow) ConsistentHashingBoundedLoadBalancer(_type);
+    if (lb && !lb->SetParameters(params)) {
+        delete lb;
+        lb = nullptr;
+    }
+    return lb;
+}
+
+bool ConsistentHashingBoundedLoadBalancer::SetParameter(
+    const butil::StringPiece& key, const butil::StringPiece& value) {
+    if (key == "load_factor") {
+        double factor = 0.0;
+        if (!butil::StringToDouble(value.as_string(), &factor) ||
+            factor <= 1.0) {
+            LOG(ERROR) << "Invalid load_factor=`" << value
+                       << "', must be a number > 1";
+            return false;
+        }
+        _load_factor = factor;
+        return true;
+    }
+    return ConsistentHashingLoadBalancer::SetParameter(key, value);
+}
+
+int ConsistentHashingBoundedLoadBalancer::SelectServer(
+    const SelectIn& in, SelectOut* out) {
+    if (!in.has_request_code) {
+        LOG(ERROR) << "Controller.set_request_code() is required";
+        return EINVAL;
+    }
+    if (in.request_code > UINT_MAX) {
+        LOG(ERROR) << "request_code must be 32-bit currently";
+        return EINVAL;
+    }
+    butil::DoublyBufferedData<std::vector<Node> >::ScopedPtr s;
+    if (_db_hash_ring.Read(&s) != 0) {
+        return ENOMEM;
+    }
+    if (s->empty()) {
+        return ENODATA;
+    }
+    butil::DoublyBufferedData<LoadMap>::ScopedPtr lm;
+    if (_db_load_map.Read(&lm) != 0) {
+        return ENOMEM;
+    }
+    int64_t capacity = std::numeric_limits<int64_t>::max();
+    if (!lm->empty()) {
+        const int64_t total = _total_inflight.load(butil::memory_order_relaxed);
+        capacity = (int64_t)std::ceil(
+            _load_factor * (double)(total + 1) / (double)lm->size());
+    }
+    std::vector<Node>::const_iterator choice =
+        std::lower_bound(s->begin(), s->end(), (uint32_t)in.request_code);
+    if (choice == s->end()) {
+        choice = s->begin();
+    }
+    // Walk clockwise from the hashed-to node and take the first server under
+    // capacity. With load_factor > 1 at least one server is below the average
+    // whenever counters are consistent, so the walk finds one; the first
+    // acceptable server is kept as a fallback to guard against transient
+    // inconsistency of the relaxed counters.
+    SocketUniquePtr fallback_ptr;
+    ServerLoad* fallback_load = nullptr;
+    ServerLoad* selected_load = nullptr;
+    for (size_t i = 0; i < s->size(); ++i) {
+        SocketUniquePtr ptr;
+        if (((i + 1) == s->size() // always take last chance
+             || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
+            && IsServerAvailable(choice->server_sock.id, &ptr)) {
+            const std::shared_ptr<ServerLoad>* pload =
+                lm->seek(choice->server_sock.id);
+            ServerLoad* load = (pload != nullptr) ? pload->get() : nullptr;
+            const int32_t inflight = (load != nullptr)
+                ? load->inflight.load(butil::memory_order_relaxed) : 0;
+            if (inflight < capacity) {
+                selected_load = load;
+                out->ptr->swap(ptr);
+                break;
+            }
+            if (fallback_ptr.get() == nullptr) {
+                fallback_load = load;
+                fallback_ptr.swap(ptr);
+            }
+        }
+        if (++choice == s->end()) {
+            choice = s->begin();
+        }
+    }
+    if (out->ptr->get() == nullptr) {
+        if (fallback_ptr.get() == nullptr) {
+            return EHOSTDOWN;
+        }
+        selected_load = fallback_load;
+        out->ptr->swap(fallback_ptr);
+    }
+    if (in.changable_weights && selected_load != nullptr) {
+        selected_load->inflight.fetch_add(1, butil::memory_order_relaxed);
+        _total_inflight.fetch_add(1, butil::memory_order_relaxed);
+        out->need_feedback = true;
+    }
+    return 0;
+}
+
+void ConsistentHashingBoundedLoadBalancer::Feedback(const CallInfo& info) {
+    _total_inflight.fetch_sub(1, butil::memory_order_relaxed);
+    butil::DoublyBufferedData<LoadMap>::ScopedPtr lm;
+    if (_db_load_map.Read(&lm) != 0) {
+        return;
+    }
+    const std::shared_ptr<ServerLoad>* pload = lm->seek(info.server_id);
+    if (pload != nullptr) {
+        // If the server was removed after selection, its counter is already
+        // gone and only the total needs restoring.
+        (*pload)->inflight.fetch_sub(1, butil::memory_order_relaxed);
+    }
+}
+
+void ConsistentHashingBoundedLoadBalancer::Describe(
+    std::ostream& os, const DescribeOptions& options) {
+    if (!options.verbose) {
+        os << "c_hash_bl";
+        return;
+    }
+    os << "BoundedLoad{load_factor=" << _load_factor << " total_inflight="
+       << _total_inflight.load(butil::memory_order_relaxed) << "}\n";
+    ConsistentHashingLoadBalancer::Describe(os, options);
 }
 
 }  // namespace policy

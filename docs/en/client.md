@@ -278,9 +278,15 @@ Need to set Controller.set_request_code() before RPC otherwise the RPC will fail
 
 Do distinguish "key" and "attributes" of the request. Don't compute request_code by full content of the request just for quick. Minor change in attributes may result in totally different hash code and change destination dramatically. Another cause is padding, for example: `struct Foo { int32_t a; int64_t b; }` has a 4-byte undefined gap between `a` and `b` on 64-bit machines, result of `hash(&foo, sizeof(foo))` is undefined. Fields need to be packed or serialized before hashing.
 
+Number of virtual nodes per server defaults to -chash_num_replicas(default 100) and can be overridden per channel: `c_murmurhash:replicas=300`.
+
 Check out [Consistent Hashing](consistent_hashing.md) for more details.
 
 Other kind of lb does not need to set Controller.set_request_code(). If request code is set, it will not be used by lb. For example, lb=rr, and call Controller.set_request_code(), even if request_code is the same for every request, lb will balance the requests using the rr policy.
+
+### c_murmurhash_bl
+
+which is consistent hashing with bounded loads("Consistent Hashing with Bounded Loads", Mirrokni et al., CACM 2017). The hash ring is identical to `c_murmurhash`, but each server additionally has a capacity of `ceil(load_factor * average in-flight requests)`. When the hashed-to server is at capacity, the request overflows clockwise to the next server on the ring with spare capacity, so a hot key no longer saturates a single server while overflowed requests always land on the same ring successors, which keeps caches effective. The default factor comes from -chash_bounded_load_factor(default 1.25, must be > 1) and can be overridden per channel: `c_murmurhash_bl:load_factor=1.5`. The `replicas` parameter is supported as in `c_murmurhash`.
 
 ### Client-side throttling for recovery from cluster downtime
 
