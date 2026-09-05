@@ -17,6 +17,7 @@
 
 
 #include <iomanip>
+#include <unordered_set>
 #include <arpa/inet.h>                              // inet_aton
 #include <fcntl.h>                                  // O_CREAT
 #include <sys/stat.h>                               // mkdir
@@ -619,7 +620,7 @@ BUTIL_FORCE_INLINE bool is_rdma_handshake_protocol(const char* name) {
 }
 
 Acceptor* Server::BuildAcceptor() {
-    std::set<std::string> whitelist;
+    std::unordered_set<std::string> whitelist;
     for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
          sp; ++sp) {
         std::string protocol(sp.field(), sp.length());
@@ -635,10 +636,13 @@ Acceptor* Server::BuildAcceptor() {
             // The protocol does not support server-side.
             continue;
         }
-        if (has_whitelist &&
+        // Erase whatever the exemptions below say. http, h2 and
+        // rdma_handshake are always served, but they are still
+        // valid names for the whitelist.
+        bool in_whitelist = (whitelist.erase(protocols[i].name) != 0);
+        if (has_whitelist && !in_whitelist &&
             !is_http_protocol(protocols[i].name) &&
-            !is_rdma_handshake_protocol(protocols[i].name) &&
-            !whitelist.erase(protocols[i].name)) {
+            !is_rdma_handshake_protocol(protocols[i].name)) {
             // the protocol is not allowed to serve.
             RPC_VLOG << "Skip protocol=" << protocols[i].name;
             continue;
@@ -659,9 +663,8 @@ Acceptor* Server::BuildAcceptor() {
     if (!whitelist.empty()) {
         std::ostringstream err;
         err << "ServerOptions.enabled_protocols has unknown protocols=`";
-        for (std::set<std::string>::const_iterator it = whitelist.begin();
-             it != whitelist.end(); ++it) {
-            err << *it << ' ';
+        for (const auto& protocol : whitelist) {
+            err << protocol << ' ';
         }
         err << '\'';
         delete acceptor;
