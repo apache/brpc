@@ -20,7 +20,7 @@
 #include <pthread.h>                                // pthread_*
 #include <unistd.h>                                 // usleep
 #include <sys/utsname.h>                            // uname
-
+#include <string.h>                                 // strlen
 #include <cstddef>
 #include <memory>
 #include <thread>
