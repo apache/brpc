@@ -486,7 +486,11 @@ TEST_F(VariableTest, uname_returns_valid_kernel_info) {
     std::ostringstream oss;
     oss << buf.sysname << ' ' << buf.nodename << ' '
         << buf.release << ' ' << buf.version << ' '
-        << buf.machine << ' ' << processor << '\n';
+        << buf.machine << ' ' << processor;
+#if !defined(__APPLE__)
+    oss << " GNU/Linux";
+#endif
+    oss << '\n';
     std::string content = oss.str();
 
     // The result should contain all key fields

@@ -633,7 +633,11 @@ struct ReadVersion {
         std::ostringstream oss;
         oss << buf.sysname << ' ' << buf.nodename << ' '
             << buf.release << ' ' << buf.version << ' '
-            << buf.machine << ' ' << processor << '\n';
+            << buf.machine << ' ' << processor;
+#if !defined(__APPLE__)
+        oss << " GNU/Linux";
+#endif
+        oss << '\n';
         content.append(oss.str());
     }
 };
