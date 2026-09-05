@@ -52,9 +52,12 @@ DEFINES = [
      "//bazel/config:brpc_with_rdma": ["BRPC_WITH_RDMA=1"],
      "//conditions:default": [],
  }) + select({
-     "//bazel/config:brpc_with_ubring": ["BRPC_WITH_UBRING=1"],
+     "//bazel/config:brpc_with_urma": ["BRPC_WITH_URMA=1"],
      "//conditions:default": [],
  }) + select({
+     "//bazel/config:brpc_with_ubring": ["BRPC_WITH_UBRING=1"],
+     "//conditions:default": [],
+ })  + select({
      "//bazel/config:brpc_with_debug_bthread_sche_safety": ["BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1"],
      "//conditions:default": ["BRPC_DEBUG_BTHREAD_SCHE_SAFETY=0"],
  }) + select({
@@ -523,6 +526,7 @@ filegroup(
         "src/brpc/*.proto",
         "src/brpc/policy/*.proto",
         "src/brpc/rdma/*.proto",
+        "src/brpc/urma/*.proto",
     ]),
     visibility = ["//visibility:public"],
 )
@@ -547,11 +551,18 @@ cc_library(
         "src/brpc/policy/thrift_protocol.cpp",
         "src/brpc/event_dispatcher_epoll.cpp",
         "src/brpc/event_dispatcher_kqueue.cpp",
+        "src/brpc/urma/mock_urma.cpp",
     ]) + select({
         "//bazel/config:brpc_with_thrift": glob([
             "src/brpc/thrift*.cpp",
             "src/brpc/**/thrift*.cpp",
         ]),
+        "//conditions:default": [],
+    }) + select({
+        "//bazel/config:brpc_with_urma_use_real": [],
+        "//bazel/config:brpc_with_urma": [
+            "src/brpc/urma/mock_urma.cpp",
+        ],
         "//conditions:default": [],
     }),
     hdrs = glob([
@@ -561,10 +572,11 @@ cc_library(
         "src/brpc/event_dispatcher_kqueue.cpp",
     ]),
     copts = COPTS,
-    includes = [
-        "src/",
-    ],
-    linkopts = LINKOPTS,
+    includes = ["src/"],
+    linkopts = LINKOPTS + select({
+        "//bazel/config:brpc_with_urma_use_real": ["-lurma"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":brpc_internal_cc_proto",
@@ -575,6 +587,12 @@ cc_library(
         ":mcpack2pb",
         "@com_github_google_leveldb//:leveldb",
     ] + select({
+        "//bazel/config:brpc_with_urma_download_headers_disabled": [],
+        "//bazel/config:brpc_with_urma": [
+            "@umdk//:urma_headers",
+        ],
+        "//conditions:default": [],
+    }) + select({
         "//bazel/config:brpc_with_thrift": [
             "@org_apache_thrift//:thrift",
         ],

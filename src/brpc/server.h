@@ -224,7 +224,7 @@ struct ServerOptions {
     // Force ssl for all connections of the port to Start().
     bool force_ssl;
 
-    // the server socket mode uses tcp or rdma or other
+    // Transport used by accepted sockets.
     // Default: SOCKET_MODE_TCP
     SocketMode socket_mode;
 
