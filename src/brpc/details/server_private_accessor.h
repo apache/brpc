@@ -104,29 +104,6 @@ private:
     const Server* _server;
 };
 
-// Reject accesses to builtin services when the server is in security mode,
-// in which case they are only reachable from ServerOptions.internal_port.
-// Returns true if the access was rejected, in which case `cntl` was already
-// SetFailed() and the caller must stop dispatching the request immediately.
-// NOTE: Call this after ControllerPrivateAccessor::set_security_mode() and
-// before the method is counted by MethodStatus::OnRequested(), so that
-// rejected accesses do not pollute the stats of the method. `mp` may point
-// to BadMethodService which is builtin as well and lists the methods of the
-// requested service, so protocols dispatching to BadMethodService must call
-// this beforehand, or make sure the listing is hidden in security mode.
-inline bool RejectBuiltinAccess(Controller* cntl, const Server& server,
-                                const Server::MethodProperty* mp) {
-    if (!cntl->is_security_mode() ||
-        (!mp->is_builtin_service && !mp->params.is_tabbed)) {
-        return false;
-    }
-    cntl->SetFailed(EPERM, "Not allowed to access builtin services, try "
-                                    "ServerOptions.internal_port=%d instead if you're in "
-                                    "internal network",
-                    server.options().internal_port);
-    return true;
-}
-
 // Count one error if release() is not called before destruction of this object.
 class ScopedNonServiceError {
 public:

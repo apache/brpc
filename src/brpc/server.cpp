@@ -2371,6 +2371,38 @@ bool Server::AcceptRequest(Controller* cntl) const {
     return true;
 }
 
+bool Server::RejectBuiltinAccess(Controller* cntl,
+                                 const MethodProperty* mp) const {
+    if (!cntl->is_security_mode() ||
+        (!mp->is_builtin_service && !mp->params.is_tabbed)) {
+        return false;
+    }
+    cntl->SetFailed(EPERM, "Not allowed to access builtin services, try "
+                           "ServerOptions.internal_port=%d instead if you're in internal network",
+                    _options.internal_port);
+    return true;
+}
+
+bool Server::RejectNonBuiltinAccessFromInternalPort(
+        Controller* cntl, const MethodProperty* mp) const {
+    if (mp->is_builtin_service || mp->params.is_tabbed) {
+        return false;
+    }
+    return RejectNonBuiltinAccessFromInternalPort(cntl);
+}
+
+bool Server::RejectNonBuiltinAccessFromInternalPort(Controller* cntl) const {
+    if (_options.internal_port < 0 ||
+        cntl->local_side().port != _options.internal_port) {
+        return false;
+    }
+    cntl->SetFailed(EPERM, "Only builtin services are accessible on "
+                           "ServerOptions.internal_port=%d, send the request to the port "
+                           "passed to Server::Start() instead",
+                    _options.internal_port);
+    return true;
+}
+
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
 int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
                                    int* al, void* se) {

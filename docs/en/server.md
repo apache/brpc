@@ -680,8 +680,16 @@ Builtin services are useful, on the other hand include a lot of internal informa
 - Set internal port. Set ServerOptions.internal_port to a port which can **only be accessible from internal**. You can view builtin services via internal_port, while accesses from the public port (the one passed to Server.Start) should see following error:
 
   ```
-  [a27eda84bcdeef529a76f22872b78305] Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside internal network
+  Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside internal network
   ```
+
+  Conversely internal_port serves builtin (and Tabbed) services only, requests for ordinary services sent to it are rejected with:
+
+  ```
+  Only builtin services are accessible on ServerOptions.internal_port=..., send the request to the port passed to Server::Start() instead
+  ```
+
+  This is necessary: builtin requests on internal_port skip the authentication of ServerOptions.auth, and the verdict is remembered per connection since a connection is only authenticated once, on its first request. Were ordinary services served there as well, sending a builtin request first would mark the whole connection as authenticated and every later request on it would bypass authentication entirely.
 
 - http proxies only proxy specified URLs. nginx etc is able to configure how to map different URLs to back-end servers. For example the configure below maps public traffic to /MyAPI to `/ServiceName/MethodName` of `target-server`. If builtin services like /status are accessed from public, nginx rejects the attempts directly.
 ```nginx

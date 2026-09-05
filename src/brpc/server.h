@@ -202,6 +202,12 @@ struct ServerOptions {
     // hiding them from public. Setting this option also enables security
     // protection code which we may add constantly.
     // Update: this option affects Tabbed services as well.
+    // Update: this port carries builtin and Tabbed services only, requests
+    // for ordinary services are rejected with EPERM and must be sent to the
+    // port passed to Start(). Builtin requests are exempted from
+    // ServerOptions.auth here and the exemption authenticates the connection
+    // they arrive on, hence ordinary services would be reachable without
+    // credentials from the same connection.
     // Default: -1
     int internal_port;
 
@@ -615,6 +621,35 @@ public:
   
     // Returns true if accept request, reject request otherwise.
     bool AcceptRequest(Controller* cntl) const;
+
+    // Reject accesses to builtin services when the server is in security mode,
+    // in which case they are only reachable from ServerOptions.internal_port.
+    // Returns true if the access was rejected, in which case `cntl` was already
+    // SetFailed() and the caller must stop dispatching the request immediately.
+    // NOTE: Call this after ControllerPrivateAccessor::set_security_mode() and
+    // before the method is counted by MethodStatus::OnRequested(), so that
+    // rejected accesses do not pollute the stats of the method. `mp` may point
+    // to BadMethodService which is builtin as well and lists the methods of the
+    // requested service, so protocols dispatching to BadMethodService must call
+    // this beforehand, or make sure the listing is hidden in security mode.
+    bool RejectBuiltinAccess(Controller* cntl, const MethodProperty* mp) const;
+
+    // Reject accesses to non-builtin services arriving at ServerOptions.internal_port,
+    // which is documented as the place to expose builtin services away from the public
+    // listener, not as a second entrance to the ordinary services of the server. Serving
+    // them there is what makes the authentication exemption of the internal port escape
+    // a single request: verify() is only run for the FIRST message of a connection and
+    // its verdict latches the whole connection, so an unauthenticated builtin request
+    // used to mark the connection as authenticated and every later request on it skipped
+    // verification altogether.
+    // Returns true if the access was rejected, in which case `cntl` was already etFailed()
+    // and the caller must stop dispatching the request immediately.
+    // NOTE: Same placement rules as RejectBuiltinAccess().
+    bool RejectNonBuiltinAccessFromInternalPort(Controller* cntl,
+                                                const MethodProperty* mp) const;
+    // This overload is for the protocols dispatching to a service that is never
+    // builtin (NsheadService, ThriftService), hence has no MethodProperty.
+    bool RejectNonBuiltinAccessFromInternalPort(Controller* cntl) const;
 
     bool has_progressive_read_method() const {
         return this->_has_progressive_read_method;

@@ -403,36 +403,37 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             break;
         }
         
-        const Server::MethodProperty *sp =
+        const Server::MethodProperty* mp =
             server_accessor.FindMethodPropertyByFullName(meta.method());
-        if (nullptr == sp) {
+        if (nullptr == mp) {
             cntl->SetFailed(ENOMETHOD, "Fail to find method=%s", 
                             meta.method().c_str());
             break;
         }
-        if (RejectBuiltinAccess(cntl.get(), *server, sp)) {
+        if (server->RejectBuiltinAccess(cntl.get(), mp) ||
+            server->RejectNonBuiltinAccessFromInternalPort(cntl.get(), mp)) {
             break;
         }
         if (socket->is_overcrowded() &&
             !server->options().ignore_eovercrowded &&
-            !sp->ignore_eovercrowded) {
+            !mp->ignore_eovercrowded) {
             cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                             butil::endpoint2str(socket->remote_side()).c_str());
             break;
         }
         // Switch to service-specific error.
         non_service_error.release();
-        method_status = sp->status;
+        method_status = mp->status;
         if (method_status) {
             int rejected_cc = 0;
             if (!method_status->OnRequested(&rejected_cc)) {
                 cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                                butil::EnsureString(sp->method->full_name()).c_str(), rejected_cc);
+                                butil::EnsureString(mp->method->full_name()).c_str(), rejected_cc);
                 break;
             }
         }
-        google::protobuf::Service* svc = sp->service;
-        const google::protobuf::MethodDescriptor* method = sp->method;
+        google::protobuf::Service* svc = mp->service;
+        const google::protobuf::MethodDescriptor* method = mp->method;
         accessor.set_method(method);
 
         if (!server->AcceptRequest(cntl.get())) {

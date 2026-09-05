@@ -1605,7 +1605,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         mp->service->CallMethod(mp->method, cntl, &breq, &bres, nullptr);
         return;
     }
-    if (RejectBuiltinAccess(cntl, *server, mp)) {
+    if (server->RejectBuiltinAccess(cntl, mp) ||
+        server->RejectNonBuiltinAccessFromInternalPort(cntl, mp)) {
         return;
     }
     // Switch to service-specific error.

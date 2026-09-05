@@ -770,7 +770,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                                 request_meta.method_name().c_str());
                 break;
             }
-            if (RejectBuiltinAccess(cntl.get(), *server, mp)) {
+            if (server->RejectBuiltinAccess(cntl.get(), mp) ||
+                server->RejectNonBuiltinAccessFromInternalPort(cntl.get(), mp)) {
                 break;
             }
             if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {

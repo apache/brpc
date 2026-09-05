@@ -510,6 +510,9 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
             " ServerOptions.thrift_service, close the connection.";
         return cntl->SetFailed(EINTERNAL, "ServerOptions.thrift_service is NULL");
     }
+    if (server->RejectNonBuiltinAccessFromInternalPort(cntl)) {
+        return;
+    }
 
     // Switch to service-specific error.
     non_service_error.release();
