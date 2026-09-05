@@ -29,6 +29,7 @@ DECLARE_int32(http_verbose_max_body_length);
 DECLARE_int32(health_check_interval);
 DECLARE_bool(usercode_in_pthread);
 DECLARE_int64(socket_max_unwritten_bytes);
+DECLARE_uint32(http_max_header_count);
 
 namespace policy {
 
@@ -1384,7 +1385,10 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                         return -1;
                     }
                     // Including path/query/fragment
-                    h.uri().SetH2Path(pair.value);
+                    if (h.uri().SetH2Path(pair.value) != 0) {
+                        LOG(ERROR) << h.uri().status().error_cstr();
+                        return -1;
+                    }
                 }
                 break;
             case 's':
@@ -1414,6 +1418,12 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
             h.set_content_type(pair.value);
         } else {
             h.AppendHeader(pair.name, pair.value);
+            if (FLAGS_http_max_header_count > 0 &&
+                h.HeaderCount() > FLAGS_http_max_header_count) {
+                LOG(ERROR) << "Too many headers, max="
+                           << FLAGS_http_max_header_count;
+                return -1;
+            }
         }
 
         if (FLAGS_http_verbose) {

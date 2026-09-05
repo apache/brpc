@@ -32,6 +32,7 @@ DECLARE_bool(allow_chunked_length);
 DECLARE_bool(allow_http_1_1_request_without_host);
 DECLARE_bool(http_allow_obs_fold);
 DECLARE_bool(http_strict_header_token);
+DECLARE_uint32(http_max_header_count);
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -639,6 +640,65 @@ TEST(HttpMessageTest, htab_is_ows_in_header_values) {
         ASSERT_EQ((ssize_t)data.size(), http_message.ParseFromIOBuf(data))
             << http_message._parser;
         ASSERT_TRUE(http_message._parser.flags & flagged[i].flag)
+            << http_message._parser;
+    }
+}
+
+TEST(HttpMessageTest, too_many_headers) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_header_count = 8;
+
+    // Host counts as well, so 8 distinct names in total are accepted.
+    std::string at_limit = "GET / HTTP/1.1\r\nHost: a.com\r\n";
+    for (int i = 1; i < 8; ++i) {
+        at_limit.append("h" + std::to_string(i) + ": v\r\n");
+    }
+    std::string over_limit = at_limit + "last: v\r\n\r\n";
+    at_limit.append("\r\n");
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)at_limit.size(),
+                  http_message.ParseFromArray(at_limit.data(), at_limit.size()))
+            << http_message._parser;
+        ASSERT_EQ(8u, http_message.header().HeaderCount());
+    }
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ(-1, http_message.ParseFromArray(over_limit.data(),
+                                                  over_limit.size()));
+    }
+
+    // Repeated names fold into one entry, so they occupy one bucket and are not
+    // what the limit is aimed at.
+    std::string folded = "GET / HTTP/1.1\r\nHost: a.com\r\n";
+    for (int i = 0; i < 100; ++i) {
+        folded.append("dup: v\r\n");
+    }
+    folded.append("\r\n");
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)folded.size(),
+                  http_message.ParseFromArray(folded.data(), folded.size()))
+            << http_message._parser;
+        ASSERT_EQ(2u, http_message.header().HeaderCount());
+    }
+    // Set-Cookie is the one name that does not fold, so each occurrence is its
+    // own entry and does count.
+    std::string cookies = "GET / HTTP/1.1\r\nHost: a.com\r\n";
+    for (int i = 0; i < 100; ++i) {
+        cookies.append("Set-Cookie: a=b\r\n");
+    }
+    cookies.append("\r\n");
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ(-1, http_message.ParseFromArray(cookies.data(), cookies.size()));
+    }
+
+    brpc::FLAGS_http_max_header_count = 0;
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)over_limit.size(),
+                  http_message.ParseFromArray(over_limit.data(), over_limit.size()))
             << http_message._parser;
     }
 }

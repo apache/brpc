@@ -63,6 +63,8 @@ DECLARE_bool(allow_chunked_length);
 DECLARE_int32(max_connection_pool_size);
 DECLARE_uint64(max_body_size);
 DECLARE_int64(socket_max_unwritten_bytes);
+DECLARE_uint32(http_max_header_count);
+DECLARE_uint32(http_max_query_count);
 extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
 }
 
@@ -1940,6 +1942,81 @@ TEST_F(HttpTest, h2_header_list_budget_resets_per_block) {
     delete sctx;
 }
 
+// Literal header field without indexing, new name (RFC 7541 6.2.2), with both
+// lengths in a single 7-bit prefix octet. Only used with short names/values.
+void AppendLiteralHeader(butil::IOBuf* out, const std::string& name,
+                         const std::string& value) {
+    char prefix[] = { 0x00, (char)name.size() };
+    out->append(prefix, sizeof(prefix));
+    out->append(name);
+    char value_len = (char)value.size();
+    out->append(&value_len, 1);
+    out->append(value);
+}
+
+TEST_F(HttpTest, h2_too_many_headers) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_header_count = 8;
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+
+    {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, 1);
+        butil::IOBuf payload;
+        for (int i = 0; i < 8; ++i) {
+            AppendLiteralHeader(&payload, "h" + std::to_string(i), "v");
+        }
+        butil::IOBufBytesIterator it(payload);
+        ASSERT_EQ(0, sctx->ConsumeHeaders(it));
+        ASSERT_EQ(8u, sctx->header().HeaderCount());
+    }
+    {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, 3);
+        butil::IOBuf payload;
+        for (int i = 0; i < 9; ++i) {
+            AppendLiteralHeader(&payload, "h" + std::to_string(i), "v");
+        }
+        butil::IOBufBytesIterator it(payload);
+        ASSERT_EQ(-1, sctx->ConsumeHeaders(it));
+    }
+}
+
+TEST_F(HttpTest, h2_too_many_queries_in_path) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_query_count = 4;
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+
+    {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, 1);
+        butil::IOBuf payload;
+        AppendLiteralHeader(&payload, ":path", "/s?a=1&b=2&c=3&d=4");
+        butil::IOBufBytesIterator it(payload);
+        ASSERT_EQ(0, sctx->ConsumeHeaders(it));
+    }
+    {
+        std::unique_ptr<brpc::policy::H2StreamContext> sctx(
+            new brpc::policy::H2StreamContext(false));
+        sctx->Init(ctx, 3);
+        butil::IOBuf payload;
+        AppendLiteralHeader(&payload, ":path", "/s?a=1&b=2&c=3&d=4&e=5");
+        butil::IOBufBytesIterator it(payload);
+        ASSERT_EQ(-1, sctx->ConsumeHeaders(it));
+    }
+}
+
 TEST_F(HttpTest, h2_oversized_single_headers_block_rejected) {
     // A single HEADERS frame whose decoded header list exceeds
     // max_header_list_size must be rejected at the block boundary (before
@@ -2644,8 +2721,8 @@ TEST_F(HttpTest, http_head) {
     const int port = 8923;
     brpc::Server server;
     HttpServiceImpl svc;
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, nullptr));
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
@@ -2770,11 +2847,11 @@ TEST_F(HttpTest, http_expect) {
     const int port = 8923;
     brpc::Server server;
     HttpServiceImpl svc;
-    EXPECT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    EXPECT_EQ(0, server.Start(port, nullptr));
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(port, nullptr));
 
     butil::EndPoint ep;
-    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:8923", &ep));
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1", port, &ep));
     brpc::SocketOptions options;
     options.remote_side = ep;
     brpc::SocketId id;
@@ -2803,17 +2880,17 @@ TEST_F(HttpTest, http_expect) {
     }
     // 100 Continue
     brpc::DestroyingPtr<brpc::policy::HttpContext> imsg_guard;
-    ReadOneResponse(sock, imsg_guard);
+    ASSERT_NO_FATAL_FAILURE(ReadOneResponse(sock, imsg_guard));
     ASSERT_EQ(imsg_guard->header().status_code(), brpc::HTTP_STATUS_CONTINUE);
 
     ASSERT_EQ(0, sock->Write(&content));
     // 200 Ok
-    ReadOneResponse(sock, imsg_guard);
+    ASSERT_NO_FATAL_FAILURE(ReadOneResponse(sock, imsg_guard));
     ASSERT_EQ(imsg_guard->header().status_code(), brpc::HTTP_STATUS_OK);
 
     ASSERT_EQ(0, sock->Write(&request_buf));
     // 200 Ok
-    ReadOneResponse(sock, imsg_guard);
+    ASSERT_NO_FATAL_FAILURE(ReadOneResponse(sock, imsg_guard));
     ASSERT_EQ(imsg_guard->header().status_code(), brpc::HTTP_STATUS_OK);
 }
 
