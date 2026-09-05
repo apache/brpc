@@ -33,6 +33,13 @@ namespace brpc {
 
 DEFINE_bool(allow_chunked_length, false,
             "Allow both Transfer-Encoding and Content-Length headers are present.");
+DEFINE_bool(http_allow_obs_fold, false,
+            "Allow obsolete line folding (RFC 7230 3.2.4) of Content-Length "
+            "and Transfer-Encoding, which front proxies may parse differently.");
+DEFINE_bool(http_strict_header_token, false,
+            "Reject a space inside any header field name (RFC 7230 3.2.6), "
+            "not just inside the names that decide framing. Names carrying no "
+            "framing semantics are accepted by default for compatibility.");
 DEFINE_bool(allow_http_1_1_request_without_host, true,
             "Allow HTTP/1.1 request without host which violates the HTTP/1.1 specification.");
 DEFINE_bool(http_verbose, false,
@@ -83,6 +90,15 @@ int HttpMessage::on_status(http_parser *parser, const char *, const size_t) {
 // change the order of these field values when a message is forwarded. 
 int HttpMessage::on_header_field(http_parser *parser,
                                  const char *at, const size_t length) {
+    if (parser->flags & F_TRAILING) {
+        // Drop chunked trailers instead of merging them into the header map.
+        // A front-end that strips or rewrites headers (Authorization,
+        // X-Forwarded-For, ...) only looks at the header section, so anything
+        // accepted here would be a header smuggled past it. HTTP/1 trailers
+        // have no reader API in bRPC anyway. Supporting them later should add
+        // a separate map rather than reuse this one.
+        return 0;
+    }
     HttpMessage *http_message = (HttpMessage *)parser->data;
     if (http_message->_stage != HTTP_ON_HEADER_FIELD) {
         http_message->_stage = HTTP_ON_HEADER_FIELD;
@@ -94,6 +110,10 @@ int HttpMessage::on_header_field(http_parser *parser,
 
 int HttpMessage::on_header_value(http_parser *parser,
                                  const char *at, const size_t length) {
+    if (parser->flags & F_TRAILING) {
+        // See the comment in on_header_field().
+        return 0;
+    }
     HttpMessage *http_message = (HttpMessage *)parser->data;
     bool first_entry = false;
     if (http_message->_stage != HTTP_ON_HEADER_VALUE) {
@@ -454,6 +474,8 @@ HttpMessage::HttpMessage(bool read_body_progressively,
     , _read_body_progressively(read_body_progressively) {
     http_parser_init(&_parser, HTTP_BOTH);
     _parser.allow_chunked_length = 1;
+    _parser.allow_obs_fold = FLAGS_http_allow_obs_fold;
+    _parser.strict_header_token = FLAGS_http_strict_header_token;
     _parser.data = this;
 }
 

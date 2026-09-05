@@ -216,6 +216,12 @@ struct http_parser {
                                           * `Content-Length` and
                                           * `Transfer-Encoding: chunked` set */
   unsigned int lenient_http_headers : 1;
+  unsigned int allow_obs_fold : 1; /* Allow obsolete line folding (RFC 7230
+                                    * 3.2.4) of `Content-Length` and
+                                    * `Transfer-Encoding` */
+  unsigned int strict_header_token : 1; /* Reject SP inside any header field
+                                         * name, not just the ones that decide
+                                         * framing (RFC 7230 3.2.6) */
 
   uint32_t nread;          /* # bytes read in various scenarios */
   uint64_t content_length; /* # bytes in body. `(uint64_t) -1` (all bits one)
