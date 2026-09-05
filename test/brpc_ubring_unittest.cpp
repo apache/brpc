@@ -37,6 +37,7 @@ DECLARE_int32(ub_disconnect_timeout_s);
 DECLARE_int32(ub_connect_timeout_s);
 DECLARE_int32(ub_hb_timer_interval_s);
 DECLARE_int32(ub_event_queue_timer_interval_us);
+DECLARE_int32(ub_event_queue_timer_interval_max_us);
 DECLARE_int32(ub_flying_io_timeout_s);
 
 extern bool g_skip_ub_init;
@@ -157,6 +158,7 @@ TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
         {"ub_connect_timeout_s", "_s", "seconds", "1"},
         {"ub_hb_timer_interval_s", "_s", "seconds", "5"},
         {"ub_event_queue_timer_interval_us", "_us", "microseconds", "100"},
+        {"ub_event_queue_timer_interval_max_us", "_us", "microseconds", "10000"},
         {"ub_flying_io_timeout_s", "_s", "seconds", "5"},
     };
 
@@ -176,6 +178,7 @@ TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
     EXPECT_EQ(1, brpc::ubring::FLAGS_ub_connect_timeout_s);
     EXPECT_EQ(5, brpc::ubring::FLAGS_ub_hb_timer_interval_s);
     EXPECT_EQ(100, brpc::ubring::FLAGS_ub_event_queue_timer_interval_us);
+    EXPECT_EQ(10000, brpc::ubring::FLAGS_ub_event_queue_timer_interval_max_us);
     EXPECT_EQ(5, brpc::ubring::FLAGS_ub_flying_io_timeout_s);
     EXPECT_EQ(100U * USEC_TO_NSEC,
               static_cast<uint32_t>(
