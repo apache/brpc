@@ -476,10 +476,17 @@ TEST_F(VariableTest, uname_returns_valid_kernel_info) {
     ASSERT_GT(strlen(buf.machine), 0u);
 
     // Build the string the same way ReadVersion does in default_variables.cpp
+#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+    const char* processor = "arm";
+#elif defined(__APPLE__) && defined(__x86_64__)
+    const char* processor = "i386";
+#else
+    const char* processor = buf.machine;
+#endif
     std::ostringstream oss;
     oss << buf.sysname << ' ' << buf.nodename << ' '
         << buf.release << ' ' << buf.version << ' '
-        << buf.machine << ' ' << buf.machine;
+        << buf.machine << ' ' << processor << '\n';
     std::string content = oss.str();
 
     // The result should contain all key fields
