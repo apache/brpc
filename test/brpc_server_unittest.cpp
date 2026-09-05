@@ -1918,11 +1918,13 @@ TEST_F(ServerTest, single_repeated_to_array) {
 }
 
 TEST_F(ServerTest, too_big_message) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 1024;
     EchoServiceImpl echo_svc;
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&echo_svc,
                                    brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(8613, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
 
 #if !BRPC_WITH_GLOG
     logging::StringSink log_str;
@@ -1930,7 +1932,7 @@ TEST_F(ServerTest, too_big_message) {
 #endif
 
     brpc::Channel chan;
-    ASSERT_EQ(0, chan.Init("localhost:8613", nullptr));
+    ASSERT_EQ(0, chan.Init(server.listen_address(), nullptr));
     brpc::Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;

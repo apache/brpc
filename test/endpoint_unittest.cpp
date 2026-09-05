@@ -190,6 +190,10 @@ static void test_listen_connect(const std::string& server_addr, const std::strin
 
     int listen_fd = butil::tcp_listen(point);
     ASSERT_GT(listen_fd, 0);
+    if (point.port == 0) {
+        ASSERT_EQ(0, butil::get_local_side(listen_fd, &point));
+    }
+    const std::string actual_server_addr = butil::endpoint2str(point).c_str();
     pthread_t pid;
     pthread_create(&pid, nullptr, server_proc, (void*)(int64_t)listen_fd);
 
@@ -206,7 +210,7 @@ static void test_listen_connect(const std::string& server_addr, const std::strin
         ASSERT_EQ(exp_client_addr, s.substr(0, exp_client_addr.size()));
     }
     ASSERT_EQ(0, butil::get_remote_side(fd, &point2));
-    ASSERT_EQ(server_addr, butil::endpoint2str(point2).c_str());
+    ASSERT_EQ(actual_server_addr, butil::endpoint2str(point2).c_str());
     close(fd);
 
     void* ret = nullptr;
@@ -225,7 +229,7 @@ static void test_parse_and_serialize(const std::string& instr, const std::string
 }
 
 TEST(EndPointTest, ipv4) {
-    test_listen_connect("127.0.0.1:8787", "127.0.0.1:");
+    test_listen_connect("127.0.0.1:0", "127.0.0.1:");
 }
 
 TEST(EndPointTest, ipv6) {
