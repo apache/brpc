@@ -623,10 +623,17 @@ struct ReadVersion {
             LOG(ERROR) << "Fail to read kernel version";
             return;
         }
+#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+        const char* processor = "arm";
+#elif defined(__APPLE__) && defined(__x86_64__)
+        const char* processor = "i386";
+#else
+        const char* processor = buf.machine;
+#endif
         std::ostringstream oss;
         oss << buf.sysname << ' ' << buf.nodename << ' '
             << buf.release << ' ' << buf.version << ' '
-            << buf.machine << ' ' << buf.machine;
+            << buf.machine << ' ' << processor << '\n';
         content.append(oss.str());
     }
 };
