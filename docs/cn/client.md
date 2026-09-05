@@ -290,6 +290,14 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 channel.Init("http://...", "random:min_working_instances=6 hold_seconds=10", &options);
 ```
 
+### 慢启动（预热）
+
+新加入集群或刚重启的server往往是“冷”的（缓存未命中、JIT未编译、连接池未建立），立即承担全量流量会推高其延时甚至过载。设置-lb_warmup_ms大于0（默认为0，即关闭）后，新加入负载均衡器的server先获得一小部分正常流量份额（-lb_warmup_min_weight，默认0.1），并在该时间窗口内线性爬升到100%。该机制对rr、wrr、random、la、p2c和一致性哈希均生效：la和p2c把爬升系数乘入权重，与延时评分自然叠加而不会互相干扰；其余算法按该系数概率性地把请求转给其他server（一致性哈希转给环上的下一个节点，预热期间会有部分请求偏离原有的哈希亲和性）。
+
+-lb_warmup_curve（默认1.0）控制爬升曲线：流量份额为max(lb_warmup_min_weight, progress^lb_warmup_curve)，progress在窗口内从0线性升到1。大于1的值让新server冷得更久，小于1则更激进。
+
+说明：预热的起点是server被加入负载均衡器的时刻。server被命名服务摘除后重新加入会重新预热；而短暂断连或健康检查失败不改变负载均衡器成员，不会重新预热。Channel初始化时所有server同时加入、一起爬升，相对流量比例不变，因此首次启动无需特殊处理。
+
 ## 健康检查
 
 连接断开的server会被暂时隔离而不会被负载均衡算法选中，brpc会定期连接被隔离的server，以检查他们是否恢复正常，间隔由参数-health_check_interval控制:

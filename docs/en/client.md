@@ -291,6 +291,14 @@ This recovery mechanism requires the capabilities of downstream servers to be si
 channel.Init("http://...", "random:min_working_instances=6 hold_seconds=10", &options);
 ```
 
+### Slow start (warm-up)
+
+A server that just joined the cluster or restarted is often "cold" (empty caches, uncompiled JIT, unestablished connection pools); sending it a full traffic share immediately raises its latency or even overloads it. When -lb_warmup_ms is positive (default 0, disabled), a server newly added to a LoadBalancer gets a fraction of its normal traffic share at first (-lb_warmup_min_weight, default 0.1) and ramps up to 100% over the window. The mechanism works across rr, wrr, random, la, p2c and consistent hashing: la and p2c multiply the ramp into the weight so it composes with their latency scoring instead of fighting it; the other policies divert requests probabilistically to other servers (consistent hashing moves to the next node on the ring, so part of the hash affinity is temporarily diverted during warm-up).
+
+-lb_warmup_curve (default 1.0) shapes the ramp: the traffic share is max(lb_warmup_min_weight, progress^lb_warmup_curve) where progress rises linearly from 0 to 1 over the window. Values above 1 keep a new server colder for longer, values below 1 ramp more aggressively.
+
+Note: warm-up starts when the server is added to the LoadBalancer. A server removed by the naming service and added back restarts its ramp, while a transient disconnection or health-check failure does not change LB membership and keeps the ramp. At channel initialization all servers join and ramp together with unchanged relative shares, so initial startup needs no special casing.
+
 ## Health checking
 
 Servers whose connections are lost are isolated temporarily to prevent them from being selected by LoadBalancer. brpc connects isolated servers periodically to test if they're healthy again. The interval is controlled by gflag -health_check_interval:

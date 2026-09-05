@@ -16,7 +16,10 @@
 // under the License.
 
 
+#include <cmath>                                  // std::pow
 #include <gflags/gflags.h>
+#include "butil/fast_rand.h"                      // fast_rand_double
+#include "butil/time.h"                           // gettimeofday_us
 #include "brpc/reloadable_flags.h"
 #include "brpc/load_balancer.h"
 #include "brpc/socket.h"
@@ -30,7 +33,57 @@ DEFINE_int32(default_weight_of_wlb, 0, "Default weight value of Weighted LoadBal
              "problems when user is using wlb but forgot to set the weights of some of their "
              "downstream instances. Then these instances will be set default_weight_of_wlb as "
              "their weights. wlb policy degradation is not enabled by default.");
+DEFINE_int64(lb_warmup_ms, 0,
+             "When positive, a server newly added to a LoadBalancer gets "
+             "lb_warmup_min_weight of its normal traffic share at first and "
+             "ramps up to 100% over this period(ms). 0 disables the warm-up");
+DEFINE_double(lb_warmup_curve, 1.0,
+              "Shape of the warm-up ramp: the weight multiplier is "
+              "max(lb_warmup_min_weight, progress^lb_warmup_curve) where progress rises "
+              "linearly from 0 to 1 over lb_warmup_ms. 1 ramps linearly, "
+              "larger values keep a new server colder for longer");
 BRPC_VALIDATE_GFLAG(show_lb_in_vars, PassValidate);
+BRPC_VALIDATE_GFLAG(lb_warmup_ms, PassValidate);
+DEFINE_double(lb_warmup_min_weight, 0.1,
+              "Floor of the warm-up multiplier, in (0, 1]: the share of "
+              "normal traffic a server gets right after joining, so that "
+              "it still receives a trickle and latency-based policies keep "
+              "observing it");
+static bool ValidateWarmupMinWeight(const char*, double v) {
+    return v > 0.0 && v <= 1.0;
+}
+BRPC_VALIDATE_GFLAG(lb_warmup_curve, PassValidate);
+BRPC_VALIDATE_GFLAG(lb_warmup_min_weight, ValidateWarmupMinWeight);
+
+
+double WarmupMultiplierImpl(int64_t join_time_us, int64_t now_us) {
+    const int64_t warmup_us = FLAGS_lb_warmup_ms * 1000L;
+    if (warmup_us <= 0 || join_time_us <= 0) {
+        return 1.0;
+    }
+    if (now_us <= 0) {
+        now_us = butil::gettimeofday_us();
+    }
+    const int64_t elapsed_us = now_us - join_time_us;
+    if (elapsed_us >= warmup_us) {
+        return 1.0;
+    }
+    const double min_weight = std::min(std::max(FLAGS_lb_warmup_min_weight, 1e-9), 1.0);
+    if (elapsed_us <= 0) {
+        // The clock went backwards, be conservative.
+        return min_weight;
+    }
+    double progress = (double)elapsed_us / (double)warmup_us;
+    if (FLAGS_lb_warmup_curve > 0 && FLAGS_lb_warmup_curve != 1.0) {
+        progress = std::pow(progress, FLAGS_lb_warmup_curve);
+    }
+    return std::max(progress, min_weight);
+}
+
+bool WarmupAcceptImpl(int64_t join_time_us, int64_t now_us) {
+    const double m = WarmupMultiplierImpl(join_time_us, now_us);
+    return m >= 1.0 || butil::fast_rand_double() < m;
+}
 
 // For assigning unique names for lb.
 static butil::static_atomic<int> g_lb_counter = BUTIL_STATIC_ATOMIC_INIT(0);

@@ -81,6 +81,7 @@ bool P2CEwmaLoadBalancer::Add(Servers& bg, const Servers& fg,
         // Both buffers do not have the server. Create the stat structure
         // which will be shared by both buffers.
         info.stat = std::make_shared<NodeStat>();
+        info.stat->join_time_us = butil::gettimeofday_us();
     } else {
         // Already added to the other buffer, share its stat.
         info.stat = fg.server_list[*pindex].stat;
@@ -164,7 +165,10 @@ double P2CEwmaLoadBalancer::Score(
     }
     // Clamp so that a transiently negative counter can not invert routing.
     const int32_t load = std::max(inflight + 1, 1);
-    return latency_term * (double)load / (double)info.weight;
+    // The warm-up multiplier discounts the effective weight, composing with
+    // (instead of fighting) the latency score of a cold server.
+    return latency_term * (double)load /
+        ((double)info.weight * WarmupMultiplier(info.stat->join_time_us, now_us));
 }
 
 int P2CEwmaLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {

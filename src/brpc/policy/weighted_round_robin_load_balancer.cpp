@@ -19,6 +19,7 @@
 #include <algorithm>
 
 #include "butil/fast_rand.h"
+#include "butil/time.h"
 #include "brpc/socket.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "butil/strings/string_number_conversions.h"
@@ -91,7 +92,7 @@ bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
     bool insert_server =
              bg.server_map.emplace(id.id, bg.server_list.size()).second;
     if (insert_server) {
-        bg.server_list.emplace_back(id.id, weight);
+        bg.server_list.emplace_back(id.id, weight, butil::gettimeofday_us());
         bg.weight_sum += weight;
         return true;
     }
@@ -182,8 +183,15 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     size_t remain_servers = s->server_list.size();
     while (remain_servers > 0) {
         SocketId server_id = GetServerInNextStride(s->server_list, filter, tls_temp);
+        bool warmup_pass = true;
+        if (remain_servers > 1 && FLAGS_lb_warmup_ms > 0) {
+            warmup_pass = WarmupAccept(
+                s->server_list[s->server_map.at(server_id)].join_time_us,
+                in.begin_time_us);
+        }
         if ((remain_servers == 1 // always take last chance
-                || !ExcludedServers::IsExcluded(in.excluded, server_id))
+                || (!ExcludedServers::IsExcluded(in.excluded, server_id)
+                    && warmup_pass))
             && Socket::Address(server_id, out->ptr) == 0
             && (*out->ptr)->IsAvailable()) {
             // update tls.

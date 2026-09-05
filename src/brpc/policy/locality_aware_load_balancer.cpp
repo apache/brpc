@@ -555,6 +555,7 @@ LocalityAwareLoadBalancer::Weight::Weight(int64_t initial_weight)
     , _old_index((size_t)-1L)
     , _old_weight(0)
     , _avg_latency(0)
+    , _join_time_us(butil::gettimeofday_us())
     , _time_q(_time_q_items, sizeof(_time_q_items), butil::NOT_OWN_STORAGE) {
 }
 
