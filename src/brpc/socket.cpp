@@ -794,6 +794,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _unwritten_bytes.store(0, butil::memory_order_relaxed);
     _keepalive_options = options.keepalive_options;
     _tcp_user_timeout_ms = options.tcp_user_timeout_ms;
+    _http_request_method = HTTP_METHOD_GET;
     CHECK(nullptr == _write_head.load(butil::memory_order_relaxed));
     _is_write_shutdown = false;
     int fd = options.fd;
