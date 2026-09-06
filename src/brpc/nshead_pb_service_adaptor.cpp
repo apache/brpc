@@ -114,22 +114,23 @@ void NsheadPbServiceAdaptor::ProcessNsheadRequest(
         }
 
         ServerPrivateAccessor server_accessor(&server);
-        const Server::MethodProperty *sp = server_accessor
+        const Server::MethodProperty* mp = server_accessor
             .FindMethodPropertyByFullName(meta->full_method_name());
-        if (nullptr == sp ||
-            sp->service->GetDescriptor() == BadMethodService::descriptor()) {
+        if (nullptr == mp ||
+            mp->service->GetDescriptor() == BadMethodService::descriptor()) {
             controller->SetFailed(ENOMETHOD, "Fail to find method=%s", 
                                   meta->full_method_name().c_str());
             break;
         }
-        if (RejectBuiltinAccess(controller, server, sp)) {
+        if (server.RejectBuiltinAccess(controller, mp) ||
+            server.RejectNonBuiltinAccessFromInternalPort(controller, mp)) {
             break;
         }
-        pbdone->status = sp->status;
-        sp->status->OnRequested();
+        pbdone->status = mp->status;
+        mp->status->OnRequested();
 
-        google::protobuf::Service* svc = sp->service;
-        const google::protobuf::MethodDescriptor* method = sp->method;
+        google::protobuf::Service* svc = mp->service;
+        const google::protobuf::MethodDescriptor* method = mp->method;
         ControllerPrivateAccessor(controller).set_method(method);
         done->SetMethodName(butil::EnsureString(method->full_name()));
         pbdone->pbreq.reset(svc->GetRequestPrototype(method).New());

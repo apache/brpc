@@ -442,27 +442,28 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             break;
         }
         
-        const Server::MethodProperty *sp =
+        const Server::MethodProperty* mp =
             server_accessor.FindMethodPropertyByNameAndIndex(
                 meta.service_name(), meta.method_index());
-        if (nullptr == sp) {
+        if (nullptr == mp) {
             cntl->SetFailed(ENOMETHOD, "Fail to find method=%d of service=%s",
                             meta.method_index(), meta.service_name().c_str());
             break;
         }
-        if (RejectBuiltinAccess(cntl.get(), *server, sp)) {
+        if (server->RejectBuiltinAccess(cntl.get(), mp) ||
+            server->RejectNonBuiltinAccessFromInternalPort(cntl.get(), mp)) {
             break;
         }
-        if (sp->service->GetDescriptor() == BadMethodService::descriptor()) {
+        if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {
             BadMethodRequest breq;
             BadMethodResponse bres;
             breq.set_service_name(meta.service_name());
-            sp->service->CallMethod(sp->method, cntl.get(), &breq, &bres, nullptr);
+            mp->service->CallMethod(mp->method, cntl.get(), &breq, &bres, nullptr);
             break;
         }
         if (socket->is_overcrowded() &&
             !server->options().ignore_eovercrowded &&
-            !sp->ignore_eovercrowded) {
+            !mp->ignore_eovercrowded) {
             cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                             butil::endpoint2str(socket->remote_side()).c_str());
             break;
@@ -470,8 +471,8 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
 
         // Switch to service-specific error.
         non_service_error.release();
-        method_status = sp->status;
-        const google::protobuf::MethodDescriptor* method = sp->method;
+        method_status = mp->status;
+        const google::protobuf::MethodDescriptor* method = mp->method;
         const std::string method_full_name = butil::EnsureString(method->full_name());
         if (method_status) {
             int rejected_cc = 0;
@@ -482,7 +483,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             }
         }
         
-        google::protobuf::Service* svc = sp->service;
+        google::protobuf::Service* svc = mp->service;
         accessor.set_method(method);
 
         if (!server->AcceptRequest(cntl.get())) {

@@ -48,6 +48,7 @@
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/bad_method_service.h"
 #include "brpc/server.h"
+#include "brpc/nshead_service.h"
 #include "brpc/restful.h"
 #include "brpc/channel.h"
 #include "brpc/socket_map.h"
@@ -1714,6 +1715,133 @@ TEST_F(ServerTest, builtin_services_are_gated_by_internal_port) {
     cntl.Reset();
     CallVersionByHttp(internal_ep, &cntl);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// Call the same ordinary service the way a browser would.
+void CallEchoByHttp(const butil::EndPoint& ep, brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl->http_request().uri() = "/EchoService/Echo";
+    cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl->http_request().set_content_type("application/json");
+    chan.CallMethod(nullptr, cntl, &req, &res, nullptr);
+}
+
+TEST_F(ServerTest, ordinary_services_are_not_served_on_internal_port) {
+    const struct {
+        brpc::ProtocolType protocol;
+        const char* name;
+    } cases[] = {
+        { brpc::PROTOCOL_BAIDU_STD, "baidu_std" },
+        { brpc::PROTOCOL_HULU_PBRPC, "hulu_pbrpc" },
+        { brpc::PROTOCOL_SOFA_PBRPC, "sofa_pbrpc" },
+    };
+
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+    butil::EndPoint internal_ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8614", &internal_ep));
+
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.internal_port = internal_ep.port;
+    ASSERT_EQ(0, server.Start(ep, &opt));
+
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        brpc::Controller cntl;
+        CallEchoByPb(internal_ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(EPERM, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        // The public port is where ordinary services live.
+        cntl.Reset();
+        CallEchoByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_FALSE(cntl.Failed())
+            << cases[i].name << ": " << cntl.ErrorText();
+    }
+
+    brpc::Controller cntl;
+    CallEchoByHttp(internal_ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    cntl.Reset();
+    CallEchoByHttp(ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// NsheadService is dispatched to without a MethodProperty, the gate has to be
+// applied by the protocol itself. The service echoes back what the framework
+// decided so that the client can tell an acceptance from a rejection: nshead
+// carries no error field.
+class EchoNsheadService : public brpc::NsheadService {
+public:
+    void ProcessNsheadRequest(const brpc::Server&,
+                              brpc::Controller* cntl,
+                              const brpc::NsheadMessage& request,
+                              brpc::NsheadMessage* response,
+                              brpc::NsheadClosure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        if (cntl->Failed()) {
+            response->body.append(butil::string_printf("%d", cntl->ErrorCode()));
+            return;
+        }
+        response->body.append(EXP_RESPONSE);
+    }
+};
+
+// Same gate as ordinary_services_are_not_served_on_internal_port, for the
+// protocols that dispatch to a service which is never builtin. Their verify()
+// refuses every request when ServerOptions.auth is set, so the connection
+// latched by an exempted builtin request is the only way to reach them.
+TEST_F(ServerTest, nshead_service_is_not_served_on_internal_port) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+    butil::EndPoint internal_ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8614", &internal_ep));
+
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.internal_port = internal_ep.port;
+    opt.nshead_service = new EchoNsheadService;
+    ASSERT_EQ(0, server.Start(ep, &opt));
+
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_NSHEAD;
+    copt.connection_type = brpc::CONNECTION_TYPE_POOLED;
+    copt.max_retry = 0;
+
+    brpc::Channel internal_chan;
+    ASSERT_EQ(0, internal_chan.Init(internal_ep, &copt));
+    brpc::NsheadMessage req;
+    brpc::NsheadMessage res;
+    brpc::Controller cntl;
+    req.body.append(EXP_REQUEST);
+    internal_chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(butil::string_printf("%d", EPERM), res.body.to_string());
+
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl.Reset();
+    res.body.clear();
+    chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(EXP_RESPONSE, res.body.to_string());
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
