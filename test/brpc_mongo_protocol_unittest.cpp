@@ -181,6 +181,29 @@ TEST_F(MongoTest, process_request_failed_socket) {
     ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
 }
 
+TEST_F(MongoTest, process_request_from_internal_port) {
+    // The fixture talks over a pipe, which has no local address at all while
+    // Server::Start() never accepts 0 as ServerOptions.internal_port. Give the
+    // connection an address the server can recognize as internal, the port is
+    // arbitrary as nothing listens on it.
+    _socket->_local_side = butil::EndPoint(butil::IP_ANY, 8888);
+    _server._options.internal_port = _socket->local_side().port;
+
+    brpc::mongo_head_t header = { 0, 0, 0, 0 };
+    header.op_code = brpc::MONGO_OPCODE_REPLY;
+    header.message_length = sizeof(header) + EXP_REQUEST.length();
+    butil::IOBuf total_buf;
+    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    total_buf.append(EXP_REQUEST);
+    brpc::ParseResult req_pr = brpc::policy::ParseMongoMessage(
+        &total_buf, _socket.get(), false, &_server);
+    ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
+    ProcessMessage(brpc::policy::ProcessMongoRequest, req_pr.message(), false);
+    // MyEchoService was never reached, the request was counted as an error of
+    // the server rather than as a call of the method.
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
+}
+
 TEST_F(MongoTest, complete_flow) {
     butil::IOBuf request_buf;
     butil::IOBuf total_buf;

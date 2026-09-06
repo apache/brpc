@@ -563,6 +563,35 @@ TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
         ASSERT_TRUE(protected_cntl.Failed());
     }
 
+    {
+        // A builtin request is exempted from authentication on internal_port
+        // and its verdict latches the whole connection, so the exemption would
+        // carry over to whatever is sent next on that very connection. Only
+        // builtin services are served there, which keeps the latch harmless.
+        const std::string connection_group = "builtin-auth-policy-internal";
+        brpc::Channel builtin_channel;
+        brpc::Channel protected_channel;
+        brpc::ChannelOptions copt;
+        copt.protocol = brpc::PROTOCOL_HTTP;
+        copt.connection_type = brpc::CONNECTION_TYPE_POOLED;
+        copt.connection_group = connection_group;
+        copt.max_retry = 0;
+        ASSERT_EQ(0, builtin_channel.Init(internal_ep, &copt));
+        ASSERT_EQ(0, protected_channel.Init(internal_ep, &copt));
+
+        brpc::Controller builtin_cntl;
+        CallVersion(&builtin_channel, &builtin_cntl);
+        ASSERT_FALSE(builtin_cntl.Failed()) << builtin_cntl.ErrorText();
+        ASSERT_EQ(brpc::HTTP_STATUS_OK, builtin_cntl.http_response().status_code());
+
+        brpc::Controller protected_cntl;
+        CallHttpEcho(&protected_channel, &protected_cntl);
+        ASSERT_TRUE(protected_cntl.Failed());
+        ASSERT_EQ(brpc::EHTTP, protected_cntl.ErrorCode()) << protected_cntl.ErrorText();
+        ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN,
+                  protected_cntl.http_response().status_code());
+    }
+
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
     brpc::FLAGS_max_connection_pool_size = saved_max_connection_pool_size;

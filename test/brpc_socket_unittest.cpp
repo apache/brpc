@@ -118,6 +118,17 @@ class CheckRecycle : public brpc::SocketUser {
     }
 };
 
+// Acceptor::Join() returns as soon as Acceptor::BeforeRecycle() cleared
+// _listened_fd, which Socket::BeforeRecycled() calls several statements before
+// it closes the fd, so the fd may still be open when Join() returns.
+void WaitForClosedFd(int fd) {
+    for (int i = 0; i < 100 && fcntl(fd, F_GETFD) != -1; ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_EQ(-1, fcntl(fd, F_GETFD));
+    ASSERT_EQ(EBADF, errno);
+}
+
 // Never hardcode a port in tests: it may be taken by another process or by
 // another test in this binary, making the test fail for unrelated reasons.
 // Listen on port 0 and ask the kernel which port it picked instead.
@@ -443,8 +454,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     messenger->StopAccept(0);
     messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
-    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
-    ASSERT_EQ(EBADF, errno);
+    ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(listening_fd));
 
     // The socket object is likely to be reused,
     // and the local side should be initialized.
@@ -819,8 +829,7 @@ TEST_F(SocketTest, health_check) {
     messenger->StopAccept(0);
     messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
-    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
-    ASSERT_EQ(EBADF, errno);
+    ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(listening_fd));
 
     ASSERT_EQ(0, brpc::Socket::SetFailed(id));
     // StartHealthCheck is possibly still addressing the Socket.
@@ -1560,8 +1569,7 @@ TEST_F(SocketTest, keepalive_input_message) {
     messenger->StopAccept(0);
     messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
-    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
-    ASSERT_EQ(EBADF, errno);
+    ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(listening_fd));
 }
 
 TEST_F(SocketTest, socket_buffer_options_before_connect) {
@@ -1728,8 +1736,7 @@ TEST_F(SocketTest, tcp_user_timeout) {
     messenger->StopAccept(0);
     messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
-    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
-    ASSERT_EQ(EBADF, errno);
+    ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(listening_fd));
 }
 #endif
 

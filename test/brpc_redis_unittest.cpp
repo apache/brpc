@@ -19,6 +19,8 @@
 #include <iostream>
 #include <memory>
 #include <unordered_map>
+#include <butil/endpoint.h>
+#include <butil/fd_guard.h>
 #include <butil/time.h>
 #include <butil/logging.h>
 #include <brpc/redis.h>
@@ -1221,6 +1223,102 @@ TEST_F(RedisTest, server_sanity) {
     ASSERT_EQ(value3, response.reply(2).data());
     ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
     ASSERT_EQ("", response.reply(3).data());
+}
+
+// Returns a port nothing is listening on, or -1. ServerOptions.internal_port
+// has to be an explicit number, Server::Start() rejects 0 because it stands
+// for an ephemeral port, so ask the system for a free one rather than hardcode
+// a port that another test may be listening on.
+static int PickUnusedPort() {
+    butil::fd_guard sockfd(butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
+    if (sockfd < 0) {
+        return -1;
+    }
+    butil::EndPoint point;
+    if (butil::get_local_side(sockfd, &point) != 0) {
+        return -1;
+    }
+    return point.port;
+}
+
+// Starts `server' on an ephemeral port and fills options->internal_port with
+// another one. Both are released before Start() binds them and something else
+// may take one in between, hence the retries. Returns 0 on success.
+static int StartWithInternalPort(brpc::Server* server,
+                                 brpc::ServerOptions* options) {
+    for (int i = 0; i < 10; ++i) {
+        int internal_port = PickUnusedPort();
+        if (internal_port < 0) {
+            continue;
+        }
+        options->internal_port = internal_port;
+        if (0 == server->Start("127.0.0.1:0", options)) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
+TEST_F(RedisTest, server_is_not_served_on_internal_port) {
+    std::string password = GeneratePassword();
+    std::unique_ptr<brpc::policy::RedisAuthenticator> redis_auth_holder(
+        new brpc::policy::RedisAuthenticator(password));
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<SetCommandHandler> sh(new SetCommandHandler(rsimpl));
+    std::unique_ptr<AuthCommandHandler> ah(new AuthCommandHandler(rsimpl));
+    rsimpl->AddCommandHandler("set", sh.get());
+    rsimpl->AddCommandHandler("auth", ah.get());
+
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.redis_service = rsimpl;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    options.auth = redis_auth_holder.get();
+    options.max_retry = 0;
+
+    brpc::RedisRequest request;
+    ASSERT_TRUE(request.AddCommand("set key1 value1"));
+
+    // The internal port is up and serving its builtin services, it just does
+    // not speak redis, so the command below fails to be parsed rather than
+    // fails to be sent.
+    brpc::ChannelOptions http_options;
+    http_options.protocol = brpc::PROTOCOL_HTTP;
+    http_options.max_retry = 0;
+    brpc::Channel http_channel;
+    ASSERT_EQ(0, http_channel.Init(
+        "127.0.0.1", server_options.internal_port, &http_options));
+    brpc::Controller http_cntl;
+    http_cntl.http_request().uri() = "/version";
+    http_channel.CallMethod(nullptr, &http_cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(http_cntl.Failed()) << http_cntl.ErrorText();
+
+    brpc::Channel internal_channel;
+    ASSERT_EQ(0, internal_channel.Init(
+        "127.0.0.1", server_options.internal_port, &options));
+    brpc::RedisResponse response;
+    brpc::Controller cntl;
+    internal_channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(0, response.reply_size());
+
+    // The port passed to Start() speaks redis as before.
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(
+        "127.0.0.1", server.listen_address().port, &options));
+    cntl.Reset();
+    response.Clear();
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(1, response.reply_size());
+    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+    ASSERT_STREQ("OK", response.reply(0).c_str());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
 }
 
 void* incr_thread(void* arg) {

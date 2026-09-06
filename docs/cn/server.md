@@ -686,8 +686,18 @@ pthread模式可以让一些老代码快速尝试brpc，但我们仍然建议逐
 - 设置内部端口。把ServerOptions.internal_port设为一个**仅允许内网访问**的端口。你可通过internal_port访问到内置服务，但通过对外端口(Server.Start时传入的那个)访问内置服务时将看到如下错误：
 
   ```
-  [a27eda84bcdeef529a76f22872b78305] Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside internal network
+  Not allowed to access builtin and Tabbed services, try ServerOptions.internal_port=... instead if you're in internal network
   ```
+
+  反过来，internal_port只提供内置服务(以及Tabbed服务)，普通服务的请求打到这个端口上会被拒绝：
+
+  ```
+  Only builtin and Tabbed services are accessible on ServerOptions.internal_port=..., send the request to the port passed to Server::Start() instead
+  ```
+
+  这是必须的：internal_port上的内置服务请求不需要通过ServerOptions.auth的鉴权，而鉴权结果是记在连接上的，一条连接只在第一个请求时鉴权一次。如果普通服务也在这个端口上提供，那么先发一个内置服务请求就能把整条连接标记为已鉴权，后续在同一条连接上访问普通服务将完全跳过鉴权。
+
+  有两类服务不走上面这条错误路径：ServerOptions.http_master_service和ServerOptions.baidu_master_service会接管所有URL和服务名(内置服务的也一样)，它们在internal_port上被直接忽略，请求回退到正常的服务查找，这样内置服务仍然可以从这个端口访问；ServerOptions.redis_service在解析阶段就把命令处理完了，没有Controller可以带回EPERM，因此internal_port上干脆不提供redis协议，连接会被直接关闭。
 
 - http proxy指定转发路径。nginx等可配置URL的映射关系，比如下面的配置把访问/MyAPI的外部流量映射到`target-server`的`/ServiceName/MethodName`。当外部流量尝试访问内置服务，比如说/status时，将直接被nginx拒绝。
 ```nginx

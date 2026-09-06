@@ -125,6 +125,14 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         if (!rs) {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
+        if (IsInternalPort(*server, socket->local_side())) {
+            // ServerOptions.internal_port serves builtin and Tabbed services
+            // only and a RedisService is neither. The command handlers run
+            // right here rather than in ProcessRedisRequest(), there is no
+            // Controller to reject the request with, so behave as if redis
+            // was not enabled on this port at all.
+            return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+        }
         RedisConnContext* ctx = static_cast<RedisConnContext*>(socket->parsing_context());
         if (ctx == nullptr) {
             ctx = new RedisConnContext(rs);

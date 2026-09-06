@@ -48,6 +48,7 @@
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/bad_method_service.h"
 #include "brpc/server.h"
+#include "brpc/nshead_service.h"
 #include "brpc/restful.h"
 #include "brpc/channel.h"
 #include "brpc/socket_map.h"
@@ -57,6 +58,7 @@
 #include "v1.pb.h"
 #include "v2.pb.h"
 #include "v3.pb.h"
+#include "health_check.pb.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -1719,6 +1721,158 @@ TEST_F(ServerTest, builtin_services_are_gated_by_internal_port) {
     ASSERT_EQ(0, server.Join());
 }
 
+// Call the same ordinary service the way a browser would.
+void CallEchoByHttp(const butil::EndPoint& ep, brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl->http_request().uri() = "/EchoService/Echo";
+    cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl->http_request().set_content_type("application/json");
+    chan.CallMethod(nullptr, cntl, &req, &res, nullptr);
+}
+
+// Returns a port nothing is listening on, or -1. `ServerOptions.internal_port`
+// has to be an explicit number, Server::Start() rejects 0 because it stands
+// for an ephemeral port, so ask the system for a free one rather than hardcode
+// a port that another test may be listening on.
+int PickUnusedPort() {
+    butil::fd_guard sockfd(butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
+    if (sockfd < 0) {
+        return -1;
+    }
+    butil::EndPoint point;
+    if (butil::get_local_side(sockfd, &point) != 0) {
+        return -1;
+    }
+    return point.port;
+}
+
+// Starts `server` on an ephemeral port and fills `options->internal_port` with
+// another one. Both are released before Start() binds them and something else
+// may take one in between, hence the retries. Returns 0 on success.
+int StartWithInternalPort(brpc::Server* server, brpc::ServerOptions* options) {
+    for (int i = 0; i < 10; ++i) {
+        int internal_port = PickUnusedPort();
+        if (internal_port < 0) {
+            continue;
+        }
+        options->internal_port = internal_port;
+        if (0 == server->Start("127.0.0.1:0", options)) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
+TEST_F(ServerTest, ordinary_services_are_not_served_on_internal_port) {
+    const struct {
+        brpc::ProtocolType protocol;
+        const char* name;
+    } cases[] = {
+        { brpc::PROTOCOL_BAIDU_STD, "baidu_std" },
+        { brpc::PROTOCOL_HULU_PBRPC, "hulu_pbrpc" },
+        { brpc::PROTOCOL_SOFA_PBRPC, "sofa_pbrpc" },
+    };
+
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
+    butil::EndPoint ep = server.listen_address();
+    butil::EndPoint internal_ep(ep.ip, opt.internal_port);
+
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        brpc::Controller cntl;
+        CallEchoByPb(internal_ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(EPERM, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        // The public port is where ordinary services live.
+        cntl.Reset();
+        CallEchoByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_FALSE(cntl.Failed())
+            << cases[i].name << ": " << cntl.ErrorText();
+    }
+
+    brpc::Controller cntl;
+    CallEchoByHttp(internal_ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    cntl.Reset();
+    CallEchoByHttp(ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// NsheadService is dispatched to without a MethodProperty, the gate has to be
+// applied by the protocol itself. The service echoes back what the framework
+// decided so that the client can tell an acceptance from a rejection: nshead
+// carries no error field.
+class EchoNsheadService : public brpc::NsheadService {
+public:
+    void ProcessNsheadRequest(const brpc::Server&,
+                              brpc::Controller* cntl,
+                              const brpc::NsheadMessage& request,
+                              brpc::NsheadMessage* response,
+                              brpc::NsheadClosure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        if (cntl->Failed()) {
+            response->body.append(butil::string_printf("%d", cntl->ErrorCode()));
+            return;
+        }
+        response->body.append(EXP_RESPONSE);
+    }
+};
+
+// Same gate as ordinary_services_are_not_served_on_internal_port, for the
+// protocols that dispatch to a service which is never builtin. Their verify()
+// refuses every request when ServerOptions.auth is set, so the connection
+// latched by an exempted builtin request is the only way to reach them.
+TEST_F(ServerTest, nshead_service_is_not_served_on_internal_port) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.nshead_service = new EchoNsheadService;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
+    butil::EndPoint ep = server.listen_address();
+    butil::EndPoint internal_ep(ep.ip, opt.internal_port);
+
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_NSHEAD;
+    copt.connection_type = brpc::CONNECTION_TYPE_POOLED;
+    copt.max_retry = 0;
+
+    brpc::Channel internal_chan;
+    ASSERT_EQ(0, internal_chan.Init(internal_ep, &copt));
+    brpc::NsheadMessage req;
+    brpc::NsheadMessage res;
+    brpc::Controller cntl;
+    req.body.append(EXP_REQUEST);
+    internal_chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(butil::string_printf("%d", EPERM), res.body.to_string());
+
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl.Reset();
+    res.body.clear();
+    chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(EXP_RESPONSE, res.body.to_string());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
 // A service-name-only URL is dispatched to the builtin BadMethodService which
 // lists the methods of the service.
 void CallServiceWithoutMethodByHttp(const butil::EndPoint& ep,
@@ -2137,6 +2291,87 @@ TEST_F(ServerTest, baidu_master_service) {
         TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_ZLIB);
         TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_GZIP);
         TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_SNAPPY);
+        TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_NONE);
+    }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+class HttpMasterServiceImpl : public test::HealthCheckTestService {
+public:
+    void default_method(google::protobuf::RpcController* cntl_base,
+                        const test::HealthCheckRequest*,
+                        test::HealthCheckResponse*,
+                        google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(EXP_RESPONSE);
+    }
+};
+
+// http_master_service answers every URL and carries the payload in the
+// attachments rather than in pb messages.
+void CallEchoByHttpWithoutPb(const butil::EndPoint& ep, brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl->http_request().uri() = "/EchoService/Echo";
+    chan.CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
+}
+
+TEST_F(ServerTest, master_services_are_not_served_on_internal_port) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.baidu_master_service = new BaiduMasterServiceImpl;
+    opt.http_master_service = new HttpMasterServiceImpl;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
+    butil::EndPoint ep = server.listen_address();
+    butil::EndPoint internal_ep(ep.ip, opt.internal_port);
+
+    // The master services answer on the public port.
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_BAIDU_STD;
+    copt.max_retry = 0;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(ep, &copt));
+    TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_NONE);
+
+    brpc::Controller cntl;
+    CallEchoByHttpWithoutPb(ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
+
+    // Not on internal_port though, where the request falls back to the normal
+    // resolution and EchoService is rejected as any other ordinary service.
+    cntl.Reset();
+    CallEchoByPb(internal_ep, brpc::PROTOCOL_BAIDU_STD, &cntl);
+    ASSERT_EQ(EPERM, cntl.ErrorCode()) << cntl.ErrorText();
+
+    cntl.Reset();
+    CallEchoByHttpWithoutPb(internal_ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code())
+        << cntl.ErrorText();
+
+    // The builtin services are still served there, which is what the port is
+    // for. Rejecting the master service outright would have hidden them.
+    cntl.Reset();
+    CallVersionByPb(internal_ep, brpc::PROTOCOL_BAIDU_STD, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    cntl.Reset();
+    CallVersionByHttp(internal_ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    // The requests above did not go through the master service and their
+    // messages must not have been recycled as if they did, otherwise the pool
+    // of the master service is left with objects of another type in it.
+    for (int i = 0; i < 10; ++i) {
         TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_NONE);
     }
 
