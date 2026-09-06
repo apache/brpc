@@ -40,8 +40,8 @@ DEFINE_int64(lb_warmup_ms, 0,
 DEFINE_double(lb_warmup_curve, 1.0,
               "Shape of the warm-up ramp: the weight multiplier is "
               "max(lb_warmup_min_weight, progress^lb_warmup_curve) where progress rises "
-              "linearly from 0 to 1 over lb_warmup_ms. 1 ramps linearly, "
-              "larger values keep a new server colder for longer");
+              "linearly from 0 to 1 over lb_warmup_ms. Must be positive: 1 ramps "
+              "linearly, larger values keep a new server colder for longer");
 BRPC_VALIDATE_GFLAG(show_lb_in_vars, PassValidate);
 BRPC_VALIDATE_GFLAG(lb_warmup_ms, PassValidate);
 DEFINE_double(lb_warmup_min_weight, 0.1,
@@ -49,10 +49,13 @@ DEFINE_double(lb_warmup_min_weight, 0.1,
               "normal traffic a server gets right after joining, so that "
               "it still receives a trickle and latency-based policies keep "
               "observing it");
+static bool ValidateWarmupCurve(const char*, double v) {
+    return v > 0.0;
+}
 static bool ValidateWarmupMinWeight(const char*, double v) {
     return v > 0.0 && v <= 1.0;
 }
-BRPC_VALIDATE_GFLAG(lb_warmup_curve, PassValidate);
+BRPC_VALIDATE_GFLAG(lb_warmup_curve, ValidateWarmupCurve);
 BRPC_VALIDATE_GFLAG(lb_warmup_min_weight, ValidateWarmupMinWeight);
 
 

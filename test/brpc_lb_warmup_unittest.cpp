@@ -84,20 +84,8 @@ std::map<brpc::SocketId, int> CountShares(
 
 class LbWarmupTest : public ::testing::Test {
 protected:
-    void SetUp() override {
-        _saved_warmup_ms = brpc::FLAGS_lb_warmup_ms;
-        _saved_curve = brpc::FLAGS_lb_warmup_curve;
-        _saved_min_weight = brpc::FLAGS_lb_warmup_min_weight;
-    }
-    void TearDown() override {
-        brpc::FLAGS_lb_warmup_ms = _saved_warmup_ms;
-        brpc::FLAGS_lb_warmup_curve = _saved_curve;
-        brpc::FLAGS_lb_warmup_min_weight = _saved_min_weight;
-    }
-
-    int64_t _saved_warmup_ms;
-    double _saved_curve;
-    double _saved_min_weight;
+    // Restores every flag the tests touch when the fixture is destroyed.
+    GFLAGS_NAMESPACE::FlagSaver _flag_saver;
 };
 
 TEST_F(LbWarmupTest, disabled_by_default) {
@@ -151,6 +139,18 @@ TEST_F(LbWarmupTest, multiplier_math) {
     brpc::FLAGS_lb_warmup_curve = 1.0;
     brpc::FLAGS_lb_warmup_ms = 0;
     ASSERT_DOUBLE_EQ(1.0, brpc::WarmupMultiplier(join_us, join_us));
+}
+
+TEST_F(LbWarmupTest, flag_validation) {
+    // Curve must be positive; the floor must be in (0, 1].
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_curve", "2").empty());
+    ASSERT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_curve", "0").empty());
+    ASSERT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_curve", "-1").empty());
+    ASSERT_DOUBLE_EQ(2.0, brpc::FLAGS_lb_warmup_curve);
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_min_weight", "0.5").empty());
+    ASSERT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_min_weight", "0").empty());
+    ASSERT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_min_weight", "1.5").empty());
+    ASSERT_DOUBLE_EQ(0.5, brpc::FLAGS_lb_warmup_min_weight);
 }
 
 TEST_F(LbWarmupTest, accept_probability_follows_multiplier) {
