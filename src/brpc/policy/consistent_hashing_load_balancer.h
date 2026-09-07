@@ -48,8 +48,10 @@ public:
         ServerId server_sock;
         butil::EndPoint server_addr;  // To make sorting stable among all clients
         // Time when the server was added, for the warm-up ramp. Not part
-        // of ordering/equality so that re-adding an existing server keeps
-        // its original stamp.
+        // of ordering/equality: AddBatch merges with std::set_union, which
+        // keeps the existing node when a server is added again without
+        // having been removed, so its stamp is preserved. RemoveServer
+        // followed by AddServer rebuilds the nodes with a fresh stamp.
         int64_t join_time_us;
         bool operator<(const Node &rhs) const {
             if (hash < rhs.hash) { return true; }

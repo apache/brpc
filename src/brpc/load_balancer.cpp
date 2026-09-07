@@ -18,6 +18,7 @@
 
 #include <cmath>                                  // std::pow
 #include <gflags/gflags.h>
+#include <stdint.h>
 #include "butil/fast_rand.h"                      // fast_rand_double
 #include "butil/time.h"                           // gettimeofday_us
 #include "brpc/reloadable_flags.h"
@@ -42,8 +43,12 @@ DEFINE_double(lb_warmup_curve, 1.0,
               "max(lb_warmup_min_weight, progress^lb_warmup_curve) where progress rises "
               "linearly from 0 to 1 over lb_warmup_ms. Must be positive: 1 ramps "
               "linearly, larger values keep a new server colder for longer");
+static bool ValidateWarmupMs(const char*, int64_t v) {
+    // Must survive the conversion to microseconds.
+    return v >= 0 && v <= INT64_MAX / 1000;
+}
 BRPC_VALIDATE_GFLAG(show_lb_in_vars, PassValidate);
-BRPC_VALIDATE_GFLAG(lb_warmup_ms, PassValidate);
+BRPC_VALIDATE_GFLAG(lb_warmup_ms, ValidateWarmupMs);
 DEFINE_double(lb_warmup_min_weight, 0.1,
               "Floor of the warm-up multiplier, in (0, 1]: the share of "
               "normal traffic a server gets right after joining, so that "

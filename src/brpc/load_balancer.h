@@ -133,7 +133,7 @@ inline double WarmupMultiplier(int64_t join_time_us, int64_t now_us) {
         1.0 : WarmupMultiplierImpl(join_time_us, now_us);
 }
 
-// Probabilistic form of WarmupMultiplier for policies without changable
+// Probabilistic form of WarmupMultiplier for policies without changeable
 // weights: returns true with probability WarmupMultiplier(...).
 inline bool WarmupAccept(int64_t join_time_us, int64_t now_us) {
     return FLAGS_lb_warmup_ms <= 0 || WarmupAcceptImpl(join_time_us, now_us);

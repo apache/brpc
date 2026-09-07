@@ -142,6 +142,12 @@ TEST_F(LbWarmupTest, multiplier_math) {
 }
 
 TEST_F(LbWarmupTest, flag_validation) {
+    // Window must be non-negative and convertible to microseconds.
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_ms", "30000").empty());
+    ASSERT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_ms", "-1").empty());
+    ASSERT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption(
+                    "lb_warmup_ms", "9223372036854775807").empty());
+    ASSERT_EQ(30000, brpc::FLAGS_lb_warmup_ms);
     // Curve must be positive; the floor must be in (0, 1].
     ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_curve", "2").empty());
     ASSERT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption("lb_warmup_curve", "0").empty());
