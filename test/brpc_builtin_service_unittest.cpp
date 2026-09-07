@@ -702,8 +702,6 @@ TEST_F(BuiltinServiceTest, flags_escaping) {
     // /flags service below modifies `reloadable_string_flag_for_ut'.
     GFLAGS_NAMESPACE::FlagSaver flag_saver;
     brpc::FlagsService service;
-    brpc::FlagsRequest req;
-    brpc::FlagsResponse res;
     const std::string payload = "<svg onload=alert(1)>&\"'";
     const std::string escaped = brpc::WebEscape(payload);
 
@@ -711,6 +709,8 @@ TEST_F(BuiltinServiceTest, flags_escaping) {
     {
         ClosureChecker done;
         brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
         SetUpController(&cntl, true);
         cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
         cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, payload);
@@ -725,6 +725,8 @@ TEST_F(BuiltinServiceTest, flags_escaping) {
     {
         ClosureChecker done;
         brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
         SetUpController(&cntl, true);
         cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
         cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, "");
@@ -740,6 +742,8 @@ TEST_F(BuiltinServiceTest, flags_escaping) {
     {
         ClosureChecker done;
         brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
         SetUpController(&cntl, false);
         cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
         cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, payload);
