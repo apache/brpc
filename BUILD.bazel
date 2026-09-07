@@ -539,6 +539,16 @@ brpc_proto_library(
     visibility = ["//visibility:public"],
 )
 
+# Keep URMA implementation sources out of the base glob below so the mock is
+# selected only for mock builds and can never leak into a real-liburma link.
+URMA_SRCS = glob(
+    [
+        "src/brpc/urma/*.cpp",
+        "src/brpc/urma/**/*.cpp",
+    ],
+    exclude = ["src/brpc/urma/mock_urma.cpp"],
+)
+
 cc_library(
     name = "brpc",
     srcs = glob([
@@ -551,7 +561,8 @@ cc_library(
         "src/brpc/policy/thrift_protocol.cpp",
         "src/brpc/event_dispatcher_epoll.cpp",
         "src/brpc/event_dispatcher_kqueue.cpp",
-        "src/brpc/urma/mock_urma.cpp",
+        "src/brpc/urma/*.cpp",
+        "src/brpc/urma/**/*.cpp",
     ]) + select({
         "//bazel/config:brpc_with_thrift": glob([
             "src/brpc/thrift*.cpp",
@@ -559,8 +570,8 @@ cc_library(
         ]),
         "//conditions:default": [],
     }) + select({
-        "//bazel/config:brpc_with_urma_use_real": [],
-        "//bazel/config:brpc_with_urma": [
+        "//bazel/config:brpc_with_urma_use_real": URMA_SRCS,
+        "//bazel/config:brpc_with_urma": URMA_SRCS + [
             "src/brpc/urma/mock_urma.cpp",
         ],
         "//conditions:default": [],
