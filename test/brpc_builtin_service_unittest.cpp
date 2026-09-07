@@ -698,14 +698,14 @@ TEST_F(BuiltinServiceTest, flags) {
 }
 
 TEST_F(BuiltinServiceTest, flags_escaping) {
+    // Save all flags and restore them on any exit of this test, since the
+    // /flags service below modifies `reloadable_string_flag_for_ut'.
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
     brpc::FlagsService service;
     brpc::FlagsRequest req;
     brpc::FlagsResponse res;
     const std::string payload = "<svg onload=alert(1)>&\"'";
     const std::string escaped = brpc::WebEscape(payload);
-    std::string saved_value;
-    ASSERT_TRUE(GFLAGS_NAMESPACE::GetCommandLineOption(
-        "reloadable_string_flag_for_ut", &saved_value));
 
     // Reflected: the ?setvalue= value is echoed into the html page.
     {
@@ -747,10 +747,6 @@ TEST_F(BuiltinServiceTest, flags_escaping) {
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, payload.c_str());
     }
-
-    // Restore the flag value not to affect other tests.
-    GFLAGS_NAMESPACE::SetCommandLineOption(
-        "reloadable_string_flag_for_ut", saved_value.c_str());
 }
 
 TEST_F(BuiltinServiceTest, bad_method) {
