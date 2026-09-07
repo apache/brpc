@@ -620,7 +620,8 @@ struct ReadVersion {
     ReadVersion() {
         struct utsname buf;
         if (uname(&buf) != 0) {
-            LOG(ERROR) << "Fail to read kernel version";
+            LOG(ERROR) << "Fail to read kernel version, errno=" << errno
+                       << " (" << strerror(errno) << ")";
             return;
         }
 #if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
@@ -635,7 +636,7 @@ struct ReadVersion {
         oss << buf.sysname << ' ' << buf.nodename << ' '
             << buf.release << ' ' << buf.version << ' '
             << buf.machine << ' ' << processor;
-#if !defined(__APPLE__)
+#if defined(__linux__) && !defined(__ANDROID__)
         oss << ' ' << hardware_platform << " GNU/Linux";
 #endif
         oss << '\n';
