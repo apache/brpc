@@ -475,32 +475,26 @@ TEST_F(VariableTest, uname_returns_valid_kernel_info) {
     ASSERT_GT(strlen(buf.version), 0u);
     ASSERT_GT(strlen(buf.machine), 0u);
 
-    // Build the string the same way ReadVersion does in default_variables.cpp
-#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
-    const char* processor = "arm";
-#elif defined(__APPLE__) && defined(__x86_64__)
-    const char* processor = "i386";
-#else
-    const char* processor = buf.machine;
-#endif
-    std::ostringstream oss;
-    oss << buf.sysname << ' ' << buf.nodename << ' '
-        << buf.release << ' ' << buf.version << ' '
-        << buf.machine << ' ' << processor;
-#if !defined(__APPLE__)
-    oss << " GNU/Linux";
-#endif
-    oss << '\n';
-    std::string content = oss.str();
+    // Read the actual exported bvar instead of duplicating ReadVersion's
+    // formatting logic in the test. This keeps the test aligned with the
+    // externally visible behavior of kernel_version.
+    std::ostringstream kernel_version_os;
+    bvar::Variable::describe_exposed("kernel_version", kernel_version_os);
+    const std::string content = kernel_version_os.str();
 
-    // The result should contain all key fields
+    ASSERT_FALSE(content.empty());
+
+    // The exported value should contain the key uname fields.
     ASSERT_NE(content.find(buf.sysname), std::string::npos);
+    ASSERT_NE(content.find(buf.nodename), std::string::npos);
     ASSERT_NE(content.find(buf.release), std::string::npos);
+    ASSERT_NE(content.find(buf.version), std::string::npos);
     ASSERT_NE(content.find(buf.machine), std::string::npos);
 
     // On Linux, sysname should be "Linux"; on macOS, "Darwin"
 #if defined(__linux__)
     ASSERT_STREQ(buf.sysname, "Linux");
+    ASSERT_NE(content.find("GNU/Linux"), std::string::npos);
 #elif defined(__APPLE__)
     ASSERT_STREQ(buf.sysname, "Darwin");
 #endif
