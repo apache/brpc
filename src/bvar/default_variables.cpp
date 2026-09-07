@@ -40,6 +40,7 @@
 #include "butil/process_util.h"            // ReadCommandLine
 #include "butil/popen.h"                   // read_command_output
 #include "bvar/passive_status.h"
+#include "bvar/default_variables.h"          // make_kernel_version_string
 
 namespace bvar {
 
@@ -624,23 +625,7 @@ struct ReadVersion {
                        << " (" << strerror(errno) << ")";
             return;
         }
-#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
-        const char* processor = "arm";
-#elif defined(__APPLE__) && defined(__x86_64__)
-        const char* processor = "i386";
-#else
-        const char* processor = buf.machine;
-#endif
-        const char* hardware_platform = buf.machine;
-        std::ostringstream oss;
-        oss << buf.sysname << ' ' << buf.nodename << ' '
-            << buf.release << ' ' << buf.version << ' '
-            << buf.machine << ' ' << processor;
-#if defined(__linux__) && !defined(__ANDROID__)
-        oss << ' ' << hardware_platform << " GNU/Linux";
-#endif
-        oss << '\n';
-        content.append(oss.str());
+        content.append(make_kernel_version_string(buf));
     }
 };
 static void get_kernel_version(std::ostream& os, void*) {
