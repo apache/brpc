@@ -1,0 +1,33 @@
+name: Build on FreeBSD
+
+on:
+  push:
+    branches: [ master ]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    branches: [ master ]
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  compile-with-cmake:
+    runs-on: ubuntu-latest
+    name: FreeBSD build
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build on FreeBSD
+      uses: vmactions/freebsd-vm@v1
+      with:
+        release: "14.3"
+        usesh: true
+        prepare: |
+          pkg install -y cmake protobuf gflags leveldb openssl git
+
+        run: |
+          set -ex
+          mkdir build && cd build
+          cmake -DCMAKE_PREFIX_PATH=/usr/local ..
+          make -j$(sysctl -n hw.ncpu)
