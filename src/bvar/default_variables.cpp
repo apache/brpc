@@ -630,12 +630,13 @@ struct ReadVersion {
 #else
         const char* processor = buf.machine;
 #endif
+        const char* hardware_platform = buf.machine;
         std::ostringstream oss;
         oss << buf.sysname << ' ' << buf.nodename << ' '
             << buf.release << ' ' << buf.version << ' '
             << buf.machine << ' ' << processor;
 #if !defined(__APPLE__)
-        oss << " GNU/Linux";
+        oss << ' ' << hardware_platform << " GNU/Linux";
 #endif
         oss << '\n';
         content.append(oss.str());
