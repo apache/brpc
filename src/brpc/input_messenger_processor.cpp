@@ -46,8 +46,7 @@ static const char *StreamTypeName(InputMessengerProcessor::StreamType type) {
   return "unknown";
 }
 
-InputMessengerProcessor::ParsingStreamGuard::ParsingStreamGuard(Socket *socket,
-                                                                StreamType type)
+InputMessengerProcessor::ParsingStreamGuard::ParsingStreamGuard(Socket* socket, StreamType type)
     : _socket(socket) {
   CHECK(socket != nullptr)
       << "Parsing through a processor that was never Init()ed, socket is NULL";

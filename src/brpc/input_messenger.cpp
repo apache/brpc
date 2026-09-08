@@ -33,7 +33,7 @@
 
 namespace brpc {
 
-InputMessenger *g_messenger = nullptr;
+InputMessenger* g_messenger = nullptr;
 static pthread_once_t g_messenger_init = PTHREAD_ONCE_INIT;
 static void InitClientSideMessenger() { g_messenger = new InputMessenger; }
 InputMessenger *get_or_new_client_side_messenger() {
