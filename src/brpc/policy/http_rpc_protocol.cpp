@@ -1558,7 +1558,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         return;
     }
 
-    if (server->options().http_master_service) {
+    if (server->options().http_master_service &&
+        !IsInternalPort(*server, cntl->local_side())) {
         // If http_master_service is on, just call it.
         google::protobuf::Service* svc = server->options().http_master_service;
         const google::protobuf::MethodDescriptor* md =
@@ -1605,7 +1606,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         mp->service->CallMethod(mp->method, cntl, &breq, &bres, nullptr);
         return;
     }
-    if (RejectBuiltinAccess(cntl, *server, mp)) {
+    if (RejectBuiltinAccess(cntl, *server, mp) ||
+        RejectNonBuiltinAccessFromInternalPort(cntl, *server, mp)) {
         return;
     }
     // Switch to service-specific error.

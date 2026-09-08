@@ -252,6 +252,9 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
             mongo_done->cntl.SetFailed(ENOMETHOD, "Fail to find default_method");
             break;
         }
+        if (RejectNonBuiltinAccessFromInternalPort(&mongo_done->cntl, *server, mp)) {
+            break;
+        }
         // Switch to service-specific error.
         non_service_error.release();
         MethodStatus* method_status = mp->status;

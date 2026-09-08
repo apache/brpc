@@ -278,6 +278,12 @@ struct BaiduProxyPBMessages : public RpcPBMessages {
 };
 }
 
+static bool IsBaiduMasterService(const Server* server,
+                                 const butil::EndPoint& local_side) {
+    return nullptr != server->options().baidu_master_service &&
+           !IsInternalPort(*server, local_side);
+}
+
 // Used by UT, can't be static.
 void SendRpcResponse(int64_t correlation_id, Controller* cntl,
                      RpcPBMessages* messages, const Server* server,
@@ -306,10 +312,10 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         }
 
         cntl->CallAfterRpcResp(req, res);
-        if (nullptr == server->options().baidu_master_service) {
-            server->options().rpc_pb_message_factory->Return(messages);
-        } else {
+        if (IsBaiduMasterService(server, cntl->local_side())) {
             BaiduProxyPBMessages::Return(static_cast<BaiduProxyPBMessages*>(messages));
+        } else {
+            server->options().rpc_pb_message_factory->Return(messages);
         }
     };
     
@@ -713,13 +719,13 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
         google::protobuf::Service* svc = nullptr;
         google::protobuf::MethodDescriptor* method = nullptr;
-        if (nullptr != server->options().baidu_master_service) {
+        if (IsBaiduMasterService(server, cntl->local_side())) {
             if (socket->is_overcrowded() &&
               !server->options().ignore_eovercrowded &&
               !server->options().baidu_master_service->ignore_eovercrowded()) {
-                cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
-                                butil::endpoint2str(socket->remote_side()).c_str());
-            break;
+                  cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                                  butil::endpoint2str(socket->remote_side()).c_str());
+                  break;
             }
             svc = server->options().baidu_master_service;
             auto sampled_request = new SampledRequest;
@@ -770,7 +776,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                                 request_meta.method_name().c_str());
                 break;
             }
-            if (RejectBuiltinAccess(cntl.get(), *server, mp)) {
+            if (RejectBuiltinAccess(cntl.get(), *server, mp) ||
+                RejectNonBuiltinAccessFromInternalPort(cntl.get(), *server, mp)) {
                 break;
             }
             if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {

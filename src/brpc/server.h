@@ -202,6 +202,9 @@ struct ServerOptions {
     // hiding them from public. Setting this option also enables security
     // protection code which we may add constantly.
     // Update: this option affects Tabbed services as well.
+    // Update: this port carries builtin and Tabbed services only, requests
+    // for ordinary services are rejected with EPERM and must be sent to the
+    // port passed to Start().
     // Default: -1
     int internal_port;
 
