@@ -19,7 +19,6 @@
 #include <algorithm>
 
 #include "butil/fast_rand.h"
-#include "butil/time.h"
 #include "brpc/socket.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "butil/strings/string_number_conversions.h"
@@ -92,7 +91,7 @@ bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
     bool insert_server =
              bg.server_map.emplace(id.id, bg.server_list.size()).second;
     if (insert_server) {
-        bg.server_list.emplace_back(id.id, weight, butil::gettimeofday_us());
+        bg.server_list.emplace_back(id.id, weight, LoadBalancerJoinTimeUs());
         bg.weight_sum += weight;
         return true;
     }

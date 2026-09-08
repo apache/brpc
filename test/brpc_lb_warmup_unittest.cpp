@@ -20,7 +20,6 @@
 #include <vector>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
-#include <unistd.h>
 #include "butil/fast_rand.h"
 #include "butil/time.h"
 #include "brpc/socket.h"
@@ -82,8 +81,24 @@ std::map<brpc::SocketId, int> CountShares(
     return shares;
 }
 
+// Fake clock for join stamps, so that the ramp tests never sleep: tests
+// advance it between AddServer calls and pass explicit `now_us' values
+// (SelectIn::begin_time_us) when selecting. It starts at the real time so
+// that policies which compare begin_time_us with the wall clock(la) keep
+// seeing plausible values.
+int64_t g_fake_now_us = 0;
+int64_t FakeClock() { return g_fake_now_us; }
+
 class LbWarmupTest : public ::testing::Test {
 protected:
+    void SetUp() override {
+        g_fake_now_us = butil::gettimeofday_us();
+        brpc::SetLoadBalancerClockForTesting(FakeClock);
+    }
+    void TearDown() override {
+        brpc::SetLoadBalancerClockForTesting(NULL);
+    }
+
     // Restores every flag the tests touch when the fixture is destroyed.
     GFLAGS_NAMESPACE::FlagSaver _flag_saver;
 };
@@ -123,9 +138,9 @@ TEST_F(LbWarmupTest, multiplier_math) {
 
     // Curve shaping: >1 is more conservative early, <1 more aggressive.
     brpc::FLAGS_lb_warmup_curve = 2.0;
-    ASSERT_DOUBLE_EQ(0.25, brpc::WarmupMultiplier(join_us, join_us + 5000000));
+    ASSERT_NEAR(0.25, brpc::WarmupMultiplier(join_us, join_us + 5000000), 1e-9);
     brpc::FLAGS_lb_warmup_curve = 0.5;
-    ASSERT_DOUBLE_EQ(0.5, brpc::WarmupMultiplier(join_us, join_us + 2500000));
+    ASSERT_NEAR(0.5, brpc::WarmupMultiplier(join_us, join_us + 2500000), 1e-9);
     brpc::FLAGS_lb_warmup_curve = 1.0;
 
     // The floor is configurable.
@@ -177,26 +192,27 @@ TEST_F(LbWarmupTest, rr_ramp_and_rejoin) {
     brpc::policy::RoundRobinLoadBalancer lb;
     const brpc::ServerId a = CreateServer("127.0.0.1:8111");
     ASSERT_TRUE(lb.AddServer(a));
-    usleep(400 * 1000);
+    g_fake_now_us += 1000000;  // a is past its window when b joins
     const brpc::ServerId b = CreateServer("127.0.0.1:8112");
     ASSERT_TRUE(lb.AddServer(b));
 
     const int N = 4000;
     // Server b is still cold, its share stays well below the even 50%.
     std::map<brpc::SocketId, int> shares =
-        CountShares(&lb, N, butil::gettimeofday_us());
+        CountShares(&lb, N, g_fake_now_us + 10000);
     ASSERT_LT(shares[b.id], N / 4) << shares[b.id];
     ASSERT_GT(shares[b.id], 0);
 
     // Past the window(simulated by a future timestamp) shares even out.
-    shares = CountShares(&lb, N, butil::gettimeofday_us() + 1000000);
+    shares = CountShares(&lb, N, g_fake_now_us + 1000000);
     ASSERT_GT(shares[b.id], N * 35 / 100);
     ASSERT_LT(shares[b.id], N * 65 / 100);
 
     // Removing and re-adding restarts the ramp.
+    g_fake_now_us += 2000000;
     ASSERT_TRUE(lb.RemoveServer(b));
     ASSERT_TRUE(lb.AddServer(b));
-    shares = CountShares(&lb, N, butil::gettimeofday_us());
+    shares = CountShares(&lb, N, g_fake_now_us + 10000);
     ASSERT_LT(shares[b.id], N / 4) << shares[b.id];
 }
 
@@ -205,16 +221,16 @@ TEST_F(LbWarmupTest, wrr_ramp) {
     brpc::policy::WeightedRoundRobinLoadBalancer lb;
     const brpc::ServerId a = CreateServer("127.0.0.1:8121", "2");
     ASSERT_TRUE(lb.AddServer(a));
-    usleep(400 * 1000);
+    g_fake_now_us += 1000000;  // a is past its window when b joins
     const brpc::ServerId b = CreateServer("127.0.0.1:8122", "2");
     ASSERT_TRUE(lb.AddServer(b));
 
     const int N = 4000;
     std::map<brpc::SocketId, int> shares =
-        CountShares(&lb, N, butil::gettimeofday_us());
+        CountShares(&lb, N, g_fake_now_us + 10000);
     ASSERT_LT(shares[b.id], N / 4) << shares[b.id];
 
-    shares = CountShares(&lb, N, butil::gettimeofday_us() + 1000000);
+    shares = CountShares(&lb, N, g_fake_now_us + 1000000);
     ASSERT_GT(shares[b.id], N * 35 / 100);
     ASSERT_LT(shares[b.id], N * 65 / 100);
 }
@@ -225,17 +241,17 @@ TEST_F(LbWarmupTest, chash_ramp) {
         brpc::policy::CONS_HASH_LB_MURMUR3);
     const brpc::ServerId a = CreateServer("127.0.0.1:8131");
     ASSERT_TRUE(lb.AddServer(a));
-    usleep(400 * 1000);
+    g_fake_now_us += 1000000;  // a is past its window when b joins
     const brpc::ServerId b = CreateServer("127.0.0.1:8132");
     ASSERT_TRUE(lb.AddServer(b));
 
     const int N = 4000;
     // Requests hashed onto cold b are mostly diverted along the ring.
     std::map<brpc::SocketId, int> shares =
-        CountShares(&lb, N, butil::gettimeofday_us(), false, true);
+        CountShares(&lb, N, g_fake_now_us + 10000, false, true);
     ASSERT_LT(shares[b.id], N * 35 / 100) << shares[b.id];
 
-    shares = CountShares(&lb, N, butil::gettimeofday_us() + 1000000,
+    shares = CountShares(&lb, N, g_fake_now_us + 1000000,
                          false, true);
     ASSERT_GT(shares[b.id], N * 25 / 100);
     ASSERT_LT(shares[b.id], N * 75 / 100);
@@ -246,14 +262,14 @@ TEST_F(LbWarmupTest, la_ramp) {
     brpc::policy::LocalityAwareLoadBalancer lb;
     const brpc::ServerId a = CreateServer("127.0.0.1:8141");
     ASSERT_TRUE(lb.AddServer(a));
-    usleep(400 * 1000);
+    g_fake_now_us += 1000000;  // a is past its window when b joins
     const brpc::ServerId b = CreateServer("127.0.0.1:8142");
     ASSERT_TRUE(lb.AddServer(b));
 
     // A cold server gets a reduced share of the weight tree.
     const int N = 4000;
     std::map<brpc::SocketId, int> shares =
-        CountShares(&lb, N, butil::gettimeofday_us(), true);
+        CountShares(&lb, N, g_fake_now_us + 10000, true);
     ASSERT_LT(shares[b.id], N * 30 / 100) << shares[b.id];
     ASSERT_GT(shares[b.id], 0);
 
@@ -269,9 +285,8 @@ TEST_F(LbWarmupTest, la_ramp) {
     // that selections must touch b and refresh its weight; share-based
     // assertions do not work here: with identical synthetic latencies
     // LALB's qps/latency weights are degenerate.
-    usleep(400 * 1000);
     ASSERT_TRUE(lb.RemoveServer(a));
-    CountShares(&lb, 100, butil::gettimeofday_us(), true);
+    CountShares(&lb, 100, g_fake_now_us + 1000000, true);
     std::ostringstream warm_desc;
     lb.Describe(warm_desc, opt);
     ASSERT_EQ(std::string::npos, warm_desc.str().find("(base="))
@@ -283,7 +298,7 @@ TEST_F(LbWarmupTest, p2c_ramp) {
     brpc::policy::P2CEwmaLoadBalancer lb;
     const brpc::ServerId a = CreateServer("127.0.0.1:8151");
     ASSERT_TRUE(lb.AddServer(a));
-    usleep(400 * 1000);
+    g_fake_now_us += 1000000;  // a is past its window when b joins
     const brpc::ServerId b = CreateServer("127.0.0.1:8152");
     ASSERT_TRUE(lb.AddServer(b));
 
@@ -291,10 +306,10 @@ TEST_F(LbWarmupTest, p2c_ramp) {
     // The discounted weight lifts b's score, both sampled servers being
     // otherwise equal, so b loses (nearly) every comparison while cold.
     std::map<brpc::SocketId, int> shares =
-        CountShares(&lb, N, butil::gettimeofday_us());
+        CountShares(&lb, N, g_fake_now_us + 10000);
     ASSERT_LT(shares[b.id], N * 5 / 100) << shares[b.id];
 
-    shares = CountShares(&lb, N, butil::gettimeofday_us() + 1000000);
+    shares = CountShares(&lb, N, g_fake_now_us + 1000000);
     ASSERT_GT(shares[b.id], N * 30 / 100);
     ASSERT_LT(shares[b.id], N * 70 / 100);
 }

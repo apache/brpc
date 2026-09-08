@@ -63,6 +63,16 @@ static bool ValidateWarmupMinWeight(const char*, double v) {
 BRPC_VALIDATE_GFLAG(lb_warmup_curve, ValidateWarmupCurve);
 BRPC_VALIDATE_GFLAG(lb_warmup_min_weight, ValidateWarmupMinWeight);
 
+static int64_t (*g_lb_clock_us)() = NULL;
+
+int64_t LoadBalancerJoinTimeUs() {
+    return g_lb_clock_us != NULL ? g_lb_clock_us() : butil::gettimeofday_us();
+}
+
+void SetLoadBalancerClockForTesting(int64_t (*clock_us)()) {
+    g_lb_clock_us = clock_us;
+}
+
 
 double WarmupMultiplierImpl(int64_t join_time_us, int64_t now_us) {
     const int64_t warmup_us = FLAGS_lb_warmup_ms * 1000L;

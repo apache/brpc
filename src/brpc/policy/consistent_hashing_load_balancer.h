@@ -52,7 +52,7 @@ public:
         // keeps the existing node when a server is added again without
         // having been removed, so its stamp is preserved. RemoveServer
         // followed by AddServer rebuilds the nodes with a fresh stamp.
-        int64_t join_time_us;
+        int64_t join_time_us = 0;  // 0: unstamped, never ramped
         bool operator<(const Node &rhs) const {
             if (hash < rhs.hash) { return true; }
             if (hash > rhs.hash) { return false; }

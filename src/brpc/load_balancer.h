@@ -115,6 +115,12 @@ DECLARE_bool(show_lb_in_vars);
 DECLARE_int32(default_weight_of_wlb);
 DECLARE_int64(lb_warmup_ms);
 
+// Clock used to stamp the time a server joins a LoadBalancer(join_time_us
+// below). Tests replace it to drive the warm-up ramp without sleeping.
+int64_t LoadBalancerJoinTimeUs();
+// `clock_us' == NULL restores the real clock.
+void SetLoadBalancerClockForTesting(int64_t (*clock_us)());
+
 double WarmupMultiplierImpl(int64_t join_time_us, int64_t now_us);
 bool WarmupAcceptImpl(int64_t join_time_us, int64_t now_us);
 

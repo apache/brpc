@@ -22,7 +22,6 @@
 #include <openssl/md5.h>
 #include "butil/containers/flat_map.h"
 #include "butil/errno.h"
-#include "butil/time.h"
 #include "butil/strings/string_number_conversions.h"
 #include "brpc/socket.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
@@ -72,7 +71,7 @@ bool DefaultReplicaPolicy::Build(ServerId server,
         return false;
     }
     replicas->clear();
-    const int64_t join_time_us = butil::gettimeofday_us();
+    const int64_t join_time_us = LoadBalancerJoinTimeUs();
     for (size_t i = 0; i < num_replicas; ++i) {
         char host[256];
         int len = 0;
@@ -110,7 +109,7 @@ bool KetamaReplicaPolicy::Build(ServerId server,
         return false;
     }
     replicas->clear();
-    const int64_t join_time_us = butil::gettimeofday_us();
+    const int64_t join_time_us = LoadBalancerJoinTimeUs();
     const size_t points_per_hash = 4;
     CHECK(num_replicas % points_per_hash == 0)
         << "Ketam hash replicas number(" << num_replicas << ") should be n*4";

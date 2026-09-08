@@ -37,7 +37,7 @@ bool RandomizedLoadBalancer::Add(Servers& bg, const ServerId& id) {
     }
     bg.server_map[id] = bg.server_list.size();
     bg.server_list.push_back(id);
-    bg.join_times.push_back(butil::gettimeofday_us());
+    bg.join_times.push_back(LoadBalancerJoinTimeUs());
     return true;
 }
 
