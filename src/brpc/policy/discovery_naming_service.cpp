@@ -89,6 +89,9 @@ static int ListDiscoveryNodes(const char* discovery_api_addr, std::string* serve
     }
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < data.Size(); ++i) {
         const BUTIL_RAPIDJSON_NAMESPACE::Value& addr_item = data[i];
+        if (!addr_item.IsObject()) {
+            continue;
+        }
         auto itr_addr = addr_item.FindMember("addr");
         auto itr_status = addr_item.FindMember("status");
         if (itr_addr == addr_item.MemberEnd() ||
@@ -385,12 +388,21 @@ int DiscoveryNamingService::GetServers(const char* service_name,
         return -1;
     }
     const BUTIL_RAPIDJSON_NAMESPACE::Value& data = itr_data->value;
+    if (!data.IsObject()) {
+        LOG(ERROR) << "data field for service " << service_name
+                   << " is not a json object";
+        return -1;
+    }
     auto itr_service = data.FindMember(service_name);
     if (itr_service == data.MemberEnd()) {
         LOG(ERROR) << "No " << service_name << " field in discovery response";
         return -1;
     }
     const BUTIL_RAPIDJSON_NAMESPACE::Value& services = itr_service->value;
+    if (!services.IsObject()) {
+        LOG(ERROR) << "Service " << service_name << " is not a json object";
+        return -1;
+    }
     auto itr_instances = services.FindMember("instances");
     if (itr_instances == services.MemberEnd()) {
         LOG(ERROR) << "Fail to find instances";
@@ -403,6 +415,11 @@ int DiscoveryNamingService::GetServers(const char* service_name,
     }
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < instances.Size(); ++i) {
+        if (!instances[i].IsObject()) {
+            LOG(ERROR) << "instance[" << i << "] for service " << service_name
+                       << " is not a json object";
+            continue;
+        }
         std::string metadata;
         // convert metadata in object to string
         auto itr_metadata = instances[i].FindMember("metadata");
