@@ -177,7 +177,7 @@ TEST(UrmaHandshakeTest, server_handshake_factory_dispatches_on_magic) {
 // CreateClientHandshake picks the version from the gflag.
 // ---------------------------------------------------------------------------
 TEST(UrmaHandshakeTest, client_handshake_factory_respects_flag) {
-    const int saved = urma::FLAGS_urma_client_handshake_version;
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
 
     urma::FLAGS_urma_client_handshake_version = 2;
     urma::UrmaHandshake* hs2 = urma::CreateClientHandshake(nullptr);
@@ -192,8 +192,6 @@ TEST(UrmaHandshakeTest, client_handshake_factory_respects_flag) {
         EXPECT_EQ(3, hs3->ProtocolVersion());
         delete hs3;
     }
-
-    urma::FLAGS_urma_client_handshake_version = saved;
 }
 
 // ---------------------------------------------------------------------------

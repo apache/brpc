@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <functional>
 #include <new>
 #include <utility>
 #include <vector>
@@ -265,10 +266,9 @@ size_t ShardFor(void* buf) {
 }
 
 size_t PreferredShard() {
-    // Hash the current thread id across shards. pthread_self() returns an
-    // opaque pthread_t; cast through uintptr_t to get a hashable value.
-    auto tid = static_cast<uintptr_t>(reinterpret_cast<uintptr_t>(pthread_self()));
-    return tid % kShardCount;
+    // pthread_t is an integer on Linux and a pointer on macOS. Hash its native
+    // representation instead of assuming either form with a cast.
+    return std::hash<pthread_t>()(pthread_self()) % kShardCount;
 }
 
 void* PoolAllocate(size_t size) {

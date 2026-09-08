@@ -162,8 +162,8 @@ public:
     // Read at most @len bytes from the TCP fd into @data; waits on _read_butex
     // on EAGAIN. Returns 0 on success, -1 on IO error (errno set).
     int ReadFromFd(void* data, size_t len);
-    // Push @len bytes back into _socket->_read_buf so the TCP input messenger
-    // can re-parse them (used on fallback when the magic is not "URMA").
+    // Push @len bytes back into the TCP input processor so it can re-parse
+    // them (used on fallback when the magic is not "URMA").
     void PushBackToReadBuf(const void* data, size_t len);
     // Write at most @len bytes from @data to the TCP fd; waits on
     // _epollout_butex on EAGAIN. Returns 0 on success, -1 on IO error.
@@ -235,14 +235,16 @@ private:
 
     // Handle one completion record. For SEND completions: reclaim the SQ
     // window and wake the writer. For RECV completions: cut the payload into
-    // _socket->_read_buf, repost the recv WR, and ack. Returns bytes received
+    // the URMA input processor, repost the recv WR, and ack. Returns bytes
+    // received
     // (0 for send completions), or -1 on error (errno set).
     ssize_t HandleCompletion(const urma_cr_t& cr);
 
     // Queue received bytes for InputMessenger. CQ receive completions can
     // arrive while the server is still waiting for the final TCP handshake
-    // ACK. Keep those bytes in _socket->_read_buf and dispatch them only after
-    // ESTABLISHED, matching the connection-ready boundary seen by user code.
+    // ACK. Keep those bytes in the URMA input processor and dispatch them only
+    // after ESTABLISHED, matching the connection-ready boundary seen by user
+    // code.
     void DispatchReceivedBytes(SocketUniquePtr& s, ssize_t bytes);
 
     // Consume one async event from the JFCE fd (event mode only). The caller
@@ -286,6 +288,9 @@ private:
     // ---- Send / recv window bookkeeping ----
     uint16_t _sq_size{0};   // local JFS depth
     uint16_t _rq_size{0};   // local JFR depth
+
+    // The input stream carried by the URMA jetty.
+    InputMessengerProcessor _input_processor;
 
     // Per-WR send buffers (own the IOBuf until the SEND completes).
     std::vector<butil::IOBuf> _sbuf;

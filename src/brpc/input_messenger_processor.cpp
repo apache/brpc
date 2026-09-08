@@ -40,6 +40,8 @@ static const char *StreamTypeName(InputMessengerProcessor::StreamType type) {
     return "tcp_fd";
   case InputMessengerProcessor::STREAM_RDMA_QP:
     return "rdma_qp";
+  case InputMessengerProcessor::STREAM_URMA_JETTY:
+    return "urma_jetty";
   }
   return "unknown";
 }
@@ -281,10 +283,9 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
       num_bthread_created = 0;
     }
   }
-  // In RDMA polling mode, all messages must be executed in a new bthread and
-  // not in the bthread where the polling bthread is located, because the
-  // method for processing messages may call synchronization primitives,
-  // causing the polling bthread to be scheduled out.
+  // On dedicated transport pollers (RDMA, UBRING, and URMA), all messages must
+  // be executed in a new bthread. Processing user code on the poller may call
+  // synchronization primitives and prevent it from draining more events.
   if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
       _socket->_socket_mode == SOCKET_MODE_UBRING ||
       _socket->_socket_mode == SOCKET_MODE_URMA) {

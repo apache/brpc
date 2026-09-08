@@ -87,8 +87,11 @@ std::shared_ptr<AppConnect> UrmaTransport::Connect() {
 }
 
 int UrmaTransport::CutFromIOBuf(butil::IOBuf* buf) {
+    // The URMA endpoint is not usable until negotiation and peer-resource
+    // import have completed. Keep using TCP while the state is UNKNOWN, and
+    // switch the data path only after the handshake publishes URMA_ON.
     if (_urma_ep &&
-        _urma_state.load(butil::memory_order_acquire) != URMA_OFF) {
+        _urma_state.load(butil::memory_order_acquire) == URMA_ON) {
         butil::IOBuf* data_arr[1] = {buf};
         return _urma_ep->CutFromIOBufList(data_arr, 1);
     } else {
@@ -98,7 +101,7 @@ int UrmaTransport::CutFromIOBuf(butil::IOBuf* buf) {
 
 ssize_t UrmaTransport::CutFromIOBufList(butil::IOBuf** buf, size_t ndata) {
     if (_urma_ep &&
-        _urma_state.load(butil::memory_order_acquire) != URMA_OFF) {
+        _urma_state.load(butil::memory_order_acquire) == URMA_ON) {
         return _urma_ep->CutFromIOBufList(buf, ndata);
     } else {
         return _tcp_transport->CutFromIOBufList(buf, ndata);

@@ -154,6 +154,7 @@ UrmaEndpoint::UrmaEndpoint(Socket* s)
         std::max(16, std::min(4096, static_cast<int>(FLAGS_urma_rq_size))));
     _read_butex = bthread::butex_create_checked<butil::atomic<int>>();
     _read_butex->store(0, butil::memory_order_relaxed);
+    _input_processor.Init(s, InputMessengerProcessor::STREAM_URMA_JETTY);
 }
 
 UrmaEndpoint::~UrmaEndpoint() {
@@ -179,6 +180,7 @@ void UrmaEndpoint::Reset() {
     _sq_sent = 0;
     _rq_received = 0;
     _pending_received_bytes.store(0, butil::memory_order_relaxed);
+    _input_processor.Reset();
     _sbuf.clear();
     _rbuf.clear();
     _rbuf_data.clear();
@@ -218,7 +220,7 @@ int UrmaEndpoint::ReadFromFd(void* data, size_t len) {
 }
 
 void UrmaEndpoint::PushBackToReadBuf(const void* data, size_t len) {
-    _socket->_read_buf.append(data, len);
+    _socket->fd_input_processor().read_buf().append(data, len);
 }
 
 int UrmaEndpoint::WriteToFd(void* data, size_t len) {
@@ -1024,10 +1026,11 @@ ssize_t UrmaEndpoint::HandleCompletion(const urma_cr_t& cr) {
     if (cr.completion_len < static_cast<uint32_t>(FLAGS_urma_zerocopy_min_size)) {
         zerocopy = false;
     }
+    butil::IOPortal& read_buf = _input_processor.read_buf();
     if (zerocopy) {
-        _rbuf[_rq_received].cutn(&_socket->_read_buf, cr.completion_len);
+        _rbuf[_rq_received].cutn(&read_buf, cr.completion_len);
     } else {
-        _socket->_read_buf.append(_rbuf_data[_rq_received], cr.completion_len);
+        read_buf.append(_rbuf_data[_rq_received], cr.completion_len);
     }
     if (PostRecv(1, zerocopy) < 0) {
         return -1;
@@ -1051,8 +1054,8 @@ void UrmaEndpoint::DispatchReceivedBytes(SocketUniquePtr& s, ssize_t bytes) {
     }
 
     // PollCq and the handshake bthread can both reach this method when the
-    // state changes to ESTABLISHED. Serialize them so each byte added to
-    // _socket->_read_buf is reported to InputMessenger exactly once.
+    // state changes to ESTABLISHED. Serialize them so each byte added to the
+    // URMA input processor is reported to InputMessenger exactly once.
     std::unique_lock<butil::Mutex> dispatch_lock(_dispatch_mutex);
     if (_state.load(butil::memory_order_acquire) != ESTABLISHED) {
         return;
@@ -1063,8 +1066,7 @@ void UrmaEndpoint::DispatchReceivedBytes(SocketUniquePtr& s, ssize_t bytes) {
         return;
     }
 
-    auto* messenger = static_cast<InputMessenger*>(s->user());
-    if (!messenger) {
+    if (!s->user()) {
         LOG(ERROR) << "URMA socket has no InputMessenger: "
                    << s->description();
         return;
@@ -1073,8 +1075,8 @@ void UrmaEndpoint::DispatchReceivedBytes(SocketUniquePtr& s, ssize_t bytes) {
     const int64_t received_us = butil::cpuwide_time_us();
     const int64_t base_realtime = butil::gettimeofday_us() - received_us;
     InputMessageClosure last_msg;
-    messenger->ProcessNewMessage(s.get(), static_cast<ssize_t>(pending),
-                                 false, received_us, base_realtime, last_msg);
+    _input_processor.ProcessNewMessage(static_cast<ssize_t>(pending), false,
+                                       received_us, base_realtime, last_msg);
 }
 
 void UrmaEndpoint::PollCq(Socket* m) {
@@ -1558,7 +1560,8 @@ void UrmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece) const {
        << " remote_recv_block_size=" << _remote_recv_block_size
        << " sq_window=" << _sq_window_size.load(butil::memory_order_relaxed)
        << " remote_rq_window=" << _remote_rq_window_size.load(butil::memory_order_relaxed)
-       << " handshake_version=" << _handshake_version;
+       << " handshake_version=" << _handshake_version
+       << " read_buf=" << _input_processor.read_buf().size();
 }
 
 int UrmaEndpoint::WaitCqEvent(SocketUniquePtr& s,
