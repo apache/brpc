@@ -1388,7 +1388,7 @@ public:
         brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
         response->set_message(request->message());
 
-        brpc::StreamIds response_streams;
+        response_streams.clear();
         accept_result.store(
             brpc::StreamAccept(response_streams, *cntl, nullptr),
             std::memory_order_release);
@@ -1398,6 +1398,7 @@ public:
 
     std::atomic<int> accept_result{0};
     std::atomic<size_t> accepted_streams{0};
+    brpc::StreamIds response_streams;
 };
 
 TEST_F(StreamingRpcTest, limit_streams_accepted_per_request) {
@@ -1446,8 +1447,11 @@ TEST_F(StreamingRpcTest, limit_streams_accepted_per_request) {
                               std::memory_order_acquire));
         }
 
+        for (brpc::StreamId stream_id : service.response_streams) {
+            ASSERT_EQ(0, brpc::StreamClose(stream_id));
+        }
         for (brpc::StreamId stream_id : request_streams) {
-            brpc::StreamClose(stream_id);
+            ASSERT_EQ(0, brpc::StreamClose(stream_id));
         }
     }
 
