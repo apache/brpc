@@ -1448,10 +1448,10 @@ TEST_F(StreamingRpcTest, limit_streams_accepted_per_request) {
         }
 
         for (brpc::StreamId stream_id : service.response_streams) {
-            brpc::StreamClose(stream_id);
+            ASSERT_EQ(0, brpc::StreamClose(stream_id));
         }
         for (brpc::StreamId stream_id : request_streams) {
-            brpc::StreamClose(stream_id);
+            ASSERT_EQ(0, brpc::StreamClose(stream_id));
         }
     }
 
