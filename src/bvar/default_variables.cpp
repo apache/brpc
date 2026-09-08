@@ -621,8 +621,9 @@ struct ReadVersion {
     ReadVersion() {
         struct utsname buf;
         if (uname(&buf) != 0) {
-            LOG(ERROR) << "Fail to read kernel version, errno=" << errno
-                       << " (" << strerror(errno) << ")";
+            const int saved_errno = errno;
+            LOG(ERROR) << "Failed to read kernel version, errno=" << saved_errno
+                        << " (" << berror(saved_errno) << ")";
             return;
         }
         content.append(make_kernel_version_string(buf));

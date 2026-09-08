@@ -465,7 +465,7 @@ TEST_F(VariableTest, dtor_waits_for_inflight_describe) {
     ASSERT_TRUE(destructed.load());
 }
 
-TEST_F(VariableTest, uname_returns_valid_kernel_info) {
+TEST_F(VariableTest, kernel_version_contains_uname_fields) {
     struct utsname buf;
     ASSERT_EQ(0, uname(&buf));
 
