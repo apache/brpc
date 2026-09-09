@@ -20,6 +20,7 @@
 #include <unistd.h>                        // getpagesize
 #include <sys/types.h>
 #include <sys/resource.h>                  // getrusage
+#include <sys/utsname.h>                   // uname
 #include <dirent.h>                        // dirent
 #include <iomanip>                         // setw
 #include <stdio.h>
@@ -39,6 +40,7 @@
 #include "butil/process_util.h"            // ReadCommandLine
 #include "butil/popen.h"                   // read_command_output
 #include "bvar/passive_status.h"
+#include "bvar/default_variables.h"          // make_kernel_version_string
 
 namespace bvar {
 
@@ -617,12 +619,14 @@ static void get_cmdline(std::ostream& os, void*) {
 struct ReadVersion {
     std::string content;
     ReadVersion() {
-        std::ostringstream oss;
-        if (butil::read_command_output(oss, "uname -ap") != 0) {
-            LOG(ERROR) << "Fail to read kernel version";
+        struct utsname buf;
+        if (uname(&buf) != 0) {
+            const int saved_errno = errno;
+            LOG(ERROR) << "Failed to read kernel version, errno=" << saved_errno
+                        << " (" << berror(saved_errno) << ")";
             return;
         }
-        content.append(oss.str());
+        content.append(make_kernel_version_string(buf));
     }
 };
 static void get_kernel_version(std::ostream& os, void*) {
