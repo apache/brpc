@@ -83,7 +83,7 @@ private:
     static SocketId GetServerInNextStride(const std::vector<Server>& server_list,
                                           const std::unordered_set<SocketId>& filter,
                                           TLS& tls,
-                                          size_t* index);
+                                          size_t& index);
 
     butil::DoublyBufferedData<Servers, TLS> _db_servers;
 };

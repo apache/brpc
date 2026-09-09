@@ -81,7 +81,7 @@ bool P2CEwmaLoadBalancer::Add(Servers& bg, const Servers& fg,
         // Both buffers do not have the server. Create the stat structure
         // which will be shared by both buffers.
         info.stat = std::make_shared<NodeStat>();
-        info.stat->join_time_us = LoadBalancerJoinTimeUs();
+        info.stat->join_time_us = LoadBalancerNowUs();
     } else {
         // Already added to the other buffer, share its stat.
         info.stat = fg.server_list[*pindex].stat;

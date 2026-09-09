@@ -91,7 +91,7 @@ bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
     bool insert_server =
              bg.server_map.emplace(id.id, bg.server_list.size()).second;
     if (insert_server) {
-        bg.server_list.emplace_back(id.id, weight, LoadBalancerJoinTimeUs());
+        bg.server_list.emplace_back(id.id, weight, LoadBalancerNowUs());
         bg.weight_sum += weight;
         return true;
     }
@@ -189,7 +189,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         while (remain_servers > 0) {
             size_t server_index = 0;
             SocketId server_id = GetServerInNextStride(s->server_list, filter,
-                                                       tls_temp, &server_index);
+                                                       tls_temp, server_index);
             bool warmup_pass = true;
             if (remain_servers > 1 && apply_warmup) {
                 warmup_pass = WarmupAccept(
@@ -229,7 +229,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
 SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
         const std::vector<Server>& server_list,
         const std::unordered_set<SocketId>& filter,
-        TLS& tls, size_t* index) {
+        TLS& tls, size_t& index) {
     SocketId final_server = INVALID_SOCKET_ID;
     // Index of final_server in server_list.
     size_t final_index = tls.position;
@@ -240,7 +240,7 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
             final_server = remain.id;
             if (remain.weight > stride) {
                 remain.weight -= stride;
-                *index = final_index;
+                index = final_index;
                 return final_server;
             } else {
                 stride -= remain.weight;
@@ -258,7 +258,7 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
             if (configured_weight > stride) {
                 remain.id = final_server;
                 remain.weight = configured_weight - stride;
-                *index = final_index;
+                index = final_index;
                 return final_server;
             }
             stride -= configured_weight;
@@ -266,7 +266,7 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
         ++tls.position;
         tls.position %= server_list.size();
     }
-    *index = final_index;
+    index = final_index;
     return final_server;
 }
 

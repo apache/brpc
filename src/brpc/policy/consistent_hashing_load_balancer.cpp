@@ -71,7 +71,7 @@ bool DefaultReplicaPolicy::Build(ServerId server,
         return false;
     }
     replicas->clear();
-    const int64_t join_time_us = LoadBalancerJoinTimeUs();
+    const int64_t join_time_us = LoadBalancerNowUs();
     for (size_t i = 0; i < num_replicas; ++i) {
         char host[256];
         int len = 0;
@@ -109,7 +109,7 @@ bool KetamaReplicaPolicy::Build(ServerId server,
         return false;
     }
     replicas->clear();
-    const int64_t join_time_us = LoadBalancerJoinTimeUs();
+    const int64_t join_time_us = LoadBalancerNowUs();
     const size_t points_per_hash = 4;
     CHECK(num_replicas % points_per_hash == 0)
         << "Ketam hash replicas number(" << num_replicas << ") should be n*4";

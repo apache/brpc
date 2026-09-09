@@ -39,7 +39,7 @@ DECLARE_double(lb_warmup_min_weight);
 namespace {
 
 class SaveRecycle : public brpc::SocketUser {
-    void BeforeRecycle(brpc::Socket* s) { delete this; }
+    void BeforeRecycle(brpc::Socket*) override { delete this; }
 };
 
 brpc::ServerId CreateServer(const char* addr, const char* tag = "") {
@@ -58,11 +58,11 @@ brpc::ServerId CreateServer(const char* addr, const char* tag = "") {
 // Feeds back immediately when the LB asks for it(la).
 std::map<brpc::SocketId, int> CountShares(
     brpc::LoadBalancer* lb, int count, int64_t now_us,
-    bool changable_weights = false, bool with_request_code = false) {
+    bool changeable_weights = false, bool with_request_code = false) {
     std::map<brpc::SocketId, int> shares;
     for (int i = 0; i < count; ++i) {
         brpc::LoadBalancer::SelectIn in = {
-            now_us, changable_weights, with_request_code,
+            now_us, changeable_weights, with_request_code,
             with_request_code ? butil::fast_rand() % UINT_MAX : 0u, nullptr };
         brpc::SocketUniquePtr ptr;
         brpc::LoadBalancer::SelectOut out(&ptr);

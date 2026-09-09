@@ -20,6 +20,7 @@
 #include <cmath>                                  // std::pow
 #include <gflags/gflags.h>
 #include <stdint.h>
+#include "butil/atomicops.h"
 #include "butil/fast_rand.h"                      // fast_rand_double
 #include "butil/time.h"                           // gettimeofday_us
 #include "brpc/reloadable_flags.h"
@@ -64,14 +65,16 @@ static bool ValidateWarmupMinWeight(const char*, double v) {
 BRPC_VALIDATE_GFLAG(lb_warmup_curve, ValidateWarmupCurve);
 BRPC_VALIDATE_GFLAG(lb_warmup_min_weight, ValidateWarmupMinWeight);
 
-static int64_t (*g_lb_clock_us)() = NULL;
+typedef int64_t (*LbClockFn)();
+static butil::atomic<LbClockFn> g_lb_clock_us(NULL);
 
-int64_t LoadBalancerJoinTimeUs() {
-    return g_lb_clock_us != NULL ? g_lb_clock_us() : butil::gettimeofday_us();
+int64_t LoadBalancerNowUs() {
+    const LbClockFn fn = g_lb_clock_us.load(butil::memory_order_relaxed);
+    return fn != NULL ? fn() : butil::gettimeofday_us();
 }
 
 void SetLoadBalancerClockForTesting(int64_t (*clock_us)()) {
-    g_lb_clock_us = clock_us;
+    g_lb_clock_us.store(clock_us, butil::memory_order_relaxed);
 }
 
 
@@ -81,7 +84,7 @@ double WarmupMultiplierImpl(int64_t join_time_us, int64_t now_us) {
         return 1.0;
     }
     if (now_us <= 0) {
-        now_us = butil::gettimeofday_us();
+        now_us = LoadBalancerNowUs();
     }
     const int64_t elapsed_us = now_us - join_time_us;
     if (elapsed_us >= warmup_us) {
