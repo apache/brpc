@@ -546,6 +546,7 @@ static std::string s_nodes_result = R"({
     "message": "0",
     "ttl": 1,
     "data": [
+        42,
         {
             "addr": "127.0.0.1:8635",
             "status": 0,
