@@ -16,6 +16,7 @@
 // under the License.
 
 
+#include <algorithm>                              // std::min, std::max
 #include <cmath>                                  // std::pow
 #include <gflags/gflags.h>
 #include <stdint.h>

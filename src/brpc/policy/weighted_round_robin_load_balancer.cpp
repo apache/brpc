@@ -175,30 +175,39 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         tls.remain_server.id != s->server_list[tls.position].id) {
         tls.remain_server.weight = 0;
     }
-    // The servers that can not be chosen.
-    std::unordered_set<SocketId> filter;
-    TLS tls_temp = tls;
-    uint64_t remain_weight = s->weight_sum;
-    size_t remain_servers = s->server_list.size();
-    while (remain_servers > 0) {
-        size_t server_index = 0;
-        SocketId server_id = GetServerInNextStride(s->server_list, filter,
-                                                   tls_temp, &server_index);
-        bool warmup_pass = true;
-        if (remain_servers > 1 && FLAGS_lb_warmup_ms > 0) {
-            warmup_pass = WarmupAccept(s->server_list[server_index].join_time_us,
-                                       in.begin_time_us);
-        }
-        if ((remain_servers == 1 // always take last chance
-                || (!ExcludedServers::IsExcluded(in.excluded, server_id)
-                    && warmup_pass))
-            && Socket::Address(server_id, out->ptr) == 0
-            && (*out->ptr)->IsAvailable()) {
-            // update tls.
-            tls.remain_server = tls_temp.remain_server;
-            tls.position = tls_temp.position;
-            return 0;
-        } else {
+    // Warm-up diversion must never turn an available pool into EHOSTDOWN:
+    // if the first pass skipped a warming server and found nothing else,
+    // run a second pass without the ramp.
+    bool warmup_skipped = false;
+    for (int pass = 0; pass < 2; ++pass) {
+        const bool apply_warmup = (pass == 0) && FLAGS_lb_warmup_ms > 0;
+        // The servers that can not be chosen.
+        std::unordered_set<SocketId> filter;
+        TLS tls_temp = tls;
+        uint64_t remain_weight = s->weight_sum;
+        size_t remain_servers = s->server_list.size();
+        while (remain_servers > 0) {
+            size_t server_index = 0;
+            SocketId server_id = GetServerInNextStride(s->server_list, filter,
+                                                       tls_temp, &server_index);
+            bool warmup_pass = true;
+            if (remain_servers > 1 && apply_warmup) {
+                warmup_pass = WarmupAccept(
+                    s->server_list[server_index].join_time_us, in.begin_time_us);
+                if (!warmup_pass) {
+                    warmup_skipped = true;
+                }
+            }
+            if ((remain_servers == 1 // always take last chance
+                    || (!ExcludedServers::IsExcluded(in.excluded, server_id)
+                        && warmup_pass))
+                && Socket::Address(server_id, out->ptr) == 0
+                && (*out->ptr)->IsAvailable()) {
+                // update tls.
+                tls.remain_server = tls_temp.remain_server;
+                tls.position = tls_temp.position;
+                return 0;
+            }
             // Skip this invalid server. We need calculate a new stride for server selection.
             if (--remain_servers == 0) {
                 break;
@@ -209,6 +218,9 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
             tls_temp.stride = GetStride(remain_weight, remain_servers);
             tls_temp.position = tls.position;
             tls_temp.remain_server = tls.remain_server;
+        }
+        if (!warmup_skipped) {
+            break;
         }
     }
     return EHOSTDOWN;

@@ -25,6 +25,7 @@
 #include "brpc/socket.h"
 #include "brpc/load_balancer.h"
 #include "brpc/policy/round_robin_load_balancer.h"
+#include "brpc/policy/randomized_load_balancer.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
@@ -214,6 +215,42 @@ TEST_F(LbWarmupTest, rr_ramp_and_rejoin) {
     ASSERT_TRUE(lb.AddServer(b));
     shares = CountShares(&lb, N, g_fake_now_us + 10000);
     ASSERT_LT(shares[b.id], N / 4) << shares[b.id];
+}
+
+// The only available server is cold and the warm one is down: warm-up
+// diversion must never turn that into EHOSTDOWN.
+void CheckColdServerSelectedWhenOthersDown(
+        brpc::LoadBalancer* lb, const char* addr_a, const char* addr_b,
+        const char* tag, bool with_request_code) {
+    const brpc::ServerId a = CreateServer(addr_a, tag);
+    ASSERT_TRUE(lb->AddServer(a));
+    g_fake_now_us += 1000000;  // a is past its window when b joins
+    const brpc::ServerId b = CreateServer(addr_b, tag);
+    ASSERT_TRUE(lb->AddServer(b));
+    ASSERT_EQ(0, brpc::Socket::SetFailed(a.id));
+
+    const int N = 1000;
+    std::map<brpc::SocketId, int> shares =
+        CountShares(lb, N, g_fake_now_us + 10000, false, with_request_code);
+    // CountShares only counts successful selections.
+    ASSERT_EQ(N, shares[b.id]) << shares[b.id];
+}
+
+TEST_F(LbWarmupTest, cold_server_still_selected_when_others_down) {
+    brpc::FLAGS_lb_warmup_ms = 300;
+    brpc::policy::RoundRobinLoadBalancer rr;
+    CheckColdServerSelectedWhenOthersDown(
+        &rr, "127.0.0.1:8161", "127.0.0.1:8162", "", false);
+    brpc::policy::RandomizedLoadBalancer random;
+    CheckColdServerSelectedWhenOthersDown(
+        &random, "127.0.0.1:8163", "127.0.0.1:8164", "", false);
+    brpc::policy::WeightedRoundRobinLoadBalancer wrr;
+    CheckColdServerSelectedWhenOthersDown(
+        &wrr, "127.0.0.1:8165", "127.0.0.1:8166", "2", false);
+    brpc::policy::ConsistentHashingLoadBalancer chash(
+        brpc::policy::CONS_HASH_LB_MURMUR3);
+    CheckColdServerSelectedWhenOthersDown(
+        &chash, "127.0.0.1:8167", "127.0.0.1:8168", "", true);
 }
 
 TEST_F(LbWarmupTest, wrr_ramp) {

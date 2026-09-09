@@ -119,15 +119,32 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         tls.offset = butil::fast_rand_less_than(n);
     }
 
-    for (size_t i = 0; i < n; ++i) {
-        tls.offset = (tls.offset + tls.stride) % n;
-        const SocketId id = s->server_list[tls.offset].id;
-        if (((i + 1) == n  // always take last chance
-             || (!ExcludedServers::IsExcluded(in.excluded, id)
-                 && WarmupAccept(s->join_times[tls.offset], in.begin_time_us)))
-            && IsServerAvailable(id, out->ptr)) {
-            s.tls() = tls;
-            return 0;
+    // Warm-up diversion must never turn an available pool into EHOSTDOWN:
+    // if the first pass skipped a warming server and found nothing else,
+    // run a second pass without the ramp.
+    bool warmup_skipped = false;
+    for (int pass = 0; pass < 2; ++pass) {
+        const bool apply_warmup = (pass == 0);
+        for (size_t i = 0; i < n; ++i) {
+            tls.offset = (tls.offset + tls.stride) % n;
+            const SocketId id = s->server_list[tls.offset].id;
+            if ((i + 1) != n) {  // always take last chance
+                if (ExcludedServers::IsExcluded(in.excluded, id)) {
+                    continue;
+                }
+                if (apply_warmup &&
+                    !WarmupAccept(s->join_times[tls.offset], in.begin_time_us)) {
+                    warmup_skipped = true;
+                    continue;
+                }
+            }
+            if (IsServerAvailable(id, out->ptr)) {
+                s.tls() = tls;
+                return 0;
+            }
+        }
+        if (!warmup_skipped) {
+            break;
         }
     }
     if (_cluster_recover_policy) {

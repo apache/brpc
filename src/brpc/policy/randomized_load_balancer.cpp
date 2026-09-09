@@ -113,21 +113,38 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     }
     uint32_t stride = 0;
     size_t offset = butil::fast_rand_less_than(n);
-    for (size_t i = 0; i < n; ++i) {
-        const SocketId id = s->server_list[offset].id;
-        if (((i + 1) == n  // always take last chance
-             || (!ExcludedServers::IsExcluded(in.excluded, id)
-                 && WarmupAccept(s->join_times[offset], in.begin_time_us)))
-            && IsServerAvailable(id, out->ptr)) {
-            // We found an available server
-            return 0;
+    // Warm-up diversion must never turn an available pool into EHOSTDOWN:
+    // if the first pass skipped a warming server and found nothing else,
+    // run a second pass without the ramp.
+    bool warmup_skipped = false;
+    for (int pass = 0; pass < 2; ++pass) {
+        const bool apply_warmup = (pass == 0);
+        for (size_t i = 0; i < n; ++i) {
+            const SocketId id = s->server_list[offset].id;
+            bool skip = false;
+            if ((i + 1) != n) {  // always take last chance
+                if (ExcludedServers::IsExcluded(in.excluded, id)) {
+                    skip = true;
+                } else if (apply_warmup &&
+                           !WarmupAccept(s->join_times[offset], in.begin_time_us)) {
+                    warmup_skipped = true;
+                    skip = true;
+                }
+            }
+            if (!skip && IsServerAvailable(id, out->ptr)) {
+                // We found an available server
+                return 0;
+            }
+            if (stride == 0) {
+                stride = bthread::prime_offset();
+            }
+            // If `Address' failed, use `offset+stride' to retry so that
+            // this failed server won't be visited again inside for
+            offset = (offset + stride) % n;
         }
-        if (stride == 0) {
-            stride = bthread::prime_offset();
+        if (!warmup_skipped) {
+            break;
         }
-        // If `Address' failed, use `offset+stride' to retry so that
-        // this failed server won't be visited again inside for
-        offset = (offset + stride) % n;
     }
     if (_cluster_recover_policy) {
         _cluster_recover_policy->StartRecover();

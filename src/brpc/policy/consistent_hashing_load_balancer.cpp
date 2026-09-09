@@ -323,16 +323,33 @@ int ConsistentHashingLoadBalancer::SelectServer(
     if (choice == s->end()) {
         choice = s->begin();
     }
-    for (size_t i = 0; i < s->size(); ++i) {
-        if (((i + 1) == s->size() // always take last chance
-             || (!ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id)
-                 && WarmupAccept(choice->join_time_us, in.begin_time_us)))
-            && IsServerAvailable(choice->server_sock.id, out->ptr)) {
-            return 0;
-        } else {
+    // Warm-up diversion must never turn an available pool into EHOSTDOWN:
+    // if the first pass skipped a warming server and found nothing else,
+    // run a second pass without the ramp.
+    bool warmup_skipped = false;
+    for (int pass = 0; pass < 2; ++pass) {
+        const bool apply_warmup = (pass == 0);
+        for (size_t i = 0; i < s->size(); ++i) {
+            const SocketId id = choice->server_sock.id;
+            bool skip = false;
+            if ((i + 1) != s->size()) {  // always take last chance
+                if (ExcludedServers::IsExcluded(in.excluded, id)) {
+                    skip = true;
+                } else if (apply_warmup &&
+                           !WarmupAccept(choice->join_time_us, in.begin_time_us)) {
+                    warmup_skipped = true;
+                    skip = true;
+                }
+            }
+            if (!skip && IsServerAvailable(id, out->ptr)) {
+                return 0;
+            }
             if (++choice == s->end()) {
                 choice = s->begin();
             }
+        }
+        if (!warmup_skipped) {
+            break;
         }
     }
     return EHOSTDOWN;
