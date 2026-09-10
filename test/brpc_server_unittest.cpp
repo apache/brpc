@@ -1458,7 +1458,7 @@ TEST_F(ServerTest, reject_redis_connections_over_limit) {
 
     const butil::EndPoint ep = server.listen_address();
     butil::fd_guard first_client(tcp_connect(ep, nullptr));
-    ASSERT_GT(first_client, 0);
+    ASSERT_GE(first_client, 0);
 
     brpc::ServerStatistics stat;
     for (int retry = 0; retry < 100; ++retry) {
@@ -1481,7 +1481,7 @@ TEST_F(ServerTest, reject_redis_connections_over_limit) {
     SendSleepRPC(rpc_server.listen_address(), 0, true);
 
     butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
-    ASSERT_GT(rejected_client, 0);
+    ASSERT_GE(rejected_client, 0);
     struct timeval timeout = {1, 0};
     ASSERT_EQ(0, setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO,
                            &timeout, sizeof(timeout)));
@@ -1497,7 +1497,7 @@ TEST_F(ServerTest, reject_redis_connections_over_limit) {
 
     ASSERT_EQ(0, server.SetRedisMaxConnections(2));
     butil::fd_guard second_client(tcp_connect(ep, nullptr));
-    ASSERT_GT(second_client, 0);
+    ASSERT_GE(second_client, 0);
     for (int retry = 0; retry < 100; ++retry) {
         server.GetStat(&stat);
         if (stat.connection_count == 2) {
@@ -1514,7 +1514,7 @@ TEST_F(ServerTest, reject_redis_connections_over_limit) {
     EXPECT_EQ(2ul, stat.connection_count);
 
     butil::fd_guard lowered_limit_client(tcp_connect(ep, nullptr));
-    ASSERT_GT(lowered_limit_client, 0);
+    ASSERT_GE(lowered_limit_client, 0);
     ASSERT_EQ(0, setsockopt(lowered_limit_client, SOL_SOCKET, SO_RCVTIMEO,
                            &timeout, sizeof(timeout)));
     const ssize_t lowered_nr =
@@ -1555,7 +1555,7 @@ TEST_F(ServerTest, reject_redis_connection_before_tls_handshake) {
     // Holding an idle TCP socket consumes the only slot without initiating a
     // TLS handshake.
     butil::fd_guard first_client(tcp_connect(ep, nullptr));
-    ASSERT_GT(first_client, 0);
+    ASSERT_GE(first_client, 0);
     brpc::ServerStatistics stat;
     for (int retry = 0; retry < 100; ++retry) {
         server.GetStat(&stat);
@@ -1567,7 +1567,7 @@ TEST_F(ServerTest, reject_redis_connection_before_tls_handshake) {
     ASSERT_EQ(1ul, stat.connection_count);
 
     butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
-    ASSERT_GT(rejected_client, 0);
+    ASSERT_GE(rejected_client, 0);
     struct timeval timeout = {1, 0};
     ASSERT_EQ(0, setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO,
                            &timeout, sizeof(timeout)));

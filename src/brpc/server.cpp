@@ -900,8 +900,9 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     if (real_opt.redis_max_connections != 0 &&
         !is_redis_only_public_listener(real_opt, service_count())) {
         LOG(ERROR) << "redis_max_connections requires a Redis-only public "
-                      "listener (redis_service set, enabled_protocols=redis, "
-                      "no RPC or builtin services)";
+                      "listener (redis_service set, enabled_protocols exactly "
+                      "\"redis\", has_builtin_services=false, no registered RPC "
+                      "services, and all other protocol service pointers null)";
         return -1;
     }
 
@@ -1848,7 +1849,9 @@ int Server::SetRedisMaxConnections(size_t max_connections) {
     }
     if (!is_redis_only_public_listener(_options, service_count())) {
         LOG(WARNING) << "SetRedisMaxConnections requires a Redis-only public "
-                        "listener";
+                        "listener (redis_service set, enabled_protocols exactly "
+                        "\"redis\", has_builtin_services=false, no registered RPC "
+                        "services, and all other protocol service pointers null)";
         return -1;
     }
     _am->SetRedisMaxConnections(max_connections);
