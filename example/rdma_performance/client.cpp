@@ -15,6 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#ifdef BRPC_WITH_GDR
+#include <cuda.h>
+#include <cuda_runtime.h>
+#endif
 #include <stdlib.h>
 #include <unistd.h>
 #include <vector>
@@ -42,6 +46,7 @@ DEFINE_string(connection_type, "single", "Connection type of the channel");
 DEFINE_string(protocol, "baidu_std", "Protocol type.");
 DEFINE_string(servers, "0.0.0.0:8002+0.0.0.0:8002", "IP Address of servers");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
+DEFINE_bool(use_gdr, false, "Use GDR or not");
 DEFINE_int32(rpc_timeout_ms, 2000, "RPC call timeout");
 DEFINE_int32(test_seconds, 20, "Test running time");
 DEFINE_int32(test_iterations, 0, "Test iterations");
@@ -84,16 +89,46 @@ public:
         , _stop(false)
     {
         if (attachment_size > 0) {
-            _addr = malloc(attachment_size);
-            butil::fast_rand_bytes(_addr, attachment_size);
-            _attachment.append(_addr, attachment_size);
+#ifdef BRPC_WITH_GDR
+            if (FLAGS_use_gdr) {
+                int gpu_id = 0;
+                cudaSetDevice(gpu_id);
+                cudaMalloc(&_addr, attachment_size);
+                auto pd = brpc::rdma::GetRdmaPd();
+                mr = ibv_reg_mr(pd, _addr, attachment_size,
+                        IBV_ACCESS_LOCAL_WRITE |
+                        IBV_ACCESS_REMOTE_READ |
+                        IBV_ACCESS_REMOTE_WRITE);
+                if (!mr) {
+                    LOG(FATAL) << "Failed to register MR:" << strerror(errno)
+                        << ", addr:" << _addr;
+                }
+                auto deleter = [](void* data) {};
+                _attachment.append_user_data_with_meta(_addr, attachment_size, deleter, mr->lkey);
+            }
+            else
+#endif
+            {
+                _addr = malloc(attachment_size);
+                butil::fast_rand_bytes(_addr, attachment_size);
+                _attachment.append(_addr, attachment_size);
+            }
         }
         _echo_attachment = echo_attachment;
     }
 
     ~PerformanceTest() {
         if (_addr) {
-            free(_addr);
+#ifdef BRPC_WITH_GDR
+            if (FLAGS_use_gdr) {
+                ibv_dereg_mr(mr);
+                cudaFree(_addr);
+            }
+            else
+#endif
+            {
+                free(_addr);
+            }
         }
         delete _channel;
     }
@@ -103,6 +138,11 @@ public:
     int Init() {
         brpc::ChannelOptions options;
         options.socket_mode = FLAGS_use_rdma? brpc::SOCKET_MODE_RDMA : brpc::SOCKET_MODE_TCP;
+#ifdef BRPC_WITH_GDR
+        if (FLAGS_use_gdr) {
+            options.socket_mode = brpc::SOCKET_MODE_GDR;
+        }
+#endif
         options.protocol = FLAGS_protocol;
         options.connection_type = FLAGS_connection_type;
         options.timeout_ms = FLAGS_rpc_timeout_ms;
@@ -203,6 +243,9 @@ public:
     }
 
 private:
+#ifdef BRPC_WITH_GDR
+    ibv_mr* mr;
+#endif
     void* _addr;
     brpc::Channel* _channel;
     uint64_t _start_time;
@@ -223,6 +266,7 @@ void Test(int thread_num, int attachment_size) {
         << ", Depth: " << FLAGS_queue_depth
         << ", Attachment: " << attachment_size << "B"
         << ", RDMA: " << (FLAGS_use_rdma ? "yes" : "no")
+        << ", GDR: " << (FLAGS_use_gdr ? "yes" : "no")
         << ", Echo: " << (FLAGS_echo_attachment ? "yes]" : "no]")
         << std::endl;
     g_total_bytes.store(0, butil::memory_order_relaxed);
@@ -278,6 +322,12 @@ int main(int argc, char* argv[]) {
     if (FLAGS_use_rdma) {
         brpc::rdma::GlobalRdmaInitializeOrDie();
     }
+#ifdef BRPC_WITH_GDR
+    else if (FLAGS_use_gdr) {
+        brpc::rdma::GlobalRdmaInitializeOrDie();
+        brpc::rdma::GlobalGdrInitializeOrDie();
+    }
+#endif
 
     brpc::StartDummyServerAt(FLAGS_dummy_port);
 

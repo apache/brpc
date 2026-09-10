@@ -19,6 +19,8 @@
 #ifndef BRPC_POLICY_BRPC_PROTOCOL_H
 #define BRPC_POLICY_BRPC_PROTOCOL_H
 
+#include "brpc/policy/baidu_rpc_meta.pb.h"      // RpcRequestMeta
+#include "brpc/policy/most_common_message.h"
 #include "brpc/protocol.h"
 
 namespace brpc {
@@ -53,6 +55,17 @@ void PackRpcRequest(butil::IOBuf* buf,
 // Returns the `name' of the 'content_type'.
 const char* ContentTypeToCStr(ContentType content_type);
 
+#if BRPC_WITH_GDR
+// Parse binary format of baidu_std
+ParseResult ParseRpcMessageGpu(butil::IOBuf* source, Socket *socket, bool read_eof,
+                            const void *arg);
+
+void FillReqBufGpu(butil::IOBuf* req_buf, MostCommonMessage* msg, int body_without_attachment_size);
+
+void FillResBufGpu(butil::IOBuf* res_buf, MostCommonMessage* msg, const RpcMeta& meta,
+                   butil::IOBuf** res_buf_ptr, Controller* cntl);
+
+#endif
 }  // namespace policy
 } // namespace brpc
 

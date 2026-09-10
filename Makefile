@@ -97,6 +97,7 @@ BUTIL_SOURCES = \
     src/butil/files/scoped_temp_dir.cc \
     src/butil/file_util.cc \
     src/butil/file_util_posix.cc \
+    src/butil/gpu/gpu_block_pool.cpp \
     src/butil/guid.cc \
     src/butil/guid_posix.cc \
     src/butil/hash.cc \

@@ -38,6 +38,9 @@ COPTS = [
     "//bazel/config:brpc_with_rdma": ["-DBRPC_WITH_RDMA=1"],
     "//conditions:default": [""],
 }) + select({
+    "//bazel/config:brpc_with_gdr": ["-DBRPC_WITH_GDR=1"],
+    "//conditions:default": [""],
+}) + select({
     "//bazel/config:brpc_with_ubring": ["-DBRPC_WITH_UBRING=1"],
     "//conditions:default": [""],
 })
