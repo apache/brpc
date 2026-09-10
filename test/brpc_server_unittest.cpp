@@ -19,6 +19,7 @@
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
@@ -1485,11 +1486,29 @@ TEST_F(ServerTest, reject_redis_connections_over_limit) {
     struct timeval timeout = {1, 0};
     ASSERT_EQ(0, setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO,
                            &timeout, sizeof(timeout)));
-    char response[64];
-    const ssize_t nr = recv(rejected_client, response, sizeof(response), 0);
     const std::string expected = "-ERR max number of clients reached\r\n";
-    ASSERT_EQ(expected.size(), (size_t)nr);
-    EXPECT_EQ(expected, std::string(response, (size_t)nr));
+    const auto expect_rejection = [&expected](int fd) {
+        // These fresh loopback sockets have no induced send backpressure, so
+        // require the full response here despite best-effort delivery in
+        // production. Small reads exercise accumulation without relying on
+        // TCP preserving the server's write boundaries.
+        std::string response;
+        char chunk[7];
+        while (response.size() < expected.size()) {
+            const ssize_t nr = recv(fd, chunk, sizeof(chunk), 0);
+            if (nr > 0) {
+                response.append(chunk, static_cast<size_t>(nr));
+            } else if (nr < 0 && errno == EINTR) {
+                continue;
+            } else {
+                break;
+            }
+        }
+        EXPECT_EQ(expected, response);
+        // The outer fd_guard must also close plaintext rejected connections.
+        EXPECT_EQ(0, recv(fd, chunk, sizeof(chunk), 0));
+    };
+    expect_rejection(rejected_client);
 
     server.GetStat(&stat);
     EXPECT_EQ(1ul, stat.connection_count);
@@ -1517,10 +1536,7 @@ TEST_F(ServerTest, reject_redis_connections_over_limit) {
     ASSERT_GE(lowered_limit_client, 0);
     ASSERT_EQ(0, setsockopt(lowered_limit_client, SOL_SOCKET, SO_RCVTIMEO,
                            &timeout, sizeof(timeout)));
-    const ssize_t lowered_nr =
-        recv(lowered_limit_client, response, sizeof(response), 0);
-    ASSERT_EQ(expected.size(), (size_t)lowered_nr);
-    EXPECT_EQ(expected, std::string(response, (size_t)lowered_nr));
+    expect_rejection(lowered_limit_client);
 
     server.GetStat(&stat);
     EXPECT_EQ(2ul, stat.connection_count);

@@ -242,6 +242,9 @@ void Acceptor::SetRedisMaxConnections(size_t max_connections) {
 }
 
 void Acceptor::RejectRedisConnection(int fd) {
+    // Borrowed fd: OnNewConnectionsUntilEAGAIN() retains ownership in its
+    // fd_guard. After this returns, the caller's continue destroys the guard
+    // and closes fd on both the SSL and plaintext paths. Do not close it here.
     _rejected_redis_connection_count.fetch_add(
         1, butil::memory_order_relaxed);
 
@@ -254,6 +257,8 @@ void Acceptor::RejectRedisConnection(int fd) {
 
     static const char response[] =
         "-ERR max number of clients reached\r\n";
+    // Delivery is best-effort: handle short writes, but never wait for a slow
+    // peer to become writable and stall admission for other connections.
     const size_t response_size = sizeof(response) - 1;
     size_t offset = 0;
     while (offset < response_size) {
@@ -344,6 +349,7 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
 
         if (!am->TryAcquireRedisConnectionSlot()) {
             am->RejectRedisConnection(in_fd);
+            // in_fd still owns the fd; leaving this iteration closes it.
             continue;
         }
 
