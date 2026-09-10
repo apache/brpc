@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
+#include <memory>
 #include <gtest/gtest.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
@@ -1435,14 +1436,16 @@ TEST_F(ServerTest, redis_connection_limit_requires_dedicated_listener) {
         &echo_service, brpc::SERVER_DOESNT_OWN_SERVICE));
 
     brpc::ServerOptions opt;
-    opt.redis_service = new brpc::RedisService;
+    std::unique_ptr<brpc::RedisService> redis_service(new brpc::RedisService);
+    opt.redis_service = redis_service.get();
     opt.redis_max_connections = 1;
     opt.enabled_protocols = "redis";
     opt.has_builtin_services = false;
     const int rc = server.Start("127.0.0.1:0", &opt);
-    if (rc != 0) {
-        delete opt.redis_service;
-        opt.redis_service = nullptr;
+    // Validation fails before ownership transfer. A later Start() failure may
+    // already have transferred ownership, so inspect the options, not just rc.
+    if (server.options().redis_service == redis_service.get()) {
+        redis_service.release();
     }
     EXPECT_EQ(-1, rc);
 }
@@ -1551,7 +1554,21 @@ TEST_F(ServerTest, reject_redis_connections_over_limit) {
         }
         usleep(1000);
     }
-    EXPECT_EQ(0ul, stat.connection_count);
+    ASSERT_EQ(0ul, stat.connection_count);
+
+    // Falling below the lowered limit must restore admission, not just update
+    // the reported count. This idle client must consume the recovered slot.
+    butil::fd_guard recovered_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(recovered_client, 0);
+    for (int retry = 0; retry < 100; ++retry) {
+        server.GetStat(&stat);
+        if (stat.connection_count == 1) {
+            break;
+        }
+        usleep(1000);
+    }
+    EXPECT_EQ(1ul, stat.connection_count);
+    EXPECT_EQ(2ul, stat.rejected_redis_connection_count);
 }
 
 TEST_F(ServerTest, reject_redis_connection_before_tls_handshake) {

@@ -620,6 +620,11 @@ BUTIL_FORCE_INLINE bool is_rdma_handshake_protocol(const char* name) {
     return strcmp(name, "rdma_handshake") == 0;
 }
 
+static const char kRedisOnlyPublicListenerRequirements[] =
+    "a Redis-only public listener (redis_service set, enabled_protocols exactly "
+    "\"redis\", has_builtin_services=false, no registered RPC services, "
+    "and all other protocol service pointers null)";
+
 bool is_redis_only_public_listener(const ServerOptions& opt,
                                    size_t user_service_count) {
     return opt.redis_service != nullptr &&
@@ -899,10 +904,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     // sharing the public port.
     if (real_opt.redis_max_connections != 0 &&
         !is_redis_only_public_listener(real_opt, service_count())) {
-        LOG(ERROR) << "redis_max_connections requires a Redis-only public "
-                      "listener (redis_service set, enabled_protocols exactly "
-                      "\"redis\", has_builtin_services=false, no registered RPC "
-                      "services, and all other protocol service pointers null)";
+        LOG(ERROR) << "redis_max_connections requires "
+                   << kRedisOnlyPublicListenerRequirements;
         return -1;
     }
 
@@ -1848,10 +1851,8 @@ int Server::SetRedisMaxConnections(size_t max_connections) {
         return -1;
     }
     if (!is_redis_only_public_listener(_options, service_count())) {
-        LOG(WARNING) << "SetRedisMaxConnections requires a Redis-only public "
-                        "listener (redis_service set, enabled_protocols exactly "
-                        "\"redis\", has_builtin_services=false, no registered RPC "
-                        "services, and all other protocol service pointers null)";
+        LOG(WARNING) << "SetRedisMaxConnections requires "
+                     << kRedisOnlyPublicListenerRequirements;
         return -1;
     }
     _am->SetRedisMaxConnections(max_connections);

@@ -259,13 +259,26 @@ void Acceptor::RejectRedisConnection(int fd) {
         "-ERR max number of clients reached\r\n";
     // Delivery is best-effort: handle short writes, but never wait for a slow
     // peer to become writable and stall admission for other connections.
+    int send_flags = MSG_DONTWAIT;
+#if defined(MSG_NOSIGNAL)
+    send_flags |= MSG_NOSIGNAL;
+#elif defined(SO_NOSIGPIPE)
+    const int enabled = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE,
+                   &enabled, sizeof(enabled)) != 0) {
+        return;
+    }
+#else
+    // Omit the optional error if SIGPIPE cannot be suppressed for this send.
+    return;
+#endif
     const size_t response_size = sizeof(response) - 1;
     size_t offset = 0;
     while (offset < response_size) {
         const ssize_t nwritten = send(fd,
                                       response + offset,
                                       response_size - offset,
-                                      MSG_DONTWAIT | MSG_NOSIGNAL);
+                                      send_flags);
         if (nwritten > 0) {
             offset += nwritten;
         } else if (nwritten < 0 && errno == EINTR) {
