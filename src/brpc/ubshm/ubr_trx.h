@@ -24,6 +24,7 @@
 #include "brpc/ubshm/common/common.h"
 #include "brpc/ubshm/common/thread_lock.h"
 #include "brpc/ubshm/ubr_msg.h"
+#include "brpc/ubshm/timer/timer_mgr.h"
 
 /* +----------------------------------------------------------------------------+
    │                                 UbrTrx shm                                 │
@@ -58,15 +59,20 @@ typedef enum {
 } EventQState;
 
 typedef enum {
-    UBR_SEND_CLOSE,
-    UBR_CALL_BACK_CLOSE
-} UbrCloseType;
-
-typedef enum {
     UBR_CLOSE_FIRST,
     UBR_CLOSE_SECOND,
     UBR_CLOSE_END
 } UbrCloseCount;
+
+// Ownership of the final delayed cleanup of a trx. Exactly one side (the
+// delayed-clear callback or a force close) may run it. The state lives in
+// a per-acquisition heap control object (UbrCleanupCtl) anchored by the
+// trx manager, so it survives the pool slot reuse that wipes UbrTrx.
+typedef enum {
+    UBR_CLEANUP_PENDING = 1,                     // cleanup timer scheduled
+    UBR_CLEANUP_RUNNING = 2,                     // cleanup owned, in progress
+    UBR_CLEANUP_DONE = 3                         // cleanup finished
+} UbrCleanupState;
 
 typedef enum {
     UDP_TRX,
@@ -104,11 +110,11 @@ typedef struct TagUbrTx {
     UbrAddrInfo remote_rx_event_q;
     UbrAddrInfo local_data_status_q;
     UbrAddrInfo local_tx_event_q;
-    uint64_t out_io_id;
+    AtomicUintFast64 out_io_id;
     uint32_t write_pos;
     uint32_t capacity;
     UbrMsgFormat local_msg_space;
-    uint32_t hb_retry_cnt;
+    int32_t hb_retry_cnt;
     uint32_t ep_last_cap;
     volatile EventQState trx_state;
 } UbrTx;
@@ -118,7 +124,7 @@ typedef struct TagUbrRx {
     UbrAddrInfo local_rx_event_q;
     UbrAddrInfo remote_data_status_q;
     UbrAddrInfo remote_tx_event_q;
-    uint64_t in_io_id;
+    AtomicUintFast64 in_io_id;
     uint32_t read_pos;
     uint32_t capacity;
     uint32_t deal_msg_num;
@@ -127,17 +133,47 @@ typedef struct TagUbrRx {
     volatile EventQState trx_state;
 } UbrRx;
 
+struct TagUbrTrx;
+
+// Control object of one delayed cleanup, created when the cleanup is
+// scheduled and destroyed when the owning pool slot is acquired again.
+// It is anchored by the trx manager (not by the reusable UbrTrx memory),
+// so the ownership claim and the completion signal stay valid across the
+// release/reuse of the trx that owns the cleanup.
+struct UbrCleanupCtl {
+    TagUbrTrx* trx;                              // immutable
+    uint64_t ubr_id;                             // immutable generation
+    AtomicInt state;                             // UbrCleanupState
+    UbrTimerId timer;                            // delayed clear timer
+    // References: timer/callback (held from a successful schedule until
+    // the callback fully returned, or released by whoever cancels the
+    // timer before it fires) + starter (until the schedule call
+    // completes) + manager anchor (taken when the ctl is anchored to the
+    // pool slot, released when the anchor is detached or retired).
+    AtomicInt ref;
+
+    void ReleaseRef() {
+        if (ref.fetch_sub(1) == 1) {
+            delete this;
+        }
+    }
+};
+
 typedef struct TagUbrTrx {
     UbrTx ubr_tx;
     UbrRx ubr_rx;
-    uint64_t ubr_id;
+    AtomicUintFast64 ubr_id;
     uint32_t trx_mgr_index;
     UbrTrxType type;
     SHM local_shm;
     SHM remote_shm;
-    int timer_fd;
-    int hb_timer_fd;
-    int clear_timer_fd;
+    UbrTimerId close_timer;
+    UbrTimerId hb_timer;
+    UbrCleanupCtl* cleanup_ctl;
+    // Last io ids seen by the close-check timer, used to reset its
+    // back-off polling interval when the link has traffic.
+    uint64_t close_chk_in_io_id;
+    uint64_t close_chk_out_io_id;
     AtomicInt close_cnt;
     AtomicInt close_state;
 } UbrTrx;
@@ -152,11 +188,7 @@ typedef struct TagUbrLinkLock {
     FileLock* file_lock;
 } UbrLinkLock;
 
-typedef enum {
-    UBR_UB_EVENT,
-    UBR_HEARTBEAT,
-}PASSIVE_DISC_TYPE;
-
 }
 }
 #endif //BRPC_UBR_TRX_H
+

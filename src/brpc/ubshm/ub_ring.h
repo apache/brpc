@@ -55,11 +55,13 @@ public:
 
     static void *UbrTrxHBCallback(void *args);
 
-    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE type);
+    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx);
 
     static RETURN_CODE UbrAddAsynClearTimer(UbrTrx *trx);
 
     static void *UbrAsynClearCallback(void *args);
+
+    static void *UbrPassiveClearCallback(void *args);
 
     int UbrTrxSend(const void *buf, uint32_t buf_len);
 
@@ -212,8 +214,8 @@ private:
     void PreWriteAddr(uint8_t *addr, size_t len);
     RETURN_CODE WritevHasEnoughSpace(size_t buf_len);
     RETURN_CODE UbrServerTrxInit(SHM *local_shm, SHM *remote_shm);
-    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type);
-    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type, int op=0);
+    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx);
+    static RETURN_CODE ClearTrxResource(UbrTrx *trx);
 
     UbrTrx* _trx{nullptr};
 };

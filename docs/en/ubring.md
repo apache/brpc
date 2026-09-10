@@ -186,7 +186,7 @@ The shared memory manager (`shm_mgr.cpp`) provides a unified interface for diffe
 
 ### Timer Management
 
-UBRing uses a high-precision timer system (`timer_mgr.cpp`) for connection management and timeout handling, supporting both epoll (Linux) and kqueue (macOS).
+UBRing connection management and timeout handling are built on bthread timers (`bthread_timer_add`/`bthread_timer_del`, wrapped in `timer_mgr.cpp`). The non-blocking `UbrTimerDel` is safe to call from within a timer callback; external teardown that frees resources reachable from the callback argument uses `UbrTimerDelAndWait` to wait out a possibly running callback; one-shot timers clean up their handle automatically when they fire. Timer callbacks run on the process-wide bthread timer thread and must return quickly. The close-check timer backs off exponentially while the link is idle (capped by `ub_event_queue_timer_interval_max_us`, 10ms by default) and returns to fast polling once there is traffic or a close in progress.
 
 ## References
 

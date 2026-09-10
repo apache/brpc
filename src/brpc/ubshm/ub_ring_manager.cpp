@@ -22,6 +22,11 @@
 
 namespace brpc {
 namespace ubring {
+
+// A UbrCleanupCtl reference count of 1 means only the manager anchor is
+// left, i.e. no cleanup callback is in flight for it.
+static constexpr int kAnchoredRefOnly = 1;
+
 DEFINE_int32(ubr_max_managed_num, 1024, "maximum number of managed ubring");
 DEFINE_int32(tail_update_after_read, 8, "Position of the tail update after the read");
 
@@ -54,6 +59,8 @@ RETURN_CODE UBRingManager::UbrMgrDefault()
     g_ubr_mgr.trx_cap = FLAGS_ubr_max_managed_num;
     g_ubr_mgr.trx_mgr_unit_status = nullptr;
     g_ubr_mgr.trx_mgr = nullptr;
+    g_ubr_mgr.trx_mgr_unit_id = nullptr;
+    g_ubr_mgr.trx_mgr_unit_ctl = nullptr;
     return UBRING_OK;
 }
 
@@ -68,8 +75,14 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
     g_ubr_mgr.trx_mgr = (UbrTrx *)malloc(trx_mgr_size);
     size_t trx_mgr_status_size = g_ubr_mgr.trx_cap * sizeof(UbrMgrUnitStatus);
     g_ubr_mgr.trx_mgr_unit_status = (UbrMgrUnitStatus *)malloc(trx_mgr_status_size);
+    size_t trx_mgr_id_size = g_ubr_mgr.trx_cap * sizeof(uint64_t);
+    g_ubr_mgr.trx_mgr_unit_id = (uint64_t *)malloc(trx_mgr_id_size);
+    size_t trx_mgr_ctl_size = g_ubr_mgr.trx_cap * sizeof(UbrCleanupCtl *);
+    g_ubr_mgr.trx_mgr_unit_ctl = (UbrCleanupCtl **)malloc(trx_mgr_ctl_size);
     if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr ||
-                 g_ubr_mgr.trx_mgr_unit_status == nullptr)) {
+                 g_ubr_mgr.trx_mgr_unit_status == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_id == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_ctl == nullptr)) {
         LOG(ERROR) << "Ubr manager memory allocation failed.";
         UbrMgrFini();
         return UBRING_ERR;
@@ -77,15 +90,57 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
 
     memset(g_ubr_mgr.trx_mgr, 0, trx_mgr_size);
     memset(g_ubr_mgr.trx_mgr_unit_status, UBR_MGR_UNIT_FREE, trx_mgr_status_size);
+    memset(g_ubr_mgr.trx_mgr_unit_id, 0, trx_mgr_id_size);
+    memset(g_ubr_mgr.trx_mgr_unit_ctl, 0, trx_mgr_ctl_size);
     LinkInfoInit();
     return UBRING_OK;
 }
 
 void UBRingManager::UbrMgrFini() {
+    // Cancel the pending delayed cleanups and wait for the in-flight ones
+    // (each holds one extra reference) to finish, before the pool memory
+    // they touch is freed. A ctl whose timer is still starting can only be
+    // cancelled in a later round, hence the retry-to-stability loop.
+    bool busy = true;
+    while (busy) {
+        busy = false;
+        {
+            LOCK_GUARD(g_ubr_trx_mgr_mtx);
+            if (g_ubr_mgr.trx_mgr_unit_ctl != nullptr) {
+                for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
+                    UbrCleanupCtl* ctl = g_ubr_mgr.trx_mgr_unit_ctl[i];
+                    if (ctl == nullptr) {
+                        continue;
+                    }
+                    if (UbrTimerDel(&ctl->timer) == 0) {
+                        ctl->ReleaseRef();   // timer/callback reference
+                    }
+                    if (ctl->ref.load() > kAnchoredRefOnly) {
+                        busy = true;
+                    }
+                }
+            }
+        }
+        if (busy) {
+            LOG_EVERY_SECOND(INFO) << "UbrMgrFini waits for in-flight cleanups.";
+            usleep(1000);
+        }
+    }
     {
         LOCK_GUARD(g_ubr_trx_mgr_mtx);
+        if (g_ubr_mgr.trx_mgr_unit_ctl != nullptr) {
+            for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
+                UbrCleanupCtl* ctl = g_ubr_mgr.trx_mgr_unit_ctl[i];
+                if (ctl != nullptr) {
+                    g_ubr_mgr.trx_mgr_unit_ctl[i] = nullptr;
+                    ctl->ReleaseRef();           // manager reference
+                }
+            }
+        }
         FREE_PTR(g_ubr_mgr.trx_mgr);
         FREE_PTR(g_ubr_mgr.trx_mgr_unit_status);
+        FREE_PTR(g_ubr_mgr.trx_mgr_unit_id);
+        FREE_PTR(g_ubr_mgr.trx_mgr_unit_ctl);
     }
     {
         LOCK_GUARD(g_ubr_listener_mgr_mtx);
@@ -115,10 +170,25 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
     for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
         if (g_ubr_mgr.trx_mgr_unit_status[i] == UBR_MGR_UNIT_FREE) {
             memset(&g_ubr_mgr.trx_mgr[i], 0, sizeof(UbrTrx));
+            // The explicit re-initialization after memset is deliberate: it
+            // documents the per-acquisition invariants of these fields.
+            g_ubr_mgr.trx_mgr[i].close_timer = nullptr;
+            g_ubr_mgr.trx_mgr[i].hb_timer = nullptr;
+            g_ubr_mgr.trx_mgr[i].cleanup_ctl = nullptr;
+            // Retire the previous acquisition's cleanup control object.
+            UbrCleanupCtl* old_ctl = g_ubr_mgr.trx_mgr_unit_ctl[i];
+            g_ubr_mgr.trx_mgr_unit_ctl[i] = nullptr;
+            if (old_ctl != nullptr) {
+                if (UbrTimerDel(&old_ctl->timer) == 0) {
+                    old_ctl->ReleaseRef();       // timer/callback reference
+                }
+                old_ctl->ReleaseRef();           // manager anchor
+            }
             g_ubr_mgr.trx_mgr_unit_status[i] = UBR_MGR_UNIT_USED;
             *trx = &g_ubr_mgr.trx_mgr[i];
             (*trx)->trx_mgr_index = i;
-            (*trx)->ubr_id = g_ubr_trx_num;
+            ATOMIC_STORE((*trx)->ubr_id, g_ubr_trx_num);
+            g_ubr_mgr.trx_mgr_unit_id[i] = g_ubr_trx_num;
             (*trx)->close_state = UBR_CLOSE_FIRST;
             (*trx)->close_cnt = MAX_CLOSE_COUNT;
             ++g_ubr_mgr.trx_num;
@@ -130,17 +200,12 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
     return UBRING_ERR;
 }
 
-RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx) {
+RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx,
+                                                uint64_t expect_ubr_id) {
     if (UNLIKELY(trx == nullptr)) {
         LOG(ERROR) << "Release trx failed, trx is null.";
         return UBRING_ERR;
     }
-
-    trx->local_shm.addr = nullptr;
-    trx->ubr_tx.local_tx_event_q.addr = nullptr;
-    trx->ubr_tx.local_data_status_q.addr = nullptr;
-    trx->ubr_rx.local_rx_event_q.addr = nullptr;
-    trx->ubr_rx.remote_data_status_q.addr = nullptr;
     if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Release trx failed, trx_mgr is null.";
         return UBRING_ERR;
@@ -153,14 +218,80 @@ RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx) {
         return UBRING_OK;
     }
 
+    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_id[idx] != expect_ubr_id)) {
+        // The slot was released and acquired again meanwhile; the stale
+        // caller must not touch the new occupant.
+        LOG(WARNING) << "Release stale trx refused, name=" << trx->local_shm.name;
+        return UBRING_OK;
+    }
+
     if (g_ubr_mgr.trx_num == 0) {
         LOG(ERROR) << "Release trx failed, trx number is 0.";
         return UBRING_ERR;
     }
 
+    // Mutate the trx only after the generation check passed.
+    trx->local_shm.addr = nullptr;
+    trx->ubr_tx.local_tx_event_q.addr = nullptr;
+    trx->ubr_tx.local_data_status_q.addr = nullptr;
+    trx->ubr_rx.local_rx_event_q.addr = nullptr;
+    trx->ubr_rx.remote_data_status_q.addr = nullptr;
     g_ubr_mgr.trx_mgr_unit_status[idx] = UBR_MGR_UNIT_FREE;
     --g_ubr_mgr.trx_num;
     return UBRING_OK;
+}
+
+UbrCleanupCtl* UBRingManager::SnapshotUnitCleanupCtl(uint32_t idx) {
+    LOCK_GUARD(g_ubr_trx_mgr_mtx);
+    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr || idx >= g_ubr_mgr.trx_cap)) {
+        return nullptr;
+    }
+    UbrCleanupCtl* ctl = g_ubr_mgr.trx_mgr_unit_ctl[idx];
+    if (ctl != nullptr) {
+        ctl->ref.fetch_add(1);               // snapshot reference
+    }
+    return ctl;
+}
+
+bool UBRingManager::IsUbrTrxSlotUsed(uint32_t idx, uint64_t expect_ubr_id) {
+    LOCK_GUARD(g_ubr_trx_mgr_mtx);
+    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_id == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_status == nullptr ||
+                 idx >= g_ubr_mgr.trx_cap)) {
+        return false;
+    }
+    return g_ubr_mgr.trx_mgr_unit_status[idx] == UBR_MGR_UNIT_USED &&
+           g_ubr_mgr.trx_mgr_unit_id[idx] == expect_ubr_id;
+}
+
+bool UBRingManager::TryPublishUnitCleanupCtl(uint32_t idx,
+                                             uint64_t expect_ubr_id,
+                                             UbrCleanupCtl *ctl) {
+    LOCK_GUARD(g_ubr_trx_mgr_mtx);
+    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_status == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_id == nullptr ||
+                 idx >= g_ubr_mgr.trx_cap ||
+                 g_ubr_mgr.trx_mgr_unit_status[idx] != UBR_MGR_UNIT_USED ||
+                 g_ubr_mgr.trx_mgr_unit_id[idx] != expect_ubr_id ||
+                 g_ubr_mgr.trx_mgr_unit_ctl[idx] != nullptr)) {
+        return false;                        // released / reused / already anchored
+    }
+    ctl->ref.fetch_add(1);                   // manager anchor reference
+    g_ubr_mgr.trx_mgr_unit_ctl[idx] = ctl;
+    return true;
+}
+
+bool UBRingManager::DetachUnitCleanupCtl(uint32_t idx, UbrCleanupCtl *ctl) {
+    LOCK_GUARD(g_ubr_trx_mgr_mtx);
+    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
+                 idx >= g_ubr_mgr.trx_cap ||
+                 g_ubr_mgr.trx_mgr_unit_ctl[idx] != ctl)) {
+        return false;
+    }
+    g_ubr_mgr.trx_mgr_unit_ctl[idx] = nullptr;
+    ctl->ReleaseRef();                           // manager reference
+    return true;
 }
 
 void UBRingManager::LinkInfoInit(void) {
@@ -255,7 +386,7 @@ int32_t UBRingManager::UbEventCallback(const char *shm_name)
             ++g_ub_event_cnt;
             int fd = (int)g_ubr_mgr.trx_mgr[i].local_shm.fd;
             LOG(WARNING) << "Ub event callback, the fd of the faulty link is " << fd;
-            return UBRing::UbrPassiveClearTrx(&g_ubr_mgr.trx_mgr[i], fd, UBR_UB_EVENT);
+            return UBRing::UbrPassiveClearTrx(&g_ubr_mgr.trx_mgr[i]);
         }
     }
     return UBRING_ERR;
