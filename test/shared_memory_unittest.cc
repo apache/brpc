@@ -12,6 +12,9 @@
 #include "multiprocess_test.h"
 #include "butil/threading/platform_thread.h"
 #include "butil/time/time.h"
+
+#include <string>
+
 #include <gtest/gtest.h>
 #include "multiprocess_func_list.h"
 
@@ -575,7 +578,8 @@ TEST(SharedMemoryTest, FilePermissionsNamed) {
   SharedMemory shared_memory;
   SharedMemoryCreateOptions options;
   options.size = kTestSize;
-  std::string shared_mem_name = "shared_perm_test-" + IntToString(getpid()) +
+  std::string shared_mem_name = "shared_perm_test-" +
+      std::to_string(static_cast<int>(getpid())) +
       "-" + Uint64ToString(RandUint64());
   options.name_deprecated = &shared_mem_name;
   // Set a file mode creation mask that gives all permissions.

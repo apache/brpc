@@ -4,8 +4,9 @@
 
 #include "butil/threading/simple_thread.h"
 
+#include <string>
+
 #include "butil/logging.h"
-#include "butil/strings/string_number_conversions.h"
 #include "butil/threading/platform_thread.h"
 #include "butil/threading/thread_restrictions.h"
 
@@ -51,7 +52,7 @@ void SimpleThread::ThreadMain() {
   tid_ = PlatformThread::CurrentId();
   // Construct our full name of the form "name_prefix_/TID".
   name_.push_back('/');
-  name_.append(IntToString(tid_));
+  name_.append(std::to_string(tid_));
   PlatformThread::SetName(name_.c_str());
 
   // We've initialized our new thread, signal that we're done to Start().

@@ -4,6 +4,8 @@
 
 #include "butil/build_config.h"
 
+#include <string>
+
 #if defined(COMPILER_MSVC)
 // MSDN says to #include <intrin.h>, but that breaks the VS2005 build.
 extern "C" {
@@ -12,7 +14,6 @@ extern "C" {
 #endif
 
 #include "butil/location.h"
-#include "butil/strings/string_number_conversions.h"
 #include "butil/strings/stringprintf.h"
 
 namespace tracked_objects {
@@ -36,7 +37,7 @@ Location::Location()
 
 std::string Location::ToString() const {
   return std::string(function_name_) + "@" + file_name_ + ":" +
-      butil::IntToString(line_number_);
+      std::to_string(line_number_);
 }
 
 void Location::Write(bool display_filename, bool display_function_name,

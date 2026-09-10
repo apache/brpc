@@ -2684,7 +2684,7 @@ TEST_F(HttpTest, http_head) {
         brpc::Controller cntl;
         cntl.http_request().set_method(brpc::HTTP_METHOD_HEAD);
         cntl.http_request().uri().set_path("/HttpService/Head");
-        cntl.http_request().SetHeader("x-db-index", butil::IntToString(i));
+        cntl.http_request().SetHeader("x-db-index", std::to_string(i));
         channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
 
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();

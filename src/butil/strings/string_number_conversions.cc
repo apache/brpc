@@ -343,8 +343,7 @@ bool String16ToIntImpl(const StringPiece16& input, VALUE* output) {
 }  // namespace
 
 std::string IntToString(int value) {
-  return IntToStringT<std::string, int, unsigned int, true>::
-      IntToString(value);
+  return std::to_string(value);
 }
 
 string16 IntToString16(int value) {
@@ -353,8 +352,7 @@ string16 IntToString16(int value) {
 }
 
 std::string UintToString(unsigned int value) {
-  return IntToStringT<std::string, unsigned int, unsigned int, false>::
-      IntToString(value);
+  return std::to_string(value);
 }
 
 string16 UintToString16(unsigned int value) {

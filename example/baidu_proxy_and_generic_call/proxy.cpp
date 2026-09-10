@@ -17,9 +17,10 @@
 // todo
 // A proxy to receive EchoRequest and send back EchoResponse.
 
+#include <string>
+
 #include <gflags/gflags.h>
 #include <butil/logging.h>
-#include <butil/strings/string_number_conversions.h>
 #include <brpc/server.h>
 #include <brpc/controller.h>
 #include <brpc/channel.h>
@@ -65,7 +66,7 @@ public:
             FLAGS_load_balancer.c_str(), &options) != 0) {
             LOG(ERROR) << "Fail to initialize channel";
             (*cntl->response_user_fields())["x-bd-proxy-error-code"] =
-                butil::IntToString(brpc::EINTERNAL);
+                std::to_string(brpc::EINTERNAL);
             (*cntl->response_user_fields())["x-bd-proxy-error-text"] =
                 "Fail to initialize channel";
             return;
@@ -86,7 +87,7 @@ public:
         // It is ok to use request and response for sync rpc.
         channel.CallMethod(nullptr, &call_cntl, request, response, nullptr);
         (*cntl->response_user_fields())["x-bd-proxy-error-code"] =
-            butil::IntToString(call_cntl.ErrorCode());
+            std::to_string(call_cntl.ErrorCode());
         if (call_cntl.Failed()) {
             (*cntl->response_user_fields())["x-bd-proxy-error-text"] =
                 call_cntl.ErrorText();

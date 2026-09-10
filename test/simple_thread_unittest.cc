@@ -3,9 +3,11 @@
 // found in the LICENSE file.
 
 #include "butil/atomic_sequence_num.h"
-#include "butil/strings/string_number_conversions.h"
 #include "butil/synchronization/waitable_event.h"
 #include "butil/threading/simple_thread.h"
+
+#include <string>
+
 #include <gtest/gtest.h>
 
 namespace butil {
@@ -123,7 +125,7 @@ TEST(SimpleThreadTest, NamedWithOptions) {
   thread.Start();
   EXPECT_EQ(thread.name_prefix(), "event_waiter");
   EXPECT_EQ(thread.name(),
-            std::string("event_waiter/") + IntToString(thread.tid()));
+            std::string("event_waiter/") + std::to_string(thread.tid()));
   event.Wait();
 
   EXPECT_TRUE(event.IsSignaled());
@@ -132,7 +134,7 @@ TEST(SimpleThreadTest, NamedWithOptions) {
   // We keep the name and tid, even after the thread is gone.
   EXPECT_EQ(thread.name_prefix(), "event_waiter");
   EXPECT_EQ(thread.name(),
-            std::string("event_waiter/") + IntToString(thread.tid()));
+            std::string("event_waiter/") + std::to_string(thread.tid()));
 }
 
 TEST(SimpleThreadTest, ThreadPool) {
