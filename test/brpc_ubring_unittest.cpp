@@ -24,6 +24,7 @@
 
 #if BRPC_WITH_UBRING
 #include "brpc/ubshm/common/common.h"
+#include "brpc/handshake/ubshm_handshake.h"
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/shm/shm_mgr.h"
@@ -143,6 +144,45 @@ TEST_F(HelloMessageTest, toString_contains_fields) {
     EXPECT_NE(std::string::npos, s.find("hello_ver=2"));
     EXPECT_NE(std::string::npos, s.find("impl_ver=1"));
     EXPECT_NE(std::string::npos, s.find("UBRING_test"));
+}
+
+TEST(UBShmHandshakeAdapterTest, codec_preserves_v2_wire_format) {
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    char shm_name[SHM_MAX_NAME_BUFF_LEN] = {0};
+    memcpy(shm_name, "UBRING_test_C", 14);
+
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.BuildHello(true, 4 * 1024 * 1024,
+                                 shm_name, &payload));
+    brpc::ubring::HelloMessage decoded{};
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(64, decoded.msg_len);
+    EXPECT_EQ(2, decoded.hello_ver);
+    EXPECT_EQ(1, decoded.impl_ver);
+    EXPECT_EQ(4 * 1024 * 1024, decoded.len);
+    EXPECT_EQ(0, memcmp(shm_name, decoded.shm_name,
+                        SHM_MAX_NAME_BUFF_LEN));
+
+    std::string frame;
+    const brpc::handshake::HandshakeCodec codec = adapter.MakeCodec();
+    ASSERT_EQ(brpc::handshake::FRAME_OK,
+              brpc::handshake::FrameCodec::Encode(
+                  codec.hello_frame, payload, &frame));
+    ASSERT_EQ(64, frame.size());
+    EXPECT_EQ("UB", frame.substr(0, 2));
+}
+
+TEST(UBShmHandshakeAdapterTest, disabled_hello_requests_tcp_fallback) {
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.BuildHello(false, 0, NULL, &payload));
+    brpc::ubring::HelloMessage decoded{};
+    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(64, decoded.msg_len);
 }
 
 TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {

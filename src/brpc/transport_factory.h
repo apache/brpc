@@ -22,7 +22,8 @@
 #include "brpc/transport.h"
 
 namespace brpc {
-// TransportFactory to create transport instance with socket_mode {TCP, RDMA}
+// Creates the top-level AdapterTransport for all socket modes. The adapter
+// selects TcpTransport or a concrete accelerated Transport internally.
 class TransportFactory {
 public:
     static int ContextInitOrDie(SocketMode mode, bool serverOrNot, const void* _options);

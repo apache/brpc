@@ -18,9 +18,8 @@
 #if BRPC_WITH_RDMA
 
 #include "brpc/rdma_transport.h"
+#include "brpc/adapter_transport.h"
 #include "brpc/event_dispatcher.h"
-#include "brpc/tcp_transport.h"
-#include "brpc/input_messenger.h"
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rdma_helper.h"
 
@@ -30,27 +29,26 @@ DECLARE_bool(usercode_in_pthread);
 
 extern SocketVarsCollector *g_vars;
 
+RdmaTransport *RdmaTransport::Get(const Socket *socket) {
+  const AdapterTransport *adapter = AdapterTransport::Get(socket);
+  Transport *transport = adapter->high_speed_transport();
+  CHECK(transport != NULL);
+  return static_cast<RdmaTransport *>(transport);
+}
+
 void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
     CHECK(_rdma_ep == nullptr);
-    if (options.socket_mode == SOCKET_MODE_RDMA) {
-        _rdma_ep = new rdma::RdmaEndpoint(socket);
-        _rdma_state = RDMA_UNKNOWN;
-    } else {
-        _rdma_state = RDMA_OFF;
-        socket->_socket_mode = SOCKET_MODE_TCP;
-    }
     _socket = socket;
     _default_connect = options.app_connect;
-    _on_edge_trigger = options.on_edge_triggered_events;
-    if (options.need_on_edge_trigger && _on_edge_trigger == nullptr) {
-        if (_rdma_ep != nullptr) {
-            _on_edge_trigger = rdma::RdmaEndpoint::OnNewDataFromTcp;
-        } else {
-            _on_edge_trigger = InputMessenger::OnNewMessages;
-        }
+  _on_edge_trigger = nullptr;
+  _rdma_ep = new (std::nothrow) rdma::RdmaEndpoint(socket);
+  if (!_rdma_ep) {
+    const int saved_errno = errno != 0 ? errno : ENOMEM;
+    PLOG(ERROR) << "Fail to create RdmaEndpoint";
+    socket->SetFailed(saved_errno, "Fail to create RdmaEndpoint: %s",
+                      berror(saved_errno));
     }
-    _tcp_transport = std::make_shared<TcpTransport>();
-    _tcp_transport->Init(socket, options);
+  _rdma_state = RDMA_UNKNOWN;
 }
 
 void RdmaTransport::Release() {
@@ -70,31 +68,49 @@ int RdmaTransport::Reset(int32_t expected_nref) {
 }
 
 std::shared_ptr<AppConnect> RdmaTransport::Connect() {
-    if (_default_connect == nullptr) {
-        return  std::make_shared<rdma::RdmaConnect>();
-    }
-    return _default_connect;
+  return _default_connect;
 }
 
+void RdmaTransport::SetHighSpeedAvailable(bool available) {
+  _rdma_state = available ? RDMA_ON : RDMA_OFF;
+}
+
+int RdmaTransport::PrepareUpgradeResources() {
+  return _rdma_ep->AllocateResources();
+}
+
+int RdmaTransport::NegotiateUpgradeResources(
+    const rdma::RdmaConnectionInfo &remote, bool server) {
+  _rdma_ep->ApplyRemoteInfo(remote);
+  return _rdma_ep->BringUpQp(remote, server);
+}
+
+int RdmaTransport::StartUpgradeEvents() {
+  return _rdma_ep->StartCqEvents();
+}
+
+std::unique_ptr<rdma::RdmaHandshakeAdapter>
+RdmaTransport::CreateClientHandshakeAdapter() {
+  return rdma::CreateClientHandshakeAdapter(_rdma_ep);
+}
+
+std::vector<std::unique_ptr<rdma::RdmaHandshakeAdapter>>
+RdmaTransport::CreateServerHandshakeAdapters() {
+  return rdma::CreateServerHandshakeAdapters(_rdma_ep);
+}
+
+void RdmaTransport::ActivateUpgrade() { SetHighSpeedAvailable(true); }
+
+void RdmaTransport::DeactivateUpgrade() { SetHighSpeedAvailable(false); }
+
 int RdmaTransport::CutFromIOBuf(butil::IOBuf *buf) {
-    // Only send over the RDMA channel once the handshake has NEGOTIATED it
-    // (RDMA_ON). While the state is still RDMA_UNKNOWN (handshake in progress,
-    // or a server connection that turned out to be plain TCP and never
-    // handshook) or RDMA_OFF (fell back), the QP is not usable and everything
-    // must go over the TCP fd. Mirrors the RDMA_ON check in WaitEpollOut().
-    if (_rdma_ep && _rdma_state == RDMA_ON) {
-        butil::IOBuf *data_arr[1] = {buf};
-        return _rdma_ep->CutFromIOBufList(data_arr, 1);
-    } else {
-        return _tcp_transport->CutFromIOBuf(buf);
-    }
+  butil::IOBuf *data[1] = {buf};
+  return static_cast<int>(CutFromIOBufList(data, 1));
 }
 
 ssize_t RdmaTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
-    if (_rdma_ep && _rdma_state == RDMA_ON) {
-        return _rdma_ep->CutFromIOBufList(buf, ndata);
-    }
-    return _tcp_transport->CutFromIOBufList(buf, ndata);
+  CHECK(_rdma_ep != nullptr);
+  return _rdma_ep->CutFromIOBufList(buf, ndata);
 }
 
 int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
@@ -108,8 +124,7 @@ int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                 if (errno != EAGAIN && errno != ETIMEDOUT) {
                     const int saved_errno = errno;
                     PLOG(WARNING) << "Fail to wait rdma window of " << _socket;
-                    _socket->SetFailed(saved_errno,
-                                       "Fail to wait rdma window of %s: %s",
+          _socket->SetFailed(saved_errno, "Fail to wait rdma window of %s: %s",
                                        _socket->description().c_str(),
                                        berror(saved_errno));
                 }
@@ -122,8 +137,6 @@ int RdmaTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                 }
             }
         }
-    } else {
-        return _tcp_transport->WaitEpollOut(_epollout_butex, pollin, duetime);
     }
     return 0;
 }
@@ -163,15 +176,16 @@ void RdmaTransport::QueueMessage(InputMessageClosure& input_msg,
 
     // TODO(gejun): Join threads.
     bthread_t th;
-    bthread_attr_t tmp = (FLAGS_usercode_in_pthread ?
-                                      BTHREAD_ATTR_PTHREAD :
-                                                                    BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
+  bthread_attr_t tmp =
+      (FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) |
+      BTHREAD_NOSIGNAL;
     tmp.keytable_pool = _socket->keytable_pool();
     tmp.tag = bthread_self_tag();
     bthread_attr_set_name(&tmp, "ProcessInputMessage");
 
-    if (!FLAGS_usercode_in_coroutine && bthread_start_background(
-            &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
+  if (!FLAGS_usercode_in_coroutine &&
+      bthread_start_background(&th, &tmp, ProcessInputMessage, to_run_msg) ==
+          0) {
         ++*num_bthread_created;
     } else {
         ProcessInputMessage(to_run_msg);
@@ -186,15 +200,18 @@ void RdmaTransport::Debug(std::ostream &os) {
 
 int RdmaTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
     if (serverOrNot) {
-        if (!OptionsAvailableOverRdma(static_cast<const ServerOptions *>(_options))) {
+    if (!OptionsAvailableOverRdma(
+            static_cast<const ServerOptions *>(_options))) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
-        if (!rdma::InitPollingModeWithTag(static_cast<const ServerOptions *>(_options)->bthread_tag)) {
+    if (!rdma::InitPollingModeWithTag(
+            static_cast<const ServerOptions *>(_options)->bthread_tag)) {
             return -1;
         }
     } else {
-        if (!OptionsAvailableForRdma(static_cast<const ChannelOptions *>(_options))) {
+    if (!OptionsAvailableForRdma(
+            static_cast<const ChannelOptions *>(_options))) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
@@ -213,8 +230,7 @@ bool RdmaTransport::OptionsAvailableForRdma(const ChannelOptions* opt) {
         return false;
     }
     if (!rdma::SupportedByRdma(opt->protocol.name())) {
-        LOG(WARNING) << "Cannot use " << opt->protocol.name()
-                     << " over RDMA";
+    LOG(WARNING) << "Cannot use " << opt->protocol.name() << " over RDMA";
         return false;
     }
     return true;
