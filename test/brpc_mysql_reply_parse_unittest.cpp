@@ -101,6 +101,47 @@ TEST(MysqlReplyParseTest, RejectOversizedTextFieldLength) {
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc);
 }
 
+TEST(MysqlReplyParseTest, RejectZeroPayloadPacket) {
+    butil::IOBuf buf;
+    buf.append(std::string("\x00\x00\x00\x01", 4));
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    bool more_results = false;
+    brpc::ParseError rc = reply.ConsumePartialIOBuf(
+        buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc);
+}
+
+TEST(MysqlReplyParseTest, RejectZeroPayloadPacketWithTrailingBytes) {
+    std::string wire("\x00\x00\x00\x01", 4);
+    AppendPacket(&wire, 2, std::string("\x00\x00\x00\x00\x00\x00\x00", 7));
+    butil::IOBuf buf;
+    buf.append(wire);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    bool more_results = false;
+    brpc::ParseError rc = reply.ConsumePartialIOBuf(
+        buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc);
+}
+
+TEST(MysqlReplyParseTest, RejectZeroPayloadPacketAfterFastAuthMarker) {
+    std::string wire;
+    AppendPacket(&wire, 2, std::string("\x01\x03", 2));
+    wire.append(std::string("\x00\x00\x00\x03", 4));
+    butil::IOBuf buf;
+    buf.append(wire);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    bool more_results = false;
+    brpc::ParseError rc = reply.ConsumePartialIOBuf(
+        buf, &arena, true, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc);
+}
+
 // A well-formed field whose length matches the bytes present still parses, so
 // the guard does not reject legitimate result sets.
 TEST(MysqlReplyParseTest, AcceptWellFormedTextField) {
