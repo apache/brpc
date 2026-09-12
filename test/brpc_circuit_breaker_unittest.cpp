@@ -19,6 +19,7 @@
 
 // Date: 2018/09/19 14:51:06
 
+#include <errno.h>
 #include <pthread.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
@@ -148,6 +149,60 @@ TEST_F(CircuitBreakerTest, should_not_isolate) {
         EXPECT_EQ(fc->_unhealthy_cnt, 0);
         EXPECT_TRUE(fc->_healthy);
     }
+}
+
+TEST_F(CircuitBreakerTest, canceled_requests_during_initialization) {
+    brpc::CircuitBreaker baseline;
+    for (int i = 0; i < 2 * kLongWindowSize; ++i) {
+        ASSERT_TRUE(_circuit_breaker.OnCallEnd(ECANCELED, kLatency));
+    }
+    EXPECT_EQ(0, _circuit_breaker.isolated_times());
+
+    // Cancellations must not advance initialization or consume its error budget.
+    bool healthy = true;
+    for (int i = 0; i < kLongWindowSize && healthy; ++i) {
+        healthy = baseline.OnCallEnd(kErrorCodeForFailed, kErrorCost);
+        ASSERT_EQ(healthy,
+                  _circuit_breaker.OnCallEnd(kErrorCodeForFailed, kErrorCost));
+    }
+    EXPECT_FALSE(healthy);
+    EXPECT_EQ(1, _circuit_breaker.isolated_times());
+}
+
+TEST_F(CircuitBreakerTest, canceled_requests_after_initialization) {
+    brpc::CircuitBreaker baseline;
+    for (int i = 0; i < 2 * kLongWindowSize; ++i) {
+        ASSERT_TRUE(baseline.OnCallEnd(0, kLatency));
+        ASSERT_TRUE(_circuit_breaker.OnCallEnd(0, kLatency));
+    }
+
+    // Interleaved cancellations must neither add error cost nor decay it
+    // like successful requests, regardless of their latency.
+    bool healthy = true;
+    for (int i = 0; i < 2 * kLongWindowSize && healthy; ++i) {
+        ASSERT_TRUE(_circuit_breaker.OnCallEnd(ECANCELED, 1));
+        ASSERT_TRUE(_circuit_breaker.OnCallEnd(ECANCELED, 100 * kLatency));
+        healthy = baseline.OnCallEnd(kErrorCodeForFailed, kErrorCost);
+        ASSERT_EQ(healthy,
+                  _circuit_breaker.OnCallEnd(kErrorCodeForFailed, kErrorCost));
+    }
+    EXPECT_FALSE(healthy);
+    EXPECT_EQ(1, _circuit_breaker.isolated_times());
+}
+
+TEST_F(CircuitBreakerTest, canceled_requests_in_half_open) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_circuit_breaker_half_open_window_size = 2;
+    _circuit_breaker.Reset();
+    ASSERT_TRUE(_circuit_breaker.OnCallEnd(0, kLatency));
+    for (int i = 0; i < 2 * kLongWindowSize; ++i) {
+        ASSERT_TRUE(_circuit_breaker.OnCallEnd(ECANCELED, kLatency));
+    }
+    EXPECT_EQ(0, _circuit_breaker.isolated_times());
+
+    // One successful probe is still missing: a real error must reopen it.
+    EXPECT_FALSE(_circuit_breaker.OnCallEnd(kErrorCodeForFailed, kErrorCost));
+    EXPECT_EQ(1, _circuit_breaker.isolated_times());
 }
 
 TEST_F(CircuitBreakerTest, should_isolate) {
