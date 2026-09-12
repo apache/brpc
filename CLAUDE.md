@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Apache bRPC is an industrial-grade C++ RPC framework supporting multiple protocols (baidu_std, HTTP/H2, gRPC, thrift, redis, memcached, RTMP, RDMA) on the same port. Used in high-performance systems: search, storage, ML, ads, recommendations. Current version: 1.17.0.
+Apache bRPC is an industrial-grade C++ RPC framework supporting multiple protocols (baidu_std, HTTP/H2, gRPC, thrift, redis, memcached, RTMP, RDMA) on the same port. Used in high-performance systems: search, storage, ML, ads, recommendations. Current version: 1.18.0.
 
 ## Build Commands
 
