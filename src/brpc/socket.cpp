@@ -571,7 +571,7 @@ void Socket::ReleaseAllFailedWriteRequests(Socket::WriteRequest* req) {
 }
 
 int Socket::ResetFileDescriptor(int fd) {
-    // Reset message sizes when fd is changed.
+    // Reset input heuristics when fd is changed.
     _fd_input_processor.ResetMsgSizeStats();
     // MUST store `_fd' before adding itself into epoll device to avoid
     // race conditions with the callback function inside epoll
@@ -2390,6 +2390,10 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     InputMessengerProcessor& input_processor = ptr->fd_input_processor();
     os << "\nhc_count=" << ptr->_hc_count
        << "\navg_input_msg_size=" << input_processor.avg_msg_size()
+       << "\navg_input_messages_per_read="
+       << ((input_processor.input_messages_per_read_ema_q8() + 128) >> 8)
+       << "\nadaptive_input_message_batch_size="
+       << input_processor.adaptive_input_message_batch_size()
         // NOTE: We're assuming that butil::IOBuf.size() is thread-safe, it is now
         // however it's not guaranteed.
        << "\nread_buf=" << input_processor.read_buf().size()

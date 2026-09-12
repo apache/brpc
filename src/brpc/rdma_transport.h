@@ -40,6 +40,8 @@ public:
     int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) override;
     void ProcessEvent(bthread_attr_t attr) override;
     void QueueMessage(InputMessageClosure& inputMsg, int* num_bthread_created, bool last_msg) override;
+    void QueueMessages(InputMessageBatch* inputMsgs,
+                       int* num_bthread_created) override;
     void Debug(std::ostream &os) override;
     rdma::RdmaEndpoint* GetRdmaEp() {
         CHECK(_rdma_ep != nullptr);
