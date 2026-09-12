@@ -21,12 +21,14 @@
 #include "brpc/socket.h"
 #include "brpc/channel.h"
 #include "brpc/transport.h"
+#include "brpc/ubshm/shm/shm_def.h"
 
 namespace brpc {
+class AdapterTransport;
 class UBShmTransport : public Transport {
     friend class TransportFactory;
+    friend class AdapterTransport;
     friend class ubring::UBShmEndpoint;
-friend class ubring::UBConnect;
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;
@@ -34,7 +36,8 @@ public:
     std::shared_ptr<AppConnect> Connect() override;
     int CutFromIOBuf(butil::IOBuf* buf) override;
     ssize_t CutFromIOBufList(butil::IOBuf** buf, size_t ndata) override;
-    int WaitEpollOut(butil::atomic<int>* _epollout_butex, bool pollin, const timespec duetime) override;
+    int WaitEpollOut(butil::atomic<int>* epollout_butex,
+                     bool pollin, timespec duetime) override;
     void ProcessEvent(bthread_attr_t attr) override;
     void QueueMessage(InputMessageClosure& inputMsg, int* num_bthread_created, bool last_msg) override;
     void Debug(std::ostream &os) override;
@@ -42,8 +45,21 @@ public:
         CHECK(_ub_ep != nullptr);
         return _ub_ep;
     }
+    static UBShmTransport* Get(const Socket* socket);
     static int ContextInitOrDie(bool serverOrNot, const void* _options);
+    int PrepareUpgradeResources(ubring::SHM* local_trx_shm,
+                                const char* shm_name);
+    int NegotiateUpgradeResources(ubring::SHM* local_trx_shm,
+                                  const char* shm_name);
+    int PrepareServerUpgradeResources(ubring::SHM* remote_trx_shm,
+                                      ubring::SHM* local_trx_shm);
+    void ActivateUpgrade();
+    void DeactivateUpgrade();
+    void FinishUpgrade();
+    bool UpgradeActive() const { return _ub_state == UB_ON; }
 private:
+    void SetHighSpeedAvailable(bool available);
+
     static bool OptionsAvailableForUB(const ChannelOptions* opt);
     static bool OptionsAvailableOverUB(const ServerOptions* opt);
 private:
@@ -57,7 +73,6 @@ private:
     ubring::UBShmEndpoint* _ub_ep = nullptr;
     // Should use UB or not
     UBState _ub_state;
-    std::shared_ptr<TcpTransport>  _tcp_transport;
 };
 } // namespace brpc
 #endif // BRPC_WITH_UBRING
