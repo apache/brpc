@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <gtest/gtest.h>
 #include <google/protobuf/descriptor.h>
@@ -51,6 +52,7 @@
 #include "brpc/builtin/bad_method_service.h"
 #include "brpc/server.h"
 #include "brpc/nshead_service.h"
+#include "brpc/acceptor.h"
 #include "brpc/restful.h"
 #include "brpc/channel.h"
 #include "brpc/redis.h"
@@ -1429,155 +1431,309 @@ TEST_F(ServerTest, close_idle_connections) {
     ASSERT_EQ(0ul, stat.connection_count);
 }
 
-TEST_F(ServerTest, redis_connection_limit_requires_dedicated_listener) {
-    brpc::Server server;
-    EchoServiceImpl echo_service;
-    ASSERT_EQ(0, server.AddService(
-        &echo_service, brpc::SERVER_DOESNT_OWN_SERVICE));
-
-    brpc::ServerOptions opt;
-    std::unique_ptr<brpc::RedisService> redis_service(new brpc::RedisService);
-    opt.redis_service = redis_service.get();
-    opt.redis_max_connections = 1;
-    opt.enabled_protocols = "redis";
-    opt.has_builtin_services = false;
-    const int rc = server.Start("127.0.0.1:0", &opt);
-    // Validation fails before ownership transfer. A later Start() failure may
-    // already have transferred ownership, so inspect the options, not just rc.
-    if (server.options().redis_service == redis_service.get()) {
-        redis_service.release();
-    }
-    EXPECT_EQ(-1, rc);
-}
-
-TEST_F(ServerTest, reject_redis_connections_over_limit) {
-    brpc::Server server;
-    brpc::ServerOptions opt;
-    opt.redis_service = new brpc::RedisService;
-    opt.redis_max_connections = 0;
-    opt.enabled_protocols = "redis";
-    opt.has_builtin_services = false;
-    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
-    ASSERT_EQ(0, server.SetRedisMaxConnections(1));
-
-    const butil::EndPoint ep = server.listen_address();
-    butil::fd_guard first_client(tcp_connect(ep, nullptr));
-    ASSERT_GE(first_client, 0);
-
+static testing::AssertionResult WaitForServerConnections(
+    const brpc::Server& server, size_t expected) {
     brpc::ServerStatistics stat;
-    for (int retry = 0; retry < 100; ++retry) {
+    const int64_t deadline = butil::gettimeofday_us() + 1000000;
+    do {
         server.GetStat(&stat);
-        if (stat.connection_count == 1) {
-            break;
+        if (stat.connection_count == expected) {
+            return testing::AssertionSuccess();
         }
         usleep(1000);
-    }
-    ASSERT_EQ(1ul, stat.connection_count);
+    } while (butil::gettimeofday_us() < deadline);
+    return testing::AssertionFailure()
+        << "Expected " << expected << " connections, got "
+        << stat.connection_count;
+}
 
-    // The Redis limit belongs to this acceptor, not to the process. A separate
-    // RPC Server must remain reachable while the Redis listener is full.
+static void ExpectConnectionClosed(int fd) {
+    const struct timeval timeout = {1, 0};
+    ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO,
+                           &timeout, sizeof(timeout)));
+    char response;
+    ssize_t nr;
+    do {
+        nr = recv(fd, &response, sizeof(response), 0);
+    } while (nr < 0 && errno == EINTR);
+    // Fresh idle clients have sent no data: rejection must close the fd
+    // without sending a protocol-specific error or waiting for a request.
+    EXPECT_EQ(0, nr);
+}
+
+class ConnectionLimitPingHandler : public brpc::RedisCommandHandler {
+public:
+    brpc::RedisCommandHandlerResult Run(
+        brpc::RedisConnContext*, const std::vector<butil::StringPiece>&,
+        brpc::RedisReply* output, bool) override {
+        output->SetStatus("PONG");
+        return brpc::REDIS_CMD_HANDLED;
+    }
+};
+
+TEST_F(ServerTest, connection_limit_with_mixed_protocols) {
+    ConnectionLimitPingHandler ping_handler;
+    EchoServiceImpl echo_service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(
+        &echo_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.redis_service = new brpc::RedisService;
+    opt.redis_service->AddCommandHandler("ping", &ping_handler);
+    opt.max_connections = 3;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+
+    // Each protocol uses a separate persistent connection on the same port.
+    brpc::ChannelOptions copt;
+    copt.connection_type = "single";
+    copt.timeout_ms = 1000;
+    copt.max_retry = 0;
+    copt.connection_group = "connection_limit_rpc";
+    brpc::Channel rpc_channel;
+    ASSERT_EQ(0, rpc_channel.Init(server.listen_address(), &copt));
+    brpc::Controller rpc_cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&rpc_channel);
+    stub.Echo(&rpc_cntl, &req, &res, nullptr);
+    ASSERT_FALSE(rpc_cntl.Failed()) << rpc_cntl.ErrorText();
+
+    copt.protocol = "redis";
+    copt.connection_group = "connection_limit_redis";
+    brpc::Channel redis_channel;
+    ASSERT_EQ(0, redis_channel.Init(server.listen_address(), &copt));
+    brpc::RedisRequest redis_req;
+    brpc::RedisResponse redis_res;
+    brpc::Controller redis_cntl;
+    ASSERT_TRUE(redis_req.AddCommand("ping"));
+    redis_channel.CallMethod(
+        nullptr, &redis_cntl, &redis_req, &redis_res, nullptr);
+    ASSERT_FALSE(redis_cntl.Failed()) << redis_cntl.ErrorText();
+    ASSERT_EQ(1, redis_res.reply_size());
+    ASSERT_STREQ("PONG", redis_res.reply(0).c_str());
+
+    copt.protocol = "http";
+    copt.connection_type = "pooled";
+    copt.connection_group = "connection_limit_http";
+    brpc::Channel http_channel;
+    ASSERT_EQ(0, http_channel.Init(server.listen_address(), &copt));
+    brpc::Controller http_cntl;
+    http_cntl.http_request().uri() = "/status";
+    http_channel.CallMethod(nullptr, &http_cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(http_cntl.Failed()) << http_cntl.ErrorText();
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+
+    butil::fd_guard rejected_client(
+        tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(rejected_client, 0);
+    ExpectConnectionClosed(rejected_client);
+    brpc::ServerStatistics stat;
+    server.GetStat(&stat);
+    EXPECT_EQ(3ul, stat.connection_count);
+    EXPECT_EQ(1ul, stat.rejected_connection_count);
+
+    // Requests on admitted sockets still work when the listener is full.
+    rpc_cntl.Reset();
+    stub.Echo(&rpc_cntl, &req, &res, nullptr);
+    ASSERT_FALSE(rpc_cntl.Failed()) << rpc_cntl.ErrorText();
+}
+
+TEST_F(ServerTest, connection_limit_runtime_updates) {
+    brpc::Server server;
+    EXPECT_EQ(-1, server.SetMaxConnections(1));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    const butil::EndPoint ep = server.listen_address();
+    butil::fd_guard first_client(tcp_connect(ep, nullptr));
+    butil::fd_guard second_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(first_client, 0);
+    ASSERT_GE(second_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 2));
+
+    // Enabling a limit must count clients admitted while it was unlimited.
+    ASSERT_EQ(0, server.SetMaxConnections(1));
+    butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(rejected_client, 0);
+    ExpectConnectionClosed(rejected_client);
+    ASSERT_TRUE(WaitForServerConnections(server, 2));
+
+    // A separate Server remains reachable while this public listener is full.
     EchoServiceImpl rpc_service;
     brpc::Server rpc_server;
     ASSERT_EQ(0, rpc_server.AddService(
         &rpc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, rpc_server.Start("127.0.0.1:0", nullptr));
-    EXPECT_EQ(-1, rpc_server.SetRedisMaxConnections(1));
     SendSleepRPC(rpc_server.listen_address(), 0, true);
 
-    butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
-    ASSERT_GE(rejected_client, 0);
-    struct timeval timeout = {1, 0};
-    ASSERT_EQ(0, setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO,
-                           &timeout, sizeof(timeout)));
-    const std::string expected = "-ERR max number of clients reached\r\n";
-    const auto expect_rejection = [&expected](int fd) {
-        // These fresh loopback sockets have no induced send backpressure, so
-        // require the full response here despite best-effort delivery in
-        // production. Small reads exercise accumulation without relying on
-        // TCP preserving the server's write boundaries.
-        std::string response;
-        char chunk[7];
-        while (response.size() < expected.size()) {
-            const ssize_t nr = recv(fd, chunk, sizeof(chunk), 0);
-            if (nr > 0) {
-                response.append(chunk, static_cast<size_t>(nr));
-            } else if (nr < 0 && errno == EINTR) {
-                continue;
-            } else {
-                break;
-            }
-        }
-        EXPECT_EQ(expected, response);
-        // The outer fd_guard must also close plaintext rejected connections.
-        EXPECT_EQ(0, recv(fd, chunk, sizeof(chunk), 0));
-    };
-    expect_rejection(rejected_client);
+    ASSERT_EQ(0, server.SetMaxConnections(3));
+    butil::fd_guard third_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(third_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
 
-    server.GetStat(&stat);
-    EXPECT_EQ(1ul, stat.connection_count);
-    EXPECT_EQ(1ul, stat.rejected_redis_connection_count);
-
-    ASSERT_EQ(0, server.SetRedisMaxConnections(2));
-    butil::fd_guard second_client(tcp_connect(ep, nullptr));
-    ASSERT_GE(second_client, 0);
-    for (int retry = 0; retry < 100; ++retry) {
-        server.GetStat(&stat);
-        if (stat.connection_count == 2) {
-            break;
-        }
-        usleep(1000);
-    }
-    ASSERT_EQ(2ul, stat.connection_count);
-
-    // Lowering the limit only gates future accepts; it does not disconnect
-    // the two clients that are already established.
-    ASSERT_EQ(0, server.SetRedisMaxConnections(1));
-    server.GetStat(&stat);
-    EXPECT_EQ(2ul, stat.connection_count);
-
+    // Lowering the limit leaves established clients connected, but rejects
+    // new clients until the active count drops strictly below the limit.
+    ASSERT_EQ(0, server.SetMaxConnections(1));
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
     butil::fd_guard lowered_limit_client(tcp_connect(ep, nullptr));
     ASSERT_GE(lowered_limit_client, 0);
-    ASSERT_EQ(0, setsockopt(lowered_limit_client, SOL_SOCKET, SO_RCVTIMEO,
-                           &timeout, sizeof(timeout)));
-    expect_rejection(lowered_limit_client);
-
-    server.GetStat(&stat);
-    EXPECT_EQ(2ul, stat.connection_count);
-    EXPECT_EQ(2ul, stat.rejected_redis_connection_count);
-
+    ExpectConnectionClosed(lowered_limit_client);
     first_client.reset(-1);
     second_client.reset(-1);
-    for (int retry = 0; retry < 100; ++retry) {
-        server.GetStat(&stat);
-        if (stat.connection_count == 0) {
-            break;
-        }
-        usleep(1000);
-    }
-    ASSERT_EQ(0ul, stat.connection_count);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+    butil::fd_guard at_limit_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(at_limit_client, 0);
+    ExpectConnectionClosed(at_limit_client);
 
-    // Falling below the lowered limit must restore admission, not just update
-    // the reported count. This idle client must consume the recovered slot.
+    third_client.reset(-1);
+    ASSERT_TRUE(WaitForServerConnections(server, 0));
     butil::fd_guard recovered_client(tcp_connect(ep, nullptr));
     ASSERT_GE(recovered_client, 0);
-    for (int retry = 0; retry < 100; ++retry) {
-        server.GetStat(&stat);
-        if (stat.connection_count == 1) {
-            break;
-        }
-        usleep(1000);
-    }
-    EXPECT_EQ(1ul, stat.connection_count);
-    EXPECT_EQ(2ul, stat.rejected_redis_connection_count);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+
+    ASSERT_EQ(0, server.SetMaxConnections(0));
+    first_client.reset(tcp_connect(ep, nullptr));
+    second_client.reset(tcp_connect(ep, nullptr));
+    ASSERT_GE(first_client, 0);
+    ASSERT_GE(second_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+    brpc::ServerStatistics stat;
+    server.GetStat(&stat);
+    EXPECT_EQ(3ul, stat.rejected_connection_count);
+    EXPECT_EQ(0ul, server.options().max_connections);
+
+    ASSERT_EQ(0, server.Stop(0));
+    EXPECT_EQ(-1, server.SetMaxConnections(1));
+    ASSERT_EQ(0, server.Join());
+    ASSERT_TRUE(WaitForServerConnections(server, 0));
 }
 
-TEST_F(ServerTest, reject_redis_connection_before_tls_handshake) {
+TEST_F(ServerTest, connection_limit_keeps_internal_listener_available) {
     brpc::Server server;
     brpc::ServerOptions opt;
-    opt.redis_service = new brpc::RedisService;
-    opt.redis_max_connections = 1;
-    opt.enabled_protocols = "redis";
-    opt.has_builtin_services = false;
+    opt.max_connections = 1;
+    opt.internal_port = 8614;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    butil::fd_guard public_client(
+        tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(public_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+
+    butil::EndPoint internal_ep = server.listen_address();
+    internal_ep.port = opt.internal_port;
+    butil::fd_guard first_internal(tcp_connect(internal_ep, nullptr));
+    butil::fd_guard second_internal(tcp_connect(internal_ep, nullptr));
+    ASSERT_GE(first_internal, 0);
+    ASSERT_GE(second_internal, 0);
+    // GetStat includes both listeners; only the public count is limited.
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+    brpc::ChannelOptions copt;
+    copt.protocol = "http";
+    copt.connection_type = "short";
+    copt.timeout_ms = 1000;
+    copt.max_retry = 0;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(internal_ep, &copt));
+    brpc::Controller cntl;
+    cntl.http_request().uri() = "/status";
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+
+    butil::fd_guard rejected_client(
+        tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(rejected_client, 0);
+    ExpectConnectionClosed(rejected_client);
+    brpc::ServerStatistics stat;
+    server.GetStat(&stat);
+    EXPECT_EQ(3ul, stat.connection_count);
+    EXPECT_EQ(1ul, stat.rejected_connection_count);
+
+    // Internal connections must not prevent public connection slot recovery.
+    public_client.reset(-1);
+    ASSERT_TRUE(WaitForServerConnections(server, 2));
+    public_client.reset(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(public_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+}
+
+TEST_F(ServerTest, connection_limit_is_per_listener) {
+    // One business service is shared by two Servers listening on different
+    // ports. Each port must have its own limit, count and runtime updates.
+    EchoServiceImpl shared_service;
+    brpc::Server servers[2];
+    for (size_t i = 0; i < 2; ++i) {
+        ASSERT_EQ(0, servers[i].AddService(
+            &shared_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+        brpc::ServerOptions opt;
+        opt.max_connections = i + 1;
+        ASSERT_EQ(0, servers[i].Start("127.0.0.1:0", &opt));
+    }
+    butil::fd_guard first_client(
+        tcp_connect(servers[0].listen_address(), nullptr));
+    ASSERT_GE(first_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(servers[0], 1));
+    butil::fd_guard second_port_clients[2];
+    for (auto& client : second_port_clients) {
+        client.reset(tcp_connect(servers[1].listen_address(), nullptr));
+        ASSERT_GE(client, 0);
+    }
+    ASSERT_TRUE(WaitForServerConnections(servers[1], 2));
+
+    for (auto& server : servers) {
+        butil::fd_guard rejected_client(
+            tcp_connect(server.listen_address(), nullptr));
+        ASSERT_GE(rejected_client, 0);
+        ExpectConnectionClosed(rejected_client);
+        brpc::ServerStatistics stat;
+        server.GetStat(&stat);
+        EXPECT_EQ(1ul, stat.rejected_connection_count);
+    }
+
+    ASSERT_EQ(0, servers[0].SetMaxConnections(2));
+    butil::fd_guard extra_client(
+        tcp_connect(servers[0].listen_address(), nullptr));
+    ASSERT_GE(extra_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(servers[0], 2));
+    butil::fd_guard still_rejected(
+        tcp_connect(servers[1].listen_address(), nullptr));
+    ASSERT_GE(still_rejected, 0);
+    ExpectConnectionClosed(still_rejected);
+    brpc::ServerStatistics stat;
+    servers[1].GetStat(&stat);
+    EXPECT_EQ(2ul, stat.connection_count);
+    EXPECT_EQ(2ul, stat.rejected_connection_count);
+}
+
+TEST_F(ServerTest, connection_limit_restarts_with_startup_setting) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.SetMaxConnections(0));
+    EXPECT_EQ(1ul, server.options().max_connections);
+    butil::fd_guard clients[2];
+    for (auto& client : clients) {
+        client.reset(tcp_connect(server.listen_address(), nullptr));
+        ASSERT_GE(client, 0);
+    }
+    ASSERT_TRUE(WaitForServerConnections(server, 2));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+    ASSERT_TRUE(WaitForServerConnections(server, 0));
+
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    clients[0].reset(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(clients[0], 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+    clients[1].reset(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(clients[1], 0);
+    ExpectConnectionClosed(clients[1]);
+}
+
+TEST_F(ServerTest, connection_limit_rejects_before_tls_handshake) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
     opt.force_ssl = true;
     brpc::CertInfo& cert = opt.mutable_ssl_options()->default_cert;
     cert.certificate = "cert1.crt";
@@ -1585,32 +1741,66 @@ TEST_F(ServerTest, reject_redis_connection_before_tls_handshake) {
     ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
 
     const butil::EndPoint ep = server.listen_address();
-    // Holding an idle TCP socket consumes the only slot without initiating a
-    // TLS handshake.
+    // An idle TCP socket consumes a slot without initiating a TLS handshake.
     butil::fd_guard first_client(tcp_connect(ep, nullptr));
     ASSERT_GE(first_client, 0);
-    brpc::ServerStatistics stat;
-    for (int retry = 0; retry < 100; ++retry) {
-        server.GetStat(&stat);
-        if (stat.connection_count == 1) {
-            break;
-        }
-        usleep(1000);
-    }
-    ASSERT_EQ(1ul, stat.connection_count);
-
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
     butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
     ASSERT_GE(rejected_client, 0);
-    struct timeval timeout = {1, 0};
-    ASSERT_EQ(0, setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO,
-                           &timeout, sizeof(timeout)));
-    char response;
-    // EOF without sending a ClientHello proves that rejection happened in
-    // accept, before brpc created a Socket or entered TLS authentication.
-    EXPECT_EQ(0, recv(rejected_client, &response, sizeof(response), 0));
-
+    // EOF without a ClientHello verifies rejection before TLS authentication.
+    ExpectConnectionClosed(rejected_client);
+    brpc::ServerStatistics stat;
     server.GetStat(&stat);
-    EXPECT_EQ(1ul, stat.rejected_redis_connection_count);
+    EXPECT_EQ(1ul, stat.connection_count);
+    EXPECT_EQ(1ul, stat.rejected_connection_count);
+}
+
+TEST_F(ServerTest, connection_limit_socket_creation_failure) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    brpc::Acceptor* acceptor = server._am;
+    ASSERT_TRUE(acceptor->TryAcquireConnectionSlot());
+
+    brpc::SocketOptions socket_opt;
+    socket_opt.user = acceptor;
+    // Avoid STREAM_FAKE_FD, which is intentionally accepted without an OS fd.
+    socket_opt.fd = std::numeric_limits<int>::max() - 1;
+    brpc::SocketId id;
+    ASSERT_NE(0, brpc::Socket::Create(socket_opt, &id));
+    // Socket::Create can call BeforeRecycle on failure. Since the socket was
+    // never inserted into the map, the accept loop must still own the slot.
+    ASSERT_EQ(1ul, acceptor->ConnectionCount());
+    acceptor->ReleaseConnectionSlot();
+    butil::fd_guard client(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+}
+
+TEST_F(ServerTest, connection_limit_socket_recycled_before_registration) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    brpc::Acceptor* acceptor = server._am;
+    ASSERT_TRUE(acceptor->TryAcquireConnectionSlot());
+
+    brpc::SocketOptions socket_opt;
+    socket_opt.user = acceptor;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(socket_opt, &id));
+    // Exercise a socket recycled after successful creation, before the accept
+    // loop can address it and insert it into the connection map.
+    ASSERT_EQ(0, brpc::Socket::SetFailed(id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(-1, brpc::Socket::AddressFailedAsWell(id, &socket));
+    ASSERT_EQ(1ul, acceptor->ConnectionCount());
+    acceptor->ReleaseConnectionSlot();
+
+    butil::fd_guard client(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
 }
 
 TEST_F(ServerTest, logoff_and_multiple_start) {

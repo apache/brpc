@@ -41,8 +41,8 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _acception_id(0)
     , _empty_cond(&_map_mutex)
     , _connection_count(0)
-    , _rejected_redis_connection_count(0)
-    , _redis_max_connections(0)
+    , _rejected_connection_count(0)
+    , _max_connections(0)
     , _force_ssl(false)
     , _ssl_ctx(nullptr) 
     , _socket_mode(SOCKET_MODE_TCP)
@@ -64,7 +64,7 @@ int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
 int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
                           const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                           bool force_ssl,
-                          size_t redis_max_connections) {
+                          size_t max_connections) {
     if (listened_fd < 0) {
         LOG(FATAL) << "Invalid listened_fd=" << listened_fd;
         return -1;
@@ -100,7 +100,7 @@ int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
     _idle_timeout_sec = idle_timeout_sec;
     _force_ssl = force_ssl;
     _ssl_ctx = ssl_ctx;
-    SetRedisMaxConnections(redis_max_connections);
+    SetMaxConnections(max_connections);
     
     // Creation of _acception_id is inside lock so that OnNewConnections
     // (which may run immediately) should see sane fields set below.
@@ -217,15 +217,15 @@ size_t Acceptor::ConnectionCount() const {
     return _connection_count.load(butil::memory_order_relaxed);
 }
 
-size_t Acceptor::RejectedRedisConnectionCount() const {
-    return _rejected_redis_connection_count.load(butil::memory_order_relaxed);
+size_t Acceptor::RejectedConnectionCount() const {
+    return _rejected_connection_count.load(butil::memory_order_relaxed);
 }
 
-bool Acceptor::TryAcquireRedisConnectionSlot() {
+bool Acceptor::TryAcquireConnectionSlot() {
     size_t count = _connection_count.load(butil::memory_order_relaxed);
     do {
         const size_t max_connections =
-            _redis_max_connections.load(butil::memory_order_relaxed);
+            _max_connections.load(butil::memory_order_relaxed);
         if (max_connections != 0 && count >= max_connections) {
             return false;
         }
@@ -234,59 +234,17 @@ bool Acceptor::TryAcquireRedisConnectionSlot() {
     return true;
 }
 
-void Acceptor::SetRedisMaxConnections(size_t max_connections) {
-    // The limit controls only future numeric admission decisions and does not
-    // publish socket state, so a relaxed store is sufficient.
-    _redis_max_connections.store(
-        max_connections, butil::memory_order_relaxed);
+void Acceptor::ReleaseConnectionSlot() {
+    const size_t previous =
+        _connection_count.fetch_sub(1, butil::memory_order_relaxed);
+    CHECK_GT(previous, 0u);
 }
 
-void Acceptor::RejectRedisConnection(int fd) {
-    // Borrowed fd: OnNewConnectionsUntilEAGAIN() retains ownership in its
-    // fd_guard. After this returns, the caller's continue destroys the guard
-    // and closes fd on both the SSL and plaintext paths. Do not close it here.
-    _rejected_redis_connection_count.fetch_add(
-        1, butil::memory_order_relaxed);
-
-    // Reject SSL-capable listeners before doing any TLS work. Plaintext here
-    // would violate the TLS record protocol and could trigger an expensive
-    // handshake in a higher layer.
-    if (_ssl_ctx) {
-        return;
-    }
-
-    static const char response[] =
-        "-ERR max number of clients reached\r\n";
-    // Delivery is best-effort: handle short writes, but never wait for a slow
-    // peer to become writable and stall admission for other connections.
-    int send_flags = MSG_DONTWAIT;
-#if defined(MSG_NOSIGNAL)
-    send_flags |= MSG_NOSIGNAL;
-#elif defined(SO_NOSIGPIPE)
-    const int enabled = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE,
-                   &enabled, sizeof(enabled)) != 0) {
-        return;
-    }
-#else
-    // Omit the optional error if SIGPIPE cannot be suppressed for this send.
-    return;
-#endif
-    const size_t response_size = sizeof(response) - 1;
-    size_t offset = 0;
-    while (offset < response_size) {
-        const ssize_t nwritten = send(fd,
-                                      response + offset,
-                                      response_size - offset,
-                                      send_flags);
-        if (nwritten > 0) {
-            offset += nwritten;
-        } else if (nwritten < 0 && errno == EINTR) {
-            continue;
-        } else {
-            break;
-        }
-    }
+void Acceptor::SetMaxConnections(size_t max_connections) {
+    // The limit controls only future numeric admission decisions and does not
+    // publish socket state, so a relaxed store is sufficient.
+    _max_connections.store(
+        max_connections, butil::memory_order_relaxed);
 }
 
 void Acceptor::ListConnections(std::vector<SocketId>* conn_list,
@@ -360,9 +318,11 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
             return;
         }
 
-        if (!am->TryAcquireRedisConnectionSlot()) {
-            am->RejectRedisConnection(in_fd);
-            // in_fd still owns the fd; leaving this iteration closes it.
+        if (!am->TryAcquireConnectionSlot()) {
+            am->_rejected_connection_count.fetch_add(
+                1, butil::memory_order_relaxed);
+            // in_fd closes the connection before Socket::Create(), protocol
+            // parsing or TLS authentication, without a protocol-specific reply.
             continue;
         }
 
@@ -378,24 +338,20 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.socket_mode = am->_socket_mode;
         options.bthread_tag = am->_bthread_tag;
         if (Socket::Create(options, &socket_id) != 0) {
-            const size_t previous = am->_connection_count.fetch_sub(
-                1, butil::memory_order_relaxed);
-            CHECK_GT(previous, 0u);
+            am->ReleaseConnectionSlot();
             LOG(ERROR) << "Fail to create Socket";
             continue;
         }
         in_fd.release(); // transfer ownership to socket_id
 
-        // There's a funny race condition here. After Socket::Create, messages
-        // from the socket are already handled and a RPC is possibly done
-        // before the socket is added into _socket_map below. This is found in
-        // ChannelTest.skip_parallel in test/brpc_channel_unittest.cpp (running
-        // on machines with few cores) where the _messenger.ConnectionCount()
-        // may surprisingly be 0 even if the RPC is already done.
+        // Socket::Create() may start processing messages immediately. The
+        // connection is already counted, but this loop owns its slot until
+        // the socket is pinned and inserted into _socket_map below.
 
         SocketUniquePtr sock;
         if (Socket::AddressFailedAsWell(socket_id, &sock) >= 0) {
             bool is_running = true;
+            bool registered = false;
             {
                 BAIDU_SCOPED_LOCK(am->_map_mutex);
                 is_running = (am->status() == RUNNING);
@@ -404,7 +360,13 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
                 // running or not. Otherwise, `Acceptor::BeforeRecycle'
                 // may be called (inside Socket::BeforeRecycled) after `Acceptor'
                 // has been destroyed
-                am->_socket_map.insert(socket_id, ConnectStatistics());
+                registered = (am->_socket_map.insert(
+                    socket_id, ConnectStatistics()) != nullptr);
+            }
+            if (!registered) {
+                am->ReleaseConnectionSlot();
+                sock->SetFailed(ENOMEM, "Fail to register accepted Socket");
+                continue;
             }
             if (!is_running) {
                 LOG(WARNING) << "Acceptor on fd=" << acception->fd()
@@ -414,8 +376,11 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
                         sock->description().c_str());
                 return;
             }
-        } // else: The socket has already been destroyed, Don't add its id
-          // into _socket_map
+        } else {
+            // The socket was recycled before insertion. BeforeRecycle() did
+            // not release its slot, which is still owned by this accept loop.
+            am->ReleaseConnectionSlot();
+        }
     }
 }
 
@@ -439,12 +404,11 @@ void Acceptor::BeforeRecycle(Socket* sock) {
         _empty_cond.Broadcast();
         return;
     }
-    // If a Socket could not be addressed shortly after its creation, it
-    // was not added into `_socket_map'.
-    _socket_map.erase(sock->id());
-    const size_t previous =
-        _connection_count.fetch_sub(1, butil::memory_order_relaxed);
-    CHECK_GT(previous, 0u);
+    // Socket::Create() can fail or the socket can be recycled before it is
+    // inserted into the map. In those cases the accept loop releases the slot.
+    if (_socket_map.erase(sock->id()) != 0) {
+        ReleaseConnectionSlot();
+    }
     if (_socket_map.empty()) {
         _empty_cond.Broadcast();
     }

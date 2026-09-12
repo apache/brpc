@@ -378,13 +378,15 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
 | log_idle_connection_close | false | Print log when an idle connection is closed | src/brpc/socket.cpp |
 
-## 限制Redis连接数
+## 限制服务端连接数
 
-设置`ServerOptions.redis_max_connections`可以限制Redis专用公网监听端口上的并发连接数。默认值为0，表示不限制。非零值要求设置`redis_service`，将`enabled_protocols`严格设置为`"redis"`，关闭内置服务，并且不能在同一个Server上注册RPC或其他协议服务。
+设置`ServerOptions.max_connections`可以限制Server公共监听端口上的并发连接数。默认值为0，表示不限制。该端口上的所有协议和服务共享同一个上限，包括RPC、HTTP、Redis和内置服务，无需配置专用协议。
 
-Acceptor会在创建brpc Socket前预留连接名额，因此空闲连接也计入上限，并发accept不会突破限制。对于超过限制的明文连接，服务端会以非阻塞方式尽力发送`-ERR max number of clients reached`，随后关闭连接。背压或套接字错误可能导致响应部分或全部未送达；accept循环不会等待客户端连接变为可写。启用SSL的监听端口会在TLS握手前直接关闭连接。内部监听端口和其他Server实例不受影响。`ServerStatistics.rejected_redis_connection_count`记录累计拒绝的连接数。
+Acceptor会在创建brpc Socket前预留连接名额，因此空闲连接和尚未完成TLS握手的连接也计入上限。超限连接会在协议解析或TLS认证前被直接关闭，不发送协议专用的错误响应。Socket回收时释放连接名额。
 
-运行中的Redis专用Server可以调用`Server::SetRedisMaxConnections()`原子更新上限。调高上限会影响后续连接准入；调低上限不会断开已有连接，活跃连接数降到新上限以下后才会重新接受新连接。设置为0会关闭限制。以无限制值启动的Redis专用Server也可以稍后动态开启限制。
+通过`ServerOptions.internal_port`配置的内部监听端口不受限制，也不占用公共端口的连接名额，因此公共端口满载时，内部端口上的内置服务仍可访问。同一个业务Service注册到多个Server、监听多个端口时，各公共监听端口分别计数和限流；即使共享同一个Service对象，也不会合并连接数。`ServerStatistics.connection_count`包含公共和内部端口的连接总数，因此可能超过`max_connections`；`ServerStatistics.rejected_connection_count`记录公共端口因超限而拒绝的累计连接数。
+
+运行中的Server可以调用`Server::SetMaxConnections()`原子更新上限，也可以在以无限制值启动后动态开启限制。调高上限会影响后续连接准入；调低上限不会断开已有连接，公共端口的活跃连接数降到新上限以下后才会重新接受新连接。设置为0会关闭限制。Server未运行时该方法返回-1；该方法不会修改`options().max_connections`记录的启动值。每次`Start()`都使用该次传入选项中的上限。
 
 ## pid_file
 

@@ -132,14 +132,16 @@ struct ServerOptions {
     // Default: 0 (unlimited)
     int max_concurrency;
 
-    // Maximum number of connections accepted by a Redis-only public
-    // listener. This option is rejected unless redis_service is configured,
-    // enabled_protocols is exactly "redis", no protobuf/RPC services are
-    // registered, and builtin services are disabled. The internal listener
-    // and other Server instances are never subject to this limit.
-    // Use Server::SetRedisMaxConnections() to update the limit at runtime.
+    // Maximum number of simultaneous connections on the public listener,
+    // shared by all protocols and services, including builtin services.
+    // Idle connections and connections awaiting TLS handshakes count too.
+    // Excess connections are closed before protocol parsing or TLS, without
+    // a response. The internal listener has a separate, unlimited count.
+    // Other Server instances have independent limits, even if they share
+    // the same service object on different ports.
+    // Use Server::SetMaxConnections() to update the limit at runtime.
     // Default: 0 (unlimited)
-    size_t redis_max_connections;
+    size_t max_connections;
 
     // Default value of method-level max concurrencies,
     // Overridable by Server.MaxConcurrencyOf().
@@ -318,8 +320,10 @@ private:
 // This struct is originally designed to contain basic statistics of the
 // server. But bvar contains more stats and is more convenient.
 struct ServerStatistics {
+    // Total connections on the public and internal listeners.
     size_t connection_count;
-    size_t rejected_redis_connection_count;
+    // Cumulative connections rejected by the public listener's limit.
+    size_t rejected_connection_count;
     int user_service_count;
     int builtin_service_count;
 };
@@ -556,11 +560,12 @@ public:
     // Get statistics of this server
     void GetStat(ServerStatistics* stat) const;
 
-    // Atomically update the connection limit of a running Redis-only public
-    // listener. Existing connections are not closed when the limit is lowered.
-    // Set to 0 to disable the limit. Returns 0 on success, -1 if this Server is
-    // not running or its public listener is not dedicated to Redis.
-    int SetRedisMaxConnections(size_t max_connections);
+    // Atomically update the connection limit of the running public listener.
+    // Existing connections are not closed when the limit is lowered.
+    // Set to 0 to disable the limit. Does not change options().max_connections,
+    // which records the startup setting.
+    // Returns 0 on success, -1 if this Server is not running.
+    int SetMaxConnections(size_t max_connections);
 
     // Get the options passed to Start().
     const ServerOptions& options() const { return _options; }

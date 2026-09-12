@@ -375,13 +375,15 @@ If [-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connec
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
 | log_idle_connection_close | false | Print log when an idle connection is closed | src/brpc/socket.cpp |
 
-## Limit Redis connections
+## Limit server connections
 
-Set `ServerOptions.redis_max_connections` to limit simultaneous connections on a Redis-only public listener. The default value is 0, which disables the limit. A non-zero value requires `redis_service` to be set, `enabled_protocols` to be exactly `"redis"`, builtin services to be disabled, and no RPC or other protocol services to share the Server.
+Set `ServerOptions.max_connections` to limit simultaneous connections on the Server's public listener. The default value is 0 (unlimited). All protocols and services on that listener share the same limit, including RPC, HTTP, Redis, and builtin services. No dedicated protocol configuration is required.
 
-The acceptor reserves a slot before creating a brpc Socket, so idle connections count toward the limit and concurrent accepts cannot exceed it. For an over-limit plaintext connection, the server makes a nonblocking, best-effort attempt to send `-ERR max number of clients reached` and then closes the connection. Backpressure or a socket error may prevent delivery of some or all of the response; the accept loop does not wait for the client to become writable. An SSL-enabled listener closes the connection before starting a TLS handshake. Internal listeners and other Server instances are unaffected. `ServerStatistics.rejected_redis_connection_count` reports the cumulative number of rejected connections.
+The acceptor reserves a slot before creating a brpc Socket, so idle connections and connections awaiting TLS handshakes count toward the limit. Connections over the limit are closed immediately without a protocol-specific response, before protocol parsing or TLS authentication. Connection slots are released when sockets are recycled.
 
-Call `Server::SetRedisMaxConnections()` to atomically update the limit on a running Redis-only Server. Raising the limit affects subsequent admission checks. Lowering it does not close existing connections; new connections are accepted again after the active count falls below the limit. Set the limit to 0 to disable it. A Redis-only Server started with an unlimited value can enable the limit later.
+The internal listener configured by `ServerOptions.internal_port` is unlimited and does not consume public connection slots, so builtin services on that port remain available when the public listener is full. A business service registered with multiple Server instances on different ports has an independent limit on each public listener, even when those Servers share the same service object. `ServerStatistics.connection_count` includes both public and internal connections and may therefore exceed `max_connections`; `ServerStatistics.rejected_connection_count` reports the cumulative number of connections rejected by the public listener's limit.
+
+Call `Server::SetMaxConnections()` to atomically update the limit on a running Server, including one started without a limit. Raising the limit affects subsequent admission checks. Lowering it does not close existing connections; new connections are accepted again after the active public connection count falls below the limit. Set the limit to 0 to disable it. The setter returns -1 if the Server is not running and leaves `options().max_connections` at its startup value. Each `Start()` uses the limit in the options passed to that call.
 
 ## pid_file
 
