@@ -200,6 +200,11 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
     }
     uint8_t header[4 + 1];  // use the extra byte to judge message type
     const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
+    if (_type == MYSQL_RSP_UNKNOWN &&
+        (p == nullptr || mysql_uint3korr(p) == 0)) {
+        LOG(ERROR) << "Invalid mysql packet with empty payload";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     uint8_t type = (_type == MYSQL_RSP_UNKNOWN) ? p[4] : (uint8_t)_type;
     // During the connection (auth) phase the server may send an AuthMoreData
     // packet (first byte 0x01) as part of the caching_sha2_password exchange
@@ -243,6 +248,11 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
             butil::IOBuf discard;
             buf.cutn(&discard, amd_total);
             const uint8_t* p2 = (const uint8_t*)buf.fetch(header, sizeof(header));
+            if (p2 == nullptr || mysql_uint3korr(p2) == 0) {
+                LOG(ERROR) << "Invalid mysql packet with empty payload after "
+                              "fast-auth marker";
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
+            }
             type = p2[4];
         } else {
             _type = MYSQL_RSP_AUTH_MORE_DATA;
