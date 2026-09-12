@@ -49,6 +49,9 @@ DEFINE_int32(http_verbose_max_body_length, 512,
 DEFINE_bool(http_check_outbound_header_crlf, true,
             "Skip outbound http header fields whose name or value contains "
             "CR/LF to prevent request/response splitting.");
+DEFINE_uint32(http_max_header_count, 100,
+              "Reject a message carrying more than so many header fields. "
+              "0 lifts the limit.");
 DECLARE_int64(socket_max_unwritten_bytes);
 DECLARE_uint64(max_body_size);
 
@@ -131,6 +134,14 @@ int HttpMessage::on_header_value(http_parser *parser,
             http_message->_cur_value =
                 &header.AddHeader(http_message->_cur_header);
         }
+
+        if (FLAGS_http_max_header_count > 0 &&
+            header.HeaderCount() > FLAGS_http_max_header_count) {
+            LOG(ERROR) << "Too many headers, max="
+                       << FLAGS_http_max_header_count;
+            return -1;
+        }
+
         if (http_message->_cur_value && !http_message->_cur_value->empty()) {
             http_message->_cur_value->append(
                 header.HeaderValueDelimiter(http_message->_cur_header));
