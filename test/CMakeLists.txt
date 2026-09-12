@@ -296,7 +296,8 @@ if(BUILD_FUZZ_TESTS)
     set(FUZZ_TARGETS fuzz_butil fuzz_esp fuzz_hpack fuzz_http
         fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri
         fuzz_baidu_rpc fuzz_mongo fuzz_memcache
-        fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf)
+        fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf
+        fuzz_rtmp)
 
 
     foreach(target ${FUZZ_TARGETS})

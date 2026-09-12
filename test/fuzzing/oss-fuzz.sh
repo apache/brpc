@@ -37,7 +37,7 @@ make \
     fuzz_redis fuzz_shead fuzz_sofa fuzz_uri \
     fuzz_baidu_rpc fuzz_mongo fuzz_memcache \
     fuzz_couchbase fuzz_streaming fuzz_http_parser \
-    fuzz_amf --ignore-errors -j$(nproc)
+    fuzz_amf fuzz_rtmp --ignore-errors -j$(nproc)
 
 cp test/fuzz_* $OUT/
 
@@ -53,4 +53,5 @@ zip $OUT/fuzz_redis_seed_corpus.zip fuzz_redis_seed_corpus/*
 zip $OUT/fuzz_http_seed_corpus.zip  fuzz_http_seed_corpus/*
 zip $OUT/fuzz_butil_seed_corpus.zip fuzz_butil_seed_corpus/*
 zip $OUT/fuzz_hpack_seed_corpus.zip fuzz_hpack_seed_corpus/*
+zip $OUT/fuzz_rtmp_seed_corpus.zip  fuzz_rtmp_seed_corpus/*
 popd
