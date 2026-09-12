@@ -84,6 +84,7 @@ bool DefaultReplicaPolicy::Build(ServerId server,
         return false;
     }
     replicas->clear();
+    const int64_t join_time_us = LoadBalancerNowUs();
     for (size_t i = 0; i < num_replicas; ++i) {
         char host[256];
         int len = 0;
@@ -98,6 +99,7 @@ bool DefaultReplicaPolicy::Build(ServerId server,
         node.hash = _hash_func(host, len);
         node.server_sock = server;
         node.server_addr = ptr->remote_side();
+        node.join_time_us = join_time_us;
         replicas->push_back(node);
     }
     return true;
@@ -120,6 +122,7 @@ bool KetamaReplicaPolicy::Build(ServerId server,
         return false;
     }
     replicas->clear();
+    const int64_t join_time_us = LoadBalancerNowUs();
     const size_t points_per_hash = 4;
     CHECK(num_replicas % points_per_hash == 0)
         << "Ketam hash replicas number(" << num_replicas << ") should be n*4";
@@ -139,6 +142,7 @@ bool KetamaReplicaPolicy::Build(ServerId server,
             ConsistentHashingLoadBalancer::Node node;
             node.server_sock = server;
             node.server_addr = ptr->remote_side();
+            node.join_time_us = join_time_us;
             node.hash = ((uint32_t) (digest[3 + j * 4] & 0xFF) << 24)
                       | ((uint32_t) (digest[2 + j * 4] & 0xFF) << 16)
                       | ((uint32_t) (digest[1 + j * 4] & 0xFF) << 8)
@@ -332,15 +336,33 @@ int ConsistentHashingLoadBalancer::SelectServer(
     if (choice == s->end()) {
         choice = s->begin();
     }
-    for (size_t i = 0; i < s->size(); ++i) {
-        if (((i + 1) == s->size() // always take last chance
-             || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
-            && IsServerAvailable(choice->server_sock.id, out->ptr)) {
-            return 0;
-        } else {
+    // Warm-up diversion must never turn an available pool into EHOSTDOWN:
+    // if the first pass skipped a warming server and found nothing else,
+    // run a second pass without the ramp.
+    bool warmup_skipped = false;
+    for (int pass = 0; pass < 2; ++pass) {
+        const bool apply_warmup = (pass == 0);
+        for (size_t i = 0; i < s->size(); ++i) {
+            const SocketId id = choice->server_sock.id;
+            bool skip = false;
+            if ((i + 1) != s->size()) {  // always take last chance
+                if (ExcludedServers::IsExcluded(in.excluded, id)) {
+                    skip = true;
+                } else if (apply_warmup &&
+                           !WarmupAccept(choice->join_time_us, in.begin_time_us)) {
+                    warmup_skipped = true;
+                    skip = true;
+                }
+            }
+            if (!skip && IsServerAvailable(id, out->ptr)) {
+                return 0;
+            }
             if (++choice == s->end()) {
                 choice = s->begin();
             }
+        }
+        if (!warmup_skipped) {
+            break;
         }
     }
     return EHOSTDOWN;

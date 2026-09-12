@@ -54,7 +54,9 @@ private:
     // added and shared by both buffers of _db_servers, so a stable pointer
     // can be used from SelectServer()/Feedback() without copying.
     struct NodeStat {
-        NodeStat() : inflight(0), ewma_us(0), stamp_us(0) {}
+        NodeStat() : join_time_us(0), inflight(0), ewma_us(0), stamp_us(0) {}
+        // Time when the server was added, for the warm-up ramp.
+        int64_t join_time_us;
         butil::atomic<int32_t> inflight;
         // Peak-sensitive EWMA of latency in us. 0 means no observation yet.
         butil::atomic<int64_t> ewma_us;
