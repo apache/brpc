@@ -22,13 +22,16 @@
 #include "brpc/transport.h"
 
 namespace brpc {
-// TransportFactory to create transport instance with socket_mode {TCP, RDMA}
+
+// Creates transport instances for a SocketMode.
 class TransportFactory {
 public:
-    static int ContextInitOrDie(SocketMode mode, bool serverOrNot, const void* _options);
+    static int ContextInitOrDie(SocketMode mode, bool server_or_not,
+                                const void* options);
     // Create transport instance with socket mode.
     static std::unique_ptr<Transport> CreateTransport(SocketMode mode);
 };
-} // namespace brpc
 
-#endif //BRPC_TRANSPORT_FACTORY_H
+}  // namespace brpc
+
+#endif  // BRPC_TRANSPORT_FACTORY_H

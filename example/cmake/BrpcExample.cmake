@@ -39,6 +39,52 @@ macro(brpc_example_find_common_deps out_libs)
 
     find_package(Threads REQUIRED)
     find_package(Protobuf REQUIRED)
+    set(BRPC_EXAMPLE_CXX_STANDARD 14)
+    set(_protobuf_absl_targets)
+    if(Protobuf_VERSION VERSION_GREATER 4.21)
+        # Protobuf 5+ exposes Abseil types from generated code and requires
+        # C++17. Keep this list in sync with the top-level CMake build.
+        set(BRPC_EXAMPLE_CXX_STANDARD 17)
+        find_package(absl REQUIRED CONFIG)
+        set(_protobuf_absl_targets
+            absl::absl_check
+            absl::absl_log
+            absl::algorithm
+            absl::base
+            absl::bind_front
+            absl::bits
+            absl::btree
+            absl::cleanup
+            absl::cord
+            absl::core_headers
+            absl::debugging
+            absl::die_if_null
+            absl::dynamic_annotations
+            absl::flags
+            absl::flat_hash_map
+            absl::flat_hash_set
+            absl::function_ref
+            absl::hash
+            absl::layout
+            absl::log_initialize
+            absl::log_globals
+            absl::log_severity
+            absl::memory
+            absl::node_hash_map
+            absl::node_hash_set
+            absl::random_distributions
+            absl::random_random
+            absl::span
+            absl::status
+            absl::statusor
+            absl::strings
+            absl::synchronization
+            absl::time
+            absl::type_traits
+            absl::utility
+            absl::variant
+        )
+    endif()
 
     # Search for libthrift* by best effort. If it is not found and brpc is
     # compiled with thrift protocol enabled, a link error would be reported.
@@ -81,6 +127,7 @@ macro(brpc_example_find_common_deps out_libs)
         Threads::Threads
         ${GFLAGS_LIBRARY}
         ${PROTOBUF_LIBRARIES}
+        ${_protobuf_absl_targets}
         ${LEVELDB_LIB}
         ${OPENSSL_CRYPTO_LIBRARY}
         ${OPENSSL_SSL_LIBRARY}
@@ -118,13 +165,19 @@ function(brpc_example_configure_target target_name)
         ${OPENSSL_INCLUDE_DIR}
         ${GPERFTOOLS_INCLUDE_DIR}
         ${RDMA_INCLUDE_PATH}
+        ${URMA_INCLUDE_PATH}
     )
 
     if(_include_dirs)
         target_include_directories(${target_name} PRIVATE ${_include_dirs})
     endif()
 
-    target_compile_features(${target_name} PRIVATE cxx_std_14)
+    if(NOT BRPC_EXAMPLE_CXX_STANDARD)
+        set(BRPC_EXAMPLE_CXX_STANDARD 14)
+    endif()
+    target_compile_features(${target_name} PRIVATE
+        cxx_std_${BRPC_EXAMPLE_CXX_STANDARD}
+    )
     target_compile_definitions(${target_name} PRIVATE
         NDEBUG
         __const__=__unused__
@@ -145,6 +198,10 @@ function(brpc_example_configure_target target_name)
 
     if(BRPC_EXAMPLE_WITH_RDMA)
         target_compile_definitions(${target_name} PRIVATE BRPC_WITH_RDMA=1)
+    endif()
+
+    if(BRPC_EXAMPLE_WITH_URMA)
+        target_compile_definitions(${target_name} PRIVATE BRPC_WITH_URMA=1)
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")

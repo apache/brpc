@@ -36,6 +36,7 @@ static const char* StreamTypeName(InputMessengerProcessor::StreamType type) {
     case InputMessengerProcessor::STREAM_NONE: return "none";
     case InputMessengerProcessor::STREAM_TCP_FD: return "tcp_fd";
     case InputMessengerProcessor::STREAM_RDMA_QP: return "rdma_qp";
+    case InputMessengerProcessor::STREAM_URMA_JETTY: return "urma_jetty";
     }
     return "unknown";
 }
@@ -281,7 +282,8 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
     // method for processing messages may call synchronization primitives,
     // causing the polling bthread to be scheduled out.
     if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
-        _socket->_socket_mode == SOCKET_MODE_UBRING) {
+        _socket->_socket_mode == SOCKET_MODE_UBRING ||
+        _socket->_socket_mode == SOCKET_MODE_URMA) {
         _socket->_transport->QueueMessage(last_msg, &num_bthread_created, true);
     }
     if (num_bthread_created) {

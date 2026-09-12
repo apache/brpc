@@ -16,29 +16,35 @@
 // under the License.
 
 #include "brpc/transport_factory.h"
-#include "brpc/tcp_transport.h"
 #include "brpc/rdma_transport.h"
+#include "brpc/tcp_transport.h"
 #include "brpc/ubshm_transport.h"
+#include "brpc/urma_transport.h"
 
 namespace brpc {
-int TransportFactory::ContextInitOrDie(SocketMode mode, bool serverOrNot, const void* _options) {
+
+int TransportFactory::ContextInitOrDie(
+    SocketMode mode, bool server_or_not, const void* options) {
     if (mode == SOCKET_MODE_TCP) {
         return 0;
     }
 #if BRPC_WITH_RDMA
-    else if (mode == SOCKET_MODE_RDMA) {
-        return RdmaTransport::ContextInitOrDie(serverOrNot, _options);
+    if (mode == SOCKET_MODE_RDMA) {
+        return RdmaTransport::ContextInitOrDie(server_or_not, options);
+    }
+#endif
+#if BRPC_WITH_URMA
+    if (mode == SOCKET_MODE_URMA) {
+        return UrmaTransport::ContextInitOrDie(server_or_not, options);
     }
 #endif
 #if BRPC_WITH_UBRING
-    else if (mode == SOCKET_MODE_UBRING) {
-        return UBShmTransport::ContextInitOrDie(serverOrNot, _options);
+    if (mode == SOCKET_MODE_UBRING) {
+        return UBShmTransport::ContextInitOrDie(server_or_not, options);
     }
 #endif
-    else {
-        LOG(ERROR) << "unknown transport type  " << mode;
-        return 1;
-    }
+    LOG(ERROR) << "Unknown transport type " << mode;
+    return 1;
 }
 
 std::unique_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
@@ -46,18 +52,22 @@ std::unique_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
         return std::unique_ptr<TcpTransport>(new TcpTransport());
     }
 #if BRPC_WITH_RDMA
-    else if (mode == SOCKET_MODE_RDMA) {
+    if (mode == SOCKET_MODE_RDMA) {
         return std::unique_ptr<RdmaTransport>(new RdmaTransport());
     }
 #endif
+#if BRPC_WITH_URMA
+    if (mode == SOCKET_MODE_URMA) {
+        return std::unique_ptr<UrmaTransport>(new UrmaTransport());
+    }
+#endif
 #if BRPC_WITH_UBRING
-    else if (mode == SOCKET_MODE_UBRING) {
+    if (mode == SOCKET_MODE_UBRING) {
         return std::unique_ptr<UBShmTransport>(new UBShmTransport());
     }
 #endif
-    else {
-        LOG(ERROR) << "socket_mode set error";
-        return nullptr;
-    }
+    LOG(ERROR) << "Unknown transport type " << mode;
+    return nullptr;
 }
-} // namespace brpc
+
+}  // namespace brpc

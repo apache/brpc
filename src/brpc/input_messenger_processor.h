@@ -39,6 +39,7 @@ public:
         STREAM_NONE,
         STREAM_TCP_FD,
         STREAM_RDMA_QP,
+        STREAM_URMA_JETTY,
     };
 
     InputMessengerProcessor()
