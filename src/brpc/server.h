@@ -132,6 +132,17 @@ struct ServerOptions {
     // Default: 0 (unlimited)
     int max_concurrency;
 
+    // Maximum number of simultaneous connections on the public listener,
+    // shared by all protocols and services, including builtin services.
+    // Idle connections and connections awaiting TLS handshakes count too.
+    // Excess connections are closed before protocol parsing or TLS, without
+    // a response. The internal listener has a separate, unlimited count.
+    // Other Server instances have independent limits, even if they share
+    // the same service object on different ports.
+    // Use Server::SetMaxConnections() to update the limit at runtime.
+    // Default: 0 (unlimited)
+    size_t max_connections;
+
     // Default value of method-level max concurrencies,
     // Overridable by Server.MaxConcurrencyOf().
     AdaptiveMaxConcurrency method_max_concurrency;
@@ -309,7 +320,10 @@ private:
 // This struct is originally designed to contain basic statistics of the
 // server. But bvar contains more stats and is more convenient.
 struct ServerStatistics {
+    // Total connections on the public and internal listeners.
     size_t connection_count;
+    // Cumulative connections rejected by the public listener's limit.
+    size_t rejected_connection_count;
     int user_service_count;
     int builtin_service_count;
 };
@@ -545,6 +559,13 @@ public:
 
     // Get statistics of this server
     void GetStat(ServerStatistics* stat) const;
+
+    // Atomically update the connection limit of the running public listener.
+    // Existing connections are not closed when the limit is lowered.
+    // Set to 0 to disable the limit. Does not change options().max_connections,
+    // which records the startup setting.
+    // Returns 0 on success, -1 if this Server is not running.
+    int SetMaxConnections(size_t max_connections);
 
     // Get the options passed to Start().
     const ServerOptions& options() const { return _options; }

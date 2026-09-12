@@ -138,6 +138,7 @@ ServerOptions::ServerOptions()
     , server_owns_interceptor(false)
     , num_threads(8)
     , max_concurrency(0)
+    , max_connections(0)
     , session_local_data_factory(nullptr)
     , reserved_session_local_data(0)
     , thread_local_data_factory(nullptr)
@@ -1167,7 +1168,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         // Pass ownership of `sockfd' to `_am'
         if (_am->StartAccept(sockfd, _options.idle_timeout_sec,
                              _default_ssl_ctx,
-                             _options.force_ssl) != 0) {
+                             _options.force_ssl,
+                             _options.max_connections) != 0) {
             LOG(ERROR) << "Fail to start acceptor";
             return -1;
         }
@@ -1209,7 +1211,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         // Pass ownership of `sockfd' to `_internal_am'
         if (_internal_am->StartAccept(sockfd, _options.idle_timeout_sec,
                                       _default_ssl_ctx,
-                                      false) != 0) {
+                                      false,
+                                      0) != 0) {
             LOG(ERROR) << "Fail to start internal_acceptor";
             return -1;
         }
@@ -1791,14 +1794,26 @@ google::protobuf::Service* Server::FindServiceByName(
 
 void Server::GetStat(ServerStatistics* stat) const {
     stat->connection_count = 0;
+    stat->rejected_connection_count = 0;
     if (_am) {
         stat->connection_count += _am->ConnectionCount();
+        stat->rejected_connection_count +=
+            _am->RejectedConnectionCount();
     }
     if (_internal_am) {
         stat->connection_count += _internal_am->ConnectionCount();
     }
     stat->user_service_count = service_count();
     stat->builtin_service_count = builtin_service_count();
+}
+
+int Server::SetMaxConnections(size_t max_connections) {
+    if (!IsRunning() || _am == nullptr) {
+        LOG(WARNING) << "SetMaxConnections requires a running Server";
+        return -1;
+    }
+    _am->SetMaxConnections(max_connections);
+    return 0;
 }
 
 void Server::ListServices(std::vector<google::protobuf::Service*> *services) {
