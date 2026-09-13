@@ -1,5 +1,7 @@
 # brpc 发布 apache release 版本流程 step by step
 
+> **推荐先使用发版 Skill**：[`community/skills/brpc-release/`](skills/brpc-release) 将本流程编排为可恢复的阶段任务，提供版本更新、Release Notes、打包和验包脚本，并在 GPG 签名、推 tag、SVN 提交、发邮件及 GitHub Release 等不可逆操作前停止并提示 Release Manager（RM）手工执行。安装方法、依赖检查、RM/校验者使用指南见 [`community/skills/README.md`](skills/README.md)。本文件仍是权威发布流程；Skill 与本文不一致时，以本文为准并同步修正 Skill。
+
 ## 准备工作
 
 ### 1. 确认 Release Notes
@@ -199,6 +201,14 @@ set(BRPC_VERSION 1.0.0)
 Version:	1.0.0
 ```
 
+#### 更新 `CLAUDE.md` 文件
+
+编辑项目根目录下 `CLAUDE.md` 文件，将项目概述中的 `Current version` 更新为本次发布版本：
+
+```
+Current version: 1.0.0.
+```
+
 #### 更新 `MODULE.bazel` 文件
 
 编辑项目根目录下 `MODULE.bazel` 文件，更新版本号，并提交至代码仓库，本文以 `1.0.0` 版本为例，修改 `version` 为：
@@ -262,13 +272,13 @@ sha512sum --check apache-brpc-$BRPCVERSION-src.tar.gz.sha512
 如无本地工作目录，则先创建本地工作目录。将 Apache SVN 仓库克隆下来，username 需要使用自己的 Apache LDAP 用户名。
 
 ```bash
-mkdir -p ~/brpc_svn/dev/
+mkdir -p ~/brpc_release/svn/dev/
 
-cd ~/brpc_svn/dev/
+cd ~/brpc_release/svn/dev/
 
 svn --username=$BRPCUSERNAME co https://dist.apache.org/repos/dist/dev/brpc/
 
-cd ~/brpc_svn/dev/brpc
+cd ~/brpc_release/svn/dev/brpc
 ```
 
 ### 2. 添加 GPG 公钥
@@ -291,15 +301,15 @@ cd ~/brpc_svn/dev/brpc
 ### 3. 将待发布的代码包添加至 SVN 目录
 
 ```bash
-mkdir -p ~/brpc_svn/dev/brpc/$BRPCVERSION
+mkdir -p ~/brpc_release/svn/dev/brpc/$BRPCVERSION
 
-cd ~/brpc_svn/dev/brpc/$BRPCVERSION
+cd ~/brpc_release/svn/dev/brpc/$BRPCVERSION
 
-cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz ~/brpc_svn/dev/brpc/$BRPCVERSION
+cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz ~/brpc_release/svn/dev/brpc/$BRPCVERSION
 
-cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz.asc ~/brpc_svn/dev/brpc/$BRPCVERSION
+cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz.asc ~/brpc_release/svn/dev/brpc/$BRPCVERSION
 
-cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/$BRPCVERSION
+cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz.sha512 ~/brpc_release/svn/dev/brpc/$BRPCVERSION
 ```
 
 ### 4. 提交 SVN
@@ -307,7 +317,7 @@ cp ~/brpc/apache-brpc-$BRPCVERSION-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/$BRPCVE
 退回到上级目录，使用 Apache LDAP 账号提交 SVN。
 
 ```bash
-cd ~/brpc_svn/dev/brpc
+cd ~/brpc_release/svn/dev/brpc
 
 svn add *
 
@@ -316,7 +326,7 @@ svn --username=$BRPCUSERNAME commit -m "release $BRPCVERSION"
 
 ## 检查发布结果
 ```bash
-cd ~/brpc_svn/dev/brpc/$BRPCVERSION
+cd ~/brpc_release/svn/dev/brpc/$BRPCVERSION
 ```
 ### 1. 检查 sha512 哈希
 
@@ -404,8 +414,8 @@ diff -r brpc-$BRPCVERSION apache-brpc-$BRPCVERSION-src
 
 ### 1. 投票阶段
 
-1. 发起投票邮件到 dev@brpc.apache.org。PMC 需要先按文档检查版本的正确性，然后再进行投票。经过至少 72 小时并统计到 3 个 +1 PMC member 票后，方可进入下一阶段。
-2. 宣布投票结果，发起投票结果邮件到 dev@brpc.apache.org。
+1. 发起投票邮件到 dev@brpc.apache.org。邮件发出后，在 [dev@brpc.apache.org 邮件归档](https://lists.apache.org/list.html?dev@brpc.apache.org) 找到该邮件并保存其永久链接。PMC 需要先按文档检查版本的正确性，然后再进行投票。经过至少 72 小时并统计到 3 个 +1 PMC member 票后，方可进入下一阶段。
+2. 宣布投票结果，发起投票结果邮件到 dev@brpc.apache.org；同样在邮件归档中保存结果邮件的永久链接。
 
 ### 2. 投票邮件模板
 
@@ -487,7 +497,7 @@ Non-binding votes:
 - bbb
 - ccc
 
-Vote thread: xxx (vote email link in https://lists.apache.org/)
+Vote thread: {VOTE_THREAD_URL}
 
 Thank you to all the above members to help us to verify and vote for
 the 1.0.0 release. I will process to publish the release and send ANNOUNCE.
