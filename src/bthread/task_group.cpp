@@ -380,7 +380,9 @@ int TaskGroup::init(size_t runqueue_capacity) {
     m->cpuwide_start_ns = butil::cpuwide_time_ns();
     m->stat = EMPTY_STAT;
     m->attr = BTHREAD_ATTR_TASKGROUP;
-    m->tid = make_tid(*m->version_butex, slot);
+    auto version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+    m->tid = make_tid(static_cast<uint32_t>(
+        version->load(butil::memory_order_relaxed)), slot);
     m->set_stack(stk);
 
 #ifdef BUTIL_USE_ASAN
@@ -520,9 +522,17 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
 #ifdef BRPC_BTHREAD_TRACER
             tracing = TaskTracer::set_end_status_unsafe(m);
 #endif // BRPC_BTHREAD_TRACER
-            if (0 == ++*m->version_butex) {
-                ++*m->version_butex;
+            // Bump the version with a release store so that it pairs with the
+            // acquire load in TaskGroup::join(): all memory writes made by this
+            // bthread become visible to the joining thread. Atomic access also
+            // avoids data races with the lock-free reads in join() and exists().
+            auto* version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+            uint32_t next_version = static_cast<uint32_t>(
+                version->load(butil::memory_order_relaxed)) + 1;
+            if (0 == next_version) {
+                ++next_version;
             }
+            version->store(static_cast<int>(next_version), butil::memory_order_release);
         }
         butex_wake_except(m->version_butex, 0);
 
@@ -590,7 +600,9 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
-    m->tid = make_tid(*m->version_butex, slot);
+    auto version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+    m->tid = make_tid(static_cast<uint32_t>(
+        version->load(butil::memory_order_relaxed)), slot);
 
     TaskGroup* g = *pg;
     m->priority_index = g->_cur_meta->priority_index;
@@ -662,7 +674,9 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
-    m->tid = make_tid(*m->version_butex, slot);
+    auto* version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+    m->tid = make_tid(static_cast<uint32_t>(
+        version->load(butil::memory_order_relaxed)), slot);
     m->priority_index = _cur_meta->priority_index;
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
@@ -709,16 +723,18 @@ int TaskGroup::join(bthread_t tid, void** return_value) {
         return EINVAL;
     }
     const uint32_t expected_version = get_version(tid);
-    while (*m->version_butex == expected_version) {
-        if (butex_wait(m->version_butex, expected_version, nullptr) < 0 &&
+    // Acquire load pairs with the release store performed when the joined
+    // bthread ends (see the version bump above), ensuring all of its memory
+    // writes are visible after join() returns. This matches the semantic
+    // guarantee provided by pthread_join() across supported architectures.
+    auto* version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+    const int expected_version_int = static_cast<int>(expected_version);
+    while (version->load(butil::memory_order_acquire) == expected_version_int) {
+        if (butex_wait(m->version_butex, expected_version_int, nullptr) < 0 &&
             errno != EWOULDBLOCK && errno != EINTR) {
             return errno;
         }
     }
-    // Ensure all memory writes made by the joined bthread are visible to
-    // the joining thread after join returns. This matches the semantic
-    // guarantee provided by pthread_join() across supported architectures.
-    butil::atomic_thread_fence(butil::memory_order_acquire);
     if (return_value) {
         *return_value = nullptr;
     }
@@ -729,7 +745,10 @@ bool TaskGroup::exists(bthread_t tid) {
     if (tid != 0) {  // tid of bthread is never 0.
         TaskMeta* m = address_meta(tid);
         if (m != nullptr) {
-            return (*m->version_butex == get_version(tid));
+            auto version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+            // Only check liveness; unlike join(), no user data is acquired.
+            return static_cast<uint32_t>(version->load(butil::memory_order_relaxed))
+                == get_version(tid);
         }
     }
     return false;
