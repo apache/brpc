@@ -649,12 +649,20 @@ H2ParseResult H2Context::OnHeaders(
             LOG(ERROR) << "Fail to insert existing stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
         } else if (rc == 2) {
-            delete sctx;
             LOG_EVERY_SECOND(WARNING)
                 << "Refused stream_id=" << frame_head.stream_id
                 << " since concurrent streams reached max_concurrent_streams="
                 << _unack_local_settings.max_concurrent_streams
                 << " on " << *_socket;
+            // The stream is refused, but its header block must still be
+            // decoded and consumed before returning the stream error. The
+            // connection stays open after REFUSED_STREAM, so skipping the
+            // block desyncs both the frame parser (the leftover header bytes
+            // would be re-read as the next frame head) and the HPACK decoder.
+            // This mirrors OnData and the client-side unknown-stream path
+            // below, which drain the payload before returning a stream error.
+            sctx->OnHeaders(it, frame_head, frag_size, pad_length);
+            delete sctx;
             // A stream error (RST_STREAM) rather than a connection error:
             // RFC 7540 section 5.1.2 requires REFUSED_STREAM (or
             // PROTOCOL_ERROR) for streams exceeding the advertised limit,
