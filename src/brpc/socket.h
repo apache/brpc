@@ -263,6 +263,9 @@ struct SocketOptions {
     // user->BeforeRecycle() before recycling.
     int fd{-1};
     butil::EndPoint remote_side;
+    // Client source address. For IPv4/IPv6, the port is ignored for binding
+    // and the OS allocates a source port. IPv4 IP_ANY disables explicit binding.
+    // Unix-domain addresses are preserved, including their paths.
     butil::EndPoint local_side;
     std::string device_name;
     // If `connect_on_create' is true and `fd' is less than 0,
@@ -881,8 +884,14 @@ private:
     // Address of peer. Initialized by SocketOptions.remote_side.
     butil::EndPoint _remote_side;
 
-    // Address of self. Initialized in ResetFileDescriptor().
+    // Runtime local endpoint. Updated in ResetFileDescriptor() and cleared
+    // in WaitAndReset().
     butil::EndPoint _local_side;
+
+    // Client binding address from SocketOptions.local_side, preserved across
+    // health-check/revive. IPv4/IPv6 network ports are normalized to 0;
+    // Unix-domain addresses and extended endpoint type tags are preserved.
+    butil::EndPoint _bind_local_side;
 
     // The device name of the client's network adapter.
     std::string _device_name;
