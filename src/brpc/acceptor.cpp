@@ -57,8 +57,7 @@ Acceptor::~Acceptor() {
 int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
                           const std::shared_ptr<SocketSSLContext>& ssl_ctx,
                           bool force_ssl) {
-    return StartAccept(
-        listened_fd, idle_timeout_sec, ssl_ctx, force_ssl, 0);
+    return StartAccept(listened_fd, idle_timeout_sec, ssl_ctx, force_ssl, 0);
 }
 
 int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
@@ -321,6 +320,9 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         if (!am->TryAcquireConnectionSlot()) {
             am->_rejected_connection_count.fetch_add(
                 1, butil::memory_order_relaxed);
+            LOG_EVERY_SECOND(WARNING)
+                << "Reject connection on " << acception->local_side()
+                << ": max_connections limit reached";
             // in_fd closes the connection before Socket::Create(), protocol
             // parsing or TLS authentication, without a protocol-specific reply.
             continue;

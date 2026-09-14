@@ -1431,6 +1431,39 @@ TEST_F(ServerTest, close_idle_connections) {
     ASSERT_EQ(0ul, stat.connection_count);
 }
 
+// Returns a port nothing is listening on, or -1. `ServerOptions.internal_port`
+// has to be an explicit number, Server::Start() rejects 0 because it stands
+// for an ephemeral port, so ask the system for a free one rather than hardcode
+// a port that another test may be listening on.
+int PickUnusedPort() {
+    butil::fd_guard sockfd(butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
+    if (sockfd < 0) {
+        return -1;
+    }
+    butil::EndPoint point;
+    if (butil::get_local_side(sockfd, &point) != 0) {
+        return -1;
+    }
+    return point.port;
+}
+
+// Starts `server` on an ephemeral port and fills `options->internal_port` with
+// another one. Both are released before Start() binds them and something else
+// may take one in between, hence the retries. Returns 0 on success.
+int StartWithInternalPort(brpc::Server* server, brpc::ServerOptions* options) {
+    for (int i = 0; i < 10; ++i) {
+        int internal_port = PickUnusedPort();
+        if (internal_port < 0) {
+            continue;
+        }
+        options->internal_port = internal_port;
+        if (0 == server->Start("127.0.0.1:0", options)) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
 static testing::AssertionResult WaitForServerConnections(
     const brpc::Server& server, size_t expected) {
     brpc::ServerStatistics stat;
@@ -1611,8 +1644,7 @@ TEST_F(ServerTest, connection_limit_keeps_internal_listener_available) {
     brpc::Server server;
     brpc::ServerOptions opt;
     opt.max_connections = 1;
-    opt.internal_port = 8614;
-    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
     butil::fd_guard public_client(
         tcp_connect(server.listen_address(), nullptr));
     ASSERT_GE(public_client, 0);
@@ -2112,39 +2144,6 @@ void CallEchoByHttp(const butil::EndPoint& ep, brpc::Controller* cntl) {
     cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl->http_request().set_content_type("application/json");
     chan.CallMethod(nullptr, cntl, &req, &res, nullptr);
-}
-
-// Returns a port nothing is listening on, or -1. `ServerOptions.internal_port`
-// has to be an explicit number, Server::Start() rejects 0 because it stands
-// for an ephemeral port, so ask the system for a free one rather than hardcode
-// a port that another test may be listening on.
-int PickUnusedPort() {
-    butil::fd_guard sockfd(butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
-    if (sockfd < 0) {
-        return -1;
-    }
-    butil::EndPoint point;
-    if (butil::get_local_side(sockfd, &point) != 0) {
-        return -1;
-    }
-    return point.port;
-}
-
-// Starts `server` on an ephemeral port and fills `options->internal_port` with
-// another one. Both are released before Start() binds them and something else
-// may take one in between, hence the retries. Returns 0 on success.
-int StartWithInternalPort(brpc::Server* server, brpc::ServerOptions* options) {
-    for (int i = 0; i < 10; ++i) {
-        int internal_port = PickUnusedPort();
-        if (internal_port < 0) {
-            continue;
-        }
-        options->internal_port = internal_port;
-        if (0 == server->Start("127.0.0.1:0", options)) {
-            return 0;
-        }
-    }
-    return -1;
 }
 
 TEST_F(ServerTest, ordinary_services_are_not_served_on_internal_port) {
