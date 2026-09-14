@@ -30,6 +30,7 @@
 #include "butil/fd_utility.h"
 #include "butil/debug/leak_annotations.h"
 #include <butil/fd_guard.h>
+#include "bthread/countdown_event.h"
 #include "bthread/unstable.h"
 #include "bthread/task_control.h"
 #include "brpc/socket.h"
@@ -1812,6 +1813,7 @@ TEST_F(SocketTest, notify_on_success) {
 struct ShutdownWriterArg {
     size_t times;
     brpc::SocketId socket_id;
+    bthread::CountdownEvent* done;
     butil::atomic<int> total_count;
     butil::atomic<int> success_count;
 };
@@ -1826,6 +1828,7 @@ int HandleSocketShutdownWrite(bthread_id_t id, void* data, int error_code,
         ++arg->success_count;
     }
     CHECK_EQ(0, bthread_id_unlock_and_destroy(id));
+    arg->done->signal();
     return 0;
 }
 
@@ -1887,10 +1890,13 @@ void TestShutdownWrite() {
     pthread_create(&rth, nullptr, reader, &reader_arg);
 
     bthread_t th[3];
+    const size_t expected_count = REP * ARRAY_SIZE(th);
+    bthread::CountdownEvent done(expected_count);
     ShutdownWriterArg args[ARRAY_SIZE(th)];
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         args[i].times = REP;
         args[i].socket_id = id;
+        args[i].done = &done;
         args[i].total_count = 0;
         args[i].success_count = 0;
         bthread_start_background(&th[i], nullptr, ShutdownWriter, &args[i]);
@@ -1899,11 +1905,15 @@ void TestShutdownWrite() {
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         ASSERT_EQ(0, bthread_join(th[i], nullptr));
     }
-    bthread_usleep(50 * 1000);
-
-    ASSERT_TRUE(s->IsWriteShutdown());
-    ASSERT_FALSE(s->Failed());
-    ASSERT_EQ(0, s->SetFailed());
+    const int wait_result = done.timed_wait(butil::seconds_from_now(5));
+    if (wait_result == 0) {
+        EXPECT_TRUE(s->IsWriteShutdown());
+        EXPECT_FALSE(s->Failed());
+        EXPECT_EQ(0, s->SetFailed());
+    } else {
+        s->SetFailed();
+        done.wait();
+    }
     s.release()->Dereference();
     pthread_join(rth, nullptr);
     ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
@@ -1911,11 +1921,12 @@ void TestShutdownWrite() {
 
     size_t total_count = 0;
     size_t success_count = 0;
-    for (auto & arg : args) {
+    for (const auto& arg : args) {
         total_count += arg.total_count;
         success_count += arg.success_count;
     }
-    ASSERT_EQ(REP * ARRAY_SIZE(th), total_count);
+    ASSERT_EQ(0, wait_result);
+    ASSERT_EQ(expected_count, total_count);
     EXPECT_EQ((size_t)1, reader_arg.nread);
     EXPECT_EQ((size_t)1, success_count);
 }
@@ -1923,6 +1934,9 @@ void TestShutdownWrite() {
 TEST_F(SocketTest, shutdown_write) {
     for (int i = 0; i < 100; ++i) {
         TestShutdownWrite();
+        if (::testing::Test::HasFailure()) {
+            return;
+        }
     }
 }
 

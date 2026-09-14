@@ -148,7 +148,9 @@ TEST(TimerThreadTest, RunTasks) {
     tm.start();
     timer_thread.stop_and_join();
     tm.stop();
-    ASSERT_LE(tm.m_elapsed(), 15);
+    // stop_and_join() should wake the timer thread instead of waiting for the
+    // tasks scheduled 10 seconds later. Allow for CI runner scheduling delays.
+    ASSERT_LT(tm.m_elapsed(), 1000);
 
     // verify all runs in expected time range.
     keeper1.expect_first_run();
