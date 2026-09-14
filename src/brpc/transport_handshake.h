@@ -136,7 +136,7 @@ public:
     }
 
     void SetPhase(int phase) {
-        _phase.store(phase, butil::memory_order_relaxed);
+        _phase.store(phase, butil::memory_order_release);
     }
 
     int protocol_version() const { return _protocol_version; }

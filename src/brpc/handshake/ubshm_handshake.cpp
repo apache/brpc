@@ -166,7 +166,13 @@ handshake::StepResult UBShmHandshakeAdapter::BuildHello(
         message.hello_ver = handshake::ubshm_wire::HELLO_VERSION;
         message.impl_ver = handshake::ubshm_wire::IMPL_VERSION;
         message.len = len;
-        memcpy(message.shm_name, shm_name, SHM_MAX_NAME_BUFF_LEN);
+        if (shm_name == NULL) {
+            errno = EINVAL;
+            return handshake::STEP_ERROR;
+        }
+        const size_t shm_name_len =
+            strnlen(shm_name, SHM_MAX_NAME_LEN);
+        memcpy(message.shm_name, shm_name, shm_name_len);
     }
     payload->assign(
         handshake::ubshm_wire::HELLO_LEN -
@@ -365,8 +371,7 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     };
     callbacks.transport.negotiate_resources = []() { return STEP_OK; };
     callbacks.validate_established = [&]() {
-        if (!source->empty() ||
-            !transport->UpgradeActive()) {
+        if (!source->empty()) {
             return STEP_ERROR;
         }
         return STEP_OK;
@@ -396,7 +401,8 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
 StepResult UBShmServerHandshakeAdapter::RunServerStep(
     butil::IOBuf* source, Socket* socket) {
 #if BRPC_WITH_UBRING
-    if (AdapterTransport::Get(socket)->upgrade_capable()) {
+    if (AdapterTransport::Get(socket)->upgrade_capable(
+            SOCKET_MODE_UBRING)) {
         return RunUBShmServerHandshake(source, socket);
     }
 #endif

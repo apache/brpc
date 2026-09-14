@@ -101,7 +101,12 @@ RdmaTransport::CreateServerHandshakeAdapters() {
 
 void RdmaTransport::ActivateUpgrade() { SetHighSpeedAvailable(true); }
 
-void RdmaTransport::DeactivateUpgrade() { SetHighSpeedAvailable(false); }
+void RdmaTransport::DeactivateUpgrade() {
+  SetHighSpeedAvailable(false);
+  if (_rdma_ep != nullptr) {
+    _rdma_ep->Reset();
+  }
+}
 
 int RdmaTransport::CutFromIOBuf(butil::IOBuf *buf) {
   butil::IOBuf *data[1] = {buf};

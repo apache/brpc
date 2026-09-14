@@ -565,7 +565,8 @@ StepResult RdmaServerHandshakeAdapter::RunRdmaServerHandshake(
 StepResult RdmaServerHandshakeAdapter::RunServerStep(
     butil::IOBuf* source, Socket* socket) {
 #if BRPC_WITH_RDMA
-    if (AdapterTransport::Get(socket)->upgrade_capable()) {
+    if (AdapterTransport::Get(socket)->upgrade_capable(
+            SOCKET_MODE_RDMA)) {
         return RunRdmaServerHandshake(source, socket);
     }
 #endif

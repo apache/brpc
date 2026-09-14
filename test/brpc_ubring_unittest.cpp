@@ -174,6 +174,26 @@ TEST(UBShmHandshakeAdapterTest, codec_preserves_v2_wire_format) {
     EXPECT_EQ("UB", frame.substr(0, 2));
 }
 
+TEST(UBShmHandshakeAdapterTest, short_name_is_zero_padded) {
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    char short_name[SHM_MAX_NAME_BUFF_LEN];
+    memset(short_name, 0x5a, sizeof(short_name));
+    short_name[0] = 'x';
+    short_name[1] = '\0';
+
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.BuildHello(true, 4096, short_name, &payload));
+
+    brpc::ubring::HelloMessage decoded{};
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ('x', decoded.shm_name[0]);
+    for (size_t i = 1; i < SHM_MAX_NAME_BUFF_LEN; ++i) {
+        EXPECT_EQ('\0', decoded.shm_name[i]) << "index=" << i;
+    }
+}
+
 TEST(UBShmHandshakeAdapterTest, disabled_hello_requests_tcp_fallback) {
     brpc::ubring::UBShmHandshakeAdapter adapter;
     std::string payload;

@@ -98,7 +98,12 @@ int UBShmTransport::PrepareServerUpgradeResources(ubring::SHM *remote_trx_shm,
 
 void UBShmTransport::ActivateUpgrade() { SetHighSpeedAvailable(true); }
 
-void UBShmTransport::DeactivateUpgrade() { SetHighSpeedAvailable(false); }
+void UBShmTransport::DeactivateUpgrade() {
+  SetHighSpeedAvailable(false);
+  if (_ub_ep != nullptr) {
+    _ub_ep->Reset();
+  }
+}
 
 void UBShmTransport::FinishUpgrade() {
   if (_ub_ep != NULL && _ub_ep->_ub_ring != NULL) {

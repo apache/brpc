@@ -113,6 +113,26 @@ const AdapterTransport* AdapterTransport::Get(const Socket* socket) {
     return static_cast<const AdapterTransport*>(socket->_transport.get());
 }
 
+bool AdapterTransport::upgrade_capable(SocketMode mode) const {
+    if (_mode != mode || _high_speed_transport == NULL) {
+        return false;
+    }
+    switch (mode) {
+#if BRPC_WITH_RDMA
+    case SOCKET_MODE_RDMA:
+        return static_cast<RdmaTransport*>(
+            _high_speed_transport.get())->UpgradeReady();
+#endif
+#if BRPC_WITH_UBRING
+    case SOCKET_MODE_UBRING:
+        return static_cast<UBShmTransport*>(
+            _high_speed_transport.get())->UpgradeReady();
+#endif
+    default:
+        return false;
+    }
+}
+
 int AdapterTransport::StartClientUpgrade(const Socket* socket,
                                          void (*done)(int, void*),
                                          void* data) {
@@ -337,7 +357,7 @@ void AdapterTransport::Init(Socket* socket, const SocketOptions& options) {
                    options.user != static_cast<SocketUser*>(
                        get_client_side_messenger())) {
             // UBSHM server handshake is parsed by InputMessenger.
-            _on_edge_trigger = InputMessenger::OnNewMessages;
+            _on_edge_trigger = OnNewMessagesAfterUpgrade;
 #endif
         } else {
             _on_edge_trigger = OnNewDataFromTcp;
@@ -385,7 +405,7 @@ int AdapterTransport::Reset(int32_t expected_nref) {
 }
 
 std::shared_ptr<AppConnect> AdapterTransport::Connect() {
-    if (_high_speed_transport) {
+    if (upgrade_capable(_mode)) {
         return std::make_shared<AdapterConnect>(_default_connect);
     }
     return _tcp_transport->Connect();
@@ -475,14 +495,11 @@ void AdapterTransport::SetHighSpeedAvailable(bool available) {
 }
 
 void AdapterTransport::OnNewMessagesAfterUpgrade(Socket* socket) {
-#if BRPC_WITH_RDMA
     AdapterTransport* adapter = Get(socket);
-    if (adapter->_mode == SOCKET_MODE_RDMA &&
-        adapter->_handshake.phase() == handshake::ESTABLISHED) {
+    if (adapter->_handshake.phase() == handshake::ESTABLISHED) {
         adapter->CheckUnexpectedTcpData();
         return;
     }
-#endif
 
     InputMessenger::OnNewMessages(socket);
 

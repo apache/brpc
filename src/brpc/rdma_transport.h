@@ -65,6 +65,7 @@ public:
     void ActivateUpgrade();
     void DeactivateUpgrade();
     bool UpgradeActive() const { return _rdma_state == RDMA_ON; }
+    bool UpgradeReady() const { return _rdma_ep != nullptr; }
 private:
     void SetHighSpeedAvailable(bool available);
 

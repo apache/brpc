@@ -57,6 +57,7 @@ public:
     void DeactivateUpgrade();
     void FinishUpgrade();
     bool UpgradeActive() const { return _ub_state == UB_ON; }
+    bool UpgradeReady() const { return _ub_ep != nullptr; }
 private:
     void SetHighSpeedAvailable(bool available);
 

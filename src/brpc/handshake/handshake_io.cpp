@@ -70,6 +70,9 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
         const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
         const ssize_t nr = read_once(received, len - received);
         if (nr < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             if (errno != EAGAIN) {
                 return -1;
             }
@@ -111,6 +114,9 @@ static int WriteAllLoop(size_t len, WriteOnce write_once,
         if (nw == 0) {
             errno = EPIPE;
             return -1;
+        }
+        if (errno == EINTR) {
+                       continue;
         }
         if (errno != EAGAIN) {
             return -1;

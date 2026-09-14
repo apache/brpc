@@ -198,6 +198,31 @@ TEST(HandshakeFrameTest, rejects_lengths_outside_bounds) {
     ASSERT_EQ(header.size(), source.size());
 }
 
+#if BRPC_WITH_RDMA && BRPC_WITH_UBRING
+TEST(TransportHandshakeTest, upgrade_capability_is_mode_specific) {
+    SocketOptions options;
+    SocketId id;
+    SocketUniquePtr socket;
+
+    options.socket_mode = SOCKET_MODE_RDMA;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    ASSERT_EQ(0, Socket::Address(id, &socket));
+    AdapterTransport* rdma_adapter = AdapterTransport::Get(socket.get());
+    ASSERT_TRUE(rdma_adapter->upgrade_capable(SOCKET_MODE_RDMA));
+    ASSERT_FALSE(rdma_adapter->upgrade_capable(SOCKET_MODE_UBRING));
+    socket->SetFailed();
+    socket.reset();
+
+    options.socket_mode = SOCKET_MODE_UBRING;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    ASSERT_EQ(0, Socket::Address(id, &socket));
+    AdapterTransport* ubshm_adapter = AdapterTransport::Get(socket.get());
+    ASSERT_TRUE(ubshm_adapter->upgrade_capable(SOCKET_MODE_UBRING));
+    ASSERT_FALSE(ubshm_adapter->upgrade_capable(SOCKET_MODE_RDMA));
+    socket->SetFailed();
+}
+#endif
+
 TEST(TransportHandshakeTest, publish_fallback_after_tcp_state) {
     HandshakeSession session;
     int tcp_active = 0;
