@@ -59,10 +59,7 @@ static void GlobalUBInitializeOrDieImpl() {
         ExitWithError();
     }
 
-    if (TimerInit()) {
-        PLOG(ERROR) << "Fail to TimerInit";
-        ExitWithError();
-    }
+    // Timers are bthread based and start lazily on first use.
 
     if (ShmMgrInit()) {
         PLOG(ERROR) << "Fail to ShmMgrInit";

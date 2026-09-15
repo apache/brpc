@@ -47,7 +47,7 @@ DEFINE_int32(ub_flying_io_timeout_s, 5,
              "Time in seconds to wait for stopping data sending and receiving "
              "when the link is disconnected.");
 char g_region_name[MAX_REGION_NAME_DESC_LENGTH] = {0};
-int g_shm_timer_fd = 0;
+UbrTimerId g_shm_timer_id = nullptr;
 ShmList *g_shm_list = nullptr;
 static RETURN_CODE UbsShmInterfacesLoad(void);
 char hostname[MAX_HOST_NAME_DESC_LENGTH];
@@ -377,14 +377,15 @@ RETURN_CODE UbsShmInit(void)
 
 RETURN_CODE UbsShmFini(void)
 {
-    int ret = ubsmem_finalize();
-    if (ret != UBSM_OK) {
-        LOG(ERROR) << "Ubs shm finalize fail, ret=" << ret;
+    // Stop the cleanup timer before finalizing the SDK it calls into.
+    if (UNLIKELY(DestroyShmTimer(g_shm_list) != UBRING_OK)) {
+        LOG(ERROR) << "Ubs shm list finalize failed.";
         return UBRING_ERR;
     }
 
-    if (UNLIKELY(DestroyShmTimer(g_shm_list) != UBRING_OK)) {
-        LOG(ERROR) << "Ubs shm list finalize failed.";
+    int ret = ubsmem_finalize();
+    if (ret != UBSM_OK) {
+        LOG(ERROR) << "Ubs shm finalize fail, ret=" << ret;
         return UBRING_ERR;
     }
 
@@ -418,50 +419,56 @@ void *UbsShmCallback(void* args)
         return nullptr;
     }
 
-    LOCK_GUARD(shm_list->shm_lock);
-    while (shm_list->head != nullptr) {
-        SHM shm = shm_list->head->shm;
-        if (shm.addr == nullptr) {
-            LOG(ERROR) << "Ubs input shm param is invalid, addr is NULL.";
+    // Drain one node per fire and keep the SDK calls outside the lock, so
+    // a slow daemon cannot stall the timer thread for the whole list.
+    SHM shm;
+    {
+        LOCK_GUARD(shm_list->shm_lock);
+        if (shm_list->head == nullptr) {
             return nullptr;
         }
-
-        int ret = ubsmem_shmem_unmap(shm.addr, shm.len);
-        if (ret != UBSM_OK) {
-            if (ret == UBSM_ERR_NET) {
-                return nullptr;
-            }
-            LOG(ERROR) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " failed, ret=" << ret;
-            return nullptr;
-        }
-        LOG(INFO) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " success.";
-
-        ret = ubsmem_shmem_deallocate(shm.name);
-        if (ret != UBSM_OK) {
-            DeleteShmToList(shm_list);
-            LOG(ERROR) << "Ubs delete shm=" << shm.name << " failed, ret=" << ret;
-            return nullptr;
-        }
+        shm = shm_list->head->shm;
+    }
+    if (shm.addr == nullptr) {
+        LOG(ERROR) << "Ubs input shm param is invalid, addr is NULL.";
+        LOCK_GUARD(shm_list->shm_lock);
         DeleteShmToList(shm_list);
-        LOG(INFO) << "Ubs free local shm=" << shm.name << " length=" << shm.len << " success.";
+        return nullptr;
     }
 
+    int ret = ubsmem_shmem_unmap(shm.addr, shm.len);
+    if (ret != UBSM_OK) {
+        if (ret == UBSM_ERR_NET) {
+            return nullptr;              // retried on the next fire
+        }
+        LOG(ERROR) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " failed, ret=" << ret;
+        return nullptr;                  // node stays at head, retried
+    }
+    LOG(INFO) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " success.";
+
+    {
+        LOCK_GUARD(shm_list->shm_lock);
+        DeleteShmToList(shm_list);
+    }
+
+    ret = ubsmem_shmem_deallocate(shm.name);
+    if (ret != UBSM_OK) {
+        LOG(ERROR) << "Ubs delete shm=" << shm.name << " failed, ret=" << ret;
+        return nullptr;
+    }
+    LOG(INFO) << "Ubs free local shm=" << shm.name << " length=" << shm.len << " success.";
     return nullptr;
 }
 
 RETURN_CODE UbsShmAddTimer(ShmList *shm_list)
 {
-    const uint32_t timer_interval_s = FLAGS_ub_flying_io_timeout_s;
-    itimerspec time_spec = {
-        .it_interval = {.tv_sec = timer_interval_s, .tv_nsec = 0},
-        .it_value = {.tv_sec = 0, .tv_nsec = 1}
-    };
-    int timer_fd = TimerStart(&time_spec, UbsShmCallback, (void*)shm_list);
-    if (UNLIKELY(timer_fd == -1)) {
+    const uint64_t timer_interval_us = (uint64_t)FLAGS_ub_flying_io_timeout_s * SEC_TO_USEC;
+    RETURN_CODE rc = UbrTimerStart(&g_shm_timer_id, 0, timer_interval_us,
+                                   UbsShmCallback, (void*)shm_list);
+    if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Start shm timer failed.";
         return UBRING_ERR;
     }
-    g_shm_timer_fd = timer_fd;
 
     return UBRING_OK;
 }
@@ -493,7 +500,8 @@ RETURN_CODE InitShmTimer(ShmList **shm_list)
 
 RETURN_CODE DestroyShmTimer(ShmList *shm_list)
 {
-    DeleteTimerSafe((uint32_t)g_shm_timer_fd);
+    // Wait out a possibly running UbsShmCallback before tearing shm_list down.
+    UbrTimerDelAndWait(&g_shm_timer_id);
     if (shm_list == nullptr) {
         LOG(WARNING) << "Shm list is null.";
         return UBRING_ERR;
