@@ -742,6 +742,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _tos = 0;
     _remote_side = options.remote_side;
     _local_side = options.local_side;
+    _bind_local_side = options.local_side;
     _device_name = options.device_name;
     _on_edge_triggered_events = options.on_edge_triggered_events;
     _need_on_edge_trigger = options.need_on_edge_trigger;
@@ -797,6 +798,25 @@ int Socket::OnCreated(const SocketOptions& options) {
     _http_request_method = HTTP_METHOD_GET;
     CHECK(nullptr == _write_head.load(butil::memory_order_relaxed));
     _is_write_shutdown = false;
+    // EndPoint::port is a type tag for IPv6/UDS, not a network port.
+    // Normalize only IP ports and leave Unix-domain addresses intact.
+    if (!butil::is_endpoint_extended(_bind_local_side)) {
+        _bind_local_side.port = 0;
+    } else if (butil::get_endpoint_type(_bind_local_side) == AF_INET6) {
+        sockaddr_storage addr{};
+        socklen_t addr_size = 0;
+        if (butil::endpoint2sockaddr(_bind_local_side, &addr, &addr_size) != 0) {
+            SetFailed(EINVAL, "Fail to get client binding sockaddr from %s",
+                      butil::endpoint2str(_bind_local_side).c_str());
+            return -1;
+        }
+        reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = 0;
+        if (butil::sockaddr2endpoint(&addr, addr_size, &_bind_local_side) != 0) {
+            SetFailed(ENOMEM, "Fail to create client binding endpoint from %s",
+                      butil::endpoint2str(_bind_local_side).c_str());
+            return -1;
+        }
+    }
     int fd = options.fd;
     if (!ValidFileDescriptor(fd) && options.connect_on_create) {
         // Connect on create.
@@ -1015,6 +1035,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     }
     _transport->Reset(expected_nref);
 
+    // Clear the runtime endpoint, keeping the configured binding intact.
     _local_side = butil::EndPoint();
     if (_ssl_session) {
         SSL_free(_ssl_session);
@@ -1265,8 +1286,8 @@ int Socket::Connect(const timespec* abstime,
         _ssl_state = SSL_OFF;
     }
     struct sockaddr_storage serv_addr;
-    socklen_t addr_size = 0;
-    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &addr_size) != 0) {
+    socklen_t serv_addr_size = 0;
+    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &serv_addr_size) != 0) {
         PLOG(ERROR) << "Fail to get sockaddr";
         return -1;
     }
@@ -1294,19 +1315,20 @@ int Socket::Connect(const timespec* abstime,
         return -1;
 #endif
     }
-    if (local_side().ip != butil::IP_ANY) {
-        struct sockaddr_storage cli_addr;
-        if (butil::endpoint2sockaddr(local_side(), &cli_addr, &addr_size) != 0) {
+    // Use the configured endpoint, not the runtime endpoint from getsockname().
+    if (butil::is_endpoint_extended(_bind_local_side) || _bind_local_side.ip != butil::IP_ANY) {
+        struct sockaddr_storage cli_addr{};
+        socklen_t cli_addr_size = 0;
+        if (butil::endpoint2sockaddr(_bind_local_side, &cli_addr, &cli_addr_size) != 0) {
             PLOG(ERROR) << "Fail to get client sockaddr";
             return -1;
         }
-        if (::bind(sockfd, (struct sockaddr*)&cli_addr, addr_size) != 0) {
-            PLOG(ERROR) << "Fail to bind client socket, errno=" << strerror(errno);
+        if (::bind(sockfd, (struct sockaddr*)&cli_addr, cli_addr_size) != 0) {
+            PLOG(ERROR) << "Fail to bind client socket";
             return -1;
         }
     }
-    const int rc = ::connect(
-        sockfd, (struct sockaddr*)&serv_addr, addr_size);
+    const int rc = ::connect(sockfd, (struct sockaddr*)&serv_addr, serv_addr_size);
     if (rc != 0 && errno != EINPROGRESS) {
         PLOG(WARNING) << "Fail to connect to " << remote_side();
         return -1;
@@ -2797,7 +2819,10 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
     if (socket_pool == nullptr) {
         SocketOptions opt;
         opt.remote_side = remote_side();
-        opt.local_side = butil::EndPoint(local_side().ip, 0);
+        // Propagate the configured client binding (source IP + device) to
+        // pooled sub-sockets so that they keep the same binding policy.
+        opt.local_side = _bind_local_side;
+        opt.device_name = _device_name;
         opt.user = user();
         opt.on_edge_triggered_events = _on_edge_triggered_events;
         opt.need_on_edge_trigger = _need_on_edge_trigger;
@@ -2900,7 +2925,10 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     SocketId id;
     SocketOptions opt;
     opt.remote_side = remote_side();
-    opt.local_side = butil::EndPoint(local_side().ip, 0);
+    // Propagate the configured client binding (source IP + device) to short
+    // sub-sockets so that they keep the same binding policy.
+    opt.local_side = _bind_local_side;
+    opt.device_name = _device_name;
     opt.user = user();
     opt.on_edge_triggered_events = _on_edge_triggered_events;
     opt.need_on_edge_trigger = _need_on_edge_trigger;
