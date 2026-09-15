@@ -84,103 +84,6 @@ BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, nullptr);
 
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
-AtomicInteger128::Value AtomicInteger128::load() const {
-#ifdef __x86_64__
-    (void)_mutex;
-    (void)_seq;
-    __m128i value = _mm_load_si128(reinterpret_cast<const __m128i*>(&_value));
-    return {value[0], value[1]};
-#elif defined(__ARM_NEON)
-    (void)_mutex;
-    (void)_seq;
-    int64x2_t value = vld1q_s64(reinterpret_cast<const int64_t*>(&_value));
-    return {value[0], value[1]};
-#elif defined(__riscv) && __riscv_xlen == 64
-    (void)_mutex;
-    // RISC-V: Seqlock-based atomic 128-bit load.
-    int64_t v1, v2;
-    uint64_t seq0, seq1;
-    do {
-        __asm__ volatile(
-            "ld %0, %1\n\t"
-            : "=r"(seq0)
-            : "m"(_seq)
-            : "memory"
-        );
-        if (seq0 & 1) continue;
-        __asm__ volatile("fence r, rw\n\t" ::: "memory");
-        __asm__ volatile(
-            "ld %0, %2\n\t"
-            "ld %1, %3\n\t"
-            : "=r"(v1), "=r"(v2)
-            : "m"(_value.v1), "m"(_value.v2)
-            : "memory"
-        );
-        __asm__ volatile("fence r, rw\n\t" ::: "memory");
-        __asm__ volatile(
-            "ld %0, %1\n\t"
-            : "=r"(seq1)
-            : "m"(_seq)
-            : "memory"
-        );
-    } while (seq0 != seq1);
-    return {v1, v2};
-#else
-    BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
-    return _value;
-#endif
-}
-
-void AtomicInteger128::store(Value value) {
-#ifdef __x86_64__
-    (void)_seq;
-    __m128i v = _mm_load_si128(reinterpret_cast<__m128i*>(&value));
-    _mm_store_si128(reinterpret_cast<__m128i*>(&_value), v);
-#elif defined(__ARM_NEON)
-    (void)_seq;
-    int64x2_t v = vld1q_s64(reinterpret_cast<int64_t*>(&value));
-    vst1q_s64(reinterpret_cast<int64_t*>(&_value), v);
-#elif defined(__riscv) && __riscv_xlen == 64
-    (void)_mutex;
-    // RISC-V: Seqlock-based atomic 128-bit store.
-    uint64_t old_seq;
-    __asm__ volatile(
-        "ld %0, %1\n\t"
-        : "=r"(old_seq)
-        : "m"(_seq)
-        : "memory"
-    );
-    uint64_t new_seq = old_seq + 1;
-    __asm__ volatile(
-        "fence w, w\n\t"
-        "sd %1, %0\n\t"
-        : "=m"(_seq)
-        : "r"(new_seq)
-        : "memory"
-    );
-    __asm__ volatile("fence w, w\n\t" ::: "memory");
-    __asm__ volatile(
-        "sd %2, %0\n\t"
-        "sd %3, %1\n\t"
-        : "=m"(_value.v1), "=m"(_value.v2)
-        : "r"(value.v1), "r"(value.v2)
-        : "memory"
-    );
-    __asm__ volatile("fence w, w\n\t" ::: "memory");
-    new_seq++;
-    __asm__ volatile(
-        "sd %1, %0\n\t"
-        : "=m"(_seq)
-        : "r"(new_seq)
-        : "memory"
-    );
-#else
-    BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
-    _value = value;
-#endif
-}
-
-
 int TaskGroup::get_attr(bthread_t tid, bthread_attr_t* out) {
     TaskMeta* const m = address_meta(tid);
     if (m != nullptr) {
@@ -249,7 +152,9 @@ static double get_cumulated_cputime_from_this(void* arg) {
 
 int64_t TaskGroup::cumulated_cputime_ns() const {
     CPUTimeStat cpu_time_stat = _cpu_time_stat.load();
-    // Add the elapsed time of running bthread.
+    // Add elapsed time only for a running non-main task. cpuwide_time_ns()
+    // advances while the worker is parked, so including the main task would
+    // count idle waiting as worker usage.
     int64_t cumulated_cputime_ns = cpu_time_stat.cumulated_cputime_ns();
     if (!cpu_time_stat.is_main_task()) {
         cumulated_cputime_ns += butil::cpuwide_time_ns() - cpu_time_stat.last_run_ns();
@@ -286,7 +191,7 @@ void TaskGroup::run_main_task() {
     }
     // Don't forget to add elapse of last wait_task.
     current_task()->stat.cputime_ns +=
-        butil::cpuwide_time_ns() - _cpu_time_stat.load_unsafe().last_run_ns();
+        butil::cpuwide_time_ns() - _cpu_time_stat.load_for_writer().last_run_ns();
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
@@ -840,7 +745,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
 
     TaskMeta* const cur_meta = g->_cur_meta;
     int64_t now = butil::cpuwide_time_ns();
-    CPUTimeStat cpu_time_stat = g->_cpu_time_stat.load_unsafe();
+    CPUTimeStat cpu_time_stat = g->_cpu_time_stat.load_for_writer();
     int64_t elp_ns = now - cpu_time_stat.last_run_ns();
     cur_meta->stat.cputime_ns += elp_ns;
     // Update cpu_time_stat.
