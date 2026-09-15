@@ -16,7 +16,7 @@
 // under the License.
 
 #include "brpc/transport_factory.h"
-#include "brpc/tcp_transport.h"
+#include "brpc/adapter_transport.h"
 #include "brpc/rdma_transport.h"
 #include "brpc/ubshm_transport.h"
 
@@ -43,16 +43,16 @@ int TransportFactory::ContextInitOrDie(SocketMode mode, bool serverOrNot, const 
 
 std::unique_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
     if (mode == SOCKET_MODE_TCP) {
-        return std::unique_ptr<TcpTransport>(new TcpTransport());
+        return std::unique_ptr<Transport>(new AdapterTransport(mode));
     }
 #if BRPC_WITH_RDMA
     else if (mode == SOCKET_MODE_RDMA) {
-        return std::unique_ptr<RdmaTransport>(new RdmaTransport());
+        return std::unique_ptr<Transport>(new AdapterTransport(mode));
     }
 #endif
 #if BRPC_WITH_UBRING
     else if (mode == SOCKET_MODE_UBRING) {
-        return std::unique_ptr<UBShmTransport>(new UBShmTransport());
+        return std::unique_ptr<Transport>(new AdapterTransport(mode));
     }
 #endif
     else {
