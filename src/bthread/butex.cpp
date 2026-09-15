@@ -731,7 +731,13 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
                      30/*nops before sched_yield*/);
         if (task->interrupted) {
             task->interrupted = false;
-            if (rc == 0) {
+            // If interrupted after enqueueing but before futex_wait_private,
+            // pw.sig is already signalled and futex_wait_private may report
+            // EWOULDBLOCK. This is an interruption, not a value mismatch on
+            // the user's butex. Preserve other errors (notably ETIMEDOUT).
+            if (rc == 0 || (errno == EWOULDBLOCK &&
+                            pw.sig.load(butil::memory_order_acquire) ==
+                            PTHREAD_SIGNALLED)) {
                 errno = EINTR;
                 return -1;
             }

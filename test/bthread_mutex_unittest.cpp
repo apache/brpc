@@ -52,8 +52,14 @@ TEST(MutexTest, sanity) {
     ASSERT_EQ(1u, *get_butex(m));
     bthread_t th1;
     ASSERT_EQ(0, bthread_start_urgent(&th1, nullptr, locker, &m));
-    usleep(5000); // wait for locker to run.
-    ASSERT_EQ(257u, *get_butex(m)); // contention
+    auto* state = reinterpret_cast<butil::atomic<unsigned>*>(get_butex(m));
+    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    while (state->load(butil::memory_order_relaxed) != 257u &&
+           butil::cpuwide_time_us() < deadline) {
+        usleep(1000);
+    }
+    // Keep cleanup reachable even if the worker did not run in time.
+    ASSERT_EQ(257u, state->load(butil::memory_order_relaxed));
     ASSERT_EQ(0, bthread_mutex_unlock(&m));
     ASSERT_EQ(0, bthread_join(th1, nullptr));
     ASSERT_EQ(0u, *get_butex(m));
