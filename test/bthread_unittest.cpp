@@ -501,21 +501,32 @@ TEST_F(BthreadTest, start_latency_when_high_idle) {
 }
 
 void* sleep_for_awhile_with_sleep(void* arg) {
-    bthread_usleep((intptr_t)arg);
+    int rc = bthread_usleep((intptr_t)arg);
+    int error = errno;
+    EXPECT_EQ(-1, rc);
+    EXPECT_EQ(ESTOP, error);
     return nullptr;
 }
 
 TEST_F(BthreadTest, stop_sleep) {
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(
-                  &th, nullptr, sleep_for_awhile_with_sleep, (void*)1000000L));
-    butil::Timer tm;
-    tm.start();
-    bthread_usleep(10000);
+                  &th, nullptr, sleep_for_awhile_with_sleep, (void*)60000000L));
+    auto* meta = bthread::TaskGroup::address_meta(th);
+    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    bool sleeping = false;
+    do {
+        pthread_spin_lock(&meta->version_lock);
+        sleeping = (meta->current_sleep != 0);
+        pthread_spin_unlock(&meta->version_lock);
+        if (sleeping) {
+            break;
+        }
+        bthread_usleep(1000);
+    } while (butil::cpuwide_time_us() < deadline);
+    ASSERT_TRUE(sleeping);
     ASSERT_EQ(0, bthread_stop(th));
     ASSERT_EQ(0, bthread_join(th, nullptr));
-    tm.stop();
-    ASSERT_LE(labs(tm.m_elapsed() - 10), 10);
 }
 
 TEST_F(BthreadTest, bthread_exit) {

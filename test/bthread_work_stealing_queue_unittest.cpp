@@ -25,7 +25,7 @@
 
 namespace {
 typedef size_t value_type;
-bool g_stop = false;
+butil::atomic<bool> g_stop(false);
 const size_t N = 1024*512;
 const size_t CAP = 8;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -85,6 +85,7 @@ void* pop_thread(void* arg) {
 
 
 TEST(WSQTest, sanity) {
+    g_stop = false;
     bthread::WorkStealingQueue<value_type> q;
     ASSERT_EQ(0, q.init(CAP));
     pthread_t rth[8];
