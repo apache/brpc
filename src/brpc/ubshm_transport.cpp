@@ -171,6 +171,12 @@ void UBShmTransport::QueueMessage(InputMessageClosure& input_msg,
     }
 }
 
+void UBShmTransport::QueueMessages(InputMessageBatch* input_msgs,
+                                   int* num_bthread_created) {
+    QueueInputMessageBatch(
+        input_msgs, num_bthread_created, ubring::FLAGS_ub_disable_bthread);
+}
+
 void UBShmTransport::Debug(std::ostream &os) {}
 
 int UBShmTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {

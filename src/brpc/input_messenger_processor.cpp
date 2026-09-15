@@ -15,6 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
+#include <new>
+
 #include "butil/logging.h"
 #include "butil/binary_printer.h"
 #include "bthread/unstable.h"
@@ -26,10 +29,16 @@
 namespace brpc {
 
 DECLARE_uint64(max_body_size);
+DECLARE_bool(usercode_in_coroutine);
+DECLARE_int32(input_message_batch_process_size);
 
 const size_t MSG_SIZE_WINDOW = 10;  // Take last so many message into stat.
 const size_t MIN_ONCE_READ = 4096;
 const size_t MAX_ONCE_READ = 524288;
+const uint32_t INPUT_BATCH_EMA_SCALE = 256;
+const uint32_t MAX_ADAPTIVE_INPUT_BATCH_SIZE = 16;
+const uint32_t MAX_ADAPTIVE_INPUT_BATCH_SAMPLE =
+    MAX_ADAPTIVE_INPUT_BATCH_SIZE * 2;
 
 static const char* StreamTypeName(InputMessengerProcessor::StreamType type) {
     switch (type) {
@@ -167,8 +176,78 @@ size_t InputMessengerProcessor::OnceReadSize() const {
 
 void InputMessengerProcessor::Reset() {
     _read_buf.clear();
-    _last_msg_size = 0;
-    _avg_msg_size = 0;
+    ResetMsgSizeStats();
+}
+
+void InputMessengerProcessor::QueueInputMessageBatch(
+        std::unique_ptr<InputMessageBatch>* batch,
+        int* num_bthread_created) {
+    if (!batch->get() || (*batch)->empty()) {
+        return;
+    }
+    _socket->_transport->QueueMessages(batch->release(), num_bthread_created);
+}
+
+void InputMessengerProcessor::QueueLastMessageOrBatch(
+        InputMessageClosure& last_msg,
+        std::unique_ptr<InputMessageBatch>* batch,
+        int* num_bthread_created, size_t batch_size) {
+    InputMessageBase* msg = last_msg.release();
+    if (msg == nullptr) {
+        return;
+    }
+    if (!batch->get()) {
+        batch->reset(new (std::nothrow) InputMessageBatch(batch_size));
+    }
+    if (!batch->get()) {
+        last_msg.reset(msg);
+        _socket->_transport->QueueMessage(
+            last_msg, num_bthread_created, false);
+        return;
+    }
+    (*batch)->add(msg);
+    if ((*batch)->size() >= batch_size) {
+        QueueInputMessageBatch(batch, num_bthread_created);
+    }
+}
+
+uint32_t InputMessengerProcessor::UpdateAdaptiveBatchSize(
+        uint32_t* messages_per_read_ema_q8,
+        uint32_t current_batch_size,
+        size_t parsed_message_count) {
+    if (parsed_message_count == 0) {
+        return current_batch_size;
+    }
+    if (*messages_per_read_ema_q8 == 0 || current_batch_size == 0) {
+        *messages_per_read_ema_q8 = INPUT_BATCH_EMA_SCALE;
+        current_batch_size = 1;
+    }
+
+    const uint32_t sample = static_cast<uint32_t>(
+        std::min(parsed_message_count,
+                 static_cast<size_t>(MAX_ADAPTIVE_INPUT_BATCH_SAMPLE)));
+    const uint32_t sample_q8 = sample * INPUT_BATCH_EMA_SCALE;
+    uint32_t ema_q8 = *messages_per_read_ema_q8;
+    if (sample_q8 > ema_q8) {
+        // Increase slowly to avoid turning a short burst into persistent
+        // head-of-line blocking.
+        ema_q8 += (sample_q8 - ema_q8) / 8;
+    } else {
+        // Reduce quickly when the connection becomes sparse.
+        ema_q8 -= (ema_q8 - sample_q8 + 1) / 2;
+    }
+    *messages_per_read_ema_q8 = ema_q8;
+
+    uint32_t desired_batch_size = 1;
+    while (desired_batch_size < MAX_ADAPTIVE_INPUT_BATCH_SIZE &&
+           ema_q8 > desired_batch_size * INPUT_BATCH_EMA_SCALE) {
+        desired_batch_size *= 2;
+    }
+    if (desired_batch_size > current_batch_size) {
+        // Increase at most one level for each observation.
+        return std::min(current_batch_size * 2, desired_batch_size);
+    }
+    return desired_batch_size;
 }
 
 int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
@@ -184,6 +263,27 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
 
     size_t last_size = _read_buf.length();
     int num_bthread_created = 0;
+    const int configured_batch_size =
+        FLAGS_input_message_batch_process_size;
+    const bool adaptive_batch_process =
+        configured_batch_size == -1 && !FLAGS_usercode_in_coroutine;
+    size_t batch_size = configured_batch_size > 0
+                        ? static_cast<size_t>(configured_batch_size) : 1;
+    if (adaptive_batch_process) {
+        if (_adaptive_input_message_batch_size == 0) {
+            _input_messages_per_read_ema_q8 = INPUT_BATCH_EMA_SCALE;
+            _adaptive_input_message_batch_size = 1;
+        }
+        batch_size = _adaptive_input_message_batch_size;
+    } else if (_adaptive_input_message_batch_size != 0) {
+        // Do not reuse history after switching away from adaptive mode.
+        _input_messages_per_read_ema_q8 = 0;
+        _adaptive_input_message_batch_size = 0;
+    }
+    const bool batch_process =
+        batch_size > 1 && !FLAGS_usercode_in_coroutine;
+    size_t batchable_message_count = 0;
+    std::unique_ptr<InputMessageBatch> input_batch;
     while (true) {
         size_t index = 8888;
         ParseResult pr = CutInputMessage(messenger, &index, read_eof);
@@ -237,7 +337,13 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
         // This unique_ptr prevents msg to be lost before transfering
         // ownership to last_msg
         DestroyingPtr<InputMessageBase> msg(pr.message());
-        _socket->_transport->QueueMessage(last_msg, &num_bthread_created, false);
+        if (batch_process) {
+            QueueLastMessageOrBatch(
+                last_msg, &input_batch, &num_bthread_created, batch_size);
+        } else {
+            _socket->_transport->QueueMessage(
+                last_msg, &num_bthread_created, false);
+        }
         if (handlers[index].process == nullptr) {
             LOG(ERROR) << "process of index=" << index << " is NULL";
             continue;
@@ -269,8 +375,15 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
         if (!_socket->is_read_progressive()) {
             // Transfer ownership to last_msg
             last_msg.reset(msg.release());
+            if (adaptive_batch_process) {
+                ++batchable_message_count;
+            }
         } else {
             last_msg.reset(msg.release());
+            if (batch_process) {
+                QueueInputMessageBatch(
+                    &input_batch, &num_bthread_created);
+            }
             _socket->_transport->QueueMessage(last_msg, &num_bthread_created, false);
             bthread_flush();
             num_bthread_created = 0;
@@ -280,9 +393,20 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
     // not in the bthread where the polling bthread is located, because the
     // method for processing messages may call synchronization primitives,
     // causing the polling bthread to be scheduled out.
-    if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
-        _socket->_socket_mode == SOCKET_MODE_UBRING) {
+    if (batch_process) {
+        QueueLastMessageOrBatch(
+            last_msg, &input_batch, &num_bthread_created, batch_size);
+        QueueInputMessageBatch(&input_batch, &num_bthread_created);
+    } else if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
+               _socket->_socket_mode == SOCKET_MODE_UBRING) {
         _socket->_transport->QueueMessage(last_msg, &num_bthread_created, true);
+    }
+    if (adaptive_batch_process && batchable_message_count != 0) {
+        _adaptive_input_message_batch_size =
+            UpdateAdaptiveBatchSize(
+                &_input_messages_per_read_ema_q8,
+                _adaptive_input_message_batch_size,
+                batchable_message_count);
     }
     if (num_bthread_created) {
         bthread_flush();
