@@ -1634,15 +1634,20 @@ TEST_F(SocketTest, socket_buffer_options_before_accept) {
     brpc::SocketId id = brpc::INVALID_SOCKET_ID;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
 
-    const int64_t start_time = butil::cpuwide_time_us();
-    while (messenger->ConnectionCount() < 1) {
-        bthread_usleep(1000);
-        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L)
-            << "Too long!";
-    }
-
+    // ConnectionCount includes reserved slots before the accepted sockets
+    // have been inserted into the connection map. Wait for publication, not
+    // just for the connection slot to be acquired.
     std::vector<brpc::SocketId> connections;
-    messenger->ListConnections(&connections);
+    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    for (;;) {
+        messenger->ListConnections(&connections);
+        if (!connections.empty()) {
+            break;
+        }
+        ASSERT_LT(butil::cpuwide_time_us(), deadline)
+            << "Timed out waiting for the accepted socket to be published";
+        bthread_usleep(1000);
+    }
     ASSERT_EQ(1ul, connections.size());
 
     {

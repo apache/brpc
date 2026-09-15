@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include <gtest/gtest.h>
+#include <vector>
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/errno.h"
@@ -30,7 +31,7 @@
 #include <bthread/processor.h>
 
 namespace {
-volatile bool stop = false;
+butil::atomic<bool> stop(false);
 
 butil::atomic<int> nthread(0);
 
@@ -57,21 +58,26 @@ void* read_thread(void* arg) {
         }
 
         ++nthread;
-        bthread::futex_wait_private(m/*lock1*/, 0/*consumed_njob*/, nullptr);
+        // A stop between the loop condition and futex_wait must not leave
+        // this worker asleep forever. Periodically recheck the stop flag.
+        timespec timeout = butil::milliseconds_to_timespec(100);
+        bthread::futex_wait_private(m/*lock1*/, 0/*consumed_njob*/, &timeout);
         --nthread;
     }
     return new int(njob);
 }
 
 TEST(FutexTest, rdlock_performance) {
-    const size_t N = 100000;
+    stop = false;
+    nthread = 0;
+    size_t N = 100000;
     butil::atomic<int> lock1(0);
     pthread_t rth[8];
     for (size_t i = 0; i < ARRAY_SIZE(rth); ++i) {
         ASSERT_EQ(0, pthread_create(&rth[i], nullptr, read_thread, &lock1));
     }
 
-    const int64_t t1 = butil::cpuwide_time_ns();
+    int64_t t1 = butil::cpuwide_time_ns();
     for (size_t i = 0; i < N; ++i) {
         if (nthread) {
             lock1.fetch_add(1);
@@ -83,14 +89,11 @@ TEST(FutexTest, rdlock_performance) {
             }
         }
     }
-    const int64_t t2 = butil::cpuwide_time_ns();
+    int64_t t2 = butil::cpuwide_time_ns();
 
     bthread_usleep(3000000);
     stop = true;
-    for (int i = 0; i < 10; ++i) {
-        bthread::futex_wake_private(&lock1, INT_MAX);
-        sched_yield();
-    }
+    bthread::futex_wake_private(&lock1, INT_MAX);
 
     int njob = 0;
     int* res;
@@ -113,30 +116,55 @@ TEST(FutexTest, futex_wake_before_wait) {
 }
 
 void* dummy_waiter(void* lock) {
-    bthread::futex_wait_private(lock, 0, nullptr);
+    timespec timeout = butil::seconds_to_timespec(10);
+    int rc;
+    do {
+        rc = bthread::futex_wait_private(lock, 0, &timeout);
+    } while (rc != 0 && errno == EINTR);
+    EXPECT_EQ(0, rc);
     return nullptr;
 }
 
 TEST(FutexTest, futex_wake_many_waiters_perf) {
     
-    int lock1 = 0;
-    size_t N = 0;
-    pthread_t th;
-    for (; N < 1000 && !pthread_create(&th, nullptr, dummy_waiter, &lock1); ++N) {}
-    
-    sleep(1);
-    int nwakeup = 0;
-    butil::Timer tm;
-    tm.start();
-    for (size_t i = 0; i < N; ++i) {
-        nwakeup += bthread::futex_wake_private(&lock1, 1);
+    butil::atomic<int> lock1(0);
+    std::vector<pthread_t> threads;
+    for (size_t i = 0; i < 1000; ++i) {
+        pthread_t th;
+        if (pthread_create(&th, nullptr, dummy_waiter, &lock1) != 0) {
+            break;
+        }
+        threads.push_back(th);
     }
-    tm.stop();
-    printf("N=%lu, futex_wake a thread = %" PRId64 "ns\n", N, tm.n_elapsed() / N);
-    ASSERT_EQ(N, (size_t)nwakeup);
+    ASSERT_FALSE(threads.empty());
+    size_t N = threads.size();
+    int nwakeup = 0;
+    int64_t wake_ns = 0;
+    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    butil::Timer tm;
+    while (static_cast<size_t>(nwakeup) < N &&
+           butil::cpuwide_time_us() < deadline) {
+        tm.start();
+        int rc = bthread::futex_wake_private(&lock1, 1);
+        tm.stop();
+        EXPECT_GE(rc, 0);
+        if (rc > 0) {
+            nwakeup += rc;
+            wake_ns += tm.n_elapsed();
+        } else {
+            usleep(1000);
+        }
+    }
+    // Also release late waiters on failure; a wake alone is not persistent.
+    lock1.store(1);
+    bthread::futex_wake_private(&lock1, INT_MAX);
+    for (pthread_t th : threads) {
+        EXPECT_EQ(0, pthread_join(th, nullptr));
+    }
+    ASSERT_EQ(N, static_cast<size_t>(nwakeup));
+    printf("N=%lu, futex_wake a thread = %" PRId64 "ns\n", N, wake_ns / N);
 
-    sleep(2);
-    const size_t REP = 10000;
+    size_t REP = 10000;
     nwakeup = 0;
     tm.start();
     for (size_t i = 0; i < REP; ++i) {
@@ -191,7 +219,7 @@ void* batch_waker(void* lock) {
 
 TEST(FutexTest, many_futex_wake_nop_perf) {
     pthread_t th[8];
-    int lock1;
+    int lock1 = 0;
     std::cout << "[Direct wake]" << std::endl;
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         ASSERT_EQ(0, pthread_create(&th[i], nullptr, waker, &lock1));

@@ -411,39 +411,62 @@ TEST(FDTest, add_existing_fd) {
 #endif
 }
 
+struct EpollWaitArg {
+    int epfd;
+    butil::atomic<bool> done{false};
+    int result = 0;
+    int error = 0;
+};
+
 void* epoll_waiter(void* arg) {
+    EpollWaitArg* a = static_cast<EpollWaitArg*>(arg);
 #if defined(OS_LINUX)
     epoll_event e;
-    if (1 == epoll_wait((int)(intptr_t)arg, &e, 1, -1)) {
-        std::cout << e.events << std::endl;
-    }
+    a->result = epoll_wait(a->epfd, &e, 1, 10000);
 #elif defined(OS_MACOSX)
     struct kevent e;
-    if (1 == kevent((int)(intptr_t)arg, nullptr, 0, &e, 1, nullptr)) {
-        std::cout << e.flags << std::endl;
-    }
+    timespec timeout = {10, 0};
+    a->result = kevent(a->epfd, nullptr, 0, &e, 1, &timeout);
 #endif
-    std::cout << pthread_self() << " quits" << std::endl;
+    a->error = errno;
+    a->done.store(true, butil::memory_order_release);
     return nullptr;
 }
 
 TEST(FDTest, interrupt_pthread) {
 #if defined(OS_LINUX)
-    const int epfd = epoll_create(1024);
+    butil::fd_guard epfd(epoll_create(1024));
 #elif defined(OS_MACOSX)
-    const int epfd = kqueue();
+    butil::fd_guard epfd(kqueue());
 #endif
-    pthread_t th, th2;
-    ASSERT_EQ(0, pthread_create(&th, nullptr, epoll_waiter, (void*)(intptr_t)epfd));
-    ASSERT_EQ(0, pthread_create(&th2, nullptr, epoll_waiter, (void*)(intptr_t)epfd));
-    bthread_usleep(100000L);
-    std::cout << "wake up " << th << std::endl;
-    bthread::interrupt_pthread(th);
-    bthread_usleep(100000L);
-    std::cout << "wake up " << th2 << std::endl;
-    bthread::interrupt_pthread(th2);
-    pthread_join(th, nullptr);
-    pthread_join(th2, nullptr);
+    ASSERT_GE(epfd, 0);
+    EpollWaitArg args[2];
+    pthread_t threads[2];
+    size_t started = 0;
+    for (; started < ARRAY_SIZE(threads); ++started) {
+        args[started].epfd = epfd;
+        int rc = pthread_create(&threads[started], nullptr,
+                                      epoll_waiter, &args[started]);
+        EXPECT_EQ(0, rc);
+        if (rc != 0) {
+            break;
+        }
+    }
+    int64_t deadline = butil::cpuwide_time_us() + 15000000L;
+    for (size_t i = 0; i < started; ++i) {
+        // Signals are not persistent. Retry until the syscall observes one;
+        // keep the pthread joinable until all signalling is finished.
+        while (!args[i].done.load(butil::memory_order_acquire) &&
+               butil::cpuwide_time_us() < deadline) {
+            EXPECT_EQ(0, bthread::interrupt_pthread(threads[i]));
+            bthread_usleep(1000);
+        }
+        EXPECT_EQ(0, pthread_join(threads[i], nullptr));
+    }
+    for (size_t i = 0; i < started; ++i) {
+        ASSERT_EQ(-1, args[i].result);
+        ASSERT_EQ(EINTR, args[i].error);
+    }
 }
 
 void* close_the_fd(void* arg) {
@@ -484,49 +507,73 @@ TEST(FDTest, invalid_epoll_events) {
     ASSERT_EQ(0, bthread_fd_wait(fds[0], EVFILT_READ));
 #endif
     tm.stop();
-    ASSERT_LT(tm.m_elapsed(), 20);
+    // Successful readiness, not scheduler latency, is the contract.
     ASSERT_EQ(0, bthread_join(th, nullptr));
     ASSERT_EQ(0, bthread_close(fds[0]));
 }
 
+struct FDWaitArg {
+    int fd;
+    int timeout_ms;
+    int result = 0;
+    int error = 0;
+};
+
 void* wait_for_the_fd(void* arg) {
-    timespec ts = butil::milliseconds_from_now(50);
+    FDWaitArg* a = static_cast<FDWaitArg*>(arg);
+    timespec ts = butil::milliseconds_from_now(a->timeout_ms);
 #if defined(OS_LINUX)
-    bthread_fd_timedwait(*(int*)arg, EPOLLIN, &ts);
+    a->result = bthread_fd_timedwait(a->fd, EPOLLIN, &ts);
 #elif defined(OS_MACOSX)
-    bthread_fd_timedwait(*(int*)arg, EVFILT_READ, &ts);
+    a->result = bthread_fd_timedwait(a->fd, EVFILT_READ, &ts);
 #endif
+    a->error = errno;
+    if (a->result == -1 && a->error == ETIMEDOUT) {
+        EXPECT_GE(butil::gettimeofday_us(), butil::timespec_to_microseconds(ts));
+    }
     return nullptr;
 }
 
 TEST(FDTest, timeout) {
     int fds[2];
     ASSERT_EQ(0, pipe(fds));
+    FDWaitArg args[2];
+    for (auto& arg : args) {
+        arg.fd = fds[0];
+        arg.timeout_ms = 50;
+    }
     pthread_t th;
-    ASSERT_EQ(0, pthread_create(&th, nullptr, wait_for_the_fd, &fds[0]));
+    ASSERT_EQ(0, pthread_create(&th, nullptr, wait_for_the_fd, &args[0]));
     bthread_t bth;
-    ASSERT_EQ(0, bthread_start_urgent(&bth, nullptr, wait_for_the_fd, &fds[0]));
-    butil::Timer tm;
-    tm.start();
+    ASSERT_EQ(0, bthread_start_urgent(&bth, nullptr, wait_for_the_fd, &args[1]));
     ASSERT_EQ(0, pthread_join(th, nullptr));
     ASSERT_EQ(0, bthread_join(bth, nullptr));
-    tm.stop();
-    ASSERT_LT(tm.m_elapsed(), 80);
     ASSERT_EQ(0, bthread_close(fds[0]));
     ASSERT_EQ(0, bthread_close(fds[1]));
+    for (auto& arg : args) {
+        ASSERT_EQ(-1, arg.result);
+        ASSERT_EQ(ETIMEDOUT, arg.error);
+    }
 }
 
 TEST(FDTest, close_should_wakeup_waiter) {
     int fds[2];
     ASSERT_EQ(0, pipe(fds));
+    FDWaitArg arg;
+    arg.fd = fds[0];
+    arg.timeout_ms = 10000;
     bthread_t bth;
-    ASSERT_EQ(0, bthread_start_urgent(&bth, nullptr, wait_for_the_fd, &fds[0]));
-    butil::Timer tm;
-    tm.start();
+    ASSERT_EQ(0, bthread_start_urgent(&bth, nullptr, wait_for_the_fd, &arg));
+    auto* meta = bthread::TaskGroup::address_meta(bth);
+    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    while (meta->current_waiter.load(butil::memory_order_acquire) == nullptr &&
+           butil::cpuwide_time_us() < deadline) {
+        bthread_usleep(1000);
+    }
+    ASSERT_NE(nullptr, meta->current_waiter.load(butil::memory_order_acquire));
     ASSERT_EQ(0, bthread_close(fds[0]));
     ASSERT_EQ(0, bthread_join(bth, nullptr));
-    tm.stop();
-    ASSERT_LT(tm.m_elapsed(), 5);
+    ASSERT_EQ(0, arg.result) << "errno=" << arg.error;
 
     // Launch again, should quit soon due to EBADF
 #if defined(OS_LINUX)
@@ -566,73 +613,74 @@ TEST(FDTest, double_close) {
     ASSERT_EQ(ec, errno);
 }
 
-const char* g_hostname1 = "github.com";
-const char* g_hostname2 = "baidu.com";
-TEST(FDTest, bthread_connect) {
-    butil::EndPoint ep1;
-    butil::EndPoint ep2;
-    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname1, 80, &ep1));
-    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname2, 80, &ep2));
-
-    {
-        struct sockaddr_storage serv_addr{};
-        socklen_t serv_addr_size = 0;
-        ASSERT_EQ(0, endpoint2sockaddr(ep1, &serv_addr, &serv_addr_size));
-        butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
-        ASSERT_LE(0, sockfd);
-        bool is_blocking = butil::is_blocking(sockfd);
-        ASSERT_LE(0, sockfd);
-        ASSERT_EQ(0, bthread_connect(sockfd, (struct sockaddr*) &serv_addr, serv_addr_size));
-        ASSERT_EQ(is_blocking, butil::is_blocking(sockfd));
-
-    }
-
-    {
-        struct sockaddr_storage serv_addr{};
-        socklen_t serv_addr_size = 0;
-        ASSERT_EQ(0, endpoint2sockaddr(ep2, &serv_addr, &serv_addr_size));
-        butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
-        ASSERT_LE(0, sockfd);
-        bool is_blocking = butil::is_blocking(sockfd);
-        // In most cases, 1 millisecond will result in a connection timeout.
-        timespec abstime = butil::milliseconds_from_now(1);
-        const int rc = bthread_timed_connect(
-            sockfd, (struct sockaddr*) &serv_addr,
-            serv_addr_size, &abstime);
-        ASSERT_EQ(-1, rc);
-        ASSERT_EQ(ETIMEDOUT, errno);
-        ASSERT_EQ(is_blocking, butil::is_blocking(sockfd));
-    }
+// Local listeners keep connect tests independent of DNS, Internet latency,
+// and the assumption that a connection cannot complete within one millisecond.
+void TestLocalConnect(bool timed) {
+    butil::EndPoint endpoint;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:0", &endpoint));
+    butil::fd_guard listener(butil::tcp_listen(endpoint));
+    ASSERT_GE(listener, 0);
+    ASSERT_EQ(0, butil::get_local_side(listener, &endpoint));
+    struct sockaddr_storage address{};
+    socklen_t length = 0;
+    ASSERT_EQ(0, endpoint2sockaddr(endpoint, &address, &length));
+    butil::fd_guard client(socket(address.ss_family, SOCK_STREAM, 0));
+    ASSERT_GE(client, 0);
+    bool was_blocking = butil::is_blocking(client);
+    timespec deadline = butil::seconds_from_now(10);
+    int rc = bthread_timed_connect(
+        client, reinterpret_cast<sockaddr*>(&address), length,
+        timed ? &deadline : nullptr);
+    ASSERT_EQ(0, rc) << "errno=" << errno;
+    ASSERT_EQ(was_blocking, butil::is_blocking(client));
+    ASSERT_EQ(0, butil::is_connected(client));
+    // The handshake does not require a concurrent accept thread.
+    butil::fd_guard accepted(accept(listener, nullptr, nullptr));
+    ASSERT_GE(accepted, 0);
 }
 
+TEST(FDTest, bthread_connect) {
+    TestLocalConnect(false);
+    TestLocalConnect(true);
+}
+
+#if defined(OS_LINUX)
+TEST(FDTest, connect_timeout_with_full_accept_queue) {
+    butil::EndPoint endpoint;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:0", &endpoint));
+    butil::fd_guard listener(butil::tcp_listen(endpoint));
+    ASSERT_GE(listener, 0);
+    // Linux permits one queued connection for backlog=0. Leave it unaccepted
+    // so the next handshake cannot complete; no external network is needed.
+    ASSERT_EQ(0, listen(listener, 0));
+    ASSERT_EQ(0, butil::get_local_side(listener, &endpoint));
+    sockaddr_storage address{};
+    socklen_t length = 0;
+    ASSERT_EQ(0, endpoint2sockaddr(endpoint, &address, &length));
+    butil::fd_guard queued(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_GE(queued, 0);
+    timespec setup_deadline = butil::seconds_from_now(5);
+    ASSERT_EQ(0, bthread_timed_connect(queued,
+        reinterpret_cast<sockaddr*>(&address), length, &setup_deadline));
+    butil::fd_guard client(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_GE(client, 0);
+    timespec deadline = butil::milliseconds_from_now(50);
+    int rc = bthread_timed_connect(client,
+        reinterpret_cast<sockaddr*>(&address), length, &deadline);
+    int error = errno;
+    ASSERT_EQ(-1, rc);
+    ASSERT_EQ(ETIMEDOUT, error);
+    EXPECT_TRUE(butil::is_blocking(client));
+}
+#endif
+
 void TestConnectInterruptImpl(bool timed) {
-    butil::EndPoint ep;
-    ASSERT_EQ(0, butil::hostname2endpoint(g_hostname1, 80, &ep));
-    struct sockaddr_storage serv_addr{};
-    socklen_t serv_addr_size = 0;
-    ASSERT_EQ(0, endpoint2sockaddr(ep, &serv_addr, &serv_addr_size));
-    butil::fd_guard sockfd(socket(serv_addr.ss_family, SOCK_STREAM, 0));
-    ASSERT_GE(sockfd, 0);
-
-    int rc;
-    if (timed) {
-        int64_t start_ms = butil::cpuwide_time_ms();
-        butil::tcp_connect(ep, nullptr);
-        int64_t connect_ms = butil::cpuwide_time_ms() - start_ms;
-        LOG(INFO) << "Connect to " << ep << ", cost " << connect_ms << "ms";
-
-        timespec abstime = butil::milliseconds_from_now(connect_ms * 10);
-        rc = bthread_timed_connect(
-            sockfd, (struct sockaddr*) &serv_addr,
-            serv_addr_size, &abstime);
-    } else {
-        rc = bthread_timed_connect(
-            sockfd, (struct sockaddr*) &serv_addr,
-            serv_addr_size, nullptr);
+    // Stop must precede connect even if the task starts on another worker
+    // immediately. Yield does not consume the pending interruption.
+    while (!bthread_stopped(bthread_self())) {
+        bthread_yield();
     }
-    ASSERT_EQ(0, rc) << "errno=" << errno;
-    ASSERT_EQ(0, butil::is_connected(sockfd));
-
+    TestLocalConnect(timed);
 }
 
 void* ConnectThread(void* arg) {

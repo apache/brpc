@@ -145,7 +145,6 @@ std::atomic<int> WrapperArg::wake_time{0};
 
 void* cv_signaler(void* void_arg) {
     WrapperArg* a = (WrapperArg*)void_arg;
-    signal_start_time = butil::gettimeofday_us();
     while (!stop) {
         bthread_usleep(SIGNAL_INTERVAL_US);
         a->cond.notify_one();
@@ -224,6 +223,7 @@ TEST(CondTest, cpp_wrapper) {
 
 TEST(CondTest, cpp_wrapper2) {
     stop = false;
+    WrapperArg::wake_time = 0;
     bthread::ConditionVariable cond;
     pthread_t bmutex_waiter_threads[8];
     pthread_t mutex_waiter_threads[8];
