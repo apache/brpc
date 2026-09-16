@@ -55,6 +55,16 @@ message RdmaHello {
     //   Server hello: carries the REDUCED/negotiated ECE
     //                   queried after the QP reached RTS.
     optional RdmaEce ece = 7;
+
+    // MTU negotiation (v3 only).
+    // Optional: carries the sender's active MTU (IBV_MTU_256 .. IBV_MTU_4096).
+    // Absent on v2 peers and on older v3 peers that predate MTU negotiation;
+    // the receiver then falls back to IBV_MTU_1024.
+    //
+    // Semantics differ by sender role:
+    //   Client hello: the locally queried active MTU of the RDMA port.
+    //   Server hello: the negotiated MTU = min(local_active_mtu, client_mtu).
+    optional uint32 mtu = 8;
 }
 
 // Mirrors struct ibv_ece { uint32 vendor_id; uint32 options; uint32 comp_mask; }.
