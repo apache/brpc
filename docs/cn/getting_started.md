@@ -283,7 +283,7 @@ Monterey中openssl的安装位置可能不再位于`/usr/local/opt/openssl`，�
 * 先运行`brew link openssl --force`看看`/usr/local/opt/openssl`是否出现了
 * 没有的话可以自行设置软链：`sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`。请注意此命令中openssl的目录可能随环境变化而变化，可通过`brew info openssl`查看。
 
-### 使用cmake编译Debug版brpc
+### 使用 CMake 编译 Debug 版 brpc
 
 Apple Silicon 可以使用 Homebrew 安装的依赖编译 Debug 版本：
 
