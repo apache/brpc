@@ -322,6 +322,29 @@ TEST_F(ReducerTest, babylon_counter_backend) {
 #endif // WITH_BABYLON_COUNTER
 }
 
+// reset() must return the accumulated value and restore the identity of the
+// operator, which is how Window<> samples an operator without inverse. This runs
+// against whichever implementation backs the value type, hence it covers the
+// babylon counters as well when WITH_BABYLON_COUNTER is enabled.
+TEST_F(ReducerTest, reset) {
+    bvar::Adder<int> adder;
+    adder << 3 << 1;
+    ASSERT_EQ(4, adder.reset());
+    ASSERT_EQ(0, adder.get_value());
+    adder << 2;
+    ASSERT_EQ(2, adder.reset());
+
+    bvar::Maxer<int> maxer;
+    maxer << 3 << 1;
+    ASSERT_EQ(3, maxer.reset());
+    ASSERT_EQ(std::numeric_limits<int>::min(), maxer.get_value());
+
+    bvar::Miner<int> miner;
+    miner << 3 << 1;
+    ASSERT_EQ(1, miner.reset());
+    ASSERT_EQ(std::numeric_limits<int>::max(), miner.get_value());
+}
+
 bool g_stop = false;
 struct StringAppenderResult {
     int count;
