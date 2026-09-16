@@ -199,14 +199,15 @@ public:
         _storage.Init(std::move(value));
     }
 
-    template <typename... Args,
-              std::enable_if<std::is_constructible<T, Args&&...>::value>* = nullptr>
-    explicit optional(const in_place_t, Args&&... args) : _engaged(true) {
+    template <typename... Args, typename std::enable_if<
+        std::is_constructible<T, Args&&...>::value, bool>::type = false>
+    explicit optional(in_place_t, Args&&... args) : _engaged(true) {
         _storage.Init(std::forward<Args>(args)...);
     }
 
     template <typename U, typename... Args, typename std::enable_if<
-        std::is_constructible<T, std::initializer_list<U>&, Args&&...>::value>::type>
+        std::is_constructible<T, std::initializer_list<U>&, Args&&...>::value,
+        bool>::type = false>
     optional(in_place_t, std::initializer_list<U> il, Args&&... args)
         : _engaged(true) {
         _storage.Init(il, std::forward<Args>(args)...);

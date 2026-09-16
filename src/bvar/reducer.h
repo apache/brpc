@@ -30,6 +30,7 @@
 #include "bvar/detail/series.h"
 #include "bvar/window.h"
 #if WITH_BABYLON_COUNTER
+#include <algorithm>                              // std::max std::min
 #include "babylon/concurrent/counter.h"
 #endif // WITH_BABYLON_COUNTER
 
@@ -50,6 +51,33 @@ private:
 };
 
 #if WITH_BABYLON_COUNTER
+// babylon counters constrain their value type with a static_assert inside the
+// class body, which is a hard error rather than a substitution failure. Probing
+// them with std::is_constructible<> hence breaks the build for the types they
+// reject, instead of falling back to the generic implementation. Mirror the
+// constraint here (see babylon/concurrent/counter.h) so that a rejected type is
+// never used to instantiate a babylon counter.
+// NOTE: the constraint has to be checked in two steps rather than in a single
+// expression, because sizeof() can not be applied to void or to an incomplete
+// type, and `&&' does not help: short-circuiting is about evaluation, an
+// ill-formed sizeof() is still an error.
+template <typename T, bool = std::is_integral<T>::value ||
+                             std::is_floating_point<T>::value>
+struct IsBabylonCounterSupported : std::false_type {};
+
+template <typename T>
+struct IsBabylonCounterSupported<T, true>
+    : butil::integral_constant<bool, sizeof(T) <= 8> {};
+
+// `void` if the babylon counter supports T, a substitution failure otherwise.
+// Selects the babylon-backed partial specializations of Adder/Maxer/Miner below.
+// NOTE: resolving to the *type* is a MUST. std::enable_if<cond> itself is a type
+// no matter what `cond` is, and Adder<T> means Adder<T, void>, so specializing on
+// std::enable_if<cond> instead of its ::type silently never matches.
+template <typename T>
+using EnableIfBabylonCounter =
+    typename std::enable_if<IsBabylonCounterSupported<T>::value>::type;
+
 template<typename T, typename Counter, typename Op, typename InvOp>
 class BabylonVariable: public Variable {
 public:
@@ -93,17 +121,18 @@ public:
     }
 
     T get_value() const {
+        CHECK(!(butil::is_same<InvOp, VoidOp>::value) || nullptr == _sampler)
+            << "You should not call Reducer<" << butil::class_name_str<T>()
+            << ", " << butil::class_name_str<Op>() << ">::get_value() when a"
+            << " Window<> is used because the operator does not have inverse.";
         return _counter.value();
     }
 
     T reset() {
-        if (BAIDU_UNLIKELY((!butil::is_same<VoidOp, InvOp>::value))) {
-            CHECK(false) << "You should not call Reducer<" << butil::class_name_str<T>()
-                         << ", " << butil::class_name_str<Op>() << ">::get_value() when a"
-                         << " Window<> is used because the operator does not have inverse.";
-            return get_value();
-        }
-
+        // Unlike AgentCombiner::reset_all_agents(), reading and clearing the babylon
+        // counter are two separate steps, so values added in between are lost. This
+        // only affects explicit reset() by users: sampling of an operator without
+        // inverse is the only internal user and it runs in a single thread.
         T result = _counter.value();
         _counter.reset();
         return result;
@@ -370,15 +399,13 @@ public:
 #if WITH_BABYLON_COUNTER
 // Numerical types supported by babylon counter.
 template <typename T>
-class Adder<T, std::enable_if<std::is_constructible<babylon::GenericsConcurrentAdder<T>>::value>>
+class Adder<T, detail::EnableIfBabylonCounter<T>>
     : public detail::BabylonVariable<T, babylon::GenericsConcurrentAdder<T>,
                                      detail::AddTo<T>, detail::MinusFrom<T>> {
 public:
     typedef  T value_type;
-private:
     typedef detail::BabylonVariable<T, babylon::GenericsConcurrentAdder<T>,
                                     detail::AddTo<value_type>, detail::MinusFrom<value_type>> Base;
-public:
     typedef detail::AddTo<value_type> Op;
     typedef detail::MinusFrom<value_type> InvOp;
     typedef typename Base::sampler_type sampler_type;
@@ -449,28 +476,25 @@ public:
     ConcurrentMaxer(T default_value) : _default_value(default_value) {}
 
     T value() const {
-        T result;
-        if (!Base::value(result)) {
-            return _default_value;
-        }
+        // Base::value() leaves `result' untouched if nothing was counted.
+        T result = _default_value;
+        Base::value(result);
         return std::max(result, _default_value);
     }
 private:
-    T _default_value{0};
+    T _default_value{std::numeric_limits<T>::min()};
 };
 } // namespace detail
 
 // Numerical types supported by babylon counter.
 template <typename T>
-class Maxer<T, std::enable_if<std::is_constructible<detail::ConcurrentMaxer<T>>::value>>
+class Maxer<T, detail::EnableIfBabylonCounter<T>>
     : public detail::BabylonVariable<T, detail::ConcurrentMaxer<T>,
                                      detail::MaxTo<T>, detail::VoidOp> {
 public:
     typedef T value_type;
-private:
     typedef detail::BabylonVariable<T, detail::ConcurrentMaxer<T>,
                                     detail::MaxTo<value_type>, detail::VoidOp> Base;
-public:
     typedef detail::MaxTo<value_type> Op;
     typedef detail::VoidOp InvOp;
     typedef typename Base::sampler_type sampler_type;
@@ -527,17 +551,35 @@ public:
 };
 
 #if WITH_BABYLON_COUNTER
+namespace detail {
+// The min counterpart of ConcurrentMaxer, see there for why the default value is
+// needed.
+template <typename T>
+class ConcurrentMiner : public babylon::GenericsConcurrentMiner<T> {
+    typedef babylon::GenericsConcurrentMiner<T> Base;
+public:
+    ConcurrentMiner() = default;
+    explicit ConcurrentMiner(T default_value) : _default_value(default_value) {}
+
+    T value() const {
+        T result = _default_value;
+        Base::value(result);
+        return std::min(result, _default_value);
+    }
+private:
+    T _default_value{std::numeric_limits<T>::max()};
+};
+} // namespace detail
+
 // Numerical types supported by babylon counter.
 template <typename T>
-class Miner<T, std::enable_if<std::is_constructible<babylon::GenericsConcurrentMiner<T>>::value>>
-    : public detail::BabylonVariable<T, babylon::GenericsConcurrentMiner<T>,
+class Miner<T, detail::EnableIfBabylonCounter<T>>
+    : public detail::BabylonVariable<T, detail::ConcurrentMiner<T>,
                                      detail::MinTo<T>, detail::VoidOp> {
 public:
     typedef T value_type;
-private:
-    typedef detail::BabylonVariable<value_type, babylon::GenericsConcurrentMiner<T>,
+    typedef detail::BabylonVariable<value_type, detail::ConcurrentMiner<T>,
                                     detail::MinTo<value_type>, detail::VoidOp> Base;
-public:
     typedef detail::MinTo<value_type> Op;
     typedef detail::VoidOp InvOp;
     typedef typename Base::sampler_type sampler_type;

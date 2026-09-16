@@ -24,7 +24,7 @@
 namespace butil {
 
 template<typename Callback,
-         typename = std::enable_if<is_result_void<Callback>::value>>
+         typename = typename std::enable_if<is_result_void<Callback>::value>::type>
 class ScopeGuard;
 
 template<typename Callback>
@@ -33,7 +33,7 @@ ScopeGuard<Callback> MakeScopeGuard(Callback&& callback) noexcept;
 // ScopeGuard is a simple implementation to guarantee that
 // a function is executed upon leaving the current scope.
 template<typename Callback>
-class ScopeGuard<Callback> {
+class ScopeGuard<Callback, void> {
 public:
     ScopeGuard(ScopeGuard&& other) noexcept
         : _callback(std::move(other._callback))
