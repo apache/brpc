@@ -73,10 +73,10 @@ struct IsBabylonCounterSupported<T, true>
 // Selects the babylon-backed partial specializations of Adder/Maxer/Miner below.
 // NOTE: resolving to the *type* is a MUST. std::enable_if<cond> itself is a type
 // no matter what `cond` is, and Adder<T> means Adder<T, void>, so specializing on
-// std::enable_if<cond> instead of its ::type silently never matches.
+// std::enable_if<cond> instead of std::enable_if_t<cond> silently never matches.
 template <typename T>
 using EnableIfBabylonCounter =
-    typename std::enable_if<IsBabylonCounterSupported<T>::value>::type;
+    std::enable_if_t<IsBabylonCounterSupported<T>::value>;
 
 template<typename T, typename Counter, typename Op, typename InvOp>
 class BabylonVariable: public Variable {
@@ -86,12 +86,12 @@ public:
 
     BabylonVariable() = default;
 
-    template<typename U = T, typename std::enable_if<
-        !std::is_constructible<Counter, U>::value, bool>::type = false>
+    template<typename U = T, std::enable_if_t<
+        !std::is_constructible<Counter, U>::value, bool> = false>
     BabylonVariable(U) {}
     // For Maxer.
-    template<typename U = T, typename std::enable_if<
-        std::is_constructible<Counter, U>::value, bool>::type = false>
+    template<typename U = T, std::enable_if_t<
+        std::is_constructible<Counter, U>::value, bool> = false>
     BabylonVariable(U default_value) : _counter(default_value) {}
 
     DISALLOW_COPY_AND_MOVE(BabylonVariable);

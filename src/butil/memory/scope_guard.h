@@ -24,7 +24,7 @@
 namespace butil {
 
 template<typename Callback,
-         typename = typename std::enable_if<is_result_void<Callback>::value>::type>
+         typename = std::enable_if_t<is_result_void<Callback>::value>>
 class ScopeGuard;
 
 template<typename Callback>
