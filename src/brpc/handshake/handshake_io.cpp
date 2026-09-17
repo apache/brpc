@@ -63,6 +63,7 @@ void SocketHandshakeIO::NotifyReadable() {
 
 template <typename ReadOnce>
 static int ReadExactLoop(butil::atomic<int>* read_butex,
+                         SocketId socket_id,
                          size_t len, ReadOnce read_once) {
     size_t received = 0;
     while (received < len) {
@@ -74,6 +75,11 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
                 continue;
             }
             if (errno != EAGAIN) {
+                return -1;
+            }
+            SocketUniquePtr alive;
+            if (Socket::Address(socket_id, &alive) != 0) {
+                errno = EFAILEDSOCKET;
                 return -1;
             }
             if (bthread::butex_wait(read_butex, expected, &duetime) < 0 &&
@@ -94,7 +100,7 @@ int SocketHandshakeIO::ReadExact(void* data, size_t len) {
     CHECK(data != NULL);
     CHECK(_socket != NULL);
     const int fd = _socket->fd();
-    return ReadExactLoop(_read_butex, len,
+    return ReadExactLoop(_read_butex, _socket->id(), len,
         [data, fd](size_t offset, size_t remaining) {
             return read(fd, static_cast<uint8_t*>(data) + offset, remaining);
         });
@@ -116,7 +122,7 @@ static int WriteAllLoop(size_t len, WriteOnce write_once,
             return -1;
         }
         if (errno == EINTR) {
-                       continue;
+            continue;
         }
         if (errno != EAGAIN) {
             return -1;

@@ -27,7 +27,6 @@
 #include "brpc/ubshm/ubr_trx.h"
 #include "brpc/ubshm_transport.h"
 
-
 namespace brpc {
 DECLARE_bool(usercode_in_coroutine);
 DECLARE_bool(usercode_in_pthread);
@@ -35,26 +34,25 @@ DECLARE_bool(usercode_in_pthread);
 extern SocketVarsCollector *g_vars;
 
 UBShmTransport *UBShmTransport::Get(const Socket *socket) {
-  const AdapterTransport *adapter = AdapterTransport::Get(socket);
-  Transport *transport = adapter->high_speed_transport();
-  CHECK(transport != NULL);
-  return static_cast<UBShmTransport *>(transport);
+    const AdapterTransport *adapter = AdapterTransport::Get(socket);
+    Transport *transport = adapter->high_speed_transport();
+    CHECK(transport != NULL);
+    return static_cast<UBShmTransport *>(transport);
 }
 
 void UBShmTransport::Init(Socket *socket, const SocketOptions &options) {
     CHECK(_ub_ep == nullptr);
     _socket = socket;
     _default_connect = options.app_connect;
-  _on_edge_trigger = nullptr;
-  _ub_ep = new (std::nothrow) ubring::UBShmEndpoint(socket);
-  if (!_ub_ep) {
-    const int saved_errno = errno != 0 ? errno : ENOMEM;
-    errno = saved_errno;
-    PLOG(ERROR) << "Fail to create UBShmEndpoint";
-    socket->SetFailed(saved_errno, "Fail to create UBShmEndpoint: %s",
-                      berror(saved_errno));
+    _on_edge_trigger = nullptr;
+    _ub_state = UB_UNKNOWN;
+    _ub_ep = new (std::nothrow) ubring::UBShmEndpoint(socket);
+    if (!_ub_ep) {
+        const int saved_errno = errno != 0 ? errno : ENOMEM;
+        errno = saved_errno;
+        PLOG(WARNING) << "Fail to create UBShmEndpoint, disable UBSHM upgrade";
+        _ub_state = UB_OFF;
     }
-  _ub_state = UB_UNKNOWN;
 }
 
 void UBShmTransport::Release() {
@@ -78,48 +76,50 @@ std::shared_ptr<AppConnect> UBShmTransport::Connect() {
 }
 
 void UBShmTransport::SetHighSpeedAvailable(bool available) {
-  _ub_state = available ? UB_ON : UB_OFF;
-    }
+    _ub_state = available ? UB_ON : UB_OFF;
+}
 
 int UBShmTransport::PrepareUpgradeResources(ubring::SHM *local_trx_shm,
                                             const char *shm_name) {
-  return _ub_ep->AllocateClientResources(local_trx_shm, shm_name);
+    return _ub_ep->AllocateClientResources(local_trx_shm, shm_name);
 }
 
 int UBShmTransport::NegotiateUpgradeResources(ubring::SHM *local_trx_shm,
                                               const char *shm_name) {
-  return _ub_ep->_ub_ring->UbrMapRemoteShm(local_trx_shm, shm_name);
+    return _ub_ep->_ub_ring->UbrMapRemoteShm(local_trx_shm, shm_name);
 }
 
 int UBShmTransport::PrepareServerUpgradeResources(ubring::SHM *remote_trx_shm,
                                                   ubring::SHM *local_trx_shm) {
-  return _ub_ep->AllocateServerResources(remote_trx_shm, local_trx_shm);
+    return _ub_ep->AllocateServerResources(remote_trx_shm, local_trx_shm);
 }
 
-void UBShmTransport::ActivateUpgrade() { SetHighSpeedAvailable(true); }
+void UBShmTransport::ActivateUpgrade() {
+    SetHighSpeedAvailable(true);
+}
 
 void UBShmTransport::DeactivateUpgrade() {
-  SetHighSpeedAvailable(false);
-  if (_ub_ep != nullptr) {
-    _ub_ep->Reset();
-  }
+    SetHighSpeedAvailable(false);
+    if (_ub_ep != nullptr) {
+        _ub_ep->Reset();
+    }
 }
 
 void UBShmTransport::FinishUpgrade() {
-  if (_ub_ep != NULL && _ub_ep->_ub_ring != NULL) {
-    _ub_ep->_ub_ring->UbrUnlinkLocalShm();
-  }
+    if (_ub_ep != NULL && _ub_ep->_ub_ring != NULL) {
+        _ub_ep->_ub_ring->UbrUnlinkLocalShm();
+    }
 }
 
 int UBShmTransport::CutFromIOBuf(butil::IOBuf *buf) {
-  butil::IOBuf *data[1] = {buf};
-  return static_cast<int>(CutFromIOBufList(data, 1));
+    butil::IOBuf *data[1] = {buf};
+    return static_cast<int>(CutFromIOBufList(data, 1));
 }
 
 ssize_t UBShmTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
-  CHECK(_ub_ep != NULL);
-        return _ub_ep->CutFromIOBufList(buf, ndata);
-    }
+    CHECK(_ub_ep != NULL);
+    return _ub_ep->CutFromIOBufList(buf, ndata);
+}
 
 int UBShmTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
                                     bool pollin, const timespec duetime) {
@@ -129,13 +129,13 @@ int UBShmTransport::WaitEpollOut(butil::atomic<int> *_epollout_butex,
         if (!_ub_ep->IsWritable()) {
             g_vars->nwaitepollout << 1;
             _ub_ep->PollerRegisterEpollOut(pollin);
-      const int wait_rc =
-          bthread::butex_wait(_epollout_butex, expected_val, &duetime);
+            const int wait_rc =
+                bthread::butex_wait(_epollout_butex, expected_val, &duetime);
             if (wait_rc < 0) {
                 if (errno != EAGAIN && errno != ETIMEDOUT) {
                     const int saved_errno = errno;
                     PLOG(WARNING) << "Fail to wait ub window of " << _socket;
-          _socket->SetFailed(saved_errno, "Fail to wait ub window of %s: %s",
+                    _socket->SetFailed(saved_errno, "Fail to wait ub window of %s: %s",
                                        _socket->description().c_str(),
                                        berror(saved_errno));
                 }
@@ -188,16 +188,16 @@ void UBShmTransport::QueueMessage(InputMessageClosure& input_msg,
 
     // TODO(gejun): Join threads.
     bthread_t th;
-  bthread_attr_t tmp =
-      (FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) |
-      BTHREAD_NOSIGNAL;
+    bthread_attr_t tmp =
+        (FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) |
+        BTHREAD_NOSIGNAL;
     tmp.keytable_pool = _socket->keytable_pool();
     tmp.tag = bthread_self_tag();
     bthread_attr_set_name(&tmp, "ProcessInputMessage");
 
-  if (!FLAGS_usercode_in_coroutine &&
-      bthread_start_background(&th, &tmp, ProcessInputMessage, to_run_msg) ==
-          0) {
+    if (!FLAGS_usercode_in_coroutine &&
+        bthread_start_background(&th, &tmp, ProcessInputMessage, to_run_msg) ==
+            0) {
         ++*num_bthread_created;
     } else {
         ProcessInputMessage(to_run_msg);
@@ -212,8 +212,8 @@ int UBShmTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
             return -1;
         }
         ubring::GlobalUBInitializeOrDie();
-    if (!ubring::InitPollingModeWithTag(
-            static_cast<const ServerOptions *>(_options)->bthread_tag)) {
+        if (!ubring::InitPollingModeWithTag(
+                static_cast<const ServerOptions *>(_options)->bthread_tag)) {
             return -1;
         }
     } else {
@@ -236,7 +236,7 @@ bool UBShmTransport::OptionsAvailableForUB(const ChannelOptions* opt) {
         return false;
     }
     if (!ubring::SupportedByUB(opt->protocol.name())) {
-    LOG(WARNING) << "Cannot use " << opt->protocol.name() << " over UB";
+        LOG(WARNING) << "Cannot use " << opt->protocol.name() << " over UB";
         return false;
     }
     return true;

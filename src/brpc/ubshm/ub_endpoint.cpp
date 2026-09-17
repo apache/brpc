@@ -33,7 +33,6 @@
 #include "butil/logging.h" // CHECK, LOG
 #include <gflags/gflags.h>
 
-
 DECLARE_int32(task_group_ntags);
 
 namespace brpc {
@@ -42,9 +41,9 @@ namespace ubring {
 
 extern bool g_skip_ub_init;
 DEFINE_int32(ub_poller_num, 1, "Poller number in ub polling mode.");
-DEFINE_bool(ub_poller_yield, false, "Yield thread in RDMA polling mode.");
+DEFINE_bool(ub_poller_yield, false, "Yield thread in UBRing polling mode.");
 DEFINE_bool(ub_edisp_unsched, false, "Disable event dispatcher schedule");
-DEFINE_bool(ub_disable_bthread, false, "Disable bthread in RDMA");
+DEFINE_bool(ub_disable_bthread, false, "Disable bthread in UBRing polling mode.");
 
 static const size_t MIN_ONCE_READ = 4096;
 static const size_t MAX_ONCE_READ = 524288;
@@ -52,11 +51,14 @@ static const size_t IOBUF_IOV_MAX = 256;
 
 static butil::Mutex *g_ubring_resource_mutex = NULL;
 
-UBShmEndpoint::UBShmEndpoint(Socket* s)
+UBShmEndpoint::UBShmEndpoint(Socket *s)
     : _socket(s), _socket_id(s ? s->id() : INVALID_SOCKET_ID),
-      _ub_ring(nullptr), _poller_sid(INVALID_SOCKET_ID) {}
+      _ub_ring(nullptr), _poller_sid(INVALID_SOCKET_ID) {
+}
 
-UBShmEndpoint::~UBShmEndpoint() { Reset(); }
+UBShmEndpoint::~UBShmEndpoint() {
+    Reset();
+}
 
 void UBShmEndpoint::Reset() {
     DeallocateResources();
@@ -104,11 +106,11 @@ ssize_t UBShmEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
     nw = _ub_ring->UbrTrxWritev(vec, nvec);
     if (UNLIKELY(nw == -1)) {
         if (errno == EMSGSIZE) {
-      LOG(ERROR) << "Non-blocking send msg failed, message is larger than "
-                    "ubring capacity.";
+            LOG(ERROR) << "Non-blocking send msg failed, message is larger than "
+                          "ubring capacity.";
         } else {
-      LOG(ERROR)
-          << "Non-blocking send msg in failed, connection has been closed.";
+            LOG(ERROR)
+                << "Non-blocking send msg in failed, connection has been closed.";
             errno = EPIPE;
         }
     } else if (UNLIKELY(nw == UBRING_RETRY)) {
@@ -143,22 +145,22 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM *local_trx_shm,
     options.user = this;
     options.keytable_pool = _socket->_keytable_pool;
     if (Socket::Create(options, &_poller_sid) < 0) {
-    const int saved_errno = errno;
+        const int saved_errno = errno;
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
-    delete _ub_ring;
-    _ub_ring = NULL;
-    _poller_sid = INVALID_SOCKET_ID;
-    errno = saved_errno;
+        delete _ub_ring;
+        _ub_ring = NULL;
+        _poller_sid = INVALID_SOCKET_ID;
+        errno = saved_errno;
         return -1;
     }
     int ret = _ub_ring->UbrAllocateLocalShm(local_trx_shm, shm_name);
     if (ret != 0) {
-    const int saved_errno = errno;
-    DeallocateResources();
-    delete _ub_ring;
-    _ub_ring = NULL;
-    _poller_sid = INVALID_SOCKET_ID;
-    errno = saved_errno;
+        const int saved_errno = errno;
+        DeallocateResources();
+        delete _ub_ring;
+        _ub_ring = NULL;
+        _poller_sid = INVALID_SOCKET_ID;
+        errno = saved_errno;
         return ret;
     }
     PollerRegisterEvent(PollerSidOp::ADD, EPOLLIN);
@@ -180,22 +182,22 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM *remote_trx_shm,
     options.user = this;
     options.keytable_pool = _socket->_keytable_pool;
     if (Socket::Create(options, &_poller_sid) < 0) {
-    const int saved_errno = errno;
+        const int saved_errno = errno;
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
-    delete _ub_ring;
-    _ub_ring = NULL;
-    _poller_sid = INVALID_SOCKET_ID;
-    errno = saved_errno;
+        delete _ub_ring;
+        _ub_ring = NULL;
+        _poller_sid = INVALID_SOCKET_ID;
+        errno = saved_errno;
         return -1;
     }
     int ret = _ub_ring->UbrAllocateServerShm(remote_trx_shm, local_trx_shm);
     if (ret != 0) {
-    const int saved_errno = errno;
-    DeallocateResources();
-    delete _ub_ring;
-    _ub_ring = NULL;
-    _poller_sid = INVALID_SOCKET_ID;
-    errno = saved_errno;
+        const int saved_errno = errno;
+        DeallocateResources();
+        delete _ub_ring;
+        _ub_ring = NULL;
+        _poller_sid = INVALID_SOCKET_ID;
+        errno = saved_errno;
         return ret;
     }
     PollerRegisterEvent(PollerSidOp::ADD, EPOLLIN);
@@ -223,7 +225,7 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t ep_event) {
     if (Socket::Address(ep->_socket_id, &s) < 0) {
         return;
     }
-  UBShmTransport *ub_transport = UBShmTransport::Get(s.get());
+    UBShmTransport *ub_transport = UBShmTransport::Get(s.get());
     CHECK(ep == ub_transport->_ub_ep);
 
     InputMessageClosure last_msg;
@@ -244,10 +246,10 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t ep_event) {
             if (nr <= 0) {
                 if (0 == nr) {
                     // Set `read_eof' flag and proceed to feed EOF into `Protocol'
-          // (implied by an empty processor.read_buf()), which may produce a new
-          // `InputMessageBase' under some protocols such as HTTP
-          LOG_IF(WARNING, FLAGS_log_connection_close)
-              << *s << " was closed by remote side";
+                    // (implied by an empty processor.read_buf()), which may produce a new
+                    // `InputMessageBase' under some protocols such as HTTP
+                    LOG_IF(WARNING, FLAGS_log_connection_close)
+                        << *s << " was closed by remote side";
                     read_eof = true;
                 } else if (errno != EAGAIN) {
                     if (errno == EINTR) {
@@ -280,7 +282,7 @@ void UBShmEndpoint::PollOut(UBShmEndpoint* ep, uint32_t ep_event) {
     if (Socket::Address(ep->_socket_id, &s) < 0) {
         return;
     }
-  UBShmTransport *ub_transport = UBShmTransport::Get(s.get());
+    UBShmTransport *ub_transport = UBShmTransport::Get(s.get());
     CHECK(ep == ub_transport->_ub_ep);
     if (ep->IsWritable()) {
         s->WakeAsEpollOut();
@@ -320,7 +322,7 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
         std::unique_ptr<FnArgs> args(static_cast<FnArgs*>(p));
         auto poller = args->poller;
         auto running = args->running;
-    std::unordered_set<PollerSidOp, PollerSidOpHash, PollerSidOpEqual> cq_sids;
+        std::unordered_set<PollerSidOp, PollerSidOpHash, PollerSidOpEqual> cq_sids;
         PollerSidOp op;
 
         if (poller->init_fn) {
@@ -329,18 +331,18 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
         while (running->load(std::memory_order_relaxed)) {
             while (poller->op_queue.Dequeue(op)) {
                 if (op.type == PollerSidOp::ADD) {
-          cq_sids.emplace(op);
+                    cq_sids.emplace(op);
                 } else if (op.type == PollerSidOp::REMOVE) {
-          cq_sids.erase(op);
+                    cq_sids.erase(op);
 
                 } else if (op.type == PollerSidOp::MOD) {
-          cq_sids.erase(op);
-          cq_sids.emplace(op);
+                    cq_sids.erase(op);
+                    cq_sids.emplace(op);
                 }
             }
-      for (auto cq : cq_sids) {
+            for (auto cq : cq_sids) {
                 SocketUniquePtr s;
-        if (Socket::Address(cq.sid, &s) < 0) {
+                if (Socket::Address(cq.sid, &s) < 0) {
                     continue;
                 }
                 UBShmEndpoint* ep = static_cast<UBShmEndpoint*>(s->user());
@@ -348,12 +350,12 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
                     continue;
                 }
 
-        if (cq.event & EPOLLIN) {
-          PollIn(ep, cq.event);
+                if (cq.event & EPOLLIN) {
+                    PollIn(ep, cq.event);
                 }
 
-        if (cq.event & EPOLLOUT) {
-          PollOut(ep, cq.event);
+                if (cq.event & EPOLLOUT) {
+                    PollOut(ep, cq.event);
                 }
             }
             if (poller->callback) {
@@ -372,8 +374,8 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
     };
     for (int i = 0; i < FLAGS_ub_poller_num; ++i) {
         auto args = new FnArgs{&pollers[i], &running};
-    auto attr =
-        FLAGS_ub_disable_bthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
+        auto attr =
+            FLAGS_ub_disable_bthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
         attr.tag = tag;
         bthread_attr_set_name(&attr, "UBPolling");
         pollers[i].callback = callback;

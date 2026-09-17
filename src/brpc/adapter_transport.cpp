@@ -17,7 +17,9 @@
 
 #include "brpc/adapter_transport.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <errno.h>
 #include <unistd.h>
 
@@ -39,6 +41,12 @@
 namespace brpc {
 
 namespace {
+
+bool MatchesMagicPrefix(const char *prefix, size_t prefix_len,
+                        const char *magic, size_t magic_len) {
+    const size_t compare_len = std::min(prefix_len, magic_len);
+    return memcmp(prefix, magic, compare_len) == 0;
+}
 
 class AdapterConnect : public AppConnect {
 public:
@@ -161,13 +169,26 @@ ParseResult AdapterTransport::ProcessUpgradeReadable(butil::IOBuf* source) {
                 _socket->parsing_context());
         CHECK(context->adapter() != NULL);
         result = context->adapter()->ExecuteServerHandshake(source, _socket);
-    } else {
-        const char* first = static_cast<const char*>(source->fetch1());
-        handshake::HandshakeAdapter* adapter =
-            first != NULL && *first == 'U'
-            ? handshake::GetUBShmServerHandshakeAdapter()
-            : handshake::GetRdmaServerHandshakeAdapter();
-        result = adapter->ExecuteServerHandshake(source, _socket);
+    } else if (!source->empty()) {
+        static const size_t MAX_MAGIC_LEN = 4;
+        char prefix[MAX_MAGIC_LEN] = {};
+        const size_t prefix_len = std::min(source->size(), MAX_MAGIC_LEN);
+        source->copy_to(prefix, prefix_len);
+
+        const bool matches_ub =
+            MatchesMagicPrefix(prefix, prefix_len, "UB", 2);
+        const bool matches_rdma =
+            MatchesMagicPrefix(prefix, prefix_len, "RDMA", 4) ||
+            MatchesMagicPrefix(prefix, prefix_len, "RDM3", 4);
+        if (!matches_ub && !matches_rdma) {
+            result = ParseResult(PARSE_ERROR_TRY_OTHERS);
+        } else {
+            handshake::HandshakeAdapter* adapter =
+                matches_ub
+                ? handshake::GetUBShmServerHandshakeAdapter()
+                : handshake::GetRdmaServerHandshakeAdapter();
+            result = adapter->ExecuteServerHandshake(source, _socket);
+        }
     }
     const int phase = _handshake.phase();
     if (!connection_completed() &&
@@ -559,6 +580,9 @@ void AdapterTransport::CheckUnexpectedTcpData() {
             _socket->SetFailed(EPROTO, "Read unexpected data from %s",
                                _socket->description().c_str());
             return;
+        }
+        if (errno == EINTR) {
+            continue;
         }
         if (errno != EAGAIN) {
             const int saved_errno = errno;
