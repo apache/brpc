@@ -17,7 +17,7 @@
 
 module(
   name = 'brpc',
-  version = '1.17.0',
+  version = '1.18.0',
   compatibility_level = 1,
 )
 

@@ -28,7 +28,7 @@ module(
 )
 
 bazel_dep(name = "protobuf", version = "27.3", repo_name = "com_google_protobuf")
-bazel_dep(name = "brpc", version = "1.17.0", repo_name = "apache_brpc")
+bazel_dep(name = "brpc", version = "1.18.0", repo_name = "apache_brpc")
 
 local_path_override(
     module_name = "brpc",
