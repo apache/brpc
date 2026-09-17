@@ -190,10 +190,10 @@ private:
     dump_impl(Dumper* dumper, const DumpOptions* options);
 
     void make_dump_key(std::ostream& os, const key_type& labels_value,
-                       const std::string& suffix = "",  int quantile = 0);
+                       const std::string& suffix = "", double quantile = 0);
 
     void make_labels_kvpair_string(
-        std::ostream& os, const key_type& labels_value, int quantile);
+        std::ostream& os, const key_type& labels_value, double quantile);
 
 
     template <typename K>

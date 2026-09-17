@@ -269,32 +269,51 @@ MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*
             continue;
         }
 
-        // latency
-        std::ostringstream oss_latency_key;
-        make_dump_key(oss_latency_key, label_name, "_latency");
-        if (dumper->dump_mvar(oss_latency_key.str(), std::to_string(bvar->latency()))) {
-            n++;
-        }
         // latency_percentiles
         // p1/p2/p3
-        int latency_percentiles[3] {FLAGS_bvar_latency_p1, FLAGS_bvar_latency_p2, FLAGS_bvar_latency_p3};
+        int latency_percentiles[3] {
+            FLAGS_bvar_latency_p1,
+            FLAGS_bvar_latency_p2,
+            FLAGS_bvar_latency_p3
+        };
         for (auto lp : latency_percentiles) {
+            // Quantile must be a fraction, e.g. 0.99 for p99.
             std::ostringstream oss_lp_key;
-            make_dump_key(oss_lp_key, label_name, "_latency", lp);
-            if (dumper->dump_mvar(oss_lp_key.str(), std::to_string(bvar->latency_percentile(lp / 100.0)))) {
+            make_dump_key(oss_lp_key, label_name, "_latency", lp / 100.0);
+            int64_t latency_percentile = bvar->latency_percentile(lp / 100.0);
+            if (dumper->dump_mvar(oss_lp_key.str(), std::to_string(latency_percentile))) {
                 n++;
             }
         }
         // 999
         std::ostringstream oss_p999_key;
-        make_dump_key(oss_p999_key, label_name, "_latency", 999);
-        if (dumper->dump_mvar(oss_p999_key.str(), std::to_string(bvar->latency_percentile(0.999)))) {
+        make_dump_key(oss_p999_key, label_name, "_latency", 0.999);
+        int64_t latency_percentile = bvar->latency_percentile(0.999);
+        if (dumper->dump_mvar(oss_p999_key.str(), std::to_string(latency_percentile))) {
             n++;
         }
         // 9999
         std::ostringstream oss_p9999_key;
-        make_dump_key(oss_p9999_key, label_name, "_latency", 9999);
-        if (dumper->dump_mvar(oss_p9999_key.str(), std::to_string(bvar->latency_percentile(0.9999)))) {
+        make_dump_key(oss_p9999_key, label_name, "_latency", 0.9999);
+        latency_percentile = bvar->latency_percentile(0.9999);
+        if (dumper->dump_mvar(oss_p9999_key.str(), std::to_string(latency_percentile))) {
+            n++;
+        }
+    }
+
+    // latency_average comment
+    // The average latency has to be a separate metric rather than a series of
+    // `_latency` without a quantile label, otherwise an aggregation over
+    // `_latency` would silently mix the average into the percentiles.
+    dumper->dump_comment(this->name() + "_avg_latency", METRIC_TYPE_GAUGE);
+    for (auto &label_name : label_names) {
+        LatencyRecorder* bvar = get_stats_impl(label_name);
+        if (nullptr == bvar) {
+            continue;
+        }
+        std::ostringstream oss_avg_latency_key;
+        make_dump_key(oss_avg_latency_key, label_name, "_avg_latency");
+        if (dumper->dump_mvar(oss_avg_latency_key.str(), std::to_string(bvar->latency()))) {
             n++;
         }
     }
@@ -345,7 +364,7 @@ MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*
 
 template <typename T, typename KeyType, bool Shared>
 void MultiDimension<T, KeyType, Shared>::make_dump_key(std::ostream& os, const key_type& labels_value,
-                                               const std::string& suffix, int quantile) {
+                                                       const std::string& suffix, double quantile) {
     os << this->name();
     if (!suffix.empty()) {
         os << suffix;
@@ -354,8 +373,9 @@ void MultiDimension<T, KeyType, Shared>::make_dump_key(std::ostream& os, const k
 }
 
 template <typename T, typename KeyType, bool Shared>
-void MultiDimension<T, KeyType, Shared>::make_labels_kvpair_string(
-    std::ostream& os, const key_type& labels_value, int quantile) {
+void MultiDimension<T, KeyType, Shared>::make_labels_kvpair_string(std::ostream& os,
+                                                                   const key_type& labels_value,
+                                                                   double quantile) {
     os << "{";
     auto label_key = this->_labels.cbegin();
     auto label_value = labels_value.cbegin();
@@ -365,6 +385,8 @@ void MultiDimension<T, KeyType, Shared>::make_labels_kvpair_string(
         os << comma << label_key->c_str() << "=\"" << label_value->c_str() << "\"";
         comma[0] = ',';
     }
+    // The `quantile` label must be parsable as a float, so a non-positive
+    // `quantile` means "this metric is not a quantile series".
     if (quantile > 0) {
         os << comma << "quantile=\"" << quantile << "\"";
     }
