@@ -297,12 +297,14 @@ public:
         LOG(INFO) << "OnStop of PlayingDummyStream=" << this;
         if (_state.exchange(STATE_STOPPED) == STATE_PLAYING) {
             // A send failure can invoke this callback on the sender bthread
-            // itself. Stopping or joining the current bthread is unsafe and
-            // interferes with its unwinding, and the sender's own reference
-            // already keeps the stream alive until SendData returns, so only
-            // stop and join when running on a different bthread.
+            // itself. bthread_stop() only sets the stop flag that SendData's
+            // loop checks, so it must be called on the current bthread too,
+            // otherwise the sender loops and sleeps forever while holding its
+            // stream reference. Only joining the current bthread is unsafe, so
+            // skip just the join on the self-callback path; the sender's own
+            // reference keeps the stream alive until SendData returns.
+            bthread_stop(_play_thread);
             if (_play_thread != bthread_self()) {
-                bthread_stop(_play_thread);
                 bthread_join(_play_thread, nullptr);
             }
         }
