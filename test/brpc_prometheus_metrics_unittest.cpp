@@ -78,6 +78,10 @@ TEST(PrometheusMetrics, sanity) {
     ASSERT_TRUE(my_lat2);
     *my_lat2 << 3 << 4;
 
+    // Only a bvar prefixed with the server prefix is folded into a summary.
+    bvar::LatencyRecorder my_lat3("rpc_server_lat_test");
+    my_lat3 << 5 << 6;
+
     brpc::Channel channel;
     brpc::ChannelOptions channel_opts;
     channel_opts.protocol = "http";
@@ -88,6 +92,36 @@ TEST(PrometheusMetrics, sanity) {
     ASSERT_FALSE(cntl.Failed());
     std::string res = cntl.response_attachment().to_string();
     LOG(INFO) << "output:\n" << res;
+
+    // The average latency is a separate metric rather than a quantile series,
+    // because the quantile label must be parsable as a float.
+    ASSERT_EQ(std::string::npos, res.find("quantile=\"avg\""));
+    ASSERT_NE(std::string::npos, res.find("# TYPE mlat_avg_latency gauge\n"));
+    ASSERT_NE(std::string::npos, res.find("mlat_avg_latency{label1=\"val1\","
+                                          "label2=\"val2\"}"));
+    // The single dimension LatencyRecorder uses the same suffix.
+    ASSERT_NE(std::string::npos, res.find("_service_echo_avg_latency "));
+    // Quantile is a fraction rather than an integer.
+    ASSERT_NE(std::string::npos, res.find("quantile=\"0.99\""));
+    ASSERT_NE(std::string::npos, res.find("quantile=\"0.999\""));
+    ASSERT_NE(std::string::npos, res.find("quantile=\"0.9999\""));
+    ASSERT_EQ(std::string::npos, res.find("quantile=\"99\""));
+    ASSERT_EQ(std::string::npos, res.find("quantile=\"999\""));
+    ASSERT_EQ(std::string::npos, res.find("quantile=\"9999\""));
+    ASSERT_NE(std::string::npos, res.find("mlat_latency{label1=\"val1\",label2=\"val2\","
+                                          "quantile=\"0.99\"}"));
+    // The average must not be dumped as a series of `_latency` as well, otherwise
+    // an aggregation over `_latency` would still pick it up.
+    ASSERT_EQ(std::string::npos, res.find("mlat_latency{label1=\"val1\","
+                                          "label2=\"val2\"} "));
+    ASSERT_NE(std::string::npos, res.find("rpc_server_lat_test_count 2\n"));
+    // `_avg_latency` is dumped before the summary it belongs to.
+    size_t average_pos = res.find("# TYPE rpc_server_lat_test_avg_latency gauge\n");
+    size_t summary_pos = res.find("# TYPE rpc_server_lat_test summary\n");
+    ASSERT_NE(std::string::npos, average_pos);
+    ASSERT_NE(std::string::npos, summary_pos);
+    ASSERT_LT(average_pos, summary_pos);
+
     size_t start_pos = 0;
     size_t end_pos = 0;
     size_t label_start = 0;
