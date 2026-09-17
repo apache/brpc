@@ -62,7 +62,7 @@ brpc::Server* get_fuzz_server() {
 extern "C" int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    if (size < kMinInputLength || size > kMaxInputLength){
+    if (size < kMinInputLength || size > kMaxInputLength) {
         return 0;
     }
 
