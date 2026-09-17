@@ -458,7 +458,14 @@ TEST(FDTest, interrupt_pthread) {
         // keep the pthread joinable until all signalling is finished.
         while (!args[i].done.load(butil::memory_order_acquire) &&
                butil::cpuwide_time_us() < deadline) {
-            EXPECT_EQ(0, bthread::interrupt_pthread(threads[i]));
+            int rc = bthread::interrupt_pthread(threads[i]);
+            if (rc != 0) {
+                // The waiter may finish between the check above and the
+                // signal, in which case interruption is no longer needed.
+                // Why it stopped waiting is checked on args[i] below.
+                EXPECT_EQ(ESRCH, rc) << berror(rc);
+                break;
+            }
             bthread_usleep(1000);
         }
         EXPECT_EQ(0, pthread_join(threads[i], nullptr));
