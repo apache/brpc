@@ -110,6 +110,10 @@ TEST(PrometheusMetrics, sanity) {
     ASSERT_EQ(std::string::npos, res.find("quantile=\"9999\""));
     ASSERT_NE(std::string::npos, res.find("mlat_latency{label1=\"val1\",label2=\"val2\","
                                           "quantile=\"0.99\"}"));
+    // The average must not be dumped as a series of `_latency` as well, otherwise
+    // an aggregation over `_latency` would still pick it up.
+    ASSERT_EQ(std::string::npos, res.find("mlat_latency{label1=\"val1\","
+                                          "label2=\"val2\"} "));
     ASSERT_NE(std::string::npos, res.find("rpc_server_lat_test_count 2\n"));
     // `_avg_latency` is dumped before the summary it belongs to.
     size_t average_pos = res.find("# TYPE rpc_server_lat_test_avg_latency gauge\n");
