@@ -51,6 +51,11 @@ DEFINES = [
  }) + select({
      "//bazel/config:brpc_with_rdma": ["BRPC_WITH_RDMA=1"],
      "//conditions:default": [],
+}) + select({
+    # NOTE: `defines` is auto-prefixed with -D by Bazel, so do NOT add -D here.
+    # Compare with the rdma/glog/thrift entries above which also omit the prefix.
+    "//bazel/config:brpc_with_gdr": ["BRPC_WITH_GDR=1"],
+    "//conditions:default": [],
  }) + select({
      "//bazel/config:brpc_with_ubring": ["BRPC_WITH_UBRING=1"],
      "//conditions:default": [],
@@ -98,6 +103,12 @@ LINKOPTS = [
 }) + select({
     "//bazel/config:brpc_with_rdma": [
         "-libverbs",
+    ],
+    "//conditions:default": [],
+}) + select({
+    "//bazel/config:brpc_with_gdr": [
+        "-lcuda",
+        "-lcudart",
     ],
     "//conditions:default": [],
 }) + select({
@@ -251,6 +262,7 @@ BUTIL_SRCS = [
     "src/butil/iobuf.cpp",
     "src/butil/single_iobuf.cpp",
     "src/butil/iobuf_profiler.cpp",
+    "src/butil/gpu/gpu_block_pool.cpp",
     "src/butil/binary_printer.cpp",
     "src/butil/recordio.cc",
     "src/butil/popen.cpp",
