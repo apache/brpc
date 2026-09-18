@@ -15,21 +15,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_POLICY_RDMA_HANDSHAKE_PROTOCOL_H
-#define BRPC_POLICY_RDMA_HANDSHAKE_PROTOCOL_H
+#ifndef BRPC_POLICY_TRANSPORT_HANDSHAKE_PROTOCOL_H
+#define BRPC_POLICY_TRANSPORT_HANDSHAKE_PROTOCOL_H
 
-// Compatibility facade. New code should include
-// transport_handshake_protocol.h and use ParseTransportHandshake.
-#include "brpc/policy/transport_handshake_protocol.h"
+// This policy is intentionally independent of BRPC_WITH_RDMA and
+// BRPC_WITH_UBRING. A plain TCP server must recognize an upgrade hello and
+// return a disabled hello so the client can continue with TCP on the same
+// connection.
+
+#include "butil/iobuf.h"
+#include "brpc/input_message_base.h"
+#include "brpc/parse_result.h"
+#include "brpc/socket.h"
 
 namespace brpc {
 namespace policy {
 
-ParseResult ParseRdmaHandshake(butil::IOBuf* source, Socket* socket,
-                               bool read_eof, const void* arg);
-void ProcessRdmaHandshake(InputMessageBase* msg);
+ParseResult ParseTransportHandshake(butil::IOBuf* source, Socket* socket,
+                                     bool read_eof, const void* arg);
+
+// Upgrade handshakes are completed inline by the parser. This placeholder is
+// required for server-side protocol registration and must never be invoked.
+void ProcessTransportHandshake(InputMessageBase* msg);
 
 }  // namespace policy
 }  // namespace brpc
 
-#endif  // BRPC_POLICY_RDMA_HANDSHAKE_PROTOCOL_H
+#endif  // BRPC_POLICY_TRANSPORT_HANDSHAKE_PROTOCOL_H
