@@ -296,20 +296,20 @@ openssl installed in Monterey may not be found at `/usr/local/opt/openssl`, inst
 Apple Silicon can build the Debug configuration against dependencies installed by Homebrew:
 
 ```shell
-cmake -S . -B build-debug -G "Unix Makefiles" \
+cmake -S . -B build -G "Unix Makefiles" \
   -DCMAKE_BUILD_TYPE=Debug \
   -DDEBUG=ON \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
   -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
-cmake --build build-debug --parallel
+cmake --build build --parallel
 ```
 
 The command uses the single-config Unix Makefiles generator, so
 `CMAKE_BUILD_TYPE=Debug` selects CMake's Debug configuration. `DEBUG=ON`
 enables brpc's debug logs and keeps assertions enabled. Build artifacts are
-written to `build-debug/output/`.
+written to `build/output/`.
 
 To generate a compilation database for tools such as clangd, add the following
 optional argument to the configuration command:
@@ -318,7 +318,7 @@ optional argument to the configuration command:
 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ```
 
-The compilation database is generated at `build-debug/compile_commands.json`.
+The compilation database is generated at `build/compile_commands.json`.
 
 If CMake reports `tapi error: malformed file`, make sure the Command Line Tools
 and Xcode versions match, then select the installed Xcode:

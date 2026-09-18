@@ -288,19 +288,19 @@ Monterey中openssl的安装位置可能不再位于`/usr/local/opt/openssl`，�
 Apple Silicon 可以使用 Homebrew 安装的依赖编译 Debug 版本：
 
 ```shell
-cmake -S . -B build-debug -G "Unix Makefiles" \
+cmake -S . -B build -G "Unix Makefiles" \
   -DCMAKE_BUILD_TYPE=Debug \
   -DDEBUG=ON \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
   -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
-cmake --build build-debug --parallel
+cmake --build build --parallel
 ```
 
 该命令使用单配置的Unix Makefiles生成器，因此`CMAKE_BUILD_TYPE=Debug`会选择
 CMake的Debug构建配置。`DEBUG=ON`启用brpc的调试日志并保留断言。构建产物位于
-`build-debug/output/`。
+`build/output/`。
 
 如需为 clangd 等工具生成编译数据库，请在配置命令中添加以下可选项：
 
@@ -308,7 +308,7 @@ CMake的Debug构建配置。`DEBUG=ON`启用brpc的调试日志并保留断言�
 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ```
 
-生成的编译数据库位于 `build-debug/compile_commands.json`。
+生成的编译数据库位于 `build/compile_commands.json`。
 
 如果 CMake 报错 `tapi error: malformed file`，请确认 Command Line Tools 与 Xcode
 版本一致，并选择当前安装的 Xcode：
