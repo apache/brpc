@@ -291,6 +291,45 @@ openssl installed in Monterey may not be found at `/usr/local/opt/openssl`, inst
 * Run `brew link openssl --force` first and check if `/usr/local/opt/openssl` appears.
 * If above command does not work, consider making a soft link using `sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`. Note that the installed openssl in above command may be put in different places in different environments, which could be revealed by running `brew info openssl`.
 
+### Compile a Debug build with CMake
+
+Apple Silicon can build the Debug configuration against dependencies installed by Homebrew:
+
+```shell
+cmake -S . -B build-debug -G "Unix Makefiles" \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DDEBUG=ON \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+  -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+cmake --build build-debug --parallel
+```
+
+The command uses the single-config Unix Makefiles generator, so
+`CMAKE_BUILD_TYPE=Debug` selects CMake's Debug configuration. `DEBUG=ON`
+enables brpc's debug logs and keeps assertions enabled. Build artifacts are
+written to `build-debug/output/`.
+
+To generate a compilation database for tools such as clangd, add the following
+optional argument to the configuration command:
+
+```shell
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
+
+The compilation database is generated at `build-debug/compile_commands.json`.
+
+If CMake reports `tapi error: malformed file`, make sure the Command Line Tools
+and Xcode versions match, then select the installed Xcode:
+
+```shell
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+```
+
+If the problem persists, verify that `xcrun --sdk macosx --show-sdk-path` returns
+a valid SDK path.
+
 ### Compile brpc with config_brpc.sh
 git clone brpc, cd into the repo and run
 ```shell

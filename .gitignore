@@ -37,6 +37,7 @@ CTestTestfile.cmake
 /CPackSourceConfig.cmake
 /CPackConfig.cmake
 /cmake-build-debug/
+/build-debug/
 /googletest-download/
 /googletest-src/
 /test/rpc_data/
