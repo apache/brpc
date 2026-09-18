@@ -131,8 +131,11 @@ public:
     T reset() {
         // Unlike AgentCombiner::reset_all_agents(), reading and clearing the babylon
         // counter are two separate steps, so values added in between are lost. This
-        // only affects explicit reset() by users: sampling of an operator without
-        // inverse is the only internal user and it runs in a single thread.
+        // affects both explicit reset() by users and periodic sampling by the sampler
+        // thread (e.g. Window/series sampling), where concurrent additions around each
+        // reset may be dropped. This is an accepted trade-off for the babylon backend:
+        // in statistics/monitoring scenarios such minor loss does not change the overall
+        // trend, so slightly inaccurate samples are acceptable.
         T result = _counter.value();
         _counter.reset();
         return result;
