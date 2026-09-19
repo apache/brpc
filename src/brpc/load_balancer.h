@@ -113,6 +113,39 @@ protected:
 
 DECLARE_bool(show_lb_in_vars);
 DECLARE_int32(default_weight_of_wlb);
+DECLARE_int64(lb_warmup_ms);
+
+// Clock of the warm-up ramp: stamps the time a server joins a LoadBalancer
+// and supplies `now' when a caller passes now_us <= 0 below. Tests replace
+// it to drive the ramp without sleeping; not meant to be changed while
+// LoadBalancers are in use.
+int64_t LoadBalancerNowUs();
+// `clock_us' == NULL restores the real clock.
+void SetLoadBalancerClockForTesting(int64_t (*clock_us)());
+
+double WarmupMultiplierImpl(int64_t join_time_us, int64_t now_us);
+bool WarmupAcceptImpl(int64_t join_time_us, int64_t now_us);
+
+// Slow start: while -lb_warmup_ms is positive, a server newly added to a
+// LoadBalancer serves a ramping fraction of its normal traffic share, from
+// about 10% right after joining to 100% at the end of the window. The ramp
+// restarts when a removed server is added back(naming service flap); a
+// transiently disconnected server does not change LB membership and keeps
+// its ramp. Servers added together(e.g. at channel init) ramp together and
+// keep their relative shares.
+// Returns the weight multiplier in (0, 1] for a server that joined the
+// LoadBalancer at `join_time_us'(gettimeofday_us). `now_us' <= 0 makes the
+// function read the clock itself.
+inline double WarmupMultiplier(int64_t join_time_us, int64_t now_us) {
+    return FLAGS_lb_warmup_ms <= 0 ?
+        1.0 : WarmupMultiplierImpl(join_time_us, now_us);
+}
+
+// Probabilistic form of WarmupMultiplier for policies without changeable
+// weights: returns true with probability WarmupMultiplier(...).
+inline bool WarmupAccept(int64_t join_time_us, int64_t now_us) {
+    return FLAGS_lb_warmup_ms <= 0 || WarmupAcceptImpl(join_time_us, now_us);
+}
 
 // A intrusively shareable load balancer created from name.
 class SharedLoadBalancer : public SharedObject, public NonConstDescribable {
