@@ -161,33 +161,37 @@ bool TaskTracer::Init() {
 }
 
 void TaskTracer::set_status(TaskStatus s, TaskMeta* m) {
-    CHECK_NE(TASK_STATUS_RUNNING, s) << "Use `set_running_status' instead";
-    CHECK_NE(TASK_STATUS_END, s) << "Use `set_end_status_unsafe' instead";
-
     bool tracing = false;
     {
         BAIDU_SCOPED_LOCK(m->version_lock);
-        if (TASK_STATUS_UNKNOWN == m->status && TASK_STATUS_JUMPING == s) {
-            // Do not update status for jumping when bthread is ending.
-            return;
-        }
-
-        tracing = m->traced;
-        // bthread is scheduled for the first time.
-        if (TASK_STATUS_READY == s && nullptr == m->stack) {
-            m->status = TASK_STATUS_FIRST_READY;
-        } else {
-            m->status = s;
-        }
-        if (TASK_STATUS_CREATED == s) {
-            m->worker_tid = pthread_t{};
-        }
+        tracing = set_status_unsafe(s, m);
     }
 
     // Make sure bthread does not jump stack when it is being traced.
     if (tracing && TASK_STATUS_JUMPING == s) {
         WaitForTracing(m);
     }
+}
+
+bool TaskTracer::set_status_unsafe(TaskStatus s, TaskMeta* m) {
+    CHECK_NE(TASK_STATUS_RUNNING, s) << "Use `set_running_status' instead";
+    CHECK_NE(TASK_STATUS_END, s) << "Use `set_end_status_unsafe' instead";
+
+    if (TASK_STATUS_UNKNOWN == m->status && TASK_STATUS_JUMPING == s) {
+        // Do not update status for jumping when bthread is ending.
+        return false;
+    }
+
+    // A bthread is scheduled for the first time.
+    if (TASK_STATUS_READY == s && m->stack == nullptr) {
+        m->status = TASK_STATUS_FIRST_READY;
+    } else {
+        m->status = s;
+    }
+    if (TASK_STATUS_CREATED == s) {
+        m->worker_tid = pthread_t{};
+    }
+    return m->traced;
 }
 
 void TaskTracer::set_running_status(pthread_t worker_tid, TaskMeta* m) {
