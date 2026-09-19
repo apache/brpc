@@ -2266,6 +2266,47 @@ TEST_F(HttpTest, http2_server_enforces_max_concurrent_streams) {
     ASSERT_EQ(0, ctx->TryToInsertStream(7, s7));
 }
 
+TEST_F(HttpTest, http2_refused_stream_consumes_header_block) {
+    // A HEADERS frame beyond max_concurrent_streams is answered with
+    // RST_STREAM(REFUSED_STREAM) and the connection stays open. Its header
+    // block must still be consumed; otherwise the leftover bytes are re-parsed
+    // as the next frame head, desyncing the frame parser (a smuggling vector)
+    // and the HPACK decoder.
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), nullptr);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+    ctx->_conn_state = brpc::policy::H2_CONNECTION_READY;
+    ASSERT_TRUE(ctx->is_server_side());
+    ctx->_unack_local_settings.max_concurrent_streams = 1;
+
+    // Fill the single stream slot so the next new stream is refused.
+    brpc::policy::H2StreamContext* s1 = new brpc::policy::H2StreamContext(false);
+    s1->Init(ctx, 1);
+    ASSERT_EQ(0, ctx->TryToInsertStream(1, s1));
+
+    // HEADERS for a new stream (id=3) with END_HEADERS (0x4) and a valid
+    // 1-byte HPACK block (indexed field 0x82 == ":method: GET").
+    const uint8_t hpack_block[] = { 0x82 };
+    char headbuf[brpc::policy::FRAME_HEAD_SIZE];
+    brpc::policy::SerializeFrameHead(headbuf, sizeof(hpack_block),
+                                     brpc::policy::H2_FRAME_HEADERS,
+                                     0x4 /*END_HEADERS*/, 3);
+    butil::IOBuf buf;
+    buf.append(headbuf, sizeof(headbuf));
+    buf.append(hpack_block, sizeof(hpack_block));
+    ASSERT_EQ(brpc::policy::FRAME_HEAD_SIZE + sizeof(hpack_block), buf.size());
+
+    brpc::ParseResult pr =
+        brpc::policy::ParseH2Message(&buf, _socket.get(), false, nullptr);
+    // The whole refused HEADERS frame (head + header block) must be consumed.
+    // Before the fix only the 9-byte frame head was consumed and the header
+    // block (here 0x82) stayed in the buffer to be misparsed as a frame head.
+    ASSERT_EQ(0u, buf.size());
+    ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
+    ASSERT_EQ(1u, ctx->VolatilePendingStreamSize());
+}
+
 TEST_F(HttpTest, h2_ping_ack_respects_socket_write_cap) {
     // A peer flooding PING frames while withholding TCP reads must not make
     // this side queue PONGs past -socket_max_unwritten_bytes. Use a dedicated
