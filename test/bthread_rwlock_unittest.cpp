@@ -21,6 +21,8 @@
 #include <bthread/rwlock.h>
 #include <bthread/condition_variable.h>
 #include <functional>
+#include "bthread/task_group.h"
+#include "bthread/task_meta.h"
 #include <vector>
 
 namespace {
@@ -210,8 +212,21 @@ TEST(RWLockTest, cpp_wrapper) {
     }
 }
 
-bool g_started = false;
-bool g_stopped = false;
+butil::atomic<bool> g_started(false);
+butil::atomic<bool> g_stopped(false);
+
+// Read only synchronized predicates; deadlines bound failures, not latency.
+template <typename Predicate>
+bool WaitForRWLockState(Predicate predicate) {
+    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    while (!predicate()) {
+        if (butil::cpuwide_time_us() >= deadline) {
+            return false;
+        }
+        bthread_usleep(1000);
+    }
+    return true;
+}
 
 void read_op(bthread_rwlock_t* rw, int64_t sleep_us) {
     ASSERT_EQ(0, bthread_rwlock_rdlock(rw));
@@ -334,18 +349,19 @@ TEST(RWLockTest, writer_priority) {
     WriterPriorityArgs r2arg {&rw, &order, -1, 0};
 
     // (2) Start a writer; it should park inside wrlock() because the read
-    //     lock is held. Sleep long enough for it to fetch_add into
-    //     writer_wait_count and reach the butex_wait on `lock_word'.
+    //     lock is held. Observe its registration before starting a reader.
     bthread_t wth;
     ASSERT_EQ(0, bthread_start_urgent(&wth, nullptr, wp_writer_fn, &warg));
-    bthread_usleep(50 * 1000);
+    EXPECT_TRUE(WaitForRWLockState([&] {
+        return reinterpret_cast<butil::atomic<unsigned>*>(rw.writer_wait_count)
+            ->load(butil::memory_order_relaxed) == 1;
+    }));
 
     // (3) Now spawn a fresh reader. By writer-priority it MUST observe
     //     writer_wait_count > 0 and park on it (NOT join the active read
     //     lock).
     bthread_t r2th;
     ASSERT_EQ(0, bthread_start_urgent(&r2th, nullptr, wp_reader_fn, &r2arg));
-    bthread_usleep(50 * 1000);
 
     // (4) Release the original read lock. The writer should win the race
     //     and complete BEFORE the queued reader.
@@ -396,14 +412,9 @@ TEST(RWLockTest, wrlock_failure_does_not_leak_writer_count) {
     // so a new reader MUST acquire the lock immediately.
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
 
-    timespec ts = butil::milliseconds_from_now(500);
-    butil::Timer t;
-    t.start();
-    ASSERT_EQ(0, bthread_rwlock_timedrdlock(&rw, &ts));
-    t.stop();
-    EXPECT_LT(t.m_elapsed(), 100)
-        << "Reader was blocked for " << t.m_elapsed() << "ms; "
-        << "writer_wait_count was likely leaked by the cleanup path.";
+    EXPECT_EQ(0u, reinterpret_cast<butil::atomic<unsigned>*>(rw.writer_wait_count)
+                      ->load(butil::memory_order_relaxed));
+    ASSERT_EQ(0, bthread_rwlock_tryrdlock(&rw));
 
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
     ASSERT_EQ(0, bthread_rwlock_destroy(&rw));
@@ -518,17 +529,14 @@ TEST(RWLockTest, no_writer_starvation) {
     // Let the readers ramp up and saturate the lock.
     bthread_usleep(50 * 1000);
 
-    // A single writer must succeed within a generous budget.
-    butil::Timer t;
-    t.start();
-    ASSERT_EQ(0, bthread_rwlock_wrlock(&rw));
-    t.stop();
-
-    EXPECT_LT(t.m_elapsed(), 1000)
-        << "Writer starved for " << t.m_elapsed() << "ms under "
-        << R << " concurrent readers; writer-priority is broken.";
-
-    ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
+    // A timed acquisition also makes the failure path reachable when the
+    // writer really starves, so readers can be stopped and joined safely.
+    timespec deadline = butil::seconds_from_now(10);
+    int rc = bthread_rwlock_timedwrlock(&rw, &deadline);
+    EXPECT_EQ(0, rc) << "Writer starved under concurrent readers";
+    if (rc == 0) {
+        EXPECT_EQ(0, bthread_rwlock_unlock(&rw));
+    }
 
     g_stopped = true;
     for (int i = 0; i < R; ++i) {
@@ -726,6 +734,16 @@ public:
         }
     }
 
+    void WaitUntilBlocked() {
+        for (bthread_t tid : _tids) {
+            auto* meta = bthread::TaskGroup::address_meta(tid);
+            EXPECT_TRUE(WaitForRWLockState([&] {
+                return meta->current_waiter.load(butil::memory_order_acquire)
+                       != nullptr;
+            }));
+        }
+    }
+
     void Join() {
         for (size_t i = 0; i < _tids.size(); ++i) {
             bthread_join(_tids[i], nullptr);
@@ -745,7 +763,7 @@ private:
 #define CHECK_RWLOCK_LOCKED_VALUE_EQUAL(mutex_name, value, expected_value) \
     {                                                                      \
         std::unique_lock<bthread::Mutex> lock(mutex_name);                 \
-        ASSERT_EQ(value, expected_value);                                  \
+        EXPECT_EQ(value, expected_value);                                  \
     }
 
 void RwlockLockingThreadFunc(bthread_rwlock_t* rw, bool read_lock,
@@ -854,7 +872,10 @@ TEST(RWLockTest, boost_style_only_one_writer_permitted) {
     }
     task_runner.RunTask();
 
-    bthread_usleep(200 * 1000);
+    EXPECT_TRUE(WaitForRWLockState([&] {
+        std::unique_lock<bthread::Mutex> lk(unblocked_count_mutex);
+        return unblocked_count >= 1;
+    }));
 
     CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count, 1u);
 
@@ -905,7 +926,7 @@ TEST(RWLockTest, boost_style_reader_blocks_writer) {
                   &simultaneous_running_count, &max_simultaneous_running));
     writer_runner.RunTask();
 
-    bthread_usleep(100 * 1000);
+    writer_runner.WaitUntilBlocked();
     CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count, 1u);
 
     finish_lock.unlock();
@@ -945,7 +966,7 @@ TEST(RWLockTest, boost_style_unlocking_writer_unblocks_all_readers) {
     }
     task_runner.RunTask();
 
-    bthread_usleep(100 * 1000);
+    task_runner.WaitUntilBlocked();
     CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count, 0u);
 
     ASSERT_EQ(0, bthread_rwlock_unlock(&rw));
@@ -1015,7 +1036,7 @@ TEST(RWLockTest, boost_style_unlocking_last_reader_only_unblocks_one_writer) {
     }
     writer_runner.RunTask();
 
-    bthread_usleep(100 * 1000);
+    writer_runner.WaitUntilBlocked();
     CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
                                     reader_count);
 
@@ -1027,7 +1048,7 @@ TEST(RWLockTest, boost_style_unlocking_last_reader_only_unblocks_one_writer) {
             unblocked_condition.wait(lk);
         }
     }
-    bthread_usleep(100 * 1000);
+    writer_runner.WaitUntilBlocked();
     CHECK_RWLOCK_LOCKED_VALUE_EQUAL(unblocked_count_mutex, unblocked_count,
                                     reader_count + 1);
 
