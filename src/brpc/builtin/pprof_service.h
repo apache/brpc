@@ -25,6 +25,7 @@ namespace brpc {
 
 class PProfService : public pprof {
 public:
+    PProfService();
     void profile(::google::protobuf::RpcController* controller,
                  const ::brpc::ProfileRequest* request,
                  ::brpc::ProfileResponse* response,
