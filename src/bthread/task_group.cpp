@@ -1124,7 +1124,7 @@ int TaskGroup::usleep(TaskGroup** pg, uint64_t timeout_us) {
 bool erase_from_butex_because_of_interruption(ButexWaiter* bw);
 
 static int interrupt_and_consume_waiters(
-    bthread_t tid, ButexWaiter** pw, uint64_t* sleep_id) {
+    bthread_t tid, ButexWaiter** bw, uint64_t* sleep_id) {
     TaskMeta* const m = TaskGroup::address_meta(tid);
     if (m == nullptr) {
         return EINVAL;
@@ -1132,7 +1132,7 @@ static int interrupt_and_consume_waiters(
     const uint32_t given_ver = get_version(tid);
     BAIDU_SCOPED_LOCK(m->version_lock);
     if (given_ver == *m->version_butex) {
-        *pw = m->current_waiter.exchange(nullptr, butil::memory_order_acquire);
+        *bw = m->current_waiter.exchange(nullptr, butil::memory_order_acquire);
         *sleep_id = m->current_sleep;
         m->current_sleep = 0;  // only one stopper gets the sleep_id
         m->interrupted = true;
