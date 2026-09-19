@@ -43,6 +43,23 @@ DECLARE_int32(ub_poller_num);
 DECLARE_bool(ub_edisp_unsched);
 DECLARE_bool(ub_disable_bthread);
 
+enum UbrDataFormat {
+    UBR_DATA_FORMAT_NONE = 0,
+    UBR_DATA_FORMAT_LEGACY_64 = 1,
+};
+
+struct HelloFormatExtension {
+    // The V3 format extension is a fixed-size frame. A different wire size
+    // requires negotiation through a new hello version.
+    static const uint16_t WIRE_SIZE = 4;
+
+    uint16_t extension_len;
+    uint16_t format_id;
+
+    void Serialize(void* data) const;
+    void Deserialize(const void* data);
+};
+
 struct HelloMessage {
     void Serialize(void* data) const;
     void Deserialize(void* data);
@@ -134,12 +151,16 @@ private:
         C_ALLOC_SHM = 0x1,
         C_HELLO_SEND = 0x2,
         C_HELLO_WAIT = 0x3,
-        C_MAP_REMOTE_SHM = 0x4,
-        C_ACK_SEND = 0x5,
+        C_FORMAT_SEND = 0x4,
+        C_FORMAT_WAIT = 0x5,
+        C_MAP_REMOTE_SHM = 0x6,
+        C_ACK_SEND = 0x7,
         S_HELLO_WAIT = 0x11,
         S_ALLOC_SHM = 0x12,
         S_HELLO_SEND = 0x13,
-        S_ACK_WAIT = 0x14,
+        S_FORMAT_WAIT = 0x14,
+        S_FORMAT_SEND = 0x15,
+        S_ACK_WAIT = 0x16,
         ESTABLISHED = 0x100,
         FALLBACK_TCP = 0x200,
         FAILED = 0x300
@@ -184,6 +205,7 @@ private:
     SocketId _socket_id;
 
     State _state;
+    UbrDataFormat _negotiated_data_format{UBR_DATA_FORMAT_NONE};
 
     // ub resource
     ubring::UBRing* _ub_ring{nullptr};
