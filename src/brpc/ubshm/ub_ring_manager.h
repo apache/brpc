@@ -34,6 +34,8 @@ typedef struct TagUbrMgr {
     uint32_t trx_cap;
     UbrTrx *trx_mgr;
     UbrMgrUnitStatus *trx_mgr_unit_status;
+    uint64_t *trx_mgr_unit_id;
+    UbrCleanupCtl **trx_mgr_unit_ctl;
 } UbrMgr;
 
 typedef struct TagUbrLinkInfo {
@@ -63,7 +65,34 @@ public:
 
     static RETURN_CODE AcquireUbrTrxFromMgr(UbrTrx **trx);
 
-    static RETURN_CODE ReleaseUbrTrxFromMgr(UbrTrx *trx);
+    // Release the pool slot of `trx'. `expect_ubr_id' must be snapshotted
+    // from trx->ubr_id before the caller started releasing the trx: a
+    // release racing a reuse of the same slot is refused.
+    static RETURN_CODE ReleaseUbrTrxFromMgr(UbrTrx *trx,
+                                            uint64_t expect_ubr_id);
+
+    // Snapshot the cleanup control object of a pool slot. The caller
+    // receives a reference and must ReleaseRef it on every exit path.
+    static UbrCleanupCtl* SnapshotUnitCleanupCtl(uint32_t idx);
+
+    // Under the manager lock, confirm the pool slot is still used by the
+    // given generation (not released or reused meanwhile).
+    static bool IsUbrTrxSlotUsed(uint32_t idx, uint64_t expect_ubr_id);
+
+    // Atomically (under the manager lock) anchor `ctl' to the pool slot,
+    // but only while the slot is still used by the given generation and
+    // carries no other cleanup control object. On success the ctl gains
+    // the manager anchor reference (released when the anchor is detached
+    // or the slot is retired); returns false -- leaving the slot and the
+    // reference counts untouched -- when the trx was released, reused, or
+    // a cleanup is already anchored.
+    static bool TryPublishUnitCleanupCtl(uint32_t idx, uint64_t expect_ubr_id,
+                                         UbrCleanupCtl *ctl);
+
+    // Detach `ctl' from the pool slot if it is still anchored there.
+    // Returns true when the detach happened (the manager reference was
+    // released).
+    static bool DetachUnitCleanupCtl(uint32_t idx, UbrCleanupCtl *ctl);
 
     static void LinkInfoInit(void);
     static void LinkInfoFini(void);

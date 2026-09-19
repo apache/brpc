@@ -116,6 +116,7 @@ static inline int Copy64Byte(int8_t *dst, int8_t *src) {
 
 #define SEC_TO_NSEC 1000000000
 #define MSEC_TO_NSEC 1000000
+#define SEC_TO_USEC 1000000
 #define USEC_TO_NSEC 1000
 #define MSEC_TO_SEC 1000
 #define MAX_IP_PORT_STR_LEN 23
