@@ -486,8 +486,8 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     if (ub_transport->_ub_state != UBShmTransport::UB_OFF) {
         flags |= ACK_MSG_UB_OK;
     }
-    uint32_t* tmp = (uint32_t*)data;
-    *tmp = butil::HostToNet32(flags);
+    const uint32_t net_flags = butil::HostToNet32(flags);
+    memcpy(data, &net_flags, sizeof(net_flags));
     if (ep->WriteToFd(data, ACK_MSG_LEN) < 0) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to send Ack Message to server:" << s->description();
@@ -669,8 +669,9 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         return nullptr;
     }
 
-    uint32_t* tmp = (uint32_t*)data;
-    uint32_t flags = butil::NetToHost32(*tmp);
+    uint32_t net_flags;
+    memcpy(&net_flags, data, sizeof(net_flags));
+    const uint32_t flags = butil::NetToHost32(net_flags);
     if (flags & ACK_MSG_UB_OK) {
         if (ub_transport->_ub_state == UBShmTransport::UB_OFF ||
             selected_format == UBR_DATA_FORMAT_NONE) {
