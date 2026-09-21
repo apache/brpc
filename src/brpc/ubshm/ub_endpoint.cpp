@@ -374,7 +374,7 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
 
     ep->_state = C_HELLO_SEND;
-    HelloMessage local_msg = {};
+    HelloMessage local_msg{};
     local_msg.msg_len = g_ub_hello_msg_len;
     local_msg.hello_ver = g_ub_hello_version;
     local_msg.impl_ver = g_ub_impl_version;
@@ -598,7 +598,7 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
     }
 
     ep->_state = S_HELLO_SEND;
-    HelloMessage local_msg = {};
+    HelloMessage local_msg{};
     local_msg.msg_len = g_ub_hello_msg_len;
     if (ub_transport->_ub_state == UBShmTransport::UB_OFF) {
         local_msg.impl_ver = 0;
