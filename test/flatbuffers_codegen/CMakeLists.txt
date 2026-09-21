@@ -15,7 +15,20 @@
 # specific language governing permissions and limitations
 # under the License.
 
-find_package(Protobuf REQUIRED)
+set(protobuf_MODULE_COMPATIBLE ON CACHE BOOL "Expose Protobuf compatibility variables for codegen tests" FORCE)
+find_package(Protobuf CONFIG QUIET)
+set(CODEGEN_PROTOBUF_CONFIG ${Protobuf_FOUND})
+if(NOT Protobuf_FOUND)
+    find_package(Protobuf REQUIRED)
+endif()
+set(CODEGEN_CXX_STANDARD 14)
+if(Protobuf_VERSION VERSION_GREATER 4.21)
+    set(CODEGEN_CXX_STANDARD 17)
+    if(NOT CODEGEN_PROTOBUF_CONFIG)
+        message(FATAL_ERROR "Protobuf 5+ needs its CMake config package for codegen tests")
+    endif()
+endif()
+message(STATUS "Codegen tests: Protobuf ${Protobuf_VERSION}, C++${CODEGEN_CXX_STANDARD}")
 find_program(FLATC_EXECUTABLE flatc)
 if(NOT FLATC_EXECUTABLE)
     message(FATAL_ERROR "Codegen tests need the official flatc executable")
@@ -33,6 +46,16 @@ set(CODEGEN_INCLUDE_DIRS
     "${GENERATED_DIR}"
     "${FLATBUFFERS_INCLUDE_DIR}"
     ${Protobuf_INCLUDE_DIRS})
+get_target_property(CODEGEN_PROTOBUF_INCLUDE_DIRS protobuf::libprotobuf INTERFACE_INCLUDE_DIRECTORIES)
+if(CODEGEN_PROTOBUF_INCLUDE_DIRS)
+    list(APPEND CODEGEN_INCLUDE_DIRS ${CODEGEN_PROTOBUF_INCLUDE_DIRS})
+endif()
+if(TARGET absl::base)
+    get_target_property(CODEGEN_ABSL_INCLUDE_DIRS absl::base INTERFACE_INCLUDE_DIRECTORIES)
+    if(CODEGEN_ABSL_INCLUDE_DIRS)
+        list(APPEND CODEGEN_INCLUDE_DIRS ${CODEGEN_ABSL_INCLUDE_DIRS})
+    endif()
+endif()
 add_custom_command(
     OUTPUT "${GENERATED_DIR}/echo.brpc.fb.cpp"
            "${GENERATED_DIR}/echo.brpc.fb.h"
@@ -44,7 +67,7 @@ add_custom_command(
     VERBATIM)
 add_library(brpc_codegen_compile OBJECT "${GENERATED_DIR}/echo.brpc.fb.cpp")
 target_include_directories(brpc_codegen_compile PRIVATE ${CODEGEN_INCLUDE_DIRS})
-target_compile_features(brpc_codegen_compile PRIVATE cxx_std_14)
+target_compile_features(brpc_codegen_compile PRIVATE cxx_std_${CODEGEN_CXX_STANDARD})
 
 add_test(NAME flatbuffers_codegen_acceptance
     COMMAND "${CMAKE_COMMAND}"
@@ -53,6 +76,7 @@ add_test(NAME flatbuffers_codegen_acceptance
         "-DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/echo.fbs"
         "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/acceptance"
         "-DCXX=${CMAKE_CXX_COMPILER}"
+        "-DCXX_STANDARD=${CODEGEN_CXX_STANDARD}"
         "-DINCLUDE_DIRS=${CODEGEN_INCLUDE_DIRS}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/acceptance.cmake")
 
@@ -68,9 +92,9 @@ if(BRPC_CODEGEN_BRPC_LIBRARY)
     find_library(CODEGEN_LEVELDB_LIBRARY leveldb)
     add_executable(brpc_codegen_runtime runtime.cpp $<TARGET_OBJECTS:brpc_codegen_compile>)
     target_include_directories(brpc_codegen_runtime PRIVATE ${CODEGEN_INCLUDE_DIRS})
-    target_compile_features(brpc_codegen_runtime PRIVATE cxx_std_14)
+    target_compile_features(brpc_codegen_runtime PRIVATE cxx_std_${CODEGEN_CXX_STANDARD})
     target_link_libraries(brpc_codegen_runtime PRIVATE
-        "${BRPC_CODEGEN_BRPC_LIBRARY}" ${Protobuf_LIBRARIES}
+        "${BRPC_CODEGEN_BRPC_LIBRARY}" protobuf::libprotobuf
         ${CODEGEN_GFLAGS_LIBRARY} ${CODEGEN_LEVELDB_LIBRARY}
         OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB Threads::Threads
         ${CMAKE_DL_LIBS} ${BRPC_CODEGEN_EXTRA_LIBRARIES})

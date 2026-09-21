@@ -15,6 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+if(NOT DEFINED CXX_STANDARD)
+    set(CXX_STANDARD 14)
+endif()
 file(READ "${SCHEMA}" schema_text)
 file(MAKE_DIRECTORY "${WORK}")
 
@@ -73,7 +76,7 @@ function(expect_compiles name text)
     foreach(include_dir IN LISTS INCLUDE_DIRS)
         list(APPEND includes "-I${include_dir}")
     endforeach()
-    execute_process(COMMAND "${CXX}" -std=c++14 ${includes}
+    execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
         -c "${directory}/echo.brpc.fb.cpp" -o "${directory}/echo.o"
         RESULT_VARIABLE result ERROR_VARIABLE error)
     if(NOT "${result}" STREQUAL "0")
@@ -81,7 +84,7 @@ function(expect_compiles name text)
     endif()
     # The generated header must also compile without incidental prior includes.
     file(WRITE "${directory}/header.cpp" "#include \"echo.brpc.fb.h\"\n")
-    execute_process(COMMAND "${CXX}" -std=c++14 ${includes}
+    execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
         -c "${directory}/header.cpp" -o "${directory}/header.o"
         RESULT_VARIABLE result ERROR_VARIABLE error)
     if(NOT "${result}" STREQUAL "0")
@@ -98,6 +101,83 @@ function(expect_compiles name text)
     endforeach()
     message(STATUS "Compiled ${name}")
 endfunction()
+
+function(expect_distinct_headers name first_stem second_stem)
+    set(directory "${WORK}/header_guards_${name}")
+    set(includes)
+    foreach(include_dir IN LISTS INCLUDE_DIRS)
+        list(APPEND includes "-I${include_dir}")
+    endforeach()
+    foreach(side first second)
+        set(stem "${${side}_stem}")
+        set(output "${directory}/${side}")
+        file(MAKE_DIRECTORY "${output}")
+        string(REPLACE "namespace codegen.example;" "namespace guard_${name}.${side};"
+            text "${schema_text}")
+        if(side STREQUAL "first")
+            set(first_text "${text}")
+        endif()
+        file(WRITE "${output}/${stem}.fbs" "${text}")
+        execute_process(COMMAND "${FLATC}" --cpp -o "${output}" "${output}/${stem}.fbs"
+            RESULT_VARIABLE result ERROR_VARIABLE error)
+        if(NOT "${result}" STREQUAL "0")
+            message(FATAL_ERROR "${name}/${side}: official flatc failed: ${error}")
+        endif()
+        execute_process(COMMAND "${GENERATOR}" -o "${output}" "${output}/${stem}.fbs"
+            RESULT_VARIABLE result ERROR_VARIABLE error)
+        if(NOT "${result}" STREQUAL "0")
+            message(FATAL_ERROR "${name}/${side}: brpc_flatc failed: ${error}")
+        endif()
+        file(WRITE "${output}/single.cpp"
+            "#include \"${stem}.brpc.fb.h\"\n::guard_${name}::${side}::Echo* service = nullptr;\n")
+        execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+            -c "${output}/single.cpp" -o "${output}/single.o"
+            RESULT_VARIABLE result ERROR_VARIABLE error)
+        if(NOT "${result}" STREQUAL "0")
+            message(FATAL_ERROR "${name}/${side}: standalone header failed: ${error}")
+        endif()
+    endforeach()
+    foreach(reverse FALSE TRUE)
+        set(first "#include \"first/${first_stem}.brpc.fb.h\"\n")
+        set(second "#include \"second/${second_stem}.brpc.fb.h\"\n")
+        if(reverse)
+            set(headers "${second}${first}")
+        else()
+            set(headers "${first}${second}")
+        endif()
+        file(WRITE "${directory}/combined_${reverse}.cpp"
+            "${headers}::guard_${name}::first::Echo* first_echo = nullptr;\n::guard_${name}::second::Echo* second_echo = nullptr;\n")
+        execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+            -c "${directory}/combined_${reverse}.cpp"
+            -o "${directory}/combined_${reverse}.o"
+            RESULT_VARIABLE result ERROR_VARIABLE error)
+        if(NOT "${result}" STREQUAL "0")
+            message(FATAL_ERROR "${name}: combined headers (reverse=${reverse}) failed: ${error}")
+        endif()
+    endforeach()
+    # A checkout/output directory change must not alter generated identifiers.
+    set(relocated "${directory}/relocated")
+    file(MAKE_DIRECTORY "${relocated}")
+    file(WRITE "${relocated}/${first_stem}.fbs" "${first_text}")
+    execute_process(COMMAND "${GENERATOR}" -o . "${first_stem}.fbs"
+        WORKING_DIRECTORY "${relocated}"
+        RESULT_VARIABLE result ERROR_VARIABLE error)
+    if(NOT "${result}" STREQUAL "0")
+        message(FATAL_ERROR "${name}: relocated generation failed: ${error}")
+    endif()
+    foreach(suffix brpc.fb.h brpc.fb.cpp)
+        file(READ "${directory}/first/${first_stem}.${suffix}" original)
+        file(READ "${relocated}/${first_stem}.${suffix}" regenerated)
+        if(NOT "${original}" STREQUAL "${regenerated}")
+            message(FATAL_ERROR "${name}: ${suffix} depends on checkout/output paths")
+        endif()
+    endforeach()
+    message(STATUS "Distinct, relocatable header guards: ${name}")
+endfunction()
+
+expect_distinct_headers(punctuation foo-bar foo_bar)
+expect_distinct_headers(letter_case FooBar foobar)
+expect_distinct_headers(same_basename echo echo)
 
 expect_rejected_rpc_name(channel_)
 expect_rejected_rpc_name(owned_channel_)
@@ -209,7 +289,7 @@ int main() {
     foreach(include_dir IN LISTS INCLUDE_DIRS)
         list(APPEND includes "-I${include_dir}")
     endforeach()
-    execute_process(COMMAND "${CXX}" -std=c++14 ${includes}
+    execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
         "${directory}/runtime.cpp" "${directory}/echo.o" ${RUNTIME_LIBRARIES}
         -o "${directory}/runtime"
         RESULT_VARIABLE result ERROR_VARIABLE error)

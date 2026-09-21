@@ -80,6 +80,16 @@ std::string Qualified(const flatbuffers::Definition& definition) {
     return "::" + (ns.empty() ? "" : ns + "::") + definition.name;
 }
 
+std::string GuardComponent(const std::string& value) {
+    static const char digits[] = "0123456789ABCDEF";
+    std::string result;
+    for (unsigned char c : value) {
+        result += digits[c >> 4];
+        result += digits[c & 15];
+    }
+    return result;
+}
+
 bool IsCppIdentifier(const std::string& name) {
     static const std::set<std::string> keywords = {
         "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand",
@@ -427,12 +437,11 @@ int Run(int argc, char** argv) {
         std::cerr << "brpc_flatc: " << error << '\n';
         return 1;
     }
-    std::string guard = "BRPC_FLATBUFFERS_GENERATED_";
-    for (char c : stem) {
-        guard += c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') :
-                 ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ? c : '_');
-    }
-    guard += "_H_";
+    // Coexisting service headers cannot define the same qualified service.
+    // Preserve filename bytes and that service identity, without tying output
+    // to checkout paths or folding punctuation and case into the same guard.
+    const std::string guard = "BRPC_FLATBUFFERS_GENERATED_" + GuardComponent(stem) +
+        "_" + GuardComponent(Qualified(*services.front().definition)) + "_H_";
     std::ostringstream header;
     header << kLicense << "#ifndef " << guard << "\n#define " << guard << "\n\n"
            << "#include <memory>\n"
