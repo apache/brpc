@@ -32,6 +32,7 @@
 * 通过[概述](docs/cn/overview.md)了解哪里可以用bRPC及其优势。
 * 阅读[编译步骤](docs/cn/getting_started.md)了解如何开始使用, 之后可以运行一下[示例程序](https://github.com/apache/brpc/tree/master/example/).
 * 文档:
+  * [启用 FlatBuffers RPC 并通过 example 验证](docs/cn/flatbuffers.md)
   * [性能测试](docs/cn/benchmark.md)
   * [bvar](docs/cn/bvar.md)
     * [bvar_c++](docs/cn/bvar_c++.md)
