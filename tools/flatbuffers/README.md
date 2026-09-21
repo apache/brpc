@@ -1,7 +1,7 @@
 # Standalone FlatBuffers service generator
 
-`brpc_flatc` generates the bRPC **service abstraction**, not a network protocol or
-an adapter for `brpc::Channel`. It uses the installed, official
+`brpc_flatc` generates bRPC service bindings. The separate `fb_rpc` transport
+implements their channel interface in `brpc::Channel`. The generator uses the installed, official
 `flatbuffers/idl.h` Parser and `libflatbuffers`; it does not download or modify a
 FlatBuffers fork. The official `flatc --cpp` remains responsible for table types.
 
@@ -67,8 +67,11 @@ The generated names are `example::api::Echo`,
 They are **not** the old `EchoStub` spelling. Methods take protobuf
 `RpcController`/`Closure` and `brpc::flatbuffers::Message` parameters. Derive from
 `Echo` and override the schema methods; supply an implementation of
-`brpc::flatbuffers::RpcChannel` to a stub. Channel ownership defaults to borrowed;
-`Service::STUB_OWNS_CHANNEL` transfers ownership to the stub.
+`brpc::flatbuffers::RpcChannel` to a stub, such as a `brpc::Channel` initialized
+with `ChannelOptions::protocol = "fb_rpc"`. Register the implementation with
+`Server::AddFlatBuffersService`. See [FlatBuffers RPC](../../docs/en/flatbuffers.md)
+for ownership, protocol limitations, and response verification. Channel ownership
+defaults to borrowed; `Service::STUB_OWNS_CHANNEL` transfers ownership to the stub.
 
 This intentionally bounded generator supports unary table RPCs, multiple
 services/methods, namespaces, included request/response tables, and absent

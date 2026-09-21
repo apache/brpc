@@ -556,7 +556,10 @@ brpc_proto_library(
     visibility = ["//visibility:public"],
 )
 
-FLATBUFFERS_SRC_PATTERNS = ["src/brpc/flatbuffers/*.cpp"]
+FLATBUFFERS_SRC_PATTERNS = [
+    "src/brpc/flatbuffers/*.cpp",
+    "src/brpc/policy/flatbuffers_protocol.cpp",
+]
 
 URMA_SRC_PATTERNS = [
     "src/brpc/urma/*.cpp",

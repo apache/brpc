@@ -286,17 +286,19 @@ if(WITH_FLATBUFFERS)
                 "${FLATBUFFERS_FLATC_EXECUTABLE}"
         COMMENT "Generating FlatBuffers test messages"
         VERBATIM)
-    add_executable(brpc_flatbuffers_unittest
-        brpc_flatbuffers_unittest.cpp "${FLATBUFFERS_TEST_HEADER}")
-    target_link_libraries(brpc_flatbuffers_unittest PRIVATE
-        brpc-static brpc_test_config gtest_main ${DYNAMIC_LIB})
-    add_test(NAME brpc_flatbuffers_unittest COMMAND brpc_flatbuffers_unittest)
+    foreach(FB_TEST brpc_flatbuffers_unittest brpc_flatbuffers_protocol_unittest)
+        add_executable(${FB_TEST} ${FB_TEST}.cpp "${FLATBUFFERS_TEST_HEADER}")
+        target_link_libraries(${FB_TEST} PRIVATE
+            brpc-static brpc_test_config gtest_main ${DYNAMIC_LIB})
+        add_test(NAME ${FB_TEST} COMMAND ${FB_TEST})
+    endforeach()
 endif()
 
 # brpc tests
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 list(REMOVE_ITEM BRPC_UNITTESTS
-    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_unittest.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_unittest.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_protocol_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)

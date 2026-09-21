@@ -26,6 +26,7 @@
 #include "bthread/bthread.h"      // Server may need some bthread functions,
                                   // e.g. bthread_usleep
 #include <google/protobuf/service.h>                 // google::protobuf::Service
+#include "butil/config.h"
 #include "butil/macros.h"                            // DISALLOW_COPY_AND_ASSIGN
 #include "butil/containers/doubly_buffered_data.h"   // DoublyBufferedData
 #include "bvar/bvar.h"
@@ -48,6 +49,13 @@
 #include "brpc/socket_mode.h"
 
 namespace brpc {
+
+#if BRPC_WITH_FLATBUFFERS
+namespace flatbuffers {
+class Service;
+class MethodDescriptor;
+}  // namespace flatbuffers
+#endif
 
 class Acceptor;
 class MethodStatus;
@@ -450,6 +458,15 @@ public:
     };
     typedef butil::FlatMap<std::string, MethodProperty> MethodMap;
 
+#if BRPC_WITH_FLATBUFFERS
+    struct FlatBuffersMethodProperty {
+        flatbuffers::Service* service;
+        const flatbuffers::MethodDescriptor* method;
+        MethodStatus* status;
+        bool ignore_eovercrowded;
+    };
+#endif
+
     struct ThreadLocalOptions {
         bthread_key_t tls_key;
         const DataFactory* thread_local_data_factory;
@@ -520,6 +537,20 @@ public:
     // NOTE: removing a service while server is running is forbidden.
     // Returns 0 on success, -1 otherwise.
     int RemoveService(google::protobuf::Service* service);
+
+#if BRPC_WITH_FLATBUFFERS
+    // FlatBuffers services are separate from the protobuf service maps.
+    // The service and its descriptor must remain valid until removal.
+    // Add/Remove require a stopped server (READY). Ownership transfers only
+    // after a successful Add; Remove deletes a server-owned service.
+    // Like AddService/RemoveService, these methods are not thread-safe.
+    // Full method names must not conflict with registered protobuf methods.
+    // Returns 0 on success, -1 otherwise.
+    int AddFlatBuffersService(flatbuffers::Service* service,
+                              ServiceOwnership ownership);
+    int RemoveFlatBuffersService(flatbuffers::Service* service);
+    size_t GetFlatBuffersServiceCount() const;
+#endif
 
     // Remove all services from this server.
     // NOTE: clearing services when server is running is forbidden.
@@ -612,6 +643,7 @@ public:
     //    server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
     // or server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
     // or server.MaxConcurrencyOf(&service, "Echo") = 10;
+    // The string-based forms also support registered FlatBuffers methods.
     // Note: These interfaces can ONLY be called before the server is started.
     // And you should NOT set the max_concurrency when you are going to choose
     // an auto concurrency limiter, eg `options.max_concurrency = "auto"`.If you
@@ -703,6 +735,11 @@ friend class Controller;
     FindMethodPropertyByNameAndIndex(const butil::StringPiece& service_name,
                                      int method_index) const;
 
+#if BRPC_WITH_FLATBUFFERS
+    const FlatBuffersMethodProperty* FindFlatBuffersMethodPropertyByIndex(
+        uint32_t service_index, int32_t method_index) const;
+#endif
+
     const ServiceProperty*
     FindServicePropertyByFullName(const butil::StringPiece& fullname) const;
 
@@ -772,6 +809,11 @@ friend class Controller;
     bool _failed_to_set_ignore_eovercrowded;
     Acceptor* _am;
     Acceptor* _internal_am;
+
+#if BRPC_WITH_FLATBUFFERS
+    struct FlatBuffersServiceMap;
+    std::unique_ptr<FlatBuffersServiceMap> _flatbuffers_services;
+#endif
 
     // Use method->full_name() as key
     MethodMap _method_map;

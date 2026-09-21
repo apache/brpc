@@ -1,12 +1,10 @@
-# FlatBuffers messages
+# FlatBuffers messages and RPC
 
-bRPC provides optional IOBuf-backed FlatBuffers messages, builders, and service
-descriptors. The message-construction approach builds on
-[apache/brpc#3196](https://github.com/apache/brpc/pull/3196).
-
-This component does not register an `fb_rpc` transport or add FlatBuffers
-integration to `brpc::Channel` and `brpc::Server`. Service-generation and
-in-process dispatch tests are not network RPC or performance benchmarks.
+bRPC provides optional IOBuf-backed FlatBuffers messages, builders, service
+descriptors, and the `fb_rpc` transport. The implementation builds on
+[apache/brpc#3196](https://github.com/apache/brpc/pull/3196) and
+[apache/brpc#3197](https://github.com/apache/brpc/pull/3197), while preserving
+Protocol's existing protobuf callback signatures.
 
 ## Build
 
@@ -21,8 +19,8 @@ For example, with GoogleTest sources installed under `/usr/src/googletest`:
 cmake -S . -B build -DWITH_FLATBUFFERS=ON -DBUILD_UNIT_TESTS=ON \
   -DBUILD_BRPC_TOOLS=OFF -DDOWNLOAD_GTEST=OFF \
   -DBRPC_SYSTEM_GTEST_SOURCE_DIR=/usr/src/googletest
-cmake --build build --target brpc_flatbuffers_unittest -j6
-ctest --test-dir build -R '^brpc_flatbuffers_unittest$' --output-on-failure
+cmake --build build --target brpc_flatbuffers_unittest brpc_flatbuffers_protocol_unittest -j6
+ctest --test-dir build -R '^brpc_flatbuffers(_protocol)?_unittest$' --output-on-failure
 ```
 
 For other installations set `FLATBUFFERS_INCLUDE_DIR`,
@@ -121,3 +119,71 @@ commands and limitations. Generated dispatch verifies requests, rejects
 unknown/foreign methods, and runs non-null completion callbacks on failure,
 including unimplemented methods. Successful implementations own completion and
 must run their callback exactly once.
+
+## Network RPC
+
+Build both the library and its users with the same `BRPC_WITH_FLATBUFFERS`
+setting; enabling the feature changes the Channel, Controller and Server ABI.
+Register generated services with `server.AddFlatBuffersService(&service,
+SERVER_DOESNT_OWN_SERVICE)`. Use `ChannelOptions::protocol = "fb_rpc"` and pass
+that `brpc::Channel` to a generated stub. The stub calls `Channel::FBCallMethod`;
+`Controller::flatbuffers_method()` returns the typed descriptor, while the
+protobuf `Controller::method()` remains null. Manually supplied descriptors
+must outlive their calls, including retries and backup requests.
+
+Service registration is separate from protobuf's AddService and ListServices
+APIs. Add/remove/clear require a stopped (READY) server, not a server still
+STOPPING; management operations must be externally serialized. Ownership
+transfers only after successful registration. `RemoveFlatBuffersService`
+deletes an owned service, while Stop/Join keep registrations for restart.
+`GetFlatBuffersServiceCount()` reports this separate registry. Duplicate service
+IDs (including hash collisions) and conflicting full protobuf/FlatBuffers method
+names are rejected. String-based `MaxConcurrencyOf` supports FlatBuffers
+methods, as do server-wide and default method concurrency limits.
+
+The transport supports synchronous/asynchronous calls, retries, backup requests,
+single/pooled/short connections and request/response attachments. It allocates a
+small independent header for each send and shares payload storage; it never
+rewrites a const request's metadata prefix. Thus retries and concurrent calls
+can safely share an immutable request. The application must still keep each
+response and Controller alive until completion.
+
+Framing validates lengths, not application schemas. Generated services verify
+requests before dispatch. Handwritten services must do the same. Callers must
+verify received response schemas before using root accessors; an RPC succeeding
+does not replace `response.Verify<Response>()`.
+
+Authentication, compression, checksums and streaming are not supported and are
+rejected rather than silently ignored. FlatBuffers services cannot be accessed
+through the internal, builtin-only port. SelectiveChannel/ParallelChannel,
+HTTP/JSON mapping and RPC-dump replay are not provided by this transport.
+Log IDs, user fields and distributed-tracing metadata are not transmitted.
+
+### FRPC framing and compatibility
+
+A frame is `[12-byte header][metadata][message][attachment]`. The header contains
+`FRPC`, a big-endian uint32 body size, and a big-endian uint32 metadata size; body
+size excludes the 12-byte header but includes all three following sections.
+The metadata prefix is explicitly little-endian, matching the original FRPC
+experiment on little-endian machines without relying on packed structs:
+
+* Request: uint32 service ID, int32 method ID, int32 message size, int32 attachment
+  size, uint64 correlation ID (24 bytes).
+* Response: int32 error code, int32 message size, int32 attachment size, uint64
+  correlation ID (20 bytes).
+
+Readers require the whole known prefix, then skip unknown trailing metadata
+using the advertised metadata size. Future optional fields must be appended;
+do not reorder, resize or repurpose existing fields. A shorter prefix, negative
+size, inconsistent payload length or excessive body is rejected. Error replies
+have a nonzero error code and no payload. Method IDs are sparse wire IDs, never
+array positions: adding, deleting or reordering declarations preserves surviving
+IDs only when explicit IDs are retained. This does not make legacy ordinal-ID
+schemas compatible, and removed IDs must never be reused.
+
+The magic is `FRPC`, not `BRPC`. This format does not promise compatibility with
+older unpublished variants that used different magic, service hashes or native
+big-endian metadata. The library's global Protocol hook signatures remain
+unchanged, so existing protocol callback implementations need no adaptation.
+Private numeric protocol IDs must not overlap newly assigned builtin IDs;
+`PROTOCOL_FLATBUFFERS_RPC` uses ID 30.

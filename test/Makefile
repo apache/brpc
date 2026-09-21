@@ -182,7 +182,7 @@ TEST_BTHREAD_OBJS = $(addsuffix .o, $(basename $(TEST_BTHREAD_SOURCES)))
 
 TEST_BRPC_SOURCES = $(wildcard brpc_*unittest.cpp)
 ifneq ($(WITH_FLATBUFFERS),1)
-TEST_BRPC_SOURCES := $(filter-out brpc_flatbuffers_unittest.cpp,$(TEST_BRPC_SOURCES))
+TEST_BRPC_SOURCES := $(filter-out brpc_flatbuffers_unittest.cpp brpc_flatbuffers_protocol_unittest.cpp,$(TEST_BRPC_SOURCES))
 endif
 TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES))) 
 
@@ -244,9 +244,9 @@ FLATC ?= flatc
 flatbuffers_message_generated.h:flatbuffers_message.fbs
 	$(FLATC) --cpp -o . $<
 
-brpc_flatbuffers_unittest.o:flatbuffers_message_generated.h
+brpc_flatbuffers_unittest.o brpc_flatbuffers_protocol_unittest.o:flatbuffers_message_generated.h
 
-brpc_flatbuffers_unittest:brpc_flatbuffers_unittest.o | libbrpc.dbg.$(SOEXT)
+brpc_flatbuffers_unittest brpc_flatbuffers_protocol_unittest: %: %.o | libbrpc.dbg.$(SOEXT)
 	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
