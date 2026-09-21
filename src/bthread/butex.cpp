@@ -576,34 +576,59 @@ void wait_for_butex(void* arg) {
         } else {
             // Checking `interrupted` and publishing `bw->container` must be
             // atomic with respect to TaskGroup::interrupt(), which sets
-            // `interrupted` and consumes `current_waiter' under the same
+            // `interrupted` and consumes `current_waiter` under the same
             // `version_lock`. Otherwise interrupt() may consume `bw` in between
             // and its erase_from_butex() does nothing because `container` is
             // still nullptr, leaving this bthread queued but never woken up.
             // `container` cannot be published upfront: it must stay nullptr until
             // the bthread is off its stack, see the comment after this block.
-            BAIDU_SCOPED_LOCK(bw->task_meta->version_lock);
-            if (bw->waiter_state == WAITER_STATE_READY/*1*/ &&
-                !bw->task_meta->interrupted) {
-                if (args->prepend) {
-                    b->waiters.Prepend(bw);
-                } else {
-                    b->waiters.Append(bw);
-                }
-                bw->container.store(b, butil::memory_order_relaxed);
-#ifdef BRPC_BTHREAD_TRACER
-                TaskTracer::set_status_unsafe(TASK_STATUS_SUSPENDED, bw->task_meta);
-#endif // BRPC_BTHREAD_TRACER
-                if (bw->abstime != nullptr) {
-                    bw->sleep_id = get_global_timer_thread()->schedule(
-                        erase_from_butex_and_wakeup, bw, *bw->abstime);
-                    if (!bw->sleep_id) {  // TimerThread stopped.
-                        errno = ESTOP;
-                        erase_from_butex_and_wakeup(bw);
+            bool suspend = false;
+            {
+                // Only the interrupted check, the enqueue and the container
+                // store belong under `version_lock', so that they are atomic
+                // w.r.t. TaskGroup::interrupt(). The tracer update is kept here
+                // too because set_status_unsafe() takes no lock and this makes
+                // the transition to SUSPENDED atomic w.r.t. TraceImpl().
+                BAIDU_SCOPED_LOCK(bw->task_meta->version_lock);
+                if (bw->waiter_state == WAITER_STATE_READY/*1*/ &&
+                    !bw->task_meta->interrupted) {
+                    if (args->prepend) {
+                        b->waiters.Prepend(bw);
+                    } else {
+                        b->waiters.Append(bw);
                     }
+                    bw->container.store(b, butil::memory_order_relaxed);
+#ifdef BRPC_BTHREAD_TRACER
+                    TaskTracer::set_status_unsafe(TASK_STATUS_SUSPENDED, bw->task_meta);
+#endif // BRPC_BTHREAD_TRACER
+                    suspend = true;
                 }
+            }
+            if (suspend && bw->abstime != nullptr) {
+                bw->sleep_id = get_global_timer_thread()->schedule(
+                    erase_from_butex_and_wakeup, bw, *bw->abstime);
+                if (!bw->sleep_id) {  // TimerThread stopped.
+                    // No timer will ever fire, so `bw` must not stay queued.
+                    // CAUTION: erase_from_butex_and_wakeup() must NOT be called
+                    // here. It takes `waiter_lock` (already held) and then, via
+                    // TaskGroup::ready_to_run{,_remote}() ->
+                    // TaskTracer::set_status(), `version_lock` as well. Both are
+                    // non-recursive, so calling it self-deadlocks.
+                    errno = ESTOP;
+                    bw->RemoveFromList();
+                    bw->container.store(nullptr, butil::memory_order_relaxed);
+                    bw->waiter_state = WAITER_STATE_TIMEDOUT;
+                    suspend = false;
+                }
+            }
+            if (suspend) {
                 return;
             }
+            // Not suspended: the bthread has already been switched out by
+            // set_remained()/sched() in butex_wait(), so nobody else will run
+            // it. Fall through to re-schedule it below. This covers value
+            // unmatched, already timed out (waiter_state != READY), already
+            // interrupted, and the ESTOP path above.
         }
     }
     
