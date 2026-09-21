@@ -17,14 +17,17 @@
 
 // Date: 2021/11/17 14:37:53
 
+#include <utility>
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include "butil/logging.h"                       // LOG
 #include "butil/errno.h"                         // berror
 #include "butil/containers/flat_map.h"           // butil::FlatMap
+#include "butil/memory/scope_guard.h"
 #include "butil/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
 #include "butil/file_util.h"                     // butil::FilePath
 #include "butil/reloadable_flags.h"
+#include "bvar/detail/prometheus_name_registry.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
 
@@ -113,6 +116,10 @@ std::string MVariableBase::get_description() {
     return os.str();
 }
 
+std::vector<std::string> MVariableBase::collect_prometheus_names() const {
+    return {_name};
+}
+
 int MVariableBase::describe_exposed(const std::string& name,
                                 std::ostream& os) {
     MVarMapWithLock& m = get_mvar_map();
@@ -175,10 +182,22 @@ int MVariableBase::expose_impl(const butil::StringPiece& prefix,
         }     
     }
     to_underscored_name(&_name, name);
+
+    bool expose_succeeded = false;
+    BUTIL_SCOPE_EXIT {
+        if (!expose_succeeded) {
+            _name.clear();
+        }
+    };
    
     if (count_exposed() > (size_t)FLAGS_bvar_max_multi_dimension_metric_number) {
         LOG(ERROR) << "Too many metric seen, overflow detected, max metric count:"
                    << FLAGS_bvar_max_multi_dimension_metric_number;
+        return -1;
+    }
+
+    std::vector<std::string> prometheus_names = collect_prometheus_names();
+    if (!detail::reserve_prometheus_names(this, prometheus_names)) {
         return -1;
     }
 
@@ -189,6 +208,7 @@ int MVariableBase::expose_impl(const butil::StringPiece& prefix,
         if (entry == nullptr) {
             entry = &m[_name];
             entry->ref = _ref;
+            expose_succeeded = true;
             return 0;
         }
     }
@@ -203,15 +223,16 @@ int MVariableBase::expose_impl(const butil::StringPiece& prefix,
     }
 
     LOG(WARNING) << "Already exposed `" << _name << "' whose describe is`"
-               << get_description() << "'";
-    _name.clear();
-    return 0;
+                 << get_description() << "'";
+    detail::release_prometheus_names(this, prometheus_names);
+    return -1;
 }
 
 bool MVariableBase::hide() {
     if (_name.empty()) {
         return false;
     }
+    std::vector<std::string> prometheus_names = collect_prometheus_names();
 
     MVarMapWithLock& m = get_mvar_map();
     {
@@ -223,7 +244,6 @@ bool MVariableBase::hide() {
             CHECK(false) << "`" << _name << "' must exist";
         }
     }
-    _name.clear();
     // Remove previous exposure if needed (hide() waits for in-flight readers
     // and invalidates `_ref`).
     // Always start the new exposure with a fresh `_ref`,  because a previous
@@ -231,14 +251,47 @@ bool MVariableBase::hide() {
     if (_ref != nullptr) {
         _ref->hide_and_wait();
     }
+
+    detail::release_prometheus_names(this, prometheus_names);
+    _name.clear();
     return true;
 }
 
 #ifdef UNIT_TEST
 void MVariableBase::hide_all() {
+    struct MVariableToHide {
+        MVariableBase* variable;
+        SharedExposedRef ref;
+        std::vector<std::string> prometheus_names;
+    };
+
+    std::vector<MVariableToHide> variables;
     MVarMapWithLock& m = get_mvar_map();
-    BAIDU_SCOPED_LOCK(m.mutex);
-    m.clear();
+    // Snapshot the owners while detaching the map entries. Waiting for readers
+    // and taking Prometheus registry locks must happen outside the MVarMap lock.
+    {
+        BAIDU_SCOPED_LOCK(m.mutex);
+        variables.reserve(m.size());
+        for (MVarMap::const_iterator it = m.begin(); it != m.end(); ++it) {
+            MVariableToHide variable;
+            variable.ref = it->second.ref;
+            variable.variable = variable.ref->acquire();
+            if (variable.variable != nullptr) {
+                variable.prometheus_names =
+                    variable.variable->collect_prometheus_names();
+                variables.push_back(std::move(variable));
+            }
+        }
+        m.clear();
+    }
+
+    for (auto& variable : variables) {
+        variable.ref->release();
+        variable.ref->hide_and_wait();
+        detail::release_prometheus_names(
+            variable.variable, variable.prometheus_names);
+        variable.variable->_name.clear();
+    }
 }
 #endif // end UNIT_TEST
 

@@ -27,10 +27,12 @@
 #include <set>
 #include <string>
 #include <array>
+#include <vector>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/strings/string_number_conversions.h"
 #include "bvar/bvar.h"
 #include "bvar/multi_dimension.h"
 
@@ -117,6 +119,40 @@ TEST_F(MVariableTest, expose) {
     ASSERT_EQ(2, exposed_vars.size());
 }
 
+TEST_F(MVariableTest, prometheus_name_conflicts_with_bvar) {
+    std::list<std::string> one_label = {"method"};
+    bvar::Status<int> scalar;
+    bvar::MultiDimension<bvar::Adder<int> > multi(one_label);
+
+    ASSERT_EQ(0, scalar.expose("shared-prometheus-name"));
+    ASSERT_EQ(-1, multi.expose("shared.prometheus.name"));
+    ASSERT_TRUE(multi.name().empty());
+
+    ASSERT_TRUE(scalar.hide());
+    ASSERT_EQ(0, multi.expose("shared::prometheus::name"));
+    ASSERT_EQ(-1, scalar.expose("shared prometheus name"));
+    ASSERT_TRUE(scalar.is_hidden());
+
+    ASSERT_TRUE(multi.hide());
+    ASSERT_EQ(0, scalar.expose("shared_prometheus_name"));
+}
+
+TEST_F(MVariableTest, hide_all_releases_prometheus_names) {
+    std::list<std::string> one_label = {"method"};
+    bvar::MultiDimension<bvar::Histogram> multi(
+        one_label, bvar::Histogram::BucketSchema({1}));
+    ASSERT_EQ(0, multi.expose("hide_all_prometheus_name"));
+
+    bvar::MVariableBase::hide_all();
+    ASSERT_EQ(0UL, bvar::MVariableBase::count_exposed());
+    ASSERT_TRUE(multi.name().empty());
+
+    bvar::Status<int> scalar;
+    ASSERT_EQ(0, scalar.expose("hide_all_prometheus_name_bucket"));
+    ASSERT_TRUE(scalar.hide());
+    ASSERT_EQ(0, multi.expose("hide_all_prometheus_name"));
+}
+
 TEST_F(MVariableTest, dump) {
     std::string old_bvar_dump_interval;
     std::string old_mbvar_dump;
@@ -198,4 +234,103 @@ TEST_F(MVariableTest, test_describe_exposed) {
     std::ostringstream describe_oss;
     ASSERT_EQ(0, bvar::MVariableBase::describe_exposed(bvar_name, describe_oss));
     ASSERT_STREQ(describe_str.c_str(), describe_oss.str().c_str());
+}
+
+// A composite metric of our own: it exports a single gauge family whose
+// samples carry a `region` label of their own. The reserved-label check in
+// MultiDimension reads MetricFamily::reserved_labels, so it applies to any
+// composite metric and is not hardcoded for Histogram's `le' or
+// LatencyRecorder's `quantile'. This type is here to prove that.
+class RegionedGauge {
+public:
+    explicit RegionedGauge(const std::string& region = "north")
+        : _region(region) {}
+    void set(int64_t value) { _value = value; }
+
+    static std::vector<bvar::MetricFamily> list_metric_families() {
+        return {{"", "gauge", {"region"}, {}}};
+    }
+
+    bool dump_samples(bvar::Dumper* dumper, size_t /*family_index*/,
+                      const std::string& name,
+                      butil::StringPiece labels) const {
+        std::string key(name);
+        key.push_back('{');
+        if (!labels.empty()) {
+            key.append(labels.data(), labels.size());
+            key.push_back(',');
+        }
+        key.append("region=\"");
+        key.append(_region);
+        key.append("\"}");
+        return dumper->dump_mvar(key, butil::Int64ToString(_value));
+    }
+
+private:
+    std::string _region;
+    int64_t _value{0};
+};
+
+
+// When a label of the enclosing MultiDimension collides with one reserved by
+// the composite metric, the configuration is rejected: the constructor does
+// not expose it, get_stats returns nothing and expose returns -1. The builtin
+// Histogram (reserves `le'), LatencyRecorder (reserves `quantile') and the
+// custom RegionedGauge (reserves `region') all go through the same check.
+TEST_F(MVariableTest, multi_dimension_rejects_reserved_labels) {
+    size_t nexposed = bvar::MVariableBase::count_exposed();
+
+    // Precondition: RegionedGauge really is detected as a composite metric,
+    // otherwise the reserved-label check never runs and the collision cases
+    // below would prove nothing.
+    ASSERT_TRUE(bvar::detail::IsCompositeMetric<RegionedGauge>::value);
+
+    bvar::MultiDimension<bvar::Histogram> mhist(
+        "hist_reserved_label_test", {"method", "le"},
+        bvar::Histogram::BucketSchema({10, 20}));
+    ASSERT_TRUE(mhist.name().empty());
+    ASSERT_EQ(nullptr, mhist.get_stats({"echo", "10"}));
+    ASSERT_EQ(-1, mhist.expose("hist_reserved_label_test"));
+    ASSERT_TRUE(mhist.name().empty());
+
+    // The guard lives in the shared expose_impl, so base-class pointers take
+    // the same path.
+    bvar::MVariableBase* mvariable_base = &mhist;
+    ASSERT_EQ(-1, mvariable_base->expose("hist_reserved_label_base_test"));
+    ASSERT_TRUE(mhist.name().empty());
+
+    bvar::MVariable<std::list<std::string> >* typed_base = &mhist;
+    ASSERT_EQ(-1, typed_base->expose_as("hist", "reserved_label_typed_base_test"));
+    ASSERT_TRUE(mhist.name().empty());
+
+    bvar::MultiDimension<bvar::LatencyRecorder> mlr(
+        "latency_reserved_label_test", {"method", "quantile"});
+    ASSERT_TRUE(mlr.name().empty());
+    ASSERT_EQ(nullptr, mlr.get_stats({"echo", "0.99"}));
+    ASSERT_EQ(-1, mlr.expose("latency_reserved_label_test"));
+
+    // `region' is taken by RegionedGauge itself, so the enclosing
+    // MultiDimension cannot use it as a label either.
+    bvar::MultiDimension<RegionedGauge> conflict(
+        "custom_reserved_label_test", {"idc", "region"});
+    ASSERT_TRUE(conflict.name().empty());
+    ASSERT_EQ(nullptr, conflict.get_stats({"bj", "north"}));
+    ASSERT_EQ(-1, conflict.expose("custom_reserved_label_test"));
+    ASSERT_TRUE(conflict.name().empty());
+
+    // Reserved labels only block a same-named outer label: any other label
+    // name works fine, and the reserved labels of the two builtin types are
+    // independent of each other.
+    bvar::MultiDimension<bvar::Histogram> valid_histogram(
+        {"quantile"}, bvar::Histogram::BucketSchema({10, 20}));
+    ASSERT_NE(nullptr, valid_histogram.get_stats({"0.99"}));
+    bvar::MultiDimension<bvar::LatencyRecorder> valid_recorder({"le"});
+    ASSERT_NE(nullptr, valid_recorder.get_stats({"10"}));
+    bvar::MultiDimension<RegionedGauge> ok(
+        "custom_reserved_label_ok", {"idc", "method"});
+    ASSERT_NE(nullptr, ok.get_stats({"bj", "get"}));
+    ASSERT_STREQ("custom_reserved_label_ok", ok.name().c_str());
+
+    ASSERT_TRUE(ok.hide());
+    ASSERT_EQ(nexposed, bvar::MVariableBase::count_exposed());
 }

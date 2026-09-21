@@ -15,19 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Date: 2014/12/29 14:54:11
+#ifndef BVAR_DETAIL_PROMETHEUS_NAME_REGISTRY_H
+#define BVAR_DETAIL_PROMETHEUS_NAME_REGISTRY_H
 
-#ifndef  BVAR_BVAR_H
-#define  BVAR_BVAR_H
+#include <string>
+#include <vector>
 
-#include "bvar/reducer.h"
-#include "bvar/recorder.h"
-#include "bvar/status.h"
-#include "bvar/passive_status.h"
-#include "bvar/latency_recorder.h"
-#include "bvar/histogram.h"
-#include "bvar/gflag.h"
-#include "bvar/scoped_timer.h"
-#include "bvar/mvariable.h"
+namespace bvar {
+namespace detail {
 
-#endif  //BVAR_BVAR_H
+// Reserves all names atomically for `owner'. Returns false without reserving
+// anything if one of them belongs to another exposed variable.
+bool reserve_prometheus_names(const void* owner, const std::vector<std::string>& names);
+
+// Releases names that are still reserved by `owner'.
+void release_prometheus_names(const void* owner, const std::vector<std::string>& names);
+
+}  // namespace detail
+}  // namespace bvar
+
+#endif  // BVAR_DETAIL_PROMETHEUS_NAME_REGISTRY_H

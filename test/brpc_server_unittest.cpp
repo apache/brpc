@@ -2284,18 +2284,14 @@ void CallBadMethodByPb(const butil::EndPoint& ep,
 // fallback to BadMethodService is an exception: it must keep reporting the
 // missing method name, only without listing the methods.
 TEST_F(ServerTest, bad_method_does_not_leak_methods_in_security_mode) {
-    butil::EndPoint ep;
-    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
-    butil::EndPoint internal_ep;
-    ASSERT_EQ(0, str2endpoint("127.0.0.1:8614", &internal_ep));
-
     brpc::Server server;
     EchoServiceImpl echo_svc;
     ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     brpc::ServerOptions opt;
-    opt.internal_port = internal_ep.port;
-    ASSERT_EQ(0, server.Start(ep, &opt));
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
     ASSERT_TRUE(server.options().security_mode());
+    butil::EndPoint ep = server.listen_address();
+    butil::EndPoint internal_ep(ep.ip, opt.internal_port);
 
     const struct {
         brpc::ProtocolType protocol;
@@ -2348,14 +2344,12 @@ TEST_F(ServerTest, bad_method_does_not_leak_methods_in_security_mode) {
 // Without internal_port the server is not in security mode and builtin
 // services stay reachable from the only port, which is the default behavior.
 TEST_F(ServerTest, builtin_services_are_open_without_internal_port) {
-    butil::EndPoint ep;
-    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
-
     brpc::Server server;
     EchoServiceImpl echo_svc;
     ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(ep, nullptr));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
     ASSERT_FALSE(server.options().security_mode());
+    butil::EndPoint ep = server.listen_address();
 
     brpc::Controller cntl;
     CallVersionByPb(ep, brpc::PROTOCOL_BAIDU_STD, &cntl);

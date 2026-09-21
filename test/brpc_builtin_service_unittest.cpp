@@ -793,6 +793,24 @@ TEST_F(BuiltinServiceTest, vars) {
                      "<tr class=\"detail-row\"><td colspan=\"2\"><div class=\"detail\"><div id=\"myvar\" class=\"flot-placeholder\"></div></div></td></tr>");
     }
     {
+        // A Histogram writes one metric per bucket and the name of each carries
+        // a `le` label. Quotes cannot go into an html id, and no series is
+        // exposed under such a name anyway, so the value must come out plainly
+        // instead of inside a <span id="value-...">.
+        bvar::Histogram myhist("myhist", bvar::Histogram::BucketSchema({10, 20}));
+        myhist << 5;
+        ClosureChecker done;
+        brpc::Controller cntl;
+        SetUpController(&cntl, true);
+        cntl.http_request()._unresolved_path = "myhist";
+        service.default_method(&cntl, &req, &res, &done);
+        ASSERT_FALSE(cntl.Failed());
+        CheckContent(cntl, "<tr class=\"nonplot-variable\">"
+                           "<td>myhist_bucket{le=\"10\"}</td><td>1</td></tr>");
+        ASSERT_EQ(std::string::npos, cntl.response_attachment().to_string()
+                  .find("id=\"value-myhist_bucket"));
+    }
+    {
         ClosureChecker done;
         brpc::Controller cntl;
         cntl.http_request()._unresolved_path = "iobuf*";

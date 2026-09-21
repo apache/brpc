@@ -23,9 +23,11 @@
     - [bvar::Miner](#bvarminer)
     - [bvar::IntRecorder](#bvarintrecorder)
     - [bvar::LatencyRecorder](#bvarlatencyrecorder)
+    - [bvar::Histogram](#bvarhistogram)
     - [bvar::Status](#bvarstatus)
     - [bvar::WindowEx](#bvarwindowex)
     - [bvar::PerSecondEx](#bvarpersecondex)
+    - [自定义的组合类型](#自定义的组合类型)
 
 # mbvar Introduction
 
@@ -40,9 +42,12 @@ mbvar中有两个类，分别是MVariable和MultiDimension，MVariable是多维�
 | bvar::Miner<T> | 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N)。 |
 | bvar::IntRecorder | 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值。 |
 | bvar::LatencyRecorder | 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。 |
+| bvar::Histogram | 把观测值落到一组固定的桶里，只导出各个桶的计数，分位值由监控系统算。没有默认构造函数，创建MultiDimension时必须额外给出一个BucketSchema，见[bvar::Histogram](#bvarhistogram)一节。 |
 | bvar::Status<T> | 记录和显示一个值，拥有额外的set_value函数。 |
 | bvar::WindowEx<R, T> | 获得之前一段时间内的统计值。WindowEx是独立存在的，不依赖其他的计数器，需要给它发送数据。 |
 | bvar::PerSecondEx<T> | 获得之前一段时间内平均每秒的统计值。PerSecondEx是独立存在的，不依赖其他的计数器，需要给它发送数据。 |
+
+值类型不限于上表：凡是「一个类型对应多个prometheus指标」的类型，只要在该类型上声明`list_metric_families()`和`dump_samples()`两个成员，MultiDimension就会把它当作组合指标来导出，不需要修改bvar的任何文件，见[自定义的组合类型](#自定义的组合类型)一节。bvar::Histogram和bvar::LatencyRecorder走的正是这同一个约定。
 
 例子：
 ```c++
@@ -335,33 +340,48 @@ size_t mbvar_list_exposed(std::vector<std::string>* names) {
 
 ## constructor
 
-有三个构造函数：
+有三个构造函数，labels之后都可以再带任意个参数，它们会被拷贝进MultiDimension，并在创建每个label组合对应的bvar时，以const引用的形式转发给值类型T的构造函数：
 ```c++
-template <typename T, typename KeyType = std::list<std::string>>
+template <typename T, typename KeyType = std::list<std::string>, bool Shared = false>
 class MultiDimension : public MVariable {
 public:
     // 不建议使用
-    explicit MultiDimension(const key_type& labels);
+    template <typename... Args>
+    explicit MultiDimension(const key_type& labels, Args&&... args);
 
     // 推荐使用
+    template <typename... Args>
     MultiDimension(const base::StringPiece& name,
-                   const key_type& labels);
+                   const key_type& labels, Args&&... args);
     // 推荐使用
+    template <typename... Args>
     MultiDimension(const base::StringPiece& prefix,
                    const base::StringPiece& name,
-                   const key_type& labels);
+                   const key_type& labels, Args&&... args);
     ...
 };
 ```
 
-**explicit MultiDimension(const key_type& labels)**
+在编译期校验：
+- 不传额外参数时，值类型必须支持默认构造；
+- 传了参数时，值类型必须能用这些参数的const引用构造出来，否则编译期就报错。比如bvar::Histogram没有默认构造函数，创建MultiDimension<bvar::Histogram>时必须显式给出一个BucketSchema：
+
+```c++
+bvar::MultiDimension<bvar::Histogram> g_latency(
+    "rpc_latency", {"method", "status"},
+    bvar::Histogram::BucketSchema({10, 50, 100, 500, 1000}));
+```
+
+这个转发是通用的，不是Histogram的特例。比如`MultiDimension<bvar::LatencyRecorder> m("m", {"method"}, 60)`就是给每个LatencyRecorder指定60秒的统计窗口。
+
+**explicit MultiDimension(const key_type& labels, Args&&... args)**
 
 * ~~不建议使用~~
 * 不会“曝光”多维度统计变量(mbvar)，即没有注册到任何全局结构* 中
 * 不会dump到本地文件，即使-bvar_dump=true、-mbvar_dump_file不为空
 * mbvar纯粹是一个更快的多维度计数器
 
-**MultiDimension(const base::StringPiece& name, const key_type& labels)**
+**MultiDimension(const base::StringPiece& name, const key_type& labels, Args&&... args)**
 
 * **推荐使用**
 * 会曝光(调用MVariable::expose(name))，也会注册到全局结构中
@@ -380,7 +400,7 @@ bvar::MultiDimension<bvar::Adder<int> > g_request_count("request_count", {"idc",
 } // namespace foo
 ```
 
-**MultiDimension(const base::StringPiece& prefix, const base::StringPiece& name, const key_type& labels)**
+**MultiDimension(const base::StringPiece& prefix, const base::StringPiece& name, const key_type& labels, Args&&... args)**
 * **推荐使用**
 * 会曝光(调用MVariable::expose_as(prefix, name))，也会注册到全局结构中
 * -bvar_dump=true时，会启动一个后台导出线程以bvar_dump_interval指定的时间间隔更新mbvar_dump_file文件
@@ -847,6 +867,52 @@ void request_cost_latency(const std::list<std::string>& request_labels) {
 } // namespace foo
 ```
 
+### bvar::Histogram
+把观测值落到一组固定的桶里，只导出各个桶的计数，分位值由监控系统用`histogram_quantile()`去算，适合跨实例聚合的场景。
+
+Histogram没有默认构造函数，创建MultiDimension时必须在labels之后显式给出一个BucketSchema，它会转发给每个label组合创建的Histogram：
+```c++
+#include <bvar/bvar.h>
+#include <bvar/multi_dimension.h>
+
+namespace foo {
+namespace bar {
+// 定义一个全局的多维度mbvar变量，桶的上界为10/20/50/100/500，另有一个+Inf桶
+bvar::MultiDimension<bvar::Histogram> g_request_latency(
+    "request_latency", {"idc", "method", "status"},
+    bvar::Histogram::BucketSchema({10, 20, 50, 100, 500}));
+
+void record_latency(const std::list<std::string>& request_labels, int64_t latency_us) {
+    // 获取request对应的单维度mbvar指针，假设request_labels = {"tc", "get", "200"}
+    bvar::Histogram* latency = g_request_latency.get_stats(request_labels);
+    // 判断指针非空
+    if (latency == nullptr) {
+        return;
+    }
+
+    // latency只能在g_request_latency生命周期内访问，否则行为未定义，可能会出core
+    *latency << latency_us;
+    // 获取自使用以来的样本数、总和与平均值
+    int64_t count = latency->count();
+    double sum = latency->sum();
+    double avg = latency->average();
+}
+
+} // namespace bar
+} // namespace foo
+```
+
+导出为prometheus格式时，mbvar的label和桶的`le`合并在同一个花括号里，`_bucket`/`_sum`/`_count`同属一个指标名：
+```
+# HELP request_latency
+# TYPE request_latency histogram
+request_latency_bucket{idc="tc",method="get",status="200",le="10"} 3
+...
+request_latency_bucket{idc="tc",method="get",status="200",le="+Inf"} 12
+request_latency_sum{idc="tc",method="get",status="200"} 218
+request_latency_count{idc="tc",method="get",status="200"} 12
+```
+
 ### bvar::Status
 记录和显示一个值，拥有额外的set_value函数。
 ```c++
@@ -920,3 +986,78 @@ void Record(const std::list<std::string>& request_labels, int num) {
 } // namespace bar
 } // namespace foo
 ```
+
+### 自定义的组合类型
+
+上面几种类型都是一个类型对应一个prometheus指标。bvar::Histogram（一族`_bucket`/`_sum`/`_count`）和bvar::LatencyRecorder（`_latency`/`_avg_latency`等5个族）则会从一个类型导出多个指标。MultiDimension并没有为它们写死分支，而是认一个约定：在类型上声明下面两个成员，MultiDimension就会把它当作组合指标来dump。
+
+```c++
+class HitRate {
+public:
+    void hit() {
+        ++_hits; 
+        ++_total;
+    }
+    void miss() {
+        ++_total;
+    }
+
+    // 本类型导出的族，按dump的顺序排列。一个MetricFamily就是一个prometheus
+    // 指标族：一个指标名加一行`# TYPE`。它的四个字段依次是suffix（接在
+    // 暴露名后面得到族名）、type（即`# TYPE`的值）、reserved_labels（该族
+    // 样本自己的label名）、additional_sample_suffixes（族内额外样本
+    // 的suffix）。后两个字段用不到时也要写上空初始化器`{}`，否则gcc会报
+    // -Wmissing-field-initializers告警。下面声明两个单样本的counter族，
+    // 暴露名cache_hitrate加上suffix后产出cache_hitrate_hits和
+    // cache_hitrate_total。
+    static std::vector<bvar::MetricFamily> list_metric_families() {
+        return {{"_hits", "counter", {}, {}}, {"_total", "counter", {}, {}}};
+    }
+
+    // 只输出第family_index族的样本，不要输出"# TYPE"：那一行属于整个族，
+    // 由调用方为所有label组合统一发一次。name是已经拼好suffix的暴露名；
+    // labels是外层MultiDimension的label，形如`k="v",k="v"`，不带花括号。
+    // 返回false表示中止，语义同Dumper::dump()。
+    bool dump_samples(bvar::Dumper* dumper, size_t family_index,
+                      const std::string& name,
+                      butil::StringPiece labels) const {
+        std::string key(name);
+        if (!labels.empty()) {
+            key.push_back('{');
+            key.append(labels.data(), labels.size());
+            key.push_back('}');
+        }
+        return dumper->dump_mvar(
+            key, butil::Int64ToString(family_index == 0 ? _hits : _total));
+    }
+
+private:
+    int64_t _hits{0};
+    int64_t _total{0};
+};
+
+// 用法和内置类型完全一样
+bvar::MultiDimension<HitRate> g_hitrate("cache_hitrate", {"cache"});
+g_hitrate.get_stats({"l1"})->hit();
+g_hitrate.get_stats({"l1"})->miss();
+```
+
+导出时每个族前面带一行自己的`# TYPE`，按list_metric_families()声明的顺序输出：
+```
+# HELP cache_hitrate_hits
+# TYPE cache_hitrate_hits counter
+cache_hitrate_hits{cache="l1"} 1
+# HELP cache_hitrate_total
+# TYPE cache_hitrate_total counter
+cache_hitrate_total{cache="l1"} 2
+```
+
+几点约定：
+* `list_metric_families()`必须是幂等的：它在预留指标名和每次dump时都会被调用，应保证每次返回相同的内容。返回的每个`bvar::MetricFamily`描述一个prometheus指标族（一个指标名加一行`# TYPE`，可包含一个或多个样本），按字段声明顺序包含四个字段（聚合初始化，用不到的字段也要写上空初始化器`{}`占位）：
+  - `suffix`：族名后缀，拼在指标名后面构成族名。当一个类型导出多个平级的族时，每个族各用一个后缀，例如LatencyRecorder拆分为`_latency`/`_avg_latency`/`_max_latency`/`_qps`/`_count`五个族。Histogram则不同：整个类型只有一个族，`_bucket`/`_sum`/`_count`是同一族内的三类指标，而非三个独立的族，因此suffix留空，三类指标通过`additional_sample_suffixes`声明。
+  - `type`：`# TYPE`行的取值，为"gauge"/"counter"/"histogram"/"summary"之一。
+  - `reserved_labels`：该族内置的label。外层MultiDimension的labels不能与内置label冲突（Histogram为`le`，LatencyRecorder为`quantile`），原因见下一条。
+  - `additional_sample_suffixes`：族内额外指标的后缀。例如Histogram声明了`_bucket`/`_sum`/`_count`，表示这一个族实际包含三类指标。单指标的族（如上面的HitRate、LatencyRecorder的各族）写`{}`即可。
+* 外层MultiDimension的labels不能与某个族通过`reserved_labels`声明的label名重复（Histogram保留`le`，LatencyRecorder保留`quantile`），否则同一样本会包含重名的label。遇到冲突时MultiDimension会拒绝该配置。
+* 同一样本内，外层MultiDimension的label要拼在自己的label之前，放进同一对花括号中。
+

@@ -20,6 +20,7 @@
 #ifndef BVAR_MULTI_DIMENSION_H
 #define BVAR_MULTI_DIMENSION_H
 
+#include <functional>
 #include <memory>
 #include <type_traits>
 #include "butil/logging.h"                           // LOG
@@ -28,9 +29,22 @@
 #include "butil/containers/doubly_buffered_data.h"   // DBD
 #include "butil/containers/flat_map.h"               // butil::FlatMap
 #include "butil/strings/string_piece.h"
+#include "bvar/variable.h"                           // Dumper, IsCompositeMetric
 #include "bvar/mvariable.h"
 
 namespace bvar {
+
+namespace detail {
+
+template <typename ValuePtr>
+auto hide_if_supported(ValuePtr& value, int) -> decltype(value->hide(), void()) {
+    value->hide();
+}
+
+template <typename ValuePtr>
+void hide_if_supported(ValuePtr&, ...) {}
+
+}  // namespace detail
 
 // KeyType requirements:
 // 1. KeyType must be a container type with iterator, e.g. std::vector, std::list, std::set.
@@ -84,14 +98,32 @@ public:
     typedef butil::DoublyBufferedData<MetricMap> MetricMapDBD;
     typedef typename MetricMapDBD::ScopedPtr MetricMapScopedPtr;
     
-    explicit MultiDimension(const key_type& labels);
-    
+    // `args` are copied and supplied as const references to each value's
+    // constructor. Only overloads that can construct T this way participate.
+    // With no args, T must be default-constructible. A Histogram is the
+    // typical one, its buckets are fixed at construction:
+    //   bvar::MultiDimension<bvar::Histogram> h(
+    //       "rpc_latency", {"method"},
+    //       bvar::Histogram::BucketSchema({10, 50, 100, 500, 1000}));
+    // They are copied once into the MultiDimension, nothing needs to outlive
+    // the call.
+    template <typename... Args,
+              std::enable_if_t<std::is_constructible<
+                  T, const typename std::decay<Args>::type&...>::value, int> = 0>
+    explicit MultiDimension(const key_type& labels, Args&&... args);
+
+    template <typename... Args,
+              std::enable_if_t<std::is_constructible<
+                  T, const typename std::decay<Args>::type&...>::value, int> = 0>
     MultiDimension(const butil::StringPiece& name,
-                   const key_type& labels);
-    
+                   const key_type& labels, Args&&... args);
+
+    template <typename... Args,
+              std::enable_if_t<std::is_constructible<
+                  T, const typename std::decay<Args>::type&...>::value, int> = 0>
     MultiDimension(const butil::StringPiece& prefix,
                    const butil::StringPiece& name,
-                   const key_type& labels);
+                   const key_type& labels, Args&&... args);
 
     ~MultiDimension() override;
 
@@ -160,6 +192,25 @@ public:
 #endif
 
 private:
+    int expose_impl(const butil::StringPiece& prefix,
+                    const butil::StringPiece& name) override {
+        return _label_names_valid ? Base::expose_impl(prefix, name) : -1;
+    }
+
+    std::vector<std::string> collect_prometheus_names() const override {
+        return collect_prometheus_names_impl<T>();
+    }
+    template <typename U>
+    std::enable_if_t<!detail::IsCompositeMetric<U>::value, std::vector<std::string> >
+    collect_prometheus_names_impl() const {
+        return {this->name()};
+    }
+    template <typename U>
+    std::enable_if_t<detail::IsCompositeMetric<U>::value, std::vector<std::string> >
+    collect_prometheus_names_impl() const {
+        return detail::collect_metric_family_names(this->name(), U::list_metric_families());
+    }
+
     template <typename K>
     value_ptr_type get_stats_impl(const K& labels_value);
 
@@ -168,36 +219,55 @@ private:
         const K& labels_value, STATS_OP stats_op, bool* do_write = nullptr);
 
     template <typename K>
-    static typename std::enable_if<butil::is_same<K, key_type>::value>::type
+    static std::enable_if_t<butil::is_same<K, key_type>::value>
     insert_metrics_map(MetricMap& bg, const K& labels_value, op_value_type metric) {
         bg.insert(labels_value, metric);
     }
 
     template <typename K>
-    static typename std::enable_if<!butil::is_same<K, key_type>::value>::type
+    static std::enable_if_t<!butil::is_same<K, key_type>::value>
     insert_metrics_map(MetricMap& bg, const K& labels_value, op_value_type metric) {
         // key_type::value_type must be able to convert to std::string.
         key_type labels_value_str(labels_value.cbegin(), labels_value.cend());
         bg.insert(labels_value_str, metric);
     }
 
+    // One gauge per label set, its value from describe().
     template <typename U = T>
-    typename std::enable_if<!butil::is_same<LatencyRecorder, U>::value, size_t>::type
+    std::enable_if_t<!detail::IsCompositeMetric<U>::value, size_t>
     dump_impl(Dumper* dumper, const DumpOptions* options);
 
+    // T maps to several metrics and drives the dumper itself, see the contract
+    // in bvar/variable.h.
     template <typename U = T>
-    typename std::enable_if<butil::is_same<LatencyRecorder, U>::value, size_t>::type
+    std::enable_if_t<detail::IsCompositeMetric<U>::value, size_t>
     dump_impl(Dumper* dumper, const DumpOptions* options);
 
-    void make_dump_key(std::ostream& os, const key_type& labels_value,
-                       const std::string& suffix = "", double quantile = 0);
+    // Builds the name that one label set is dumped under into `key`, replacing
+    // whatever it held: the exposed name followed by the labels in braces, as
+    // in `foo{method="echo"}`. Takes a string rather than returning one so that
+    // a dump can reuse the same buffer for all its label sets.
+    void make_dump_key(std::string* key, const key_type& labels_value);
 
-    void make_labels_kvpair_string(
-        std::ostream& os, const key_type& labels_value, double quantile);
+    // Appends the kvpairs alone, without the enclosing braces, to `key`.
+    // A composite metric merges labels of its own (`le` for a Histogram,
+    // `quantile` for a LatencyRecorder) into the same brace group and so
+    // needs them unwrapped.
+    // Returns true if at least one pair was appended.
+    bool append_labels_kvpair_body(std::string* key, const key_type& labels_value);
 
 
     template <typename K>
     bool is_valid_lables_value(const K& labels_value) const;
+
+    template <typename U = T>
+    static std::enable_if_t<!detail::IsCompositeMetric<U>::value, bool>
+    are_label_names_valid(const key_type& labels) {
+        return true;
+    }
+    template <typename U = T>
+    static std::enable_if_t<detail::IsCompositeMetric<U>::value, bool>
+    are_label_names_valid(const key_type& labels);
     
     // Remove all stats so those not count and dump
     void delete_stats();
@@ -205,26 +275,44 @@ private:
     static size_t init_flatmap(MetricMap& bg);
 
     // If Shared is true, return std::shared_ptr, otherwise return raw pointer.
-    template <bool S = Shared>
-    typename std::enable_if<S, value_ptr_type>::type  new_value() {
-        return std::make_shared<value_type>();
+    template <bool S = Shared, typename... Args>
+    static std::enable_if_t<S, value_ptr_type>
+    make_value(const Args&... args) {
+        return std::make_shared<value_type>(args...);
     }
-    template <bool S = Shared>
-    typename std::enable_if<!S, value_ptr_type>::type  new_value() {
-        return new value_type();
+    template <bool S = Shared, typename... Args>
+    static std::enable_if_t<!S, value_ptr_type>
+    make_value(const Args&... args) {
+        return new value_type(args...);
+    }
+
+    // Taken by value so that the arguments are copied into the closure.
+    template <typename... Args>
+    static std::function<value_ptr_type()> make_value_factory(Args... args) {
+        return [args...]() {
+            value_ptr_type value = make_value(args...);
+            // Child metrics are exported through MultiDimension,
+            // not on their own.
+            detail::hide_if_supported(value, 0);
+            return value;
+        };
     }
 
     // If Shared is true, reset std::shared_ptr, otherwise delete raw pointer.
     template <bool S = Shared>
-    typename std::enable_if<S>::type delete_value(value_ptr_type& v) {
+    std::enable_if_t<S> delete_value(value_ptr_type& v) {
         v.reset();
     }
     template <bool S = Shared>
-    typename std::enable_if<!S>::type delete_value(value_ptr_type& v) {
+    std::enable_if_t<!S> delete_value(value_ptr_type& v) {
         delete v;
     }
 
+    bool _label_names_valid;
     size_t _max_stats_count;
+    // make_value() bound to the arguments the MultiDimension was constructed with.
+    // Called once per new label combination, never on the recording path.
+    std::function<value_ptr_type()> _new_value;
     MetricMapDBD _metric_map;
 };
 

@@ -198,6 +198,29 @@ TEST_F(VariableTest, expose) {
     ASSERT_EQ(0, c1.expose("c1"));
     ASSERT_EQ("c1", c1.name());
     ASSERT_EQ(1UL, bvar::Variable::count_exposed());
+
+    // A name already taken cannot be re-used: expose fails, the loser stays
+    // hidden and nameless, the owner is untouched and the count is unchanged.
+    bvar::Status<int> c2;
+    ASSERT_EQ(-1, c2.expose("c1"));
+    ASSERT_TRUE(c2.is_hidden());
+    ASSERT_TRUE(c2.name().empty());
+    ASSERT_EQ("c1", c1.name());
+    ASSERT_EQ(1UL, bvar::Variable::count_exposed());
+
+    // Collisions also survive separator normalization: "foo.bar::Apple" and
+    // "foo::bar::Apple" both fold onto foo_bar_apple_c1.
+    ASSERT_EQ(0, c1.expose_as("foo::bar::Apple", "c1"));
+    ASSERT_EQ("foo_bar_apple_c1", c1.name());
+    ASSERT_EQ(-1, c2.expose_as("foo.bar.Apple", "c1"));
+    ASSERT_TRUE(c2.is_hidden());
+    ASSERT_EQ(1UL, bvar::Variable::count_exposed());
+
+    // Once the owner releases the name, the waiting variable can take it.
+    ASSERT_TRUE(c1.hide());
+    ASSERT_EQ(0, c2.expose("foo_bar_apple_c1"));
+    ASSERT_EQ("foo_bar_apple_c1", c2.name());
+    ASSERT_EQ(1UL, bvar::Variable::count_exposed());
 }
 
 class MyDumper : public bvar::Dumper {

@@ -267,14 +267,19 @@ public:
     explicit VarsDumper(butil::IOBufBuilder& os, bool use_html)
         : _os(os), _use_html(use_html) {}
     
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        // A composite metric writes its samples under `name{label="value"}`,
+        // which is neither a legal id (the quotes would close the attribute
+        // early) nor reachable by the $("#value-" + name) of the script below.
+        // No series is exposed under such a name either, so nothing could
+        // live-update it: print the value plainly.
+        bool live_updatable = name.find('{') == std::string::npos;
         bool plot = false;
         if (_use_html) {
             bvar::SeriesOptions series_options;
             series_options.test_only = true;
-            const int rc = bvar::Variable::describe_series_exposed(
-                name, _os, series_options);
-            plot = (rc == 0);
+            int rc = bvar::Variable::describe_series_exposed(name, _os, series_options);
+            plot = rc == 0;
             if (plot) {
                 _os << "<tr class=\"variable\">";
             } else {
@@ -282,13 +287,19 @@ public:
             }
         }
         if (_use_html) {
-            _os << "<td>" << name << "</td><td><span id=\"value-" << name << "\">";
+            _os << "<td>" << name << "</td><td>";
+            if (live_updatable) {
+                _os << "<span id=\"value-" << name << "\">";
+            }
         } else {
             _os << name << VAR_SEP;
         }
         _os << desc;
         if (_use_html) {
-            _os << "</span></td></tr>\n";
+            if (live_updatable) {
+                _os << "</span>";
+            }
+            _os << "</td></tr>\n";
             if (plot) {
                 _os << "<tr class=\"detail-row\"><td colspan=\"2\">"
                     "<div class=\"detail\"><div id=\"" << name

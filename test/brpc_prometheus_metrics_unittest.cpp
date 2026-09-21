@@ -23,6 +23,7 @@
 #include "brpc/controller.h"
 #include "butil/strings/string_piece.h"
 #include "echo.pb.h"
+#include "bvar/histogram.h"
 #include "bvar/multi_dimension.h"
 
 int main(int argc, char* argv[]) {
@@ -48,18 +49,24 @@ enum STATE {
     GAUGE,
     SUMMARY,
     COUNTER,
+    HISTOGRAM,
     // When meets a line with a gauge/counter with labels, we have no
     // idea the next line is a new HELP or the same gauge/counter just
     // with different labels
     HELP_OR_GAUGE,
     HELP_OR_COUNTER,
+    // Same for a histogram: the samples of the next label set follow the
+    // _count closing the previous one, unless the family is over
+    HELP_OR_HISTOGRAM,
 };
 
 TEST(PrometheusMetrics, sanity) {
     brpc::Server server;
     DummyEchoServiceImpl echo_svc;
     ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start("127.0.0.1:8614", nullptr));
+    // An ephemeral port rather than a hardcoded one, which another test in the
+    // same run may already be listening on.
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
 
     const std::list<std::string> labels = {"label1", "label2"};
     bvar::MultiDimension<bvar::Adder<uint32_t> > my_madder("madder", labels);
@@ -82,10 +89,26 @@ TEST(PrometheusMetrics, sanity) {
     bvar::LatencyRecorder my_lat3("rpc_server_lat_test");
     my_lat3 << 5 << 6;
 
+    bvar::MultiDimension<bvar::Histogram> my_mhist("mhist", labels,
+                                                   bvar::Histogram::BucketSchema({10, 20}));
+    bvar::Histogram* my_hist1 = my_mhist.get_stats({"val1", "val2"});
+    ASSERT_TRUE(my_hist1);
+    // Spread over the buckets so that the cumulative counts differ from
+    // each other and the +Inf one is not the only non-empty bucket.
+    *my_hist1 << 1 << 15 << 100;
+    bvar::Histogram* my_hist2 = my_mhist.get_stats({"val2", "val3"});
+    ASSERT_TRUE(my_hist2);
+    *my_hist2 << 3 << 40;
+
+    // The single dimension counterpart of the multi dimension histogram above,
+    // dumped as a family of its own with no labels.
+    bvar::Histogram my_hist3("hist3", bvar::Histogram::BucketSchema({10, 20}));
+    my_hist3 << 1 << 15 << 100;
+
     brpc::Channel channel;
     brpc::ChannelOptions channel_opts;
     channel_opts.protocol = "http";
-    ASSERT_EQ(0, channel.Init("127.0.0.1:8614", &channel_opts));
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &channel_opts));
     brpc::Controller cntl;
     cntl.http_request().uri() = "/brpc_metrics";
     channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
@@ -133,9 +156,12 @@ TEST(PrometheusMetrics, sanity) {
     int num = 0;
     bool summary_sum_gathered = false;
     bool summary_count_gathered = false;
+    bool histogram_inf_gathered = false;
+    bool histogram_sum_gathered = false;
     bool has_ever_summary = false;
     bool has_ever_gauge = false;
     bool has_ever_counter = false; // brought in by mvar latency recorder
+    bool has_ever_histogram = false; // brought in by mvar histogram
     std::unordered_set<std::string> metric_name_set;
 
     while ((end_pos = res.find('\n', start_pos)) != butil::StringPiece::npos) {
@@ -156,6 +182,8 @@ TEST(PrometheusMetrics, sanity) {
                     state = SUMMARY;
                 } else if (strcmp(type, "counter") == 0) {
                     state = COUNTER;
+                } else if (strcmp(type, "histogram") == 0) {
+                    state = HISTOGRAM;
                 } else {
                     ASSERT_TRUE(false) << "invalid type: " << type;
                 }
@@ -165,12 +193,17 @@ TEST(PrometheusMetrics, sanity) {
                 break;
             case HELP_OR_GAUGE:
             case HELP_OR_COUNTER:
+            case HELP_OR_HISTOGRAM:
                 matched = sscanf(res.data() + start_pos, "# HELP %s", name_help);
                 // Try to figure out current line is a new COMMENT or not
                 if (matched == 1) {
                     state = HELP;
+                } else if (state == HELP_OR_GAUGE) {
+                    state = GAUGE;
+                } else if (state == HELP_OR_COUNTER) {
+                    state = COUNTER;
                 } else {
-                    state = state == HELP_OR_GAUGE ? GAUGE : COUNTER;
+                    state = HISTOGRAM;
                 }
                 res[end_pos] = '\n'; // revert to original
                 continue; // do not jump to next line
@@ -219,13 +252,52 @@ TEST(PrometheusMetrics, sanity) {
                     }
                 } // else find "quantile=", just break to next line
                 break;
+            case HISTOGRAM: {
+                matched = sscanf(res.data() + start_pos, "%s %d", name_type, &num);
+                ASSERT_EQ(2, matched);
+                // Every sample of the family is the name on the TYPE line plus
+                // one of the _bucket/_sum/_count suffixes, then the labels.
+                ASSERT_TRUE(strncmp(name_type, name_help, strlen(name_help)) == 0);
+                butil::StringPiece suffix(name_type + strlen(name_help));
+                label_start = suffix.find("{");
+                if (label_start != butil::StringPiece::npos) {
+                    ASSERT_EQ(name_type[strlen(name_type) - 1], '}');
+                    suffix = suffix.substr(0, label_start);
+                }
+                if (suffix == "_bucket") {
+                    // The buckets of one label set come in ascending order and
+                    // the unbounded one closes them.
+                    ASSERT_FALSE(histogram_inf_gathered);
+                    ASSERT_NE(butil::StringPiece::npos,
+                              butil::StringPiece(name_type).find("le=\""));
+                    if (butil::StringPiece(name_type).find("le=\"+Inf\"") !=
+                        butil::StringPiece::npos) {
+                        histogram_inf_gathered = true;
+                    }
+                } else if (suffix == "_sum") {
+                    ASSERT_TRUE(histogram_inf_gathered);
+                    ASSERT_FALSE(histogram_sum_gathered);
+                    histogram_sum_gathered = true;
+                } else if (suffix == "_count") {
+                    ASSERT_TRUE(histogram_sum_gathered);
+                    histogram_inf_gathered = false;
+                    histogram_sum_gathered = false;
+                    has_ever_histogram = true;
+                    // Samples of another label set may follow.
+                    state = HELP_OR_HISTOGRAM;
+                } else {
+                    ASSERT_TRUE(false) << "invalid histogram sample: " << name_type;
+                }
+                break;
+            }
             default:
                 ASSERT_TRUE(false);
                 break;
         }
         start_pos = end_pos + 1;
     }
-    ASSERT_TRUE(has_ever_gauge && has_ever_summary && has_ever_counter);
+    ASSERT_TRUE(has_ever_gauge && has_ever_summary && has_ever_counter
+                && has_ever_histogram);
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
 }

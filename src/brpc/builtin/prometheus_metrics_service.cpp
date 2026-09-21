@@ -86,14 +86,98 @@ private:
 
 butil::StringPiece GetMetricsName(const std::string& name) {
     auto pos = name.find_first_of('{');
-    int size = (pos == std::string::npos) ? name.size() : pos;
+    int size = pos == std::string::npos ? name.size() : pos;
     return butil::StringPiece(name.data(), size);
+}
+
+// Case-insensitive match of [p, end) against the NUL-terminated, lower-case
+// ASCII `word`. The whole rest of the input must be consumed, so "inf" matches
+// but "infx" does not.
+static bool MatchWordIgnoreCase(const char* p, const char* end, const char* word) {
+    for (; p != end && *word != '\0'; ++p, ++word) {
+        char c = *p;
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+        if (c != *word) {
+            return false;
+        }
+    }
+    return p == end && *word == '\0';
+}
+
+// Whether `s` is a number prometheus would accept as a sample value: a float64
+// in the decimal, or one of the specials it spells as "+Inf"/"-Inf"/"NaN"
+// (case-insensitive). The spelled-out "Infinity" is not part of the grammar,
+// so it is rejected even though Go's strconv.ParseFloat would accept it.
+//
+// Everything else is rejected: a quoted string, the json of a Window<Histogram>
+// or a compound PassiveStatus, and the bare `true`/'false` of a bool gflag,
+// which sniffing only the first char let through. Skipping such a variable
+// is not cosmetic: one malformed line makes prometheus reject the whole scrape,
+// not just that one metric.
+//
+// Scans the StringPiece in place, no copy and no allocation. Hexadecimal
+// floats are deliberately not accepted.
+bool IsDumpableToPrometheus(butil::StringPiece s) {
+    const char* p = s.data();
+    const char* const end = p + s.size();
+    if (p == end) {
+        return false;
+    }
+    if (*p == '+' || *p == '-') {
+        ++p;
+        if (p == end) {
+            return false;   // a lone sign
+        }
+    }
+    const char c = *p;
+    if (c >= '0' && c <= '9') {
+        // "123", "123." or "123.45".
+        while (p != end && *p >= '0' && *p <= '9') {
+            ++p;
+        }
+        if (p != end && *p == '.') {
+            ++p;
+            while (p != end && *p >= '0' && *p <= '9') {
+                ++p;
+            }
+        }
+    } else if (c == '.') {
+        // ".5": the digits before the point may be omitted, those after may not.
+        ++p;
+        if (p == end || *p < '0' || *p > '9') {
+            return false;
+        }
+        while (p != end && *p >= '0' && *p <= '9') {
+            ++p;
+        }
+    } else {
+        // The specials of the prometheus text format only: "Infinity" is not
+        // one of them, and passing it through could invalidate the whole scrape.
+        return MatchWordIgnoreCase(p, end, "inf") ||
+               MatchWordIgnoreCase(p, end, "nan");
+    }
+    // Optional exponent, which must carry at least one digit.
+    if (p != end && (*p == 'e' || *p == 'E')) {
+        ++p;
+        if (p != end && (*p == '+' || *p == '-')) {
+            ++p;
+        }
+        if (p == end || *p < '0' || *p > '9') {
+            return false;
+        }
+        while (p != end && *p >= '0' && *p <= '9') {
+            ++p;
+        }
+    }
+    // Anything left over ("12abc", "1.5.6", "1,2") is not a single number.
+    return p == end;
 }
 
 bool PrometheusMetricsDumper::dump(const std::string& name,
                                    const butil::StringPiece& desc) {
-    if (!desc.empty() && desc[0] == '"') {
-        // there is no necessary to monitor string in prometheus
+    if (!IsDumpableToPrometheus(desc)) {
         return true;
     }
     if (DumpLatencyRecorderSuffix(name, desc)) {
@@ -111,8 +195,7 @@ bool PrometheusMetricsDumper::dump(const std::string& name,
 }
 
 bool PrometheusMetricsDumper::dump_mvar(const std::string& name, const butil::StringPiece& desc) {
-    if (!desc.empty() && desc[0] == '"') {
-        // there is no necessary to monitor string in prometheus
+    if (!IsDumpableToPrometheus(desc)) {
         return true;
     }
     *_os << name << " " << desc << "\n";
@@ -228,7 +311,7 @@ void PrometheusMetricsService::default_method(::google::protobuf::RpcController*
 int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output) {
     butil::IOBufBuilder os;
     PrometheusMetricsDumper dumper(&os, g_server_info_prefix);
-    const int ndump = bvar::Variable::dump_exposed(&dumper, nullptr);
+    int ndump = bvar::Variable::dump_exposed(&dumper, nullptr);
     if (ndump < 0) {
         return -1;
     }
@@ -236,11 +319,10 @@ int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output) {
 
     if (bvar::FLAGS_bvar_max_dump_multi_dimension_metric_number > 0) {
         PrometheusMetricsDumper dumper_md(&os, g_server_info_prefix);
-        const int ndump_md = bvar::MVariableBase::dump_exposed(&dumper_md, nullptr);
-        if (ndump_md < 0) {
-            return -1;
+        size_t ndump_md = bvar::MVariableBase::dump_exposed(&dumper_md, nullptr);
+        if (ndump_md > 0) {
+            output->append(butil::IOBuf::Movable(os.buf()));
         }
-        output->append(butil::IOBuf::Movable(os.buf()));
     }
     return 0;
 }

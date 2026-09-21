@@ -32,6 +32,10 @@ public:
 };
 
 butil::StringPiece GetMetricsName(const std::string& name);
+
+// Whether `value` is a number prometheus accepts as a sample value, namely
+// what PrometheusMetricsDumper writes out and everything else it skips.
+bool IsDumpableToPrometheus(butil::StringPiece value);
 int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output);
 
 } // namepace brpc
