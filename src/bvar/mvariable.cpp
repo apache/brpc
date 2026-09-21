@@ -316,7 +316,7 @@ void MVariableBase::list_exposed(std::vector<std::string>* names) {
     }
 }
 
-size_t MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
+int MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
     if (nullptr == dumper) {
         LOG(ERROR) << "Parameter[dumper] is nullptr";
         return -1;

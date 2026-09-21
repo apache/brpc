@@ -319,10 +319,11 @@ int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output) {
 
     if (bvar::FLAGS_bvar_max_dump_multi_dimension_metric_number > 0) {
         PrometheusMetricsDumper dumper_md(&os, g_server_info_prefix);
-        size_t ndump_md = bvar::MVariableBase::dump_exposed(&dumper_md, nullptr);
-        if (ndump_md > 0) {
-            output->append(butil::IOBuf::Movable(os.buf()));
+        const int ndump_md = bvar::MVariableBase::dump_exposed(&dumper_md, nullptr);
+        if (ndump_md < 0) {
+            return -1;
         }
+        output->append(butil::IOBuf::Movable(os.buf()));
     }
     return 0;
 }

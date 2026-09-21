@@ -93,7 +93,7 @@ public:
     // `black_wildcards' and send them to `dumper'.
     // Use default options when `options' is nullptr.
     // Return number of dumped mvariables, -1 on error.
-    static size_t dump_exposed(Dumper* dumper, const DumpOptions* options);
+    static int dump_exposed(Dumper* dumper, const DumpOptions* options);
 
     // Find an exposed mvariable by `name' and put its description into `os'.
     // Returns 0 on found, -1 otherwise.
