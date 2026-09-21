@@ -40,6 +40,9 @@
 #include "brpc/transport_factory.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/details/ssl_helper.h"
+#if BRPC_WITH_FLATBUFFERS
+#include "brpc/flatbuffers/message.h"
+#endif
 
 namespace brpc {
 
@@ -484,6 +487,29 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
                          const google::protobuf::Message* request,
                          google::protobuf::Message* response,
                          google::protobuf::Closure* done) {
+#if BRPC_WITH_FLATBUFFERS
+    static_cast<Controller*>(controller_base)->_flatbuffers_method = nullptr;
+#endif
+    CallMethodInternal(method, controller_base, request, response, done, false);
+}
+
+#if BRPC_WITH_FLATBUFFERS
+void Channel::FBCallMethod(const flatbuffers::MethodDescriptor* method,
+                           google::protobuf::RpcController* controller_base,
+                           const flatbuffers::Message* request,
+                           flatbuffers::Message* response,
+                           google::protobuf::Closure* done) {
+    static_cast<Controller*>(controller_base)->_flatbuffers_method = method;
+    CallMethodInternal(nullptr, controller_base, request, response, done, true);
+}
+#endif
+
+void Channel::CallMethodInternal(
+        const google::protobuf::MethodDescriptor* method,
+        google::protobuf::RpcController* controller_base,
+        const google::protobuf::Message* request,
+        google::protobuf::Message* response,
+        google::protobuf::Closure* done, bool is_fb) {
     const int64_t start_send_real_us = butil::gettimeofday_us();
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->OnRPCBegin(start_send_real_us);
@@ -538,12 +564,17 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         return;
     }
     cntl->set_used_by_rpc();
+    const bool is_fb_protocol = (_options.protocol == PROTOCOL_FLATBUFFERS_RPC);
 
     if (cntl->_sender == nullptr && IsTraceable(Span::tls_parent().get())) {
         const int64_t start_send_us = butil::cpuwide_time_us();
         std::string method_name;
-        if (_get_method_name) {
+        if (_get_method_name && is_fb == is_fb_protocol) {
             method_name = butil::EnsureString(_get_method_name(method, cntl));
+#if BRPC_WITH_FLATBUFFERS
+        } else if (is_fb && cntl->_flatbuffers_method) {
+            method_name = cntl->_flatbuffers_method->full_name();
+#endif
         } else if (method) {
             method_name = butil::EnsureString(method->full_name());
         } else {
@@ -590,6 +621,33 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
 
     // Share the lb with controller.
     cntl->_lb = _lb;
+
+    const char* entry_error = nullptr;
+    if (is_fb != is_fb_protocol) {
+        entry_error = is_fb ? "FlatBuffers calls require the fb_rpc protocol" :
+                              "The fb_rpc protocol requires FBCallMethod";
+    }
+#if BRPC_WITH_FLATBUFFERS
+    else if (is_fb) {
+        if (!cntl->_flatbuffers_method || !request || !response) {
+            entry_error = "FlatBuffers method, request and response "
+                          "must not be null";
+        } else if (_options.auth != nullptr) {
+            // An authenticated shared socket may skip the packer's auth check.
+            entry_error = "The fb_rpc protocol does not support authentication";
+        } else if (!cntl->_request_streams.empty() ||
+                   !cntl->_response_streams.empty()) {
+            entry_error = "The fb_rpc protocol does not support streams";
+        }
+    }
+#endif
+    if (entry_error) {
+        // A custom retry policy must not pack an unserialized request. Keep
+        // the normal completion path; callbacks may delete the controller.
+        cntl->set_max_retry(0);
+        cntl->SetFailed(EINVAL, "%s", entry_error);
+        return cntl->HandleSendFailed();
+    }
 
     // Ensure that serialize_request is done before pack_request in all
     // possible executions, including:

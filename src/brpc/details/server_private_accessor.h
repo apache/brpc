@@ -76,6 +76,15 @@ public:
         return _server->FindMethodPropertyByNameAndIndex(service_name, method_index);
     }
 
+#if BRPC_WITH_FLATBUFFERS
+    const Server::FlatBuffersMethodProperty*
+    FindFlatBuffersMethodPropertyByIndex(uint32_t service_index,
+                                         int32_t method_index) const {
+        return _server->FindFlatBuffersMethodPropertyByIndex(
+            service_index, method_index);
+    }
+#endif
+
     const Server::ServiceProperty*
     FindServicePropertyByFullName(const butil::StringPiece& fullname) const {
         return _server->FindServicePropertyByFullName(fullname);
