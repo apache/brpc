@@ -1,6 +1,7 @@
 # FlatBuffers RPC example
 
-[Runtime enablement guide](../../docs/en/flatbuffers.md)
+[English enablement guide](../../docs/en/flatbuffers.md) |
+[中文启用与验证指南](../../docs/cn/flatbuffers.md)
 
 This directory contains independent client and server programs using the
 `fb_rpc` protocol, generated FlatBuffers services, and
@@ -24,8 +25,8 @@ Linux and macOS and do not download dependencies.
 
 The runtime needs FlatBuffers headers, but building `brpc_flatc` also needs the
 official `libflatbuffers`. The official `flatc` generates table types; it cannot
-replace `brpc_flatc`, which generates bRPC services. The repository's Bazel dependencies pin
-FlatBuffers 25.2.10; use a matching complete installation to match that version.
+replace `brpc_flatc`, which generates bRPC services. The repository's ON gate pins
+FlatBuffers 25.2.10; use a matching complete installation to reproduce that gate.
 
 Use the **same FlatBuffers release** for the runtime headers, official `flatc`,
 and the headers/library used to build `brpc_flatc`. Use the same Protobuf
@@ -240,8 +241,9 @@ port or external server is needed, and the owned server is reaped before return.
 Generated code remains only in the build directory; the smoke does not modify
 source files.
 
-For runtime configuration and protocol limitations, see the
-[enablement guide](../../docs/en/flatbuffers.md).
+For OFF-prefix rejection, version mismatch, missing libraries, empty CTest
+runs, or connection failures, see the enablement guide's
+[troubleshooting table](../../docs/en/flatbuffers.md#troubleshooting).
 
 The same test can be invoked without CTest:
 

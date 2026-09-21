@@ -1,48 +1,298 @@
 # FlatBuffers messages and RPC
 
+[中文版](../cn/flatbuffers.md)
+
 bRPC provides optional IOBuf-backed FlatBuffers messages, builders, service
 descriptors, and the `fb_rpc` transport. The implementation builds on
 [apache/brpc#3196](https://github.com/apache/brpc/pull/3196) and
 [apache/brpc#3197](https://github.com/apache/brpc/pull/3197), while preserving
 Protocol's existing protobuf callback signatures.
 
-## Build
+## Enable FlatBuffers
 
-FlatBuffers support is disabled by default. The message runtime needs only
-FlatBuffers headers; it does not link a FlatBuffers library. Tests need a `flatc`
-matching those headers. Keep upstream's generated version assertions intact:
-regenerate the header rather than weakening the assertion.
+FlatBuffers is **OFF by default**. Enable it when building bRPC, then build the
+client/server against that same library and generated configuration header.
+Adding `-DBRPC_WITH_FLATBUFFERS=1` to an application is not a substitute: the
+feature changes the Channel, Controller and Server ABI.
 
-For example, with GoogleTest sources installed under `/usr/src/googletest`:
+| Build system | Enable option | Exported runtime prefix |
+| --- | --- | --- |
+| CMake | `-DWITH_FLATBUFFERS=ON` | `<build>/output` |
+| Make | `config_brpc.sh --with-flatbuffers` | `<checkout>/output` |
+| Bazel | `--define=BRPC_WITH_FLATBUFFERS=true` on build/test commands | Bazel outputs, not an install prefix for the standalone example |
+
+### Dependencies and versions
+
+Prepare the normal bRPC dependencies described in [Getting started](getting_started.md):
+a C++ toolchain, Protobuf compiler/development libraries, gflags, LevelDB,
+OpenSSL and zlib. FlatBuffers RPC does **not** remove the Protobuf dependency.
+
+| Component | Additional requirement |
+| --- | --- |
+| bRPC message/RPC runtime | FlatBuffers headers; no `libflatbuffers` linkage |
+| Official schema generation | `flatc` matching the runtime headers |
+| bRPC service generation | `brpc_flatc`, built with matching official headers and `libflatbuffers` |
+| Example smoke | Python 3; no GoogleTest requirement |
+| Library unit tests | GoogleTest and the project's test dependencies |
+
+The repository's Bazel/ON gate pins FlatBuffers **25.2.10**. Use a complete,
+matching installation to reproduce it; never remove the generated header's
+version assertions. CMake runtime tests use `FLATBUFFERS_FLATC_EXECUTABLE`,
+whereas generator acceptance and the example use `FLATC_EXECUTABLE`.
+`BRPC_FLATC_EXECUTABLE` always means the bRPC generator, not official `flatc`.
+
+Use the same Protobuf installation across all builds. When CMake detects
+`Protobuf_VERSION > 4.21`, C++17 and the corresponding Abseil dependencies are
+required; generator/example builds need Protobuf's CMake config package to
+export those dependencies. The runtime/example path requires CMake 3.16+; the CTest commands
+below use CMake/CTest 3.17+ for `--no-tests=error`. With 3.16, run the Python smoke
+directly. Use a single-configuration generator such as Unix Makefiles or Ninja.
+
+### CMake runtime build
+
+Run from a **writable checkout**, with a working compiler selected through
+`CC`/`CXX` if necessary. Example-generated bindings and binaries stay in `WORK`,
+but root bRPC configuration also writes **`src/butil/config.h` in the checkout**.
+Do not configure ON/OFF or different build systems concurrently in the same
+checkout, even with separate build directories; use independent writable copies.
+
+Replace the prefixes below with your installations (`include/`, `lib/` or
+`lib64/`). A prefix may be reused for several dependencies. On macOS, select a
+consistent compiler/SDK/architecture and the actual OpenSSL prefix; do not assume
+that `/usr/local/opt/openssl` exists on Apple Silicon.
 
 ```sh
-cmake -S . -B build -DWITH_FLATBUFFERS=ON -DBUILD_UNIT_TESTS=ON \
-  -DBUILD_BRPC_TOOLS=OFF -DDOWNLOAD_GTEST=OFF \
-  -DBRPC_SYSTEM_GTEST_SOURCE_DIR=/usr/src/googletest
-cmake --build build --target brpc_flatbuffers_unittest brpc_flatbuffers_protocol_unittest -j6
-ctest --test-dir build -R '^brpc_flatbuffers(_protocol)?_unittest$' --output-on-failure
+REPO="$PWD"
+DEPS=/absolute/path/to/dependency-prefix
+FB=/absolute/path/to/flatbuffers-prefix
+OPENSSL=/absolute/path/to/openssl-prefix
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/brpc-benchmark-fb.XXXXXX")"
+JOBS=2
+printf 'WORK=%s\n' "$WORK"
 ```
 
-For other installations set `FLATBUFFERS_INCLUDE_DIR`,
-`FLATBUFFERS_FLATC_EXECUTABLE`, and `BRPC_SYSTEM_GTEST_SOURCE_DIR` as needed.
-The project's usual test dependencies still apply.
+If FlatBuffers is not installed, build a matching official source checkout first
+(skip this block when `FB` already contains the required headers, compiler and
+library). `FB` must be a writable installation prefix, not the source directory:
 
-Make accepts `--with-flatbuffers` on `config_brpc.sh`; its tests accept
-`FLATC=/path/to/flatc`. Bazel accepts `--define=BRPC_WITH_FLATBUFFERS=true`,
-with matching FlatBuffers 25.2.10 runtime and compiler dependencies. Bzlmod
-imports the same checksum-pinned archive as WORKSPACE: `runtime_cc` and `flatc`
-do not need FlatBuffers' external gRPC module, which would otherwise conflict
-with bRPC's pinned BoringSSL even when the feature is disabled.
+```sh
+FB_SOURCE=/absolute/path/to/flatbuffers-25.2.10-source
+cmake -S "$FB_SOURCE" -B "$WORK/flatbuffers" \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DCMAKE_INSTALL_PREFIX="$FB" -DCMAKE_INSTALL_LIBDIR=lib \
+  -DFLATBUFFERS_BUILD_TESTS=OFF -DFLATBUFFERS_BUILD_FLATC=ON \
+  -DFLATBUFFERS_BUILD_FLATLIB=ON -DFLATBUFFERS_BUILD_SHAREDLIB=OFF \
+  -DFLATBUFFERS_INSTALL=ON -DFLATBUFFERS_LIBCXX_WITH_CLANG=OFF
+cmake --build "$WORK/flatbuffers" --parallel "$JOBS"
+cmake --install "$WORK/flatbuffers"
+"$FB/bin/flatc" --version
+```
 
-Public headers live in `brpc/flatbuffers/`, matching namespace
-`brpc::flatbuffers`. Include `message.h` for construction and `service.h` for
-service descriptors/interfaces. `BRPC_WITH_FLATBUFFERS` in `butil/config.h`
-is always 0 or 1; test it with `#if`, not `#ifdef`.
+Build the runtime without the unit-test dependencies:
 
-Flatc 2.0.x emits unqualified `flatbuffers::` names. Use a business schema
-namespace outside `brpc` (for example `myapp.rpc`) to avoid shadowing by
-`brpc::flatbuffers`; do not rely on include order. Flatc 25.2.10 emits fully
-qualified names instead.
+```sh
+cmake -S "$REPO" -B "$WORK/runtime" \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -DCMAKE_PREFIX_PATH="$DEPS;$FB;$OPENSSL" \
+  -DOPENSSL_ROOT_DIR="$OPENSSL" \
+  -DWITH_FLATBUFFERS=ON -DBUILD_SHARED_LIBS=OFF \
+  -DFLATBUFFERS_INCLUDE_DIR="$FB/include" \
+  -DBUILD_UNIT_TESTS=OFF -DDOWNLOAD_GTEST=OFF -DBUILD_BRPC_TOOLS=OFF
+cmake --build "$WORK/runtime" --parallel "$JOBS"
+grep -E '^#define BRPC_WITH_FLATBUFFERS +1$' "$WORK/runtime/output/include/butil/config.h"
+```
+
+The final check must print `#define BRPC_WITH_FLATBUFFERS 1`. Public headers live
+in `brpc/flatbuffers/`: `message.h` for messages/builders and `service.h` for
+services/descriptors. The configuration macro is always 0 or 1; use `#if`, not
+`#ifdef`. The policy argument above is an optional compatibility setting for
+older dependencies under CMake 4, not a FlatBuffers switch or a replacement for
+required dependency versions.
+
+### Make and Bazel alternatives
+
+In a separate writable checkout, using the same dependency prefixes:
+
+```sh
+sh config_brpc.sh --with-flatbuffers \
+  --headers="$FB/include $DEPS/include $OPENSSL/include" \
+  --libs="$DEPS/lib $OPENSSL/lib" --cc="${CC:-cc}" --cxx="${CXX:-c++}"
+make -j"$JOBS"
+```
+
+Use `lib64` or the platform's library directory where appropriate. The resulting
+`output/` can replace `WORK/runtime/output` in the example command below. Make
+unit tests take `FLATC="$FB/bin/flatc"` and require installed GoogleTest libraries
+and gperftools, not just GoogleTest sources; their `test/libbrpc.dbg.*` must also
+be loadable. The ON runner below builds GoogleTest, sets the test library path,
+and validates reports; system test dependencies such as gperftools must already
+be installed.
+
+Bazel supplies its pinned dependencies; pass the feature flag to both commands:
+
+```sh
+bazel build --define=BRPC_WITH_FLATBUFFERS=true //:brpc
+bazel test --define=BRPC_WITH_FLATBUFFERS=true --cache_test_results=no \
+  //test:brpc_flatbuffers_unittest //test:brpc_flatbuffers_protocol_unittest
+```
+
+These Bazel targets verify the library, not the standalone example. Do not use a
+raw `bazel-bin` directory as `BRPC_ROOT`; the example requires the include/lib
+layout of a CMake/Make output or installed prefix.
+
+## Verify with the client/server example
+
+[example/benchmark_fb](../../example/benchmark_fb/README.md) is a **bounded
+functional example**, not a performance benchmark. Its [schema](../../example/benchmark_fb/echo.fbs)
+uses `BenchmarkService.Echo` with explicit wire ID 7. The
+[server](../../example/benchmark_fb/server.cpp) calls `AddFlatBuffersService`;
+the [client](../../example/benchmark_fb/client.cpp) uses the generated
+`BenchmarkService::Stub` and `fb_rpc` channel.
+
+### Generate, build and smoke-test
+
+Continue in the same shell with the variables and runtime from above. An
+existing compatible FB ON runtime may be used instead by changing `BRPC_ROOT`.
+Build the bRPC generator, then the example:
+
+```sh
+cmake -S "$REPO/tools/flatbuffers" -B "$WORK/codegen" \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -DBUILD_TESTING=OFF \
+  -DCMAKE_PREFIX_PATH="$FB;$DEPS" \
+  -DFLATBUFFERS_INCLUDE_DIR="$FB/include"
+cmake --build "$WORK/codegen" --parallel "$JOBS"
+
+cmake -S "$REPO/example/benchmark_fb" -B "$WORK/example" \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -DBUILD_TESTING=ON \
+  -DCMAKE_PREFIX_PATH="$DEPS;$FB;$OPENSSL" \
+  -DOPENSSL_ROOT_DIR="$OPENSSL" \
+  -DBRPC_ROOT="$WORK/runtime/output" \
+  -DFLATBUFFERS_INCLUDE_DIR="$FB/include" \
+  -DFLATC_EXECUTABLE="$FB/bin/flatc" \
+  -DBRPC_FLATC_EXECUTABLE="$WORK/codegen/brpc_flatc"
+cmake --build "$WORK/example" --parallel "$JOBS"
+(cd "$WORK/example" && ctest -V --no-tests=error --output-on-failure -R '^benchmark_fb_smoke$')
+```
+
+The example build runs **both** generators. `flatc` produces `echo_generated.h`;
+`brpc_flatc` produces `echo.brpc.fb.h/.cpp`, all under `WORK/example/generated/`.
+Do not commit them or reuse stale generated headers after changing versions.
+If library discovery is ambiguous, pass `FLATBUFFERS_LIBRARY` explicitly when
+configuring `brpc_flatc`. See the [generator guide](../../tools/flatbuffers/README.md)
+for included schemas, explicit IDs and generator acceptance tests.
+
+Success means **one named CTest passed**, exit status 0, and this output:
+
+```text
+benchmark_fb smoke passed: 13 verified replies, 2 schema rejections, clean shutdown
+```
+
+That is 15 RPCs, not 15 CTests. The smoke verifies binary bytes, empty/absent
+strings, attachments, concurrency, single/pooled/short connections, schema
+rejection and recovery on the same server. It starts its own loopback server on
+an ephemeral port and reaps it; requiring SIGKILL is a failure. The orchestration
+has a 35-second deadline and CTest a 50-second timeout. `No tests were found`
+is not a pass. The same checks can be run without CTest:
+
+```sh
+python3 "$REPO/example/benchmark_fb/smoke.py" \
+  --server "$WORK/example/benchmark_fb_server" \
+  --client "$WORK/example/benchmark_fb_client"
+```
+
+The default example links `libbrpc.a`. For `LINK_SO=ON`, first build the runtime
+with `BUILD_SHARED_LIBS=ON` and the `brpc-shared` target, then reconfigure/rebuild
+the example. `LINK_SO` alone cannot create a shared runtime. The
+[example README](../../example/benchmark_fb/README.md) includes that sequence.
+
+### Run the programs separately
+
+Both processes must run on the **same host/container**: this example accepts
+only `127.0.0.1`. In the build terminal:
+
+```sh
+"$WORK/example/benchmark_fb_server" --listen_addr=127.0.0.1:0 --duration_s=300
+```
+
+Wait for `BRPC_FB_READY 127.0.0.1:<port>`. In another terminal, set `WORK` again
+(shell variables are not shared), replace the port, and run:
+
+```sh
+WORK=/absolute/path/printed/by/the/build
+SERVER=127.0.0.1:PORT_FROM_READY
+"$WORK/example/benchmark_fb_client" --server="$SERVER" \
+  --request_count=16 --thread_num=2 --request_size=8193 --attachment_size=257
+"$WORK/example/benchmark_fb_client" --server="$SERVER" \
+  --request_count=2 --thread_num=1 --request_size=0 --omit_message=true
+"$WORK/example/benchmark_fb_client" --server="$SERVER" \
+  --request_count=2 --thread_num=1 --corrupt_request=true
+"$WORK/example/benchmark_fb_client" --server="$SERVER" \
+  --request_count=2 --thread_num=1
+```
+
+All four commands must exit 0. Their `(completed, successes,
+expected_rejections, failures)` results are respectively `(16,16,0,0)`,
+`(2,2,0,0)`, `(2,0,2,0)` and `(2,2,0,0)`. `failures` is a 0/1 flag, not an RPC
+count. A corrupt request counts as an expected rejection only for the generated
+server's schema error (-1) with an empty response/attachment; timeouts and
+connection failures do not count. The last command verifies recovery. Stop the
+server with Ctrl-C or let its 300-second lifetime expire. See the example README
+for all bounded client/server parameters.
+
+## Additional tests and the ON gate
+
+For library unit tests, configure with `BUILD_UNIT_TESTS=ON`,
+`FLATBUFFERS_FLATC_EXECUTABLE` pointing to the matching official compiler, and
+`BRPC_SYSTEM_GTEST_SOURCE_DIR` pointing to GoogleTest sources when
+`DOWNLOAD_GTEST=OFF`. Build and run `brpc_flatbuffers_unittest` and
+`brpc_flatbuffers_protocol_unittest`; enabling the library alone does not run them.
+
+For the complete CMake path (both library suites, two codegen tests, and the
+example smoke), the shared [ON runner](../../.github/scripts/flatbuffers-on.py)
+can use the prefixes above. This full CMake gate requires **CMake/CTest 3.21+**
+for JUnit XML output (`--output-junit`). **Its work directory must not already
+exist**:
+
+```sh
+python3 "$REPO/.github/scripts/flatbuffers-on.py" \
+  --build-system cmake --source "$REPO" --work "$WORK/on-gate" --jobs "$JOBS" \
+  --flatbuffers-prefix "$FB" \
+  --dependency-prefix "$DEPS" --dependency-prefix "$OPENSSL"
+```
+
+This gate requires FlatBuffers 25.2.10. Omit `--flatbuffers-prefix` to let it
+download/checksum/build that version; GoogleTest defaults to a checksum-pinned
+1.14.0 download, or can be supplied with `--gtest-source`. Normal platform
+dependencies must already be installed. Make/Bazel modes validate the two
+library suites; only CMake mode also builds the generator and example. Inspect
+`WORK/on-gate/evidence/summary.json` for `status: passed`, all required test names,
+nonzero executed counts and zero failed/skipped cases. Commands, logs and XML
+reports are retained even on failure. Empty/filtered/skipped runs are rejected.
+
+The [workflow](../../.github/workflows/flatbuffers-on.yml) runs Linux CMake/Make
+with GCC and Clang, Linux Bazel with GCC, and macOS CMake. A local gate pass does
+not imply the hosted GitHub matrix or a different dependency combination passed.
+
+## Troubleshooting
+
+| Symptom | Check / action |
+| --- | --- |
+| `BRPC_ROOT is not FlatBuffers-enabled` or missing FB symbols | Rebuild bRPC with the enable option, then rebuild all consumers. Check the actual output `include/butil/config.h`; do not force the macro or mix an ON header with an OFF library. |
+| Missing `flatbuffers/idl.h` or `libflatbuffers` | The service generator needs the full official development installation, not only the runtime headers. Set `FLATBUFFERS_INCLUDE_DIR` and, if needed, `FLATBUFFERS_LIBRARY`. |
+| Header/compiler version mismatch | Check `flatc --version`, select matching headers/compiler/library, and regenerate bindings in a fresh build directory. Do not delete upstream version checks. |
+| Missing Protobuf/Abseil headers or link symbols | Use one compatible Protobuf installation throughout and expose its CMake config and Abseil prefixes. Do not mix system and private headers/libraries. |
+| OpenSSL not found on macOS | Set `OPENSSL_ROOT_DIR` and include the actual installed prefix in `CMAKE_PREFIX_PATH`; check compiler/SDK/architecture consistency. |
+| Cannot write `src/butil/config.h.tmp` | Root configuration needs a writable checkout. Use a private source copy; separate build directories do not isolate concurrent source configuration. |
+| Old dependency policy error with CMake 4 | Try the appropriate `CMAKE_POLICY_VERSION_MINIMUM` compatibility setting for that dependency, or update it; this does not change the required C++ or dependency versions. |
+| `No tests were found` | Use the example build directory, configure `BUILD_TESTING=ON`, build the executables, then run the named test or `smoke.py` directly. |
+| `LINK_SO=ON` cannot find a library or the loader fails | Build `brpc-shared` with runtime `BUILD_SHARED_LIBS=ON` first. Check the shared library's dependencies and runtime search paths. |
+| Connection refused/timeout | Wait for the readiness line, use its current port on the same host/container, and check the server's finite lifetime. These are not successful schema rejections. |
+
+Flatc 2.0.x emits unqualified `flatbuffers::` names. Keep business schemas outside
+the `brpc` namespace (for example `myapp.rpc`); do not depend on include order to
+avoid shadowing. Flatc 25.2.10 emits fully-qualified names.
 
 ## Message construction and ownership
 
@@ -158,6 +408,10 @@ rejected rather than silently ignored. FlatBuffers services cannot be accessed
 through the internal, builtin-only port. SelectiveChannel/ParallelChannel,
 HTTP/JSON mapping and RPC-dump replay are not provided by this transport.
 Log IDs, user fields and distributed-tracing metadata are not transmitted.
+
+For a complete generated client/server, follow
+[Verify with the client/server example](#verify-with-the-clientserver-example)
+above. The example demonstrates these APIs without making a performance claim.
 
 ### FRPC framing and compatibility
 

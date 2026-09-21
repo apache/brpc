@@ -31,6 +31,7 @@ You can use it to:
 * Read [overview](docs/en/overview.md) to know where bRPC can be used and its advantages.
 * Read [getting started](docs/en/getting_started.md) for building steps and play with [examples](https://github.com/apache/brpc/tree/master/example/).
 * Docs:
+  * [Enable FlatBuffers RPC and verify the example](docs/en/flatbuffers.md)
   * [Performance benchmark](docs/en/benchmark.md)
   * [bvar](docs/en/bvar.md)
     * [bvar_c++](docs/en/bvar_c++.md)
