@@ -26,6 +26,18 @@
 
 namespace bvar {
 
+// The +Inf/-Inf/NaN of the prometheus text format are not json, so describe()
+// cannot borrow that spelling: it writes a non representable number as `null`,
+// which is what JSON.stringify() does with one. Finite values still go through
+// prometheus_double_to_string() so that the two outputs agree digit for digit
+// and neither follows LC_NUMERIC.
+static std::string json_double_to_string(double value) {
+    if (BAIDU_UNLIKELY(!butil::IsFinite(value))) {
+        return "null";
+    }
+    return detail::prometheus_double_to_string(value);
+}
+
 Histogram::BucketSchema::BucketSchema(std::initializer_list<double> bounds)
     : _bounds(bounds) {
     validate_bounds();
@@ -74,7 +86,7 @@ void Histogram::BucketSchema::validate_bounds() {
 
 std::ostream& operator<<(std::ostream& os, const Histogram::Value& v) {
     os << "{\"count\":" << v.num << ",\"sum\":"
-       << detail::prometheus_double_to_string(v.sum)
+       << json_double_to_string(v.sum)
        << ",\"counts\":[";
     size_t nbuckets = std::min(v.num_buckets, MAX_HISTOGRAM_BUCKETS);
     for (size_t i = 0; i < nbuckets; ++i) {
@@ -153,13 +165,15 @@ int Histogram::expose_impl(const butil::StringPiece& prefix,
 void Histogram::describe(std::ostream& os, bool /*quote_string*/) const {
     value_type v = get_value();
     os << "{\"count\":" << v.num
-       << ",\"sum\":" << detail::prometheus_double_to_string(v.sum)
+       << ",\"sum\":" << json_double_to_string(v.sum)
        << ",\"bounds\":[";
     for (size_t i = 0; i < _schema.num_bounds(); ++i) {
         if (i != 0) {
             os << ',';
         }
-        os << detail::prometheus_double_to_string(_schema.bound_at(i));
+        // validate_bounds() already dropped the non finite ones, so this only
+        // keeps the whole json on one spelling rule.
+        os << json_double_to_string(_schema.bound_at(i));
     }
     os << "],\"counts\":[";
     for (size_t i = 0; i < _schema.num_buckets(); ++i) {

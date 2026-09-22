@@ -254,6 +254,22 @@ TEST_F(HistogramTest, describe) {
     ASSERT_EQ("{\"count\":4,\"sum\":6.25,\"counts\":[1,2,0,1]}", os2.str());
 }
 
+TEST_F(HistogramTest, describe_writes_a_non_finite_sum_as_null) {
+    double big = std::numeric_limits<double>::max();
+    bvar::Histogram h(bvar::Histogram::BucketSchema({0.5, 1.5}));
+    h << big << big;
+    ASSERT_FALSE(butil::IsFinite(h.get_value().sum));
+
+    std::ostringstream os;
+    h.describe(os, false);
+    ASSERT_EQ("{\"count\":2,\"sum\":null,\"bounds\":[0.5,1.5],"
+              "\"counts\":[0,0,2]}", os.str());
+
+    std::ostringstream os2;
+    os2 << h.get_value();
+    ASSERT_EQ("{\"count\":2,\"sum\":null,\"counts\":[0,0,2]}", os2.str());
+}
+
 // Collects everything a Dumper is asked to write, in order.
 class RecordingDumper : public bvar::Dumper {
 public:
@@ -368,10 +384,6 @@ TEST_F(HistogramTest, samples_reach_an_opted_in_dumper_only) {
     ASSERT_EQ("bar 7", d.lines[0]);
 }
 
-// A histogram only takes finite values, but enough of them add up to an
-// infinity. "Infinity" is not prometheus sample value grammar, and the
-// exporter drops a line it cannot parse: `_sum` would disappear while
-// `_bucket` and `_count` stay, leaving rate(_sum)/rate(_count) empty.
 TEST_F(HistogramTest, non_finite_sum_uses_prometheus_spelling) {
     double big = std::numeric_limits<double>::max();
     {
