@@ -2205,6 +2205,7 @@ protected:
     void TestBackupRequestPolicy(bool single_server, bool async,
                                  bool short_connection) {
         ASSERT_EQ(0, StartAccept(_ep));
+        bool connection_close_timed_out = false;
         for (int i = 0; i < 2; ++i) {
             bool backup = i == 0;
             std::cout << " *** single=" << single_server
@@ -2234,10 +2235,15 @@ protected:
 
             if (short_connection) {
                 // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-                const int64_t start_time = butil::cpuwide_time_us();
-                while (_messenger.ConnectionCount() != 0) {
-                    ASSERT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
+                const int64_t deadline =
+                    butil::cpuwide_time_us() + 1000000L /* 1s */;
+                while (_messenger.ConnectionCount() != 0 &&
+                       butil::cpuwide_time_us() < deadline) {
                     bthread_usleep(1000);
+                }
+                if (_messenger.ConnectionCount() != 0) {
+                    connection_close_timed_out = true;
+                    break;
                 }
             } else {
                 ASSERT_GE(1ul, _messenger.ConnectionCount());
@@ -2245,6 +2251,8 @@ protected:
         }
 
         StopAndJoin();
+        EXPECT_FALSE(connection_close_timed_out)
+            << "Timed out waiting for short connections to close";
     }
 
     butil::EndPoint _ep;
