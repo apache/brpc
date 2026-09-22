@@ -116,6 +116,20 @@ private:
     int32_t _old_depth;
 };
 
+class ScopedRedisMaxAllocationSize {
+public:
+    explicit ScopedRedisMaxAllocationSize(int32_t size)
+        : _old_size(brpc::FLAGS_redis_max_allocation_size) {
+        brpc::FLAGS_redis_max_allocation_size = size;
+    }
+    ~ScopedRedisMaxAllocationSize() {
+        brpc::FLAGS_redis_max_allocation_size = _old_size;
+    }
+
+private:
+    int32_t _old_size;
+};
+
 class RedisTest : public testing::Test {
 protected:
     RedisTest() {}
@@ -919,6 +933,120 @@ TEST_F(RedisTest, redis_reply_rejects_deep_nested_arrays) {
     brpc::RedisReply valid_reply(&arena);
     EXPECT_EQ(brpc::PARSE_OK, valid_reply.ConsumePartialIOBuf(buf));
     EXPECT_TRUE(valid_reply.is_array());
+}
+
+TEST_F(RedisTest, redis_reply_rejects_nested_array_memory_amplification) {
+    // Each array allocation below is individually within -redis_max_
+    // allocation_size, yet the total for one reply must not exceed it.
+    // Otherwise the per-allocation cap is multiplied by nesting depth and a
+    // tiny reply commits depth * cap bytes.
+    ScopedRedisMaxAllocationSize scoped_size(1024);
+    const int32_t count_at_cap =
+        brpc::FLAGS_redis_max_allocation_size / sizeof(brpc::RedisReply);
+
+    // One maximal array nested inside another.
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n");
+        buf.append("*" + std::to_string(count_at_cap) + "\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  reply.ConsumePartialIOBuf(buf));
+    }
+
+    // The budget must survive suspension: the outer header arrives first,
+    // the inner one only after a resume. A fresh budget per call would let
+    // the peer reset it by withholding data.
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                  reply.ConsumePartialIOBuf(buf));
+        buf.append("*" + std::to_string(count_at_cap) + "\r\n");
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  reply.ConsumePartialIOBuf(buf));
+    }
+
+    // Feeding one array header per call must not bypass the budget either.
+    {
+        butil::IOBuf buf;
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        // Each "*2" costs sizeof(RedisReply) * 2 = 64 bytes, so the 17th
+        // nested array exceeds the 1024-byte budget.
+        for (int i = 0; i < 20; ++i) {
+            buf.append("*2\r\n");
+            brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
+            if (i < 16) {
+                EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, err);
+            } else {
+                EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+                break;
+            }
+        }
+    }
+
+    // Valid replies are unaffected: a nested reply well within the budget...
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n*2\r\n:1\r\n:2\r\n:3\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_OK, reply.ConsumePartialIOBuf(buf));
+        EXPECT_TRUE(reply.is_array());
+        EXPECT_EQ(2u, reply.size());
+        EXPECT_EQ(2u, reply[0].size());
+        EXPECT_EQ(1, reply[0][0].integer());
+    }
+    // ... and a single flat array exactly at the budget boundary.
+    {
+        butil::IOBuf buf;
+        buf.append("*" + std::to_string(count_at_cap) + "\r\n");
+        for (int i = 0; i < count_at_cap; ++i) {
+            buf.append(":7\r\n");
+        }
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_OK, reply.ConsumePartialIOBuf(buf));
+        EXPECT_TRUE(reply.is_array());
+        EXPECT_EQ((size_t)count_at_cap, reply.size());
+    }
+}
+
+TEST_F(RedisTest, command_parser_does_not_preallocate_declared_args) {
+    // A declared RESP array count must not commit memory before the arguments
+    // actually arrive: "*<count>\r\n" used to resize _args upfront, costing
+    // up to -redis_max_allocation_size per connection from ~12 bytes.
+    ScopedRedisMaxAllocationSize scoped_size(1024 * 1024);
+    const int32_t count_at_cap =
+        brpc::FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece);
+
+    brpc::RedisCommandParser parser;
+    butil::Arena arena;
+    butil::IOBuf buf;
+    buf.append("*" + std::to_string(count_at_cap) + "\r\n$3\r\nget\r\n");
+    std::vector<butil::StringPiece> args;
+    EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+              parser.Consume(buf, &args, &arena));
+    // Only the argument that has arrived is stored.
+    EXPECT_EQ(1u, parser.ParsedArgsSize());
+
+    // Complete commands still parse into the full argument list.
+    {
+        brpc::RedisCommandParser parser2;
+        butil::Arena arena2;
+        butil::IOBuf buf2;
+        buf2.append("*3\r\n$3\r\nget\r\n$3\r\nfoo\r\n$3\r\nbar\r\n");
+        std::vector<butil::StringPiece> args2;
+        EXPECT_EQ(brpc::PARSE_OK, parser2.Consume(buf2, &args2, &arena2));
+        ASSERT_EQ(3u, args2.size());
+        EXPECT_EQ("get", args2[0].as_string());
+        EXPECT_EQ("foo", args2[1].as_string());
+        EXPECT_EQ("bar", args2[2].as_string());
+    }
 }
 
 butil::Mutex s_mutex;

@@ -565,7 +565,10 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         _parsing_array = true;
         _length = value;
         _index = 0;
-        _args.resize(value);
+        // NOTE: don't resize _args to `value' here. The count is just a
+        // declaration and the arguments may never arrive; growing _args
+        // lazily avoids committing up to -redis_max_allocation_size of a
+        // connection from a ~12-byte incomplete command.
         return CONSUME_STATE_CONTINUE;
     }
     if (_index >= _length) {
@@ -599,6 +602,10 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     }
     buf.cutn(d, len);
     d[len] = '\0';
+    if (_args.size() <= (size_t)_index) {
+        // Grow _args as the arguments arrive instead of upfront.
+        _args.resize(_index + 1);
+    }
     _args[_index].set(d, len);
     if (_index == 0) {
         // convert it to lowercase when it is command name
