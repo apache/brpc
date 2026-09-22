@@ -476,82 +476,15 @@ TEST_F(HistogramTest, list_metric_families) {
     ASSERT_STREQ("", families[0].suffix);
     ASSERT_STREQ("histogram", families[0].type);
     ASSERT_EQ(std::vector<std::string>({"le"}), families[0].reserved_labels);
-    ASSERT_EQ((std::vector<std::string>{"_bucket", "_sum", "_count"}),
-              families[0].additional_sample_suffixes);
 
     families = bvar::LatencyRecorder::list_metric_families();
     ASSERT_EQ(5u, families.size());
     ASSERT_EQ(std::vector<std::string>({"quantile"}),
               families[0].reserved_labels);
-    ASSERT_TRUE(families[0].additional_sample_suffixes.empty());
     ASSERT_TRUE(families[1].reserved_labels.empty());
     ASSERT_TRUE(families[2].reserved_labels.empty());
     ASSERT_TRUE(families[3].reserved_labels.empty());
     ASSERT_TRUE(families[4].reserved_labels.empty());
-}
-
-TEST_F(HistogramTest, prometheus_names_are_reserved_atomically) {
-    bvar::Status<int> sum_blocker;
-    ASSERT_EQ(0, sum_blocker.expose("histogram_name_registry_sum"));
-
-    bvar::Histogram histogram("old_histogram_name_registry", {1});
-    ASSERT_EQ(-1, histogram.expose("histogram-name-registry"));
-    ASSERT_TRUE(histogram.is_hidden());
-
-    // Re-expose released the old reservation, while the failed four-name
-    // reservation retained neither its root nor names checked before _sum.
-    bvar::Status<int> old_count;
-    bvar::Status<int> root;
-    bvar::Status<int> bucket;
-    ASSERT_EQ(0, old_count.expose("old_histogram_name_registry_count"));
-    ASSERT_EQ(0, root.expose("histogram_name_registry"));
-    ASSERT_EQ(0, bucket.expose("histogram_name_registry_bucket"));
-
-    ASSERT_TRUE(root.hide());
-    ASSERT_TRUE(bucket.hide());
-    ASSERT_TRUE(sum_blocker.hide());
-    ASSERT_EQ(0, histogram.expose("histogram_name_registry"));
-
-    bvar::Status<int> count_blocker;
-    ASSERT_EQ(-1, count_blocker.expose("histogram_name_registry_count"));
-    ASSERT_TRUE(count_blocker.is_hidden());
-
-    ASSERT_TRUE(histogram.hide());
-    ASSERT_EQ(0, count_blocker.expose("histogram_name_registry_count"));
-}
-
-TEST_F(HistogramTest, multi_dimension_reserves_composite_sample_names) {
-    bvar::Status<int> blocker;
-    ASSERT_EQ(0, blocker.expose("mhist_name_registry_bucket"));
-
-    bvar::MultiDimension<bvar::Histogram> histogram(
-{"method"}, bvar::Histogram::BucketSchema({1}));
-    ASSERT_EQ(-1, histogram.expose("mhist_name_registry"));
-    ASSERT_TRUE(histogram.name().empty());
-
-    ASSERT_TRUE(blocker.hide());
-    ASSERT_EQ(0, histogram.expose("mhist_name_registry"));
-    ASSERT_EQ(-1, blocker.expose("mhist_name_registry_sum"));
-
-    ASSERT_TRUE(histogram.hide());
-    ASSERT_EQ(0, blocker.expose("mhist_name_registry_sum"));
-}
-
-TEST_F(HistogramTest, composite_reserves_only_exported_family_names) {
-    bvar::Status<int> root;
-    ASSERT_EQ(0, root.expose("mlat_name_registry"));
-
-    // LatencyRecorder exports suffixed families, not the MultiDimension's
-    // exposed root name, so these two metrics do not collide in prometheus.
-    bvar::MultiDimension<bvar::LatencyRecorder> latency({"method"});
-    ASSERT_EQ(0, latency.expose("mlat_name_registry"));
-
-    bvar::Status<int> family_blocker;
-    ASSERT_EQ(-1, family_blocker.expose("mlat_name_registry_count"));
-    ASSERT_TRUE(family_blocker.is_hidden());
-
-    ASSERT_TRUE(latency.hide());
-    ASSERT_EQ(0, family_blocker.expose("mlat_name_registry_count"));
 }
 
 // The labels of the enclosing MultiDimension share the brace group with `le`.

@@ -313,7 +313,7 @@ MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*
     std::string labels;
     // Families outside, label sets inside.
     for (size_t f = 0; f < families.size(); ++f) {
-        // suffix is nullable, as collect_metric_family_names() knows.
+        // The main family of a type carries no suffix, a Histogram has one.
         family_name.assign(this->name());
         if (families[f].suffix != nullptr) {
             family_name.append(families[f].suffix);

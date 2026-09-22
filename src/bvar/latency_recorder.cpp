@@ -241,8 +241,10 @@ int LatencyRecorder::expose(const butil::StringPiece& prefix1,
     _latency_percentile.set_debug_name(prefix);
 
     // Exposing a LatencyRecorder is all-or-nothing: the prometheus exporter
-    // turns the sub-bvars below back into one summary and would happily write
-    // that summary out with empty values if only some of them made it.
+    // folds the sub-bvars below back into one summary and swallows each of
+    // them on the way. A half exposed recorder therefore does not show fewer
+    // metrics, it shows none of them, the incomplete summary is skipped and
+    // the sub-bvars that did make it were already consumed.
     bool expose_succeeded = false;
     BUTIL_SCOPE_EXIT {
         if (!expose_succeeded) {
@@ -328,11 +330,11 @@ LatencyRecorder& LatencyRecorder::operator<<(int64_t latency) {
 const std::vector<MetricFamily>& LatencyRecorder::list_metric_families() {
     // Deliberately leaked, see Histogram::list_metric_families() for why.
     static auto families = new std::vector<MetricFamily>{
-        {"_latency", "gauge", {"quantile"}, {}},
-        {"_avg_latency", "gauge", {}, {}},
-        {"_max_latency", "gauge", {}, {}},
-        {"_qps", "gauge", {}, {}},
-        {"_count", "counter", {}, {}},
+        {"_latency", "gauge", {"quantile"}},
+        {"_avg_latency", "gauge", {}},
+        {"_max_latency", "gauge", {}},
+        {"_qps", "gauge", {}},
+        {"_count", "counter", {}},
     };
     return *families;
 }

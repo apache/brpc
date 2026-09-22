@@ -200,8 +200,6 @@ private:
                     const butil::StringPiece& name,
                     DisplayFilter display_filter) override;
 
-    std::vector<std::string> collect_prometheus_names() const override;
-
     // Snapshot of all the values recorded so far. Walks through every thread
     // that ever recorded into this Histogram.
     value_type get_value() const { return _combiner->combine_agents(); }

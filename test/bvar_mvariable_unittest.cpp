@@ -125,38 +125,20 @@ TEST_F(MVariableTest, expose) {
     ASSERT_EQ(2, exposed_vars.size());
 }
 
-TEST_F(MVariableTest, prometheus_name_conflicts_with_bvar) {
-    std::list<std::string> one_label = {"method"};
-    bvar::Status<int> scalar;
-    bvar::MultiDimension<bvar::Adder<int> > multi(one_label);
-
-    ASSERT_EQ(0, scalar.expose("shared-prometheus-name"));
-    ASSERT_EQ(-1, multi.expose("shared.prometheus.name"));
-    ASSERT_TRUE(multi.name().empty());
-
-    ASSERT_TRUE(scalar.hide());
-    ASSERT_EQ(0, multi.expose("shared::prometheus::name"));
-    ASSERT_EQ(-1, scalar.expose("shared prometheus name"));
-    ASSERT_TRUE(scalar.is_hidden());
-
-    ASSERT_TRUE(multi.hide());
-    ASSERT_EQ(0, scalar.expose("shared_prometheus_name"));
-}
-
-TEST_F(MVariableTest, hide_all_releases_prometheus_names) {
+// hide_all() detaches the map entries, so the owners have to be told as well,
+// otherwise they keep a name they are no longer exposed under and cannot be
+// exposed again.
+TEST_F(MVariableTest, hide_all_clears_name) {
     std::list<std::string> one_label = {"method"};
     bvar::MultiDimension<bvar::Histogram> multi(
         one_label, bvar::Histogram::BucketSchema({1}));
-    ASSERT_EQ(0, multi.expose("hide_all_prometheus_name"));
+    ASSERT_EQ(0, multi.expose("hide_all_clears_name"));
 
     bvar::MVariableBase::hide_all();
     ASSERT_EQ(0UL, bvar::MVariableBase::count_exposed());
     ASSERT_TRUE(multi.name().empty());
 
-    bvar::Status<int> scalar;
-    ASSERT_EQ(0, scalar.expose("hide_all_prometheus_name_bucket"));
-    ASSERT_TRUE(scalar.hide());
-    ASSERT_EQ(0, multi.expose("hide_all_prometheus_name"));
+    ASSERT_EQ(0, multi.expose("hide_all_clears_name"));
 }
 
 TEST_F(MVariableTest, dump) {
@@ -254,7 +236,7 @@ public:
     void set(int64_t value) { _value = value; }
 
     static std::vector<bvar::MetricFamily> list_metric_families() {
-        return {{"", "gauge", {"region"}, {}}};
+        return {{"", "gauge", {"region"}}};
     }
 
     bool dump_samples(bvar::Dumper* dumper, size_t /*family_index*/,

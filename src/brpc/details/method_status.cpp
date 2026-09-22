@@ -18,10 +18,7 @@
 
 #include <limits>
 #include "butil/macros.h"
-#include "butil/memory/scope_guard.h"
-#include "bvar/detail/prometheus_name_registry.h"
 #include "brpc/controller.h"
-#include "brpc/builtin/prometheus_metrics_service.h"
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/details/method_status.h"
 
@@ -48,20 +45,9 @@ MethodStatus::MethodStatus()
 }
 
 MethodStatus::~MethodStatus() {
-    ReleaseSynthesizedPrometheusNames();
 }
 
 int MethodStatus::Expose(const butil::StringPiece& prefix) {
-    // Exposing is all-or-nothing: the prometheus exporter turns the bvars of
-    // `_latency_rec` back into one summary and would write that summary out
-    // under names this method may fail to claim.
-    bool expose_succeeded = false;
-    BUTIL_SCOPE_EXIT {
-        if (!expose_succeeded) {
-            Hide();
-        }
-    };
-
     if (_nconcurrency_bvar.expose_as(prefix, "concurrency") != 0) {
         return -1;
     }
@@ -74,55 +60,12 @@ int MethodStatus::Expose(const butil::StringPiece& prefix) {
     if (_latency_rec.expose(prefix) != 0) {
         return -1;
     }
-    if (ReserveSynthesizedPrometheusNames() != 0) {
-        return -1;
-    }
     if (_cl) {
         if (_max_concurrency_bvar.expose_as(prefix, "max_concurrency") != 0) {
             return -1;
         }
     }
-    expose_succeeded = true;
     return 0;
-}
-
-void MethodStatus::Hide() {
-    _nconcurrency_bvar.hide();
-    _nerror_bvar.hide();
-    _eps_bvar.hide();
-    _latency_rec.hide();
-    _max_concurrency_bvar.hide();
-    ReleaseSynthesizedPrometheusNames();
-}
-
-int MethodStatus::ReserveSynthesizedPrometheusNames() {
-    // A re-Expose() gives up what the previous one took: the server exposes
-    // the same MethodStatus again on every Start(), under a name carrying the
-    // port it is listening on this time.
-    ReleaseSynthesizedPrometheusNames();
-    // `X_latency` is what the exporter strips back to `X`, so take the metric
-    // name from the bvar rather than from `prefix`: expose() underscores what
-    // it is given.
-    butil::StringPiece metric_name(_latency_rec.latency_name());
-    metric_name.remove_suffix(sizeof("_latency") - 1);
-    std::vector<std::string> names = SynthesizedLatencyRecorderNames(metric_name);
-    if (names.empty()) {
-        return 0;
-    }
-    if (!bvar::detail::reserve_prometheus_names(this, names)) {
-        return -1;
-    }
-    _prometheus_metric_name.assign(metric_name.data(), metric_name.size());
-    return 0;
-}
-
-void MethodStatus::ReleaseSynthesizedPrometheusNames() {
-    if (_prometheus_metric_name.empty()) {
-        return;
-    }
-    bvar::detail::release_prometheus_names(
-        this, SynthesizedLatencyRecorderNames(_prometheus_metric_name));
-    _prometheus_metric_name.clear();
 }
 
 template <typename T>

@@ -1017,15 +1017,14 @@ public:
     }
 
     // 本类型导出的族，按dump的顺序排列。一个MetricFamily就是一个prometheus
-    // 指标族：一个指标名加一行`# TYPE`。它的四个字段依次是suffix（接在
+    // 指标族：一个指标名加一行`# TYPE`。它的三个字段依次是suffix（接在
     // 暴露名后面得到族名）、type（即`# TYPE`的值）、reserved_labels（该族
-    // 样本自己的label名）、additional_sample_suffixes（族内额外样本
-    // 的suffix）。后两个字段用不到时也要写上空初始化器`{}`，否则gcc会报
-    // -Wmissing-field-initializers告警。下面声明两个单样本的counter族，
-    // 暴露名cache_hitrate加上suffix后产出cache_hitrate_hits和
+    // 样本自己的label名）。reserved_labels用不到时也要写上空初始化器`{}`，
+    // 否则gcc会报-Wmissing-field-initializers告警。下面声明两个单样本的
+    // counter族，暴露名cache_hitrate加上suffix后产出cache_hitrate_hits和
     // cache_hitrate_total。
     static std::vector<bvar::MetricFamily> list_metric_families() {
-        return {{"_hits", "counter", {}, {}}, {"_total", "counter", {}, {}}};
+        return {{"_hits", "counter", {}}, {"_total", "counter", {}}};
     }
 
     // 只输出第family_index族的样本，不要输出"# TYPE"：那一行属于整个族，
@@ -1067,11 +1066,10 @@ cache_hitrate_total{cache="l1"} 2
 ```
 
 几点约定：
-* `list_metric_families()`必须是幂等的：它在预留指标名和每次dump时都会被调用，应保证每次返回相同的内容。返回的每个`bvar::MetricFamily`描述一个prometheus指标族（一个指标名加一行`# TYPE`，可包含一个或多个样本），按字段声明顺序包含四个字段（聚合初始化，用不到的字段也要写上空初始化器`{}`占位）：
-  - `suffix`：族名后缀，拼在指标名后面构成族名。当一个类型导出多个平级的族时，每个族各用一个后缀，例如LatencyRecorder拆分为`_latency`/`_avg_latency`/`_max_latency`/`_qps`/`_count`五个族。Histogram则不同：整个类型只有一个族，`_bucket`/`_sum`/`_count`是同一族内的三类指标，而非三个独立的族，因此suffix留空，三类指标通过`additional_sample_suffixes`声明。
-  - `type`：`# TYPE`行的取值，为"gauge"/"counter"/"histogram"/"summary"之一。
+* `list_metric_families()`必须是幂等的：它在每次dump时都会被调用，应保证每次返回相同的内容。返回的每个`bvar::MetricFamily`描述一个prometheus指标族（一个指标名加一行`# TYPE`，可包含一个或多个样本），按字段声明顺序包含三个字段（聚合初始化，用不到的字段也要写上空初始化器`{}`占位）：
+  - `suffix`：族名后缀，拼在指标名后面构成族名。当一个类型导出多个平级的族时，每个族各用一个后缀，例如LatencyRecorder拆分为`_latency`/`_avg_latency`/`_max_latency`/`_qps`/`_count`五个族。Histogram则不同：整个类型只有一个族，`_bucket`/`_sum`/`_count`是同一族内的三类指标，而非三个独立的族，因此suffix留空。
+  - `type`：`# TYPE`行的取值，为"gauge"/"counter"/"histogram"/"summary"之一。族内有哪些固定后缀的样本由type决定，这是prometheus文本格式的规定：summary有`_sum`/`_count`，histogram有`_bucket`/`_sum`/`_count`。
   - `reserved_labels`：该族内置的label。外层MultiDimension的labels不能与内置label冲突（Histogram为`le`，LatencyRecorder为`quantile`），冲突的MultiDimension无法曝光，原因见下一条。
-  - `additional_sample_suffixes`：族内额外指标的后缀。例如Histogram声明了`_bucket`/`_sum`/`_count`，表示这一个族实际包含三类指标。单指标的族（如上面的HitRate、LatencyRecorder的各族）写`{}`即可。
 * 外层MultiDimension的labels不能与某个族通过`reserved_labels`声明的label名重复（Histogram保留`le`，LatencyRecorder保留`quantile`），否则同一样本会包含重名的label。遇到冲突时MultiDimension只拒绝曝光：构造时打印一条ERROR日志，此后expose()/expose_as()一律返回-1，name()为空，也不会被dump出去。记录功能不受影响，get_stats()照常返回可用的bvar，不会变成nullptr。把外层的label改个名字，曝光即恢复正常。
 * 同一样本内，外层MultiDimension的label要拼在自己的label之前，放进同一对花括号中。
 

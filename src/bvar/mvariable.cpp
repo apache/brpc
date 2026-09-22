@@ -27,7 +27,6 @@
 #include "butil/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
 #include "butil/file_util.h"                     // butil::FilePath
 #include "butil/reloadable_flags.h"
-#include "bvar/detail/prometheus_name_registry.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
 
@@ -116,10 +115,6 @@ std::string MVariableBase::get_description() {
     return os.str();
 }
 
-std::vector<std::string> MVariableBase::collect_prometheus_names() const {
-    return {_name};
-}
-
 int MVariableBase::describe_exposed(const std::string& name,
                                 std::ostream& os) {
     MVarMapWithLock& m = get_mvar_map();
@@ -196,11 +191,6 @@ int MVariableBase::expose_impl(const butil::StringPiece& prefix,
         return -1;
     }
 
-    std::vector<std::string> prometheus_names = collect_prometheus_names();
-    if (!detail::reserve_prometheus_names(this, prometheus_names)) {
-        return -1;
-    }
-
     MVarMapWithLock& m = get_mvar_map();
     {
         BAIDU_SCOPED_LOCK(m.mutex);
@@ -224,7 +214,6 @@ int MVariableBase::expose_impl(const butil::StringPiece& prefix,
 
     LOG(WARNING) << "Already exposed `" << _name << "' whose describe is`"
                  << get_description() << "'";
-    detail::release_prometheus_names(this, prometheus_names);
     return -1;
 }
 
@@ -232,8 +221,6 @@ bool MVariableBase::hide() {
     if (_name.empty()) {
         return false;
     }
-    std::vector<std::string> prometheus_names = collect_prometheus_names();
-
     MVarMapWithLock& m = get_mvar_map();
     {
         BAIDU_SCOPED_LOCK(m.mutex);
@@ -252,7 +239,6 @@ bool MVariableBase::hide() {
         _ref->hide_and_wait();
     }
 
-    detail::release_prometheus_names(this, prometheus_names);
     _name.clear();
     return true;
 }
@@ -262,13 +248,12 @@ void MVariableBase::hide_all() {
     struct MVariableToHide {
         MVariableBase* variable;
         SharedExposedRef ref;
-        std::vector<std::string> prometheus_names;
     };
 
     std::vector<MVariableToHide> variables;
     MVarMapWithLock& m = get_mvar_map();
     // Snapshot the owners while detaching the map entries. Waiting for readers
-    // and taking Prometheus registry locks must happen outside the MVarMap lock.
+    // must happen outside the MVarMap lock.
     {
         BAIDU_SCOPED_LOCK(m.mutex);
         variables.reserve(m.size());
@@ -277,8 +262,6 @@ void MVariableBase::hide_all() {
             variable.ref = it->second.ref;
             variable.variable = variable.ref->acquire();
             if (variable.variable != nullptr) {
-                variable.prometheus_names =
-                    variable.variable->collect_prometheus_names();
                 variables.push_back(std::move(variable));
             }
         }
@@ -290,8 +273,6 @@ void MVariableBase::hide_all() {
         // held: release() lets a concurrent destructor run to completion, and
         // hide_and_wait() blocks until the last reference is gone, so it has to
         // come after release() rather than before it.
-        detail::release_prometheus_names(
-            variable.variable, variable.prometheus_names);
         variable.variable->_name.clear();
         variable.ref->release();
         variable.ref->hide_and_wait();

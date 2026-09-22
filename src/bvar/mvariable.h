@@ -121,8 +121,6 @@ protected:
     virtual int expose_impl(const butil::StringPiece& prefix,
                             const butil::StringPiece& name);
 
-    virtual std::vector<std::string> collect_prometheus_names() const;
-
 protected:
     std::string _name;
     // Shared indirection handle for describe()/dump() outside the MVarMap lock.

@@ -35,7 +35,6 @@
 #include "butil/reloadable_flags.h"
 #include "butil/strings/string_number_conversions.h" // butil::DoubleToString
 #include "bvar/gflag.h"
-#include "bvar/detail/prometheus_name_registry.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
 
@@ -210,12 +209,6 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         }
     };
 
-    std::vector<std::string> prometheus_names =
-        collect_prometheus_names();
-    if (!detail::reserve_prometheus_names(this, prometheus_names)) {
-        return -1;
-    }
-    
     VarMapWithLock& m = get_var_map(_name);
     {
         BAIDU_SCOPED_LOCK(m.mutex);
@@ -239,12 +232,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         
     LOG(ERROR) << "Already exposed `" << _name << "' whose value is `"
                << describe_exposed(_name) << '\'';
-    detail::release_prometheus_names(this, prometheus_names);
     return -1;
-}
-
-std::vector<std::string> Variable::collect_prometheus_names() const {
-    return {_name};
 }
 
 bool Variable::is_hidden() const {
@@ -255,7 +243,6 @@ bool Variable::hide() {
     if (_name.empty()) {
         return false;
     }
-    std::vector<std::string> prometheus_names = collect_prometheus_names();
     VarMapWithLock& m = get_var_map(_name);
     {
         BAIDU_SCOPED_LOCK(m.mutex);
@@ -273,7 +260,6 @@ bool Variable::hide() {
     if (_ref != nullptr) {
         _ref->hide_and_wait();
     }
-    detail::release_prometheus_names(this, prometheus_names);
     _name.clear();
     return true;
 }

@@ -19,6 +19,7 @@
 #include <vector>
 #include <iomanip>
 #include <map>
+#include <unordered_set>
 #include "brpc/controller.h"                // Controller
 #include "brpc/server.h"                    // Server
 #include "brpc/closure_guard.h"             // ClosureGuard
@@ -50,19 +51,34 @@ public:
     explicit PrometheusMetricsDumper(butil::IOBufBuilder* os,
                                      const std::string& server_prefix)
         : _os(os)
-        , _server_prefix(server_prefix) {
+        , _server_prefix(server_prefix)
+        , _current_family_refused(false) {
     }
+
+    DISALLOW_COPY_AND_ASSIGN(PrometheusMetricsDumper);
 
     bool dump(const std::string& name, const butil::StringPiece& desc) override;
     bool dump_mvar(const std::string& name, const butil::StringPiece& desc) override;
     bool dump_comment(const std::string& name, const std::string& type) override;
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(PrometheusMetricsDumper);
 
     // Return true iff name ends with suffix output by LatencyRecorder.
     bool DumpLatencyRecorderSuffix(const butil::StringPiece& name,
                                    const butil::StringPiece& desc);
+
+    // Claim `names` for this scrape, all of them or none. Returns false when
+    // one of them is already taken, in which case a line is logged and the
+    // caller must write nothing: two metrics under one name make prometheus
+    // reject the whole scrape, not just the offending line.
+    bool ClaimMetricNames(const std::vector<std::string>& names);
+
+    // The names a family called `name` occupies when it is dumped as `type`:
+    // its own, plus the samples the prometheus text format fixes for that type.
+    // Those suffixes belong here rather than to the variable, the format is
+    // what decides them.
+    static std::vector<std::string> FamilyNames(const std::string& name,
+                                                const std::string& type);
 
     // 6 is the number of bvars in LatencyRecorder that indicating percentiles
     static const int NPERCENTILES = 6;
@@ -95,6 +111,16 @@ private:
     butil::IOBufBuilder* _os;
     const std::string _server_prefix;
     std::map<std::string, SummaryItems> _m;
+    // Every metric name written out so far, including the ones this dumper
+    // makes up and which no variable is exposed under. Shared by the bvar and
+    // the mbvar pass so that a name taken by one is not taken again by the
+    // other.
+    std::unordered_set<std::string> _dumped_names;
+    // The family the last dump_comment() opened and whether it was refused.
+    // A family is written across several calls, one comment then its samples,
+    // so a refusal has to outlive the call that made it.
+    std::string _current_family;
+    bool _current_family_refused;
 };
 
 butil::StringPiece GetMetricsName(const std::string& name) {
@@ -194,6 +220,31 @@ bool IsDumpableToPrometheus(butil::StringPiece s) {
     return p == end;
 }
 
+std::vector<std::string> PrometheusMetricsDumper::FamilyNames(const std::string& name,
+                                                              const std::string& type) {
+    if (type == "summary") {
+        return {name, name + "_sum", name + "_count"};
+    }
+    if (type == "histogram") {
+        return {name, name + "_bucket", name + "_sum", name + "_count"};
+    }
+    return {name};
+}
+
+bool PrometheusMetricsDumper::ClaimMetricNames(const std::vector<std::string>& names) {
+    for (const std::string& name : names) {
+        if (name.empty() || _dumped_names.count(name) == 0) {
+            continue;
+        }
+        LOG_EVERY_SECOND(ERROR)
+            << "Skip metric=" << names[0] << " of /brpc_metrics because name="
+            << name << " is already taken in this scrape, rename one of them";
+        return false;
+    }
+    _dumped_names.insert(names.begin(), names.end());
+    return true;
+}
+
 bool PrometheusMetricsDumper::dump(const std::string& name,
                                    const butil::StringPiece& desc) {
     if (!IsDumpableToPrometheus(desc)) {
@@ -205,7 +256,10 @@ bool PrometheusMetricsDumper::dump(const std::string& name,
         return true;
     }
 
-    auto metrics_name = GetMetricsName(name);
+    std::string metrics_name = GetMetricsName(name).as_string();
+    if (!ClaimMetricNames({metrics_name})) {
+        return true;
+    }
 
     *_os << "# HELP " << metrics_name << '\n'
          << "# TYPE " << metrics_name << " gauge" << '\n'
@@ -217,11 +271,19 @@ bool PrometheusMetricsDumper::dump_mvar(const std::string& name, const butil::St
     if (!IsDumpableToPrometheus(desc)) {
         return true;
     }
+    if (_current_family_refused && GetMetricsName(name).starts_with(_current_family)) {
+        return true;
+    }
     *_os << name << " " << desc << "\n";
     return true;
 }
 
 bool PrometheusMetricsDumper::dump_comment(const std::string& name, const std::string& type) {
+    _current_family = name;
+    _current_family_refused = !ClaimMetricNames(FamilyNames(name, type));
+    if (_current_family_refused) {
+        return true;
+    }
     *_os << "# HELP " << name << '\n'
          << "# TYPE " << name << " " << type << '\n';
     return true;
@@ -286,9 +348,20 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
     // The average latency can not be a quantile series of the summary below,
     // because the quantile label must be parsable as a float. Dump it as a
     // separate gauge, which is the same as the multi dimension one does.
-    *_os << "# HELP " << si->metric_name << "_avg_latency" << '\n'
-         << "# TYPE " << si->metric_name << "_avg_latency gauge\n"
-         << si->metric_name << "_avg_latency " << si->latency_avg << '\n';
+    // No bvar is exposed under this name, it is made up right here, so this is
+    // also the only place that can tell whether it is still free.
+    std::string avg_name = si->metric_name + "_avg_latency";
+    if (ClaimMetricNames({avg_name})) {
+        *_os << "# HELP " << avg_name << '\n'
+             << "# TYPE " << avg_name << " gauge\n"
+             << avg_name << ' ' << si->latency_avg << '\n';
+    }
+    // Same for the summary, whose `_sum` is made up as well. Its `_count` does
+    // come from a bvar, but one this function swallowed without printing, so
+    // claiming it here does not collide with itself.
+    if (!ClaimMetricNames(FamilyNames(si->metric_name, "summary"))) {
+        return true;
+    }
     *_os << "# HELP " << si->metric_name << '\n'
          << "# TYPE " << si->metric_name << " summary\n"
          << si->metric_name << "{quantile=\""
@@ -314,20 +387,6 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
     return true;
 }
 
-std::vector<std::string> SynthesizedLatencyRecorderNames(
-    const butil::StringPiece& metric_name) {
-    // The very condition DumpLatencyRecorderSuffix() applies: elsewhere the
-    // sub-bvars are written out one by one and nothing is synthesized.
-    if (!metric_name.starts_with(g_server_info_prefix)) {
-        return {};
-    }
-    // The summary `X` carrying the quantile series, its `X_sum`, and the
-    // separate `X_avg_latency` gauge. `X_count` is left out on purpose, it is
-    // the `_count` bvar which reserves itself.
-    std::string name(metric_name.data(), metric_name.size());
-    return {name, name + "_sum", name + "_avg_latency"};
-}
-
 void PrometheusMetricsService::default_method(::google::protobuf::RpcController* cntl_base,
                                               const ::brpc::MetricsRequest*,
                                               ::brpc::MetricsResponse*,
@@ -351,8 +410,7 @@ int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output) {
     os.move_to(*output);
 
     if (bvar::FLAGS_bvar_max_dump_multi_dimension_metric_number > 0) {
-        PrometheusMetricsDumper dumper_md(&os, g_server_info_prefix);
-        const int ndump_md = bvar::MVariableBase::dump_exposed(&dumper_md, nullptr);
+        int ndump_md = bvar::MVariableBase::dump_exposed(&dumper, nullptr);
         if (ndump_md < 0) {
             return -1;
         }

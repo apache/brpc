@@ -191,13 +191,9 @@ const std::vector<MetricFamily>& Histogram::list_metric_families() {
     // dumped or exposed, and that can be later than the construction of a
     // static object which reads this from its own destructor.
     static auto families = new std::vector<MetricFamily>{
-        {"", "histogram", {"le"}, {"_bucket", "_sum", "_count"}},
+        {"", "histogram", {"le"}},
     };
     return *families;
-}
-
-std::vector<std::string> Histogram::collect_prometheus_names() const {
-    return detail::collect_metric_family_names(name(), list_metric_families());
 }
 
 bool Histogram::dump(Dumper* dumper, const DumpOptions&,

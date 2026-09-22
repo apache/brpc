@@ -101,10 +101,6 @@ struct MetricFamily {
     // MultiDimension must not use any of them, otherwise one sample would
     // contain the same label more than once and be invalid prometheus text.
     std::vector<std::string> reserved_labels;
-    // Additional sample names within this family, relative to `suffix`. A
-    // Histogram family with an empty suffix declares `_bucket`, `_sum` and
-    // `_count`.
-    std::vector<std::string> additional_sample_suffixes;
 };
 
 // The contract of a composite metric inside a MultiDimension
@@ -115,8 +111,7 @@ struct MetricFamily {
 // these two members on it instead and MultiDimension will pick them up:
 //
 //   // The families this type exports, in the order they should be dumped.
-//   // Each family also declares label names and additional suffixed sample
-//   // names it emits, if any.
+//   // Each family also declares the label names it emits, if any.
 //   // Return a reference to immutable storage with static lifetime.
 //   static const std::vector<bvar::MetricFamily>& list_metric_families();
 //
@@ -151,22 +146,6 @@ namespace detail {
 //     It also leaves out the integer part, and `.5` reads worse than `0.5`
 //     next to the values the scalar path prints through an ostream.
 std::string prometheus_double_to_string(double value);
-
-inline std::vector<std::string> collect_metric_family_names(
-    const std::string& exposed_name, const std::vector<MetricFamily>& families) {
-    std::vector<std::string> names;
-    for (auto& family : families) {
-        std::string family_name(exposed_name);
-        if (family.suffix != nullptr) {
-            family_name.append(family.suffix);
-        }
-        names.push_back(family_name);
-        for (auto& sample_suffix : family.additional_sample_suffixes) {
-            names.push_back(family_name + sample_suffix);
-        }
-    }
-    return names;
-}
 
 // True if `T` declares both members of the contract above.
 template <typename T>
@@ -363,8 +342,6 @@ protected:
     virtual int expose_impl(const butil::StringPiece& prefix,
                             const butil::StringPiece& name,
                             DisplayFilter display_filter);
-
-    virtual std::vector<std::string> collect_prometheus_names() const;
 
 private:
     std::string _name;

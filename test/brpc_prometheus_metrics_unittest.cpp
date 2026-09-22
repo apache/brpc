@@ -23,9 +23,9 @@
 #include "brpc/channel.h"
 #include "brpc/controller.h"
 #include "brpc/builtin/prometheus_metrics_service.h"
-#include "brpc/details/method_status.h"
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
+#include "butil/string_printf.h"
 #include "echo.pb.h"
 #include "bvar/bvar.h"
 #include "bvar/histogram.h"
@@ -72,6 +72,18 @@ TEST(PrometheusMetrics, sanity) {
     // An ephemeral port rather than a hardcoded one, which another test in the
     // same run may already be listening on.
     ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    // Start() only launches the bthread exposing the per method bvars, it does
+    // not wait for it. Scraping right away can catch that loop halfway and see
+    // some methods but not others, which _method_map iterates in hash order.
+    // Wait for the one this test reads back.
+    std::string echo_count_name = butil::string_printf(
+        "rpc_server_%d_test_echo_service_echo_count",
+        server.listen_address().port);
+    for (int i = 0; i < 500 &&
+             bvar::Variable::describe_exposed(echo_count_name).empty(); ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_FALSE(bvar::Variable::describe_exposed(echo_count_name).empty());
 
     const std::list<std::string> labels = {"label1", "label2"};
     bvar::MultiDimension<bvar::Adder<uint32_t> > my_madder("madder", labels);
@@ -401,86 +413,88 @@ TEST(PrometheusMetrics, IsDumpableToPrometheus_malformed) {
     EXPECT_FALSE(brpc::IsDumpableToPrometheus("1e2e3"));
 }
 
-// The summary, its `_sum` and the separate `_avg_latency` gauge, namely what
-// DumpLatencyRecorderSuffix() writes and what no bvar is exposed under.
-TEST(PrometheusMetrics, SynthesizedLatencyRecorderNames) {
-    std::vector<std::string> names =
-        brpc::SynthesizedLatencyRecorderNames("rpc_server_0_foo_bar");
-    ASSERT_EQ(3UL, names.size());
-    EXPECT_EQ("rpc_server_0_foo_bar", names[0]);
-    EXPECT_EQ("rpc_server_0_foo_bar_sum", names[1]);
-    EXPECT_EQ("rpc_server_0_foo_bar_avg_latency", names[2]);
-    // `_count` is missing on purpose, it is a bvar of its own.
-
-    // Outside the server prefix the dumper writes the bvars out one by one, so
-    // there is nothing to claim.
-    EXPECT_TRUE(brpc::SynthesizedLatencyRecorderNames("event_dispatcher_read").empty());
-    EXPECT_TRUE(brpc::SynthesizedLatencyRecorderNames("").empty());
-}
-
-// Nothing else reserves those three, so MethodStatus has to. Leaving them free
-// lets a plain bvar take one and a single scrape then carries two metrics under
-// the same name, which prometheus rejects as a whole.
-TEST(PrometheusMetrics, MethodStatusReservesSynthesizedNames) {
-    {
-        brpc::MethodStatus st;
-        ASSERT_EQ(0, st.Expose("rpc_server_0_reserve"));
-
-        bvar::Adder<int> summary;
-        ASSERT_EQ(-1, summary.expose("rpc_server_0_reserve"));
-        bvar::Adder<int> sum;
-        ASSERT_EQ(-1, sum.expose("rpc_server_0_reserve_sum"));
-        bvar::Adder<int> avg;
-        ASSERT_EQ(-1, avg.expose("rpc_server_0_reserve_avg_latency"));
-        // `_count` is a real bvar which already reserves itself.
-        bvar::Adder<int> count;
-        ASSERT_EQ(-1, count.expose("rpc_server_0_reserve_count"));
-        // Nothing else in the name space is claimed.
-        bvar::Adder<int> other;
-        ASSERT_EQ(0, other.expose("rpc_server_0_reserve_size"));
-
-        // The server exposes the same MethodStatus again on every Start(), under a
-        // name carrying the port of that run. The old names go back.
-        ASSERT_EQ(0, st.Expose("rpc_server_1_reserve"));
-        ASSERT_EQ(0, summary.expose("rpc_server_0_reserve"));
-        ASSERT_EQ(-1, sum.expose("rpc_server_1_reserve_sum"));
+// Number of sample lines for `name`, namely the lines starting with it followed
+// by a space or by the opening brace of its labels. Comment lines are left out,
+// what has to be unique in a scrape is the sample name.
+static int CountSampleLines(const std::string& text, const std::string& name) {
+    int n = 0;
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t eol = text.find('\n', pos);
+        size_t len = (eol == std::string::npos ? text.size() : eol) - pos;
+        butil::StringPiece line(text.data() + pos, len);
+        if (line.starts_with(name) && line.size() > name.size() &&
+            (line[name.size()] == ' ' || line[name.size()] == '{')) {
+            ++n;
+        }
+        if (eol == std::string::npos) {
+            break;
+        }
+        pos = eol + 1;
     }
-    // So does destruction.
-    bvar::Adder<int> sum;
-    ASSERT_EQ(0, sum.expose("rpc_server_1_reserve_sum"));
+    return n;
 }
 
-// Outside the server prefix the exporter synthesizes nothing, so claiming the
-// names would only take them away from the user for no reason. RTMP exposes a
-// MethodStatus that way, see g_client_msg_status.
-TEST(PrometheusMetrics, MethodStatusOutsideServerPrefixClaimsNothing) {
-    brpc::MethodStatus st;
-    ASSERT_EQ(0, st.Expose("unittest_no_server_prefix"));
-
-    bvar::Adder<int> summary;
-    ASSERT_EQ(0, summary.expose("unittest_no_server_prefix"));
+// `X_sum` is made up by the exporter out of a LatencyRecorder, no variable is
+// exposed under it, so the name registry cannot see the clash and the dumper is
+// the only place that can.
+TEST(PrometheusMetrics, DumperSkipsBvarTakingASynthesizedName) {
+    bvar::LatencyRecorder lat("rpc_server_0_sumdedup");
+    lat << 1 << 2;
     bvar::Adder<int> sum;
-    ASSERT_EQ(0, sum.expose("unittest_no_server_prefix_sum"));
-    bvar::Adder<int> avg;
-    ASSERT_EQ(0, avg.expose("unittest_no_server_prefix_avg_latency"));
+    ASSERT_EQ(0, sum.expose("rpc_server_0_sumdedup_sum"));
+    sum << 7;
+
+    butil::IOBuf buf;
+    ASSERT_EQ(0, brpc::DumpPrometheusMetricsToIOBuf(&buf));
+    std::string res = buf.to_string();
+    // `_max_latency` sorts before `_sum`, so the summary writes first and the
+    // plain bvar is the one dropped.
+    EXPECT_EQ(1, CountSampleLines(res, "rpc_server_0_sumdedup_sum")) << res;
+    EXPECT_EQ(std::string::npos, res.find("rpc_server_0_sumdedup_sum 7\n")) << res;
+    EXPECT_EQ(std::string::npos, res.find("# TYPE rpc_server_0_sumdedup_sum ")) << res;
 }
 
-// Exposing is all-or-nothing. Sub-bvars left behind by a failed Expose() would
-// still be enough for the exporter to synthesize the summary, under the very
-// name that made the reservation fail.
-TEST(PrometheusMetrics, MethodStatusExposeIsAllOrNothing) {
-    bvar::Adder<int> taken("rpc_server_0_rollback_sum");
-    ASSERT_EQ("rpc_server_0_rollback_sum", taken.name());
+// The reverse order, and a whole family at once: the summary occupies three
+// names and writes none of them when one is taken. Half a summary is as bad for
+// the scrape as a duplicate.
+TEST(PrometheusMetrics, DumperDropsWholeSummaryWhenItsNameIsTaken) {
+    bvar::Adder<int> base;
+    ASSERT_EQ(0, base.expose("rpc_server_0_basededup"));
+    base << 9;
+    bvar::LatencyRecorder lat("rpc_server_0_basededup");
+    lat << 1 << 2;
 
-    brpc::MethodStatus st;
-    ASSERT_EQ(-1, st.Expose("rpc_server_0_rollback"));
-    const char* left_over[] = {
-        "rpc_server_0_rollback_concurrency", "rpc_server_0_rollback_error",
-        "rpc_server_0_rollback_eps", "rpc_server_0_rollback_latency",
-        "rpc_server_0_rollback_max_latency", "rpc_server_0_rollback_count",
-        "rpc_server_0_rollback_qps",
-    };
-    for (const char* name : left_over) {
-        EXPECT_TRUE(bvar::Variable::describe_exposed(name).empty()) << name;
-    }
+    butil::IOBuf buf;
+    ASSERT_EQ(0, brpc::DumpPrometheusMetricsToIOBuf(&buf));
+    std::string res = buf.to_string();
+    EXPECT_EQ(1, CountSampleLines(res, "rpc_server_0_basededup")) << res;
+    EXPECT_NE(std::string::npos, res.find("rpc_server_0_basededup 9\n")) << res;
+    EXPECT_EQ(std::string::npos,
+              res.find("# TYPE rpc_server_0_basededup summary")) << res;
+    EXPECT_EQ(0, CountSampleLines(res, "rpc_server_0_basededup_sum")) << res;
+    EXPECT_EQ(0, CountSampleLines(res, "rpc_server_0_basededup_count")) << res;
+    // `_avg_latency` is a family of its own, a clash on the summary leaves it
+    // alone.
+    EXPECT_EQ(1, CountSampleLines(res, "rpc_server_0_basededup_avg_latency")) << res;
+}
+
+// The bvar pass and the mbvar pass write into one scrape, so they have to share
+// one view of which names are taken. The registry cannot catch this pair either,
+// the name the mbvar runs into belongs to no variable.
+TEST(PrometheusMetrics, DumperSkipsMbvarTakingASynthesizedName) {
+    bvar::LatencyRecorder lat("rpc_server_0_mdedup");
+    lat << 1 << 2;
+    const std::list<std::string> labels = {"label1"};
+    bvar::MultiDimension<bvar::Adder<int> > madder("rpc_server_0_mdedup_sum", labels);
+    bvar::Adder<int>* sub = madder.get_stats({"val1"});
+    ASSERT_TRUE(sub);
+    *sub << 6;
+
+    butil::IOBuf buf;
+    ASSERT_EQ(0, brpc::DumpPrometheusMetricsToIOBuf(&buf));
+    std::string res = buf.to_string();
+    EXPECT_EQ(1, CountSampleLines(res, "rpc_server_0_mdedup_sum")) << res;
+    EXPECT_EQ(std::string::npos,
+              res.find("rpc_server_0_mdedup_sum{label1=\"val1\"}")) << res;
 }

@@ -718,7 +718,7 @@ public:
     void miss() { ++_total; }
 
     static std::vector<bvar::MetricFamily> list_metric_families() {
-        return {{"_hits", "counter", {}, {}}, {"_total", "counter", {}, {}}};
+        return {{"_hits", "counter", {}}, {"_total", "counter", {}}};
     }
 
     bool dump_samples(bvar::Dumper* dumper, size_t family_index,

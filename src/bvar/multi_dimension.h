@@ -226,20 +226,6 @@ private:
         return _label_names_valid ? Base::expose_impl(prefix, name) : -1;
     }
 
-    std::vector<std::string> collect_prometheus_names() const override {
-        return collect_prometheus_names_impl<T>();
-    }
-    template <typename U>
-    std::enable_if_t<!detail::IsCompositeMetric<U>::value, std::vector<std::string> >
-    collect_prometheus_names_impl() const {
-        return {this->name()};
-    }
-    template <typename U>
-    std::enable_if_t<detail::IsCompositeMetric<U>::value, std::vector<std::string> >
-    collect_prometheus_names_impl() const {
-        return detail::collect_metric_family_names(this->name(), U::list_metric_families());
-    }
-
     template <typename K>
     value_ptr_type get_stats_impl(const K& labels_value);
 
