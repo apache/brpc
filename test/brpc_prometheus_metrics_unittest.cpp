@@ -18,11 +18,16 @@
 // brpc - A framework to host and access services throughout Baidu.
 
 #include <gtest/gtest.h>
+#include <unordered_set>
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
+#include "brpc/builtin/prometheus_metrics_service.h"
+#include "brpc/details/method_status.h"
+#include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "echo.pb.h"
+#include "bvar/bvar.h"
 #include "bvar/histogram.h"
 #include "bvar/multi_dimension.h"
 
@@ -300,4 +305,182 @@ TEST(PrometheusMetrics, sanity) {
                 && has_ever_histogram);
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
+}
+
+TEST(PrometheusMetrics, GetMetricsName) {
+    EXPECT_EQ("", brpc::GetMetricsName(""));
+
+    EXPECT_EQ("commit_count", brpc::GetMetricsName("commit_count"));
+
+    EXPECT_EQ("commit_count", brpc::GetMetricsName("commit_count{region=\"1000\"}"));
+}
+
+// Values bvar produces: integers, doubles (DoubleToString may omit the
+// integer part, as in ".5") and exponent form.
+TEST(PrometheusMetrics, IsDumpableToPrometheus_numbers) {
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("0"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("42"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("-5"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("+7"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("3.14"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("-0.5"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus(".5"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("-.5"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("123."));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("1e10"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("1E10"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("1e+10"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("1e-10"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("1.5e-3"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus(".5e2"));
+}
+
+// Prometheus accepts these specials, case-insensitively; unlike
+// butil::StringToDouble, whose behavior on them is undefined.
+TEST(PrometheusMetrics, IsDumpableToPrometheus_specials) {
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("+Inf"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("-Inf"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("inf"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("INF"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("NaN"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("nan"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("nAn"));
+}
+
+// A NaN carries no sign in that grammar: prometheus consumes the sign and then
+// looks for Inf only, so the "-nan" that glibc's printf("%g") makes of a
+// negative NaN would fail the whole scrape.
+TEST(PrometheusMetrics, IsDumpableToPrometheus_signed_specials) {
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("-nan"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("+nan"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("-NaN"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("+NAN"));
+    // Inf on the other hand takes either sign.
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("-INF"));
+    EXPECT_TRUE(brpc::IsDumpableToPrometheus("+inf"));
+}
+
+// A quoted string, a json object/array (Window<Histogram>, compound
+// PassiveStatus) and the bare `true`/`false` of a bool gflag, which sniffing
+// only the first char let through.
+TEST(PrometheusMetrics, IsDumpableToPrometheus_non_numbers) {
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus(""));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus(butil::StringPiece()));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("true"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("false"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("True"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("\"running\""));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("{\"count\":4}"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("[1,2,3]"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("null"));
+    // The spelled-out "Infinity" is not prometheus sample-value grammar either,
+    // no matter what Go's strconv.ParseFloat thinks of it.
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("Infinity"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("-infinity"));
+}
+
+// Malformed numbers that a prefix parser such as strtod would accept.
+TEST(PrometheusMetrics, IsDumpableToPrometheus_malformed) {
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("+"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("-"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("."));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("e5"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("1e"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("1e+"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("1.5.6"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("12abc"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("1,2"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus(" 1"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("1 "));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("0x10"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("infx"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("in"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("na"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("--1"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("1..2"));
+    EXPECT_FALSE(brpc::IsDumpableToPrometheus("1e2e3"));
+}
+
+// The summary, its `_sum` and the separate `_avg_latency` gauge, namely what
+// DumpLatencyRecorderSuffix() writes and what no bvar is exposed under.
+TEST(PrometheusMetrics, SynthesizedLatencyRecorderNames) {
+    std::vector<std::string> names =
+        brpc::SynthesizedLatencyRecorderNames("rpc_server_0_foo_bar");
+    ASSERT_EQ(3UL, names.size());
+    EXPECT_EQ("rpc_server_0_foo_bar", names[0]);
+    EXPECT_EQ("rpc_server_0_foo_bar_sum", names[1]);
+    EXPECT_EQ("rpc_server_0_foo_bar_avg_latency", names[2]);
+    // `_count` is missing on purpose, it is a bvar of its own.
+
+    // Outside the server prefix the dumper writes the bvars out one by one, so
+    // there is nothing to claim.
+    EXPECT_TRUE(brpc::SynthesizedLatencyRecorderNames("event_dispatcher_read").empty());
+    EXPECT_TRUE(brpc::SynthesizedLatencyRecorderNames("").empty());
+}
+
+// Nothing else reserves those three, so MethodStatus has to. Leaving them free
+// lets a plain bvar take one and a single scrape then carries two metrics under
+// the same name, which prometheus rejects as a whole.
+TEST(PrometheusMetrics, MethodStatusReservesSynthesizedNames) {
+    {
+        brpc::MethodStatus st;
+        ASSERT_EQ(0, st.Expose("rpc_server_0_reserve"));
+
+        bvar::Adder<int> summary;
+        ASSERT_EQ(-1, summary.expose("rpc_server_0_reserve"));
+        bvar::Adder<int> sum;
+        ASSERT_EQ(-1, sum.expose("rpc_server_0_reserve_sum"));
+        bvar::Adder<int> avg;
+        ASSERT_EQ(-1, avg.expose("rpc_server_0_reserve_avg_latency"));
+        // `_count` is a real bvar which already reserves itself.
+        bvar::Adder<int> count;
+        ASSERT_EQ(-1, count.expose("rpc_server_0_reserve_count"));
+        // Nothing else in the name space is claimed.
+        bvar::Adder<int> other;
+        ASSERT_EQ(0, other.expose("rpc_server_0_reserve_size"));
+
+        // The server exposes the same MethodStatus again on every Start(), under a
+        // name carrying the port of that run. The old names go back.
+        ASSERT_EQ(0, st.Expose("rpc_server_1_reserve"));
+        ASSERT_EQ(0, summary.expose("rpc_server_0_reserve"));
+        ASSERT_EQ(-1, sum.expose("rpc_server_1_reserve_sum"));
+    }
+    // So does destruction.
+    bvar::Adder<int> sum;
+    ASSERT_EQ(0, sum.expose("rpc_server_1_reserve_sum"));
+}
+
+// Outside the server prefix the exporter synthesizes nothing, so claiming the
+// names would only take them away from the user for no reason. RTMP exposes a
+// MethodStatus that way, see g_client_msg_status.
+TEST(PrometheusMetrics, MethodStatusOutsideServerPrefixClaimsNothing) {
+    brpc::MethodStatus st;
+    ASSERT_EQ(0, st.Expose("unittest_no_server_prefix"));
+
+    bvar::Adder<int> summary;
+    ASSERT_EQ(0, summary.expose("unittest_no_server_prefix"));
+    bvar::Adder<int> sum;
+    ASSERT_EQ(0, sum.expose("unittest_no_server_prefix_sum"));
+    bvar::Adder<int> avg;
+    ASSERT_EQ(0, avg.expose("unittest_no_server_prefix_avg_latency"));
+}
+
+// Exposing is all-or-nothing. Sub-bvars left behind by a failed Expose() would
+// still be enough for the exporter to synthesize the summary, under the very
+// name that made the reservation fail.
+TEST(PrometheusMetrics, MethodStatusExposeIsAllOrNothing) {
+    bvar::Adder<int> taken("rpc_server_0_rollback_sum");
+    ASSERT_EQ("rpc_server_0_rollback_sum", taken.name());
+
+    brpc::MethodStatus st;
+    ASSERT_EQ(-1, st.Expose("rpc_server_0_rollback"));
+    const char* left_over[] = {
+        "rpc_server_0_rollback_concurrency", "rpc_server_0_rollback_error",
+        "rpc_server_0_rollback_eps", "rpc_server_0_rollback_latency",
+        "rpc_server_0_rollback_max_latency", "rpc_server_0_rollback_count",
+        "rpc_server_0_rollback_qps",
+    };
+    for (const char* name : left_over) {
+        EXPECT_TRUE(bvar::Variable::describe_exposed(name).empty()) << name;
+    }
 }

@@ -20,6 +20,7 @@
 #include <gflags/gflags.h>
 #include "butil/unique_ptr.h"
 #include "butil/reloadable_flags.h"
+#include "butil/memory/scope_guard.h"
 #include "butil/strings/string_number_conversions.h" // butil::Int64ToString
 #include "bvar/latency_recorder.h"
 
@@ -239,6 +240,16 @@ int LatencyRecorder::expose(const butil::StringPiece& prefix1,
     _latency.set_debug_name(prefix);
     _latency_percentile.set_debug_name(prefix);
 
+    // Exposing a LatencyRecorder is all-or-nothing: the prometheus exporter
+    // turns the sub-bvars below back into one summary and would happily write
+    // that summary out with empty values if only some of them made it.
+    bool expose_succeeded = false;
+    BUTIL_SCOPE_EXIT {
+        if (!expose_succeeded) {
+            hide();
+        }
+    };
+
     if (_latency_window.expose_as(prefix, "latency") != 0) {
         return -1;
     }
@@ -282,6 +293,7 @@ int LatencyRecorder::expose(const butil::StringPiece& prefix1,
                  (int)FLAGS_bvar_latency_p3);
         CHECK_EQ(0, _latency_percentiles.set_vector_names(namebuf));
     }
+    expose_succeeded = true;
     return 0;
 }
 
@@ -314,17 +326,15 @@ LatencyRecorder& LatencyRecorder::operator<<(int64_t latency) {
 }
 
 const std::vector<MetricFamily>& LatencyRecorder::list_metric_families() {
-    // Every initializer spells out all four fields: gcc treats the omitted
-    // trailing ones as a warning (-Wmissing-field-initializers), which the CI
-    // promotes to an error.
-    static const std::vector<MetricFamily> families = {
+    // Deliberately leaked, see Histogram::list_metric_families() for why.
+    static auto families = new std::vector<MetricFamily>{
         {"_latency", "gauge", {"quantile"}, {}},
         {"_avg_latency", "gauge", {}, {}},
         {"_max_latency", "gauge", {}, {}},
         {"_qps", "gauge", {}, {}},
         {"_count", "counter", {}, {}},
     };
-    return families;
+    return *families;
 }
 
 // `name` + the labels in braces, omitting the braces when there are none, plus
@@ -340,10 +350,8 @@ static bool dump_labeled(Dumper* dumper, const std::string& name,
             if (!labels.empty()) {
                 key.push_back(',');
             }
-            char quantile_buf[32];
-            snprintf(quantile_buf, sizeof(quantile_buf), "%g", quantile);
             key.append("quantile=\"");
-            key.append(quantile_buf);
+            key.append(detail::prometheus_double_to_string(quantile));
             key.push_back('"');
         }
         key.push_back('}');

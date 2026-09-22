@@ -286,11 +286,15 @@ void MVariableBase::hide_all() {
     }
 
     for (auto& variable : variables) {
-        variable.ref->release();
-        variable.ref->hide_and_wait();
+        // Touch the owner while the reference taken by acquire() above is still
+        // held: release() lets a concurrent destructor run to completion, and
+        // hide_and_wait() blocks until the last reference is gone, so it has to
+        // come after release() rather than before it.
         detail::release_prometheus_names(
             variable.variable, variable.prometheus_names);
         variable.variable->_name.clear();
+        variable.ref->release();
+        variable.ref->hide_and_wait();
     }
 }
 #endif // end UNIT_TEST
@@ -316,6 +320,53 @@ void MVariableBase::list_exposed(std::vector<std::string>* names) {
     }
 }
 
+// Enforces FLAGS_bvar_max_dump_multi_dimension_metric_number over the whole
+// dump rather than only in between two mvars. A composite metric writes a
+// dozen lines or more per label set, so a single MultiDimension<Histogram>
+// holding the label sets max_multi_dimension_stats_count allows is already
+// hundreds of thousands of lines, all of which reached the output before
+// anyone got to look at the count.
+class LimitedDumper : public Dumper {
+public:
+    LimitedDumper(Dumper* dumper, size_t max_metric_count)
+        : _dumper(dumper), _left(max_metric_count), _truncated(false) {}
+
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        return take_one() && _dumper->dump(name, desc);
+    }
+    bool dump_mvar(const std::string& name, const butil::StringPiece& desc) override {
+        return take_one() && _dumper->dump_mvar(name, desc);
+    }
+    // A comment is not a metric of its own, but one that no sample may follow
+    // would be left dangling.
+    bool dump_comment(const std::string& name, const std::string& type) override {
+        if (_left == 0) {
+            _truncated = true;
+            return false;
+        }
+        return _dumper->dump_comment(name, type);
+    }
+
+    // True once the budget is gone, whether or not anything was refused yet.
+    bool exhausted() const { return _left == 0; }
+    // True if something was actually refused.
+    bool truncated() const { return _truncated; }
+
+private:
+    bool take_one() {
+        if (_left == 0) {
+            _truncated = true;
+            return false;
+        }
+        --_left;
+        return true;
+    }
+
+    Dumper* _dumper;
+    size_t _left;
+    bool _truncated;
+};
+
 int MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
     if (nullptr == dumper) {
         LOG(ERROR) << "Parameter[dumper] is nullptr";
@@ -327,14 +378,17 @@ int MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
     }
     std::vector<std::string> mvars;
     list_exposed(&mvars);
+    // The validator of the flag keeps it non negative.
+    LimitedDumper limited_dumper(
+        dumper, static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number));
     size_t n = 0;
-    for (auto& mvar : mvars) {
+    for (size_t i = 0; i < mvars.size(); ++i) {
         MVariableBase* var = nullptr;
         SharedExposedRef ref;
         {
             MVarMapWithLock& m = get_mvar_map();
             BAIDU_SCOPED_LOCK(m.mutex);
-            MVarEntry* entry = m.seek(mvar);
+            MVarEntry* entry = m.seek(mvars[i]);
             if (entry) {
                 ref = entry->ref;
                 var = ref->acquire();
@@ -343,12 +397,15 @@ int MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
         if (var != nullptr) {
             // Call dump() outside the MVarMap lock to avoid deadlock when the dump()
             // yields the bthread.
-            n += var->dump(dumper, &opt);
+            n += var->dump(&limited_dumper, &opt);
             ref->release();
         }
-        if (n > static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number)) {
-            LOG(WARNING) << "truncated because of exceed max dump multi dimension label number["
-                         << FLAGS_bvar_max_dump_multi_dimension_metric_number << "]";
+        if (limited_dumper.exhausted()) {
+            // An exact fit on the last mvar has lost nothing.
+            if (limited_dumper.truncated() || i + 1 < mvars.size()) {
+                LOG(WARNING) << "truncated because of exceed max dump multi dimension label number["
+                             << FLAGS_bvar_max_dump_multi_dimension_metric_number << "]";
+            }
             break;
         }
     }

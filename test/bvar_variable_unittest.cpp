@@ -20,14 +20,17 @@
 #include <pthread.h>                                // pthread_*
 #include <unistd.h>                                 // usleep
 #include <sys/utsname.h>                            // uname
+#include <clocale>                                  // setlocale
 #include <cstring>                                 // strlen
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <thread>
 #include <iostream>
 #include <sstream>
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/memory/scope_guard.h"
 
 #include "bvar/bvar.h"
 #include "bvar/default_variables.h"                // make_kernel_version_string
@@ -416,6 +419,64 @@ TEST_F(VariableTest, latency_recorder) {
     GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", saved_bvar_latency_p1.c_str());
     GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p2", saved_bvar_latency_p2.c_str());
     GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p3", saved_bvar_latency_p3.c_str());
+}
+
+// Exposing a LatencyRecorder is all-or-nothing. A half exposed one is not just
+// incomplete in /vars: the prometheus exporter recognizes the summary from its
+// `_max_latency` alone and would write out quantile lines whose value is the
+// empty string, which invalidates the whole scrape.
+TEST_F(VariableTest, latency_recorder_expose_is_all_or_nothing) {
+    // `_count` is exposed after `_latency` and `_max_latency`, so the two of
+    // them are already in the map when this name turns expose() back.
+    bvar::Adder<int> taken("rollback_count");
+    ASSERT_EQ("rollback_count", taken.name());
+
+    bvar::LatencyRecorder rec;
+    ASSERT_EQ(-1, rec.expose("Rollback"));
+    ASSERT_TRUE(rec.latency_name().empty());
+    ASSERT_TRUE(rec.max_latency_name().empty());
+    ASSERT_TRUE(rec.qps_name().empty());
+    std::vector<std::string> names;
+    bvar::Variable::list_exposed(&names);
+    ASSERT_EQ(1UL, names.size()) << vec2string(names);
+    ASSERT_EQ("rollback_count", names[0]);
+}
+
+// Collects every sample a composite metric writes, in order.
+class SampleCollector : public bvar::Dumper {
+public:
+    bool dump(const std::string& name,
+              const butil::StringPiece& desc) override {
+        return dump_mvar(name, desc);
+    }
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        samples.push_back(name + " " + desc.as_string());
+        return true;
+    }
+
+    std::vector<std::string> samples;
+};
+
+// The prometheus text format spells a double in one single way, whatever the
+// value and whatever the locale of the process.
+TEST_F(VariableTest, prometheus_double_to_string) {
+    ASSERT_EQ("0.99", bvar::detail::prometheus_double_to_string(0.99));
+    // With the integer part left in, so that it reads the same as the values
+    // the scalar path prints through an ostream.
+    ASSERT_EQ("0.5", bvar::detail::prometheus_double_to_string(0.5));
+    ASSERT_EQ("-0.5", bvar::detail::prometheus_double_to_string(-0.5));
+    ASSERT_EQ("10", bvar::detail::prometheus_double_to_string(10));
+    // "Infinity" and "NaN", which butil::DoubleToString writes, are not part
+    // of the sample value grammar. A line carrying one of them is dropped from
+    // the scrape, and a histogram then keeps the `_bucket` and `_count` that
+    // its `_sum` is read against while losing the `_sum` itself.
+    ASSERT_EQ("+Inf", bvar::detail::prometheus_double_to_string(
+                          std::numeric_limits<double>::infinity()));
+    ASSERT_EQ("-Inf", bvar::detail::prometheus_double_to_string(
+                          -std::numeric_limits<double>::infinity()));
+    ASSERT_EQ("NaN", bvar::detail::prometheus_double_to_string(
+                         std::numeric_limits<double>::quiet_NaN()));
 }
 
 TEST_F(VariableTest, recursive_mutex) {

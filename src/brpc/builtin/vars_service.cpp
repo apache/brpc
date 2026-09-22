@@ -266,6 +266,8 @@ class VarsDumper : public bvar::Dumper {
 public:
     explicit VarsDumper(butil::IOBufBuilder& os, bool use_html)
         : _os(os), _use_html(use_html) {}
+
+    DISALLOW_COPY_AND_ASSIGN(VarsDumper);
     
     bool dump(const std::string& name, const butil::StringPiece& desc) override {
         // A composite metric writes its samples under `name{label="value"}`,
@@ -273,7 +275,27 @@ public:
         // early) nor reachable by the $("#value-" + name) of the script below.
         // No series is exposed under such a name either, so nothing could
         // live-update it: print the value plainly.
-        bool live_updatable = name.find('{') == std::string::npos;
+        return dump_impl(name, desc, name.find('{') == std::string::npos);
+    }
+
+    // /vars lists every sample of a composite metric too. None of them is a
+    // bvar of its own, so none is refreshed by the script below: a histogram
+    // writes `foo_sum` and `foo_count` without any brace group, and those would
+    // otherwise get a span that stays at the value of the first page load
+    // forever, looking frozen next to the neighbours that do tick.
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        return dump_impl(name, desc, false);
+    }
+
+    void move_to(butil::IOBuf& buf) {
+        _os.move_to(buf);
+    }
+
+private:
+
+    bool dump_impl(const std::string& name, const butil::StringPiece& desc,
+                   bool live_updatable) {
         bool plot = false;
         if (_use_html) {
             bvar::SeriesOptions series_options;
@@ -312,13 +334,6 @@ public:
         return true;
     }
 
-    void move_to(butil::IOBuf& buf) {
-        _os.move_to(buf);
-    }
-    
-private:
-    DISALLOW_COPY_AND_ASSIGN(VarsDumper);
-    
     butil::IOBufBuilder & _os;
     bool _use_html;
 };

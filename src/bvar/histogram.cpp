@@ -26,15 +26,6 @@
 
 namespace bvar {
 
-static std::string double_to_string(double value) {
-    std::string result = butil::DoubleToString(value);
-    size_t decimal = !result.empty() && result[0] == '-' ? 1 : 0;
-    if (decimal < result.size() && result[decimal] == '.') {
-        result.insert(decimal, 1, '0');
-    }
-    return result;
-}
-
 Histogram::BucketSchema::BucketSchema(std::initializer_list<double> bounds)
     : _bounds(bounds) {
     validate_bounds();
@@ -83,7 +74,8 @@ void Histogram::BucketSchema::validate_bounds() {
 
 std::ostream& operator<<(std::ostream& os, const Histogram::Value& v) {
     os << "{\"count\":" << v.num << ",\"sum\":"
-       << double_to_string(v.sum) << ",\"counts\":[";
+       << detail::prometheus_double_to_string(v.sum)
+       << ",\"counts\":[";
     size_t nbuckets = std::min(v.num_buckets, MAX_HISTOGRAM_BUCKETS);
     for (size_t i = 0; i < nbuckets; ++i) {
         if (i != 0) {
@@ -161,13 +153,13 @@ int Histogram::expose_impl(const butil::StringPiece& prefix,
 void Histogram::describe(std::ostream& os, bool /*quote_string*/) const {
     value_type v = get_value();
     os << "{\"count\":" << v.num
-       << ",\"sum\":" << double_to_string(v.sum)
+       << ",\"sum\":" << detail::prometheus_double_to_string(v.sum)
        << ",\"bounds\":[";
     for (size_t i = 0; i < _schema.num_bounds(); ++i) {
         if (i != 0) {
             os << ',';
         }
-        os << double_to_string(_schema.bound_at(i));
+        os << detail::prometheus_double_to_string(_schema.bound_at(i));
     }
     os << "],\"counts\":[";
     for (size_t i = 0; i < _schema.num_buckets(); ++i) {
@@ -180,10 +172,14 @@ void Histogram::describe(std::ostream& os, bool /*quote_string*/) const {
 }
 
 const std::vector<MetricFamily>& Histogram::list_metric_families() {
-    static const std::vector<MetricFamily> families = {
+    // Deliberately leaked. A function local static registers its destructor
+    // with atexit on the first call, which is whenever the first Histogram is
+    // dumped or exposed, and that can be later than the construction of a
+    // static object which reads this from its own destructor.
+    static auto families = new std::vector<MetricFamily>{
         {"", "histogram", {"le"}, {"_bucket", "_sum", "_count"}},
     };
-    return families;
+    return *families;
 }
 
 std::vector<std::string> Histogram::collect_prometheus_names() const {
@@ -244,7 +240,7 @@ bool Histogram::dump_samples(Dumper* dumper, size_t /*family_index*/,
         if (_schema.is_inf_bucket(i)) {
             bound = "+Inf";
         } else {
-            bound = double_to_string(_schema.bound_at(i));
+            bound = detail::prometheus_double_to_string(_schema.bound_at(i));
         }
         make_sample_key(&key, name, "_bucket", labels, bound);
         if (!dumper->dump_mvar(key, butil::Uint64ToString(cumulative))) {
@@ -252,7 +248,7 @@ bool Histogram::dump_samples(Dumper* dumper, size_t /*family_index*/,
         }
     }
     make_sample_key(&key, name, "_sum", labels, butil::StringPiece());
-    if (!dumper->dump_mvar(key, double_to_string(v.sum))) {
+    if (!dumper->dump_mvar(key, detail::prometheus_double_to_string(v.sum))) {
         return false;
     }
     make_sample_key(&key, name, "_count", labels, butil::StringPiece());

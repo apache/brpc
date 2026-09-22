@@ -809,6 +809,17 @@ TEST_F(BuiltinServiceTest, vars) {
                            "<td>myhist_bucket{le=\"10\"}</td><td>1</td></tr>");
         ASSERT_EQ(std::string::npos, cntl.response_attachment().to_string()
                   .find("id=\"value-myhist_bucket"));
+        // `_sum` and `_count` carry no label and so no quotes, but they are no
+        // more a bvar of their own than the buckets are: the script refreshes
+        // a span by looking its name up among the exposed bvars, so one here
+        // would sit at the value of the page load forever, next to neighbours
+        // that do tick.
+        CheckContent(cntl, "<td>myhist_sum</td><td>5</td></tr>");
+        CheckContent(cntl, "<td>myhist_count</td><td>1</td></tr>");
+        ASSERT_EQ(std::string::npos, cntl.response_attachment().to_string()
+                  .find("id=\"value-myhist_sum"));
+        ASSERT_EQ(std::string::npos, cntl.response_attachment().to_string()
+                  .find("id=\"value-myhist_count"));
     }
     {
         ClosureChecker done;

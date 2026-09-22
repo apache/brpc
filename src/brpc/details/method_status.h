@@ -62,9 +62,21 @@ private:
 friend class Server;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
 
-    // Note: SetConcurrencyLimiter() is not thread safe and can only be called 
-    // before the server is started. 
+    // Note: SetConcurrencyLimiter() is not thread safe and can only be called
+    // before the server is started.
     void SetConcurrencyLimiter(ConcurrencyLimiter* cl);
+
+    // Hide whatever Expose() exposed, including the names reserved below.
+    void Hide();
+
+    // Claim the prometheus metric names that the exporter synthesizes out of
+    // `_latency_rec` but no bvar is exposed under, see
+    // SynthesizedLatencyRecorderNames().
+    // Returns 0 on success, -1 when one of them is taken, in which case nothing
+    // is reserved.
+    int ReserveSynthesizedPrometheusNames();
+    // Release what ReserveSynthesizedPrometheusNames() took, if anything.
+    void ReleaseSynthesizedPrometheusNames();
 
     std::unique_ptr<ConcurrencyLimiter> _cl;
     butil::atomic<int> _nconcurrency;
@@ -73,6 +85,9 @@ friend class Server;
     bvar::PassiveStatus<int>  _nconcurrency_bvar;
     bvar::PerSecond<bvar::Adder<int64_t>> _eps_bvar;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
+    // The metric name the synthesized prometheus names were built from, empty
+    // when none of them is reserved.
+    std::string _prometheus_metric_name;
 };
 
 struct ResponseWriteInfo {

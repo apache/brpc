@@ -75,10 +75,9 @@ public:
     // if there're any, as in `foo_bucket{le="10"}`.
     // Unlike dump(), implementations must NOT emit any per-metric preamble:
     // the whole family is described by a single preceding dump_comment().
-    // The default implementation falls back to dump().
-    virtual bool dump_mvar(const std::string& name,
-                           const butil::StringPiece& description) {
-        return dump(name, description);
+    virtual bool dump_mvar(const std::string& /*name*/,
+                           const butil::StringPiece& /*description*/) {
+        return true;
     }
     // Dump the comment describing the type of the metric family `name`, which
     // precedes the dump_mvar() of all the metrics inside. Only meaningful to
@@ -139,6 +138,19 @@ struct MetricFamily {
 // forgot an include, which is exactly what would make a traits class dangerous
 // here: the value would silently fall back to json.
 namespace detail {
+
+// A double as the prometheus text format spells it, used both for sample
+// values and for the numbers inside a label such as `le` or `quantile`.
+// Neither of the two obvious ways of writing one will do:
+//   - printf("%g") is locale dependent, and an application that called
+//     setlocale under a de_DE environment gets `quantile="0,99"`, where the
+//     comma ends the label and starts another one;
+//   - butil::DoubleToString is locale free but spells the non finite values
+//     "Infinity" and "NaN", while the sample value grammar only takes `+Inf`,
+//     `-Inf` and `NaN`, and a line it cannot parse is dropped from the scrape.
+//     It also leaves out the integer part, and `.5` reads worse than `0.5`
+//     next to the values the scalar path prints through an ostream.
+std::string prometheus_double_to_string(double value);
 
 inline std::vector<std::string> collect_metric_family_names(
     const std::string& exposed_name, const std::vector<MetricFamily>& families) {

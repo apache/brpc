@@ -36,6 +36,26 @@ namespace bvar {
 
 namespace detail {
 
+// A value that named itself was built from a name argument that was meant for
+// the MultiDimension: `md(labels, "my_counter")` reads like the mirror of
+// `md("my_counter", labels)`, but it names every value instead. They would all
+// claim the same name, so they are hidden again right after, which leaves the
+// mistake with no visible effect at all other than a MultiDimension that never
+// shows up in /vars.
+template <typename ValuePtr>
+auto warn_if_named(ValuePtr& value, int) -> decltype(value->name(), void()) {
+    if (BAIDU_UNLIKELY(!value->name().empty())) {
+        LOG_EVERY_SECOND(ERROR)
+            << "Values of a MultiDimension are exposed through it and must not"
+               " name themselves, dropping the name `" << value->name()
+            << "`. To name the MultiDimension, pass the name before the labels:"
+               " MultiDimension<T>(\"" << value->name() << "\", labels)";
+    }
+}
+
+template <typename ValuePtr>
+void warn_if_named(ValuePtr&, ...) {}
+
 template <typename ValuePtr>
 auto hide_if_supported(ValuePtr& value, int) -> decltype(value->hide(), void()) {
     value->hide();
@@ -98,15 +118,24 @@ public:
     typedef butil::DoublyBufferedData<MetricMap> MetricMapDBD;
     typedef typename MetricMapDBD::ScopedPtr MetricMapScopedPtr;
     
-    // `args` are copied and supplied as const references to each value's
-    // constructor. Only overloads that can construct T this way participate.
-    // With no args, T must be default-constructible. A Histogram is the
-    // typical one, its buckets are fixed at construction:
+    // `args` are copied into the MultiDimension and supplied as const
+    // references to each value's constructor, one value per label combination.
+    // Only overloads that can construct T this way participate. With no args,
+    // T must be default-constructible. A Histogram is the typical one, its
+    // buckets are fixed at construction:
     //   bvar::MultiDimension<bvar::Histogram> h(
     //       "rpc_latency", {"method"},
     //       bvar::Histogram::BucketSchema({10, 50, 100, 500, 1000}));
-    // They are copied once into the MultiDimension, nothing needs to outlive
-    // the call.
+    // Each argument is stored as std::decay_t of what was passed, so a
+    // `const char*` or a butil::StringPiece is kept as the pointer it is, not
+    // as a copy of the characters. The values are built lazily, on the first
+    // record of each label combination, and the caller is responsible for
+    // keeping whatever such an argument points into alive at least that long.
+    // A string literal always is; a std::string local is not, pass it as a
+    // std::string and it is copied.
+    // `args` are the arguments of the value, never of the MultiDimension: the
+    // name of the MultiDimension goes before the labels, as above, and a value
+    // that names itself is reported by detail::warn_if_named().
     template <typename... Args,
               std::enable_if_t<std::is_constructible<
                   T, const typename std::decay<Args>::type&...>::value, int> = 0>
@@ -260,14 +289,19 @@ private:
     template <typename K>
     bool is_valid_lables_value(const K& labels_value) const;
 
+    // The first label name that the composite metric has already taken for
+    // itself, empty when there is none. A non composite metric reserves
+    // nothing, so nothing of it can collide.
     template <typename U = T>
-    static std::enable_if_t<!detail::IsCompositeMetric<U>::value, bool>
-    are_label_names_valid(const key_type& labels) {
-        return true;
+    static std::enable_if_t<!detail::IsCompositeMetric<U>::value, std::string>
+    find_reserved_label(const key_type&) {
+        return std::string();
     }
     template <typename U = T>
-    static std::enable_if_t<detail::IsCompositeMetric<U>::value, bool>
-    are_label_names_valid(const key_type& labels);
+    static std::enable_if_t<detail::IsCompositeMetric<U>::value, std::string>
+    find_reserved_label(const key_type& labels);
+
+    static bool are_label_names_valid(const key_type& labels);
     
     // Remove all stats so those not count and dump
     void delete_stats();
@@ -286,11 +320,14 @@ private:
         return new value_type(args...);
     }
 
-    // Taken by value so that the arguments are copied into the closure.
+    // Taken by value so that the arguments are copied into the closure, as
+    // std::decay_t of what the constructor was given. A borrowed string stays
+    // borrowed, see the lifetime note on the constructors above.
     template <typename... Args>
     static std::function<value_ptr_type()> make_value_factory(Args... args) {
         return [args...]() {
             value_ptr_type value = make_value(args...);
+            detail::warn_if_named(value, 0);
             // Child metrics are exported through MultiDimension,
             // not on their own.
             detail::hide_if_supported(value, 0);
@@ -308,6 +345,8 @@ private:
         delete v;
     }
 
+    // False when a label name collides with one the composite metric reserves,
+    // the one case in which expose_impl() above refuses.
     bool _label_names_valid;
     size_t _max_stats_count;
     // make_value() bound to the arguments the MultiDimension was constructed with.

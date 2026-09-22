@@ -29,6 +29,7 @@
 #include <vector>
 #include <gtest/gtest.h>
 #include <butil/atomicops.h>
+#include <butil/float_util.h>
 #include <butil/strings/string_number_conversions.h>
 #include <butil/time.h>
 #include "bvar/bvar.h"
@@ -334,6 +335,64 @@ TEST_F(HistogramTest, default_variable_dump_is_unchanged) {
     ASSERT_TRUE(a.dump(&d, opt, "bar"));
     ASSERT_EQ(1u, d.lines.size());
     ASSERT_EQ("dump_bar 7", d.lines[0]);
+}
+
+// A Dumper written before composite metrics existed only implements dump().
+// The samples of a histogram carry their labels inside the name, which such a
+// dumper has no way of reading, so it must not start receiving them behind its
+// back: opting in is what the dump_mvar() override is for.
+class DumpOnlyDumper : public bvar::Dumper {
+public:
+    bool dump(const std::string& name,
+              const butil::StringPiece& desc) override {
+        lines.push_back(name + " " + desc.as_string());
+        return true;
+    }
+    std::vector<std::string> lines;
+};
+
+TEST_F(HistogramTest, samples_reach_an_opted_in_dumper_only) {
+    bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20}));
+    h << 5 << 25;
+
+    DumpOnlyDumper d;
+    bvar::DumpOptions opt;
+    ASSERT_TRUE(h.dump(&d, opt, "foo"));
+    ASSERT_TRUE(d.lines.empty()) << d.lines[0];
+
+    // A plain value is unaffected, it goes through dump() as it always did.
+    bvar::Adder<int> a;
+    a << 7;
+    ASSERT_TRUE(a.dump(&d, opt, "bar"));
+    ASSERT_EQ(1u, d.lines.size());
+    ASSERT_EQ("bar 7", d.lines[0]);
+}
+
+// A histogram only takes finite values, but enough of them add up to an
+// infinity. "Infinity" is not prometheus sample value grammar, and the
+// exporter drops a line it cannot parse: `_sum` would disappear while
+// `_bucket` and `_count` stay, leaving rate(_sum)/rate(_count) empty.
+TEST_F(HistogramTest, non_finite_sum_uses_prometheus_spelling) {
+    double big = std::numeric_limits<double>::max();
+    {
+        bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20}));
+        h << big << big;
+        ASSERT_FALSE(butil::IsFinite(h.get_value().sum));
+
+        RecordingDumper d;
+        ASSERT_TRUE(h.dump_samples(&d, 0, "foo", butil::StringPiece()));
+        ASSERT_EQ(5u, d.lines.size());
+        ASSERT_EQ("mvar_foo_sum +Inf", d.lines[3]);
+        // The count is untouched, both values were recorded.
+        ASSERT_EQ("mvar_foo_count 2", d.lines[4]);
+    }
+    {
+        bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20}));
+        h << -big << -big;
+        RecordingDumper d;
+        ASSERT_TRUE(h.dump_samples(&d, 0, "foo", butil::StringPiece()));
+        ASSERT_EQ("mvar_foo_sum -Inf", d.lines[3]);
+    }
 }
 
 TEST_F(HistogramTest, dump_exposed_goes_through_the_virtual) {
@@ -645,17 +704,17 @@ TEST_F(HistogramTest, exposed_window_has_no_series) {
 
 TEST_F(HistogramTest, window) {
     bvar::Histogram h(bvar::Histogram::BucketSchema({0.5, 1.5, 3.0}));
-    bvar::Window<bvar::Histogram> w(&h, 2);
+    bvar::Window<bvar::Histogram> w(&h, 10);
 
     h << 0.25 << 1.25;
-    // The first sample was taken when the sampler was created, we need one
-    // more second for get_value() to have two samples to diff.
     sleep(1);
     h << 2.5;
+    // One more second so that get_value() has a sample taken after the last
+    // value, to diff against the construction-time baseline.
     sleep(1);
 
     bvar::Histogram::Value wv = w.get_value();
-    // Everything recorded within the window, and only that.
+    // Everything recorded, all of it inside the window.
     ASSERT_EQ(3, wv.num);
     ASSERT_DOUBLE_EQ(4.0, wv.sum);
     ASSERT_EQ(1u, wv.counts[0]);

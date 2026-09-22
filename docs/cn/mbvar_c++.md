@@ -204,7 +204,7 @@ class MVariable {
 | mbvar_dump_format	| common | Dump mbvar write format <br> common：文本格式，Key和Value用冒号分割(和目前的单维度dump文件格式一致) <br><br> prometheus：文本格式，Key和Value用空格分开protobuf：二进制格式，暂时不支持|
 | bvar_dump_interval | 10 |Seconds between consecutive dump |
 | mbvar_dump_prefix | \<app\> | Every dumped name starts with this prefix |
-| bvar_max_dump_multi_dimension_metric_number | 0 | 最多导出的mbvar的bvar个数，默认是0，即不导出任何mbvar |
+| bvar_max_dump_multi_dimension_metric_number | 0 | 最多导出的mbvar指标数，默认是0，即不导出任何mbvar。计数以指标为单位，一个label组合可能贡献多个指标（Histogram导出`_bucket`/`_sum`/`_count`，LatencyRecorder导出各个分位值） |
 
 用户可在程序启动前加上对应的gflags。
 
@@ -218,7 +218,7 @@ class MVariable {
 | mbvar_dump_format	| common | Dump mbvar write format <br> common：文本格式，Key和Value用冒号分割(和目前的单维度dump文件格式一致) <br><br> prometheus：文本格式，Key和Value用空格分开protobuf：二进制格式，暂时不支持|
 | bvar_dump_interval | 10 |Seconds between consecutive dump |
 | mbvar_dump_prefix | mbvar | Every dumped name starts with this prefix |
-| bvar_max_dump_multi_dimension_metric_number | 2000 | 最多导出的mbvar的bvar个数，默认是0，即不导出任何mbvar |
+| bvar_max_dump_multi_dimension_metric_number | 2000 | 最多导出的mbvar指标数，默认是0，即不导出任何mbvar。计数以指标为单位，一个label组合可能贡献多个指标（Histogram导出`_bucket`/`_sum`/`_count`，LatencyRecorder导出各个分位值） |
 
 导出的本地文件为monitor/mbvar.\<app\>.data：
 ```
@@ -340,7 +340,7 @@ size_t mbvar_list_exposed(std::vector<std::string>* names) {
 
 ## constructor
 
-有三个构造函数，labels之后都可以再带任意个参数，它们会被拷贝进MultiDimension，并在创建每个label组合对应的bvar时，以const引用的形式转发给值类型T的构造函数：
+有三个构造函数，labels之后都可以再带任意个参数，它们会以`std::decay_t`后的类型拷贝进MultiDimension，并在创建每个label组合对应的bvar时，以const引用的形式转发给值类型T的构造函数：
 ```c++
 template <typename T, typename KeyType = std::list<std::string>, bool Shared = false>
 class MultiDimension : public MVariable {
@@ -373,6 +373,20 @@ bvar::MultiDimension<bvar::Histogram> g_latency(
 ```
 
 这个转发是通用的，不是Histogram的特例。比如`MultiDimension<bvar::LatencyRecorder> m("m", {"method"}, 60)`就是给每个LatencyRecorder指定60秒的统计窗口。
+
+注意参数的生命周期：按`std::decay_t`保存意味着`const char*`、butil::StringPiece这类只借用内存的参数，存下来的是指针本身，而不是字符的拷贝。而每个label组合对应的bvar是惰性创建的，第一次get_stats该组合时才会真正读取这些参数。因此**调用方要保证被借用的内存活得足够久**，至少覆盖到最后一个label组合的创建，最省心的做法是让它活得和MultiDimension一样久。字符串字面量总是满足这一点；局部的std::string不满足，直接以std::string传入即可得到一份拷贝：
+
+```c++
+// OK：字面量是静态存储期的
+bvar::MultiDimension<MyValue> m1("m1", {"method"}, "default_tag");
+
+// OK：参数类型是std::string，值被拷贝进MultiDimension
+std::string tag = build_tag();
+bvar::MultiDimension<MyValue> m2("m2", {"method"}, tag);
+
+// 错误：存的是tag.c_str()这个指针，tag析构后再创建bvar就是悬垂读
+bvar::MultiDimension<MyValue> m3("m3", {"method"}, tag.c_str());
+```
 
 **explicit MultiDimension(const key_type& labels, Args&&... args)**
 
@@ -1056,8 +1070,8 @@ cache_hitrate_total{cache="l1"} 2
 * `list_metric_families()`必须是幂等的：它在预留指标名和每次dump时都会被调用，应保证每次返回相同的内容。返回的每个`bvar::MetricFamily`描述一个prometheus指标族（一个指标名加一行`# TYPE`，可包含一个或多个样本），按字段声明顺序包含四个字段（聚合初始化，用不到的字段也要写上空初始化器`{}`占位）：
   - `suffix`：族名后缀，拼在指标名后面构成族名。当一个类型导出多个平级的族时，每个族各用一个后缀，例如LatencyRecorder拆分为`_latency`/`_avg_latency`/`_max_latency`/`_qps`/`_count`五个族。Histogram则不同：整个类型只有一个族，`_bucket`/`_sum`/`_count`是同一族内的三类指标，而非三个独立的族，因此suffix留空，三类指标通过`additional_sample_suffixes`声明。
   - `type`：`# TYPE`行的取值，为"gauge"/"counter"/"histogram"/"summary"之一。
-  - `reserved_labels`：该族内置的label。外层MultiDimension的labels不能与内置label冲突（Histogram为`le`，LatencyRecorder为`quantile`），原因见下一条。
+  - `reserved_labels`：该族内置的label。外层MultiDimension的labels不能与内置label冲突（Histogram为`le`，LatencyRecorder为`quantile`），冲突的MultiDimension无法曝光，原因见下一条。
   - `additional_sample_suffixes`：族内额外指标的后缀。例如Histogram声明了`_bucket`/`_sum`/`_count`，表示这一个族实际包含三类指标。单指标的族（如上面的HitRate、LatencyRecorder的各族）写`{}`即可。
-* 外层MultiDimension的labels不能与某个族通过`reserved_labels`声明的label名重复（Histogram保留`le`，LatencyRecorder保留`quantile`），否则同一样本会包含重名的label。遇到冲突时MultiDimension会拒绝该配置。
+* 外层MultiDimension的labels不能与某个族通过`reserved_labels`声明的label名重复（Histogram保留`le`，LatencyRecorder保留`quantile`），否则同一样本会包含重名的label。遇到冲突时MultiDimension只拒绝曝光：构造时打印一条ERROR日志，此后expose()/expose_as()一律返回-1，name()为空，也不会被dump出去。记录功能不受影响，get_stats()照常返回可用的bvar，不会变成nullptr。把外层的label改个名字，曝光即恢复正常。
 * 同一样本内，外层MultiDimension的label要拼在自己的label之前，放进同一对花括号中。
 

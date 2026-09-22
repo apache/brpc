@@ -73,7 +73,20 @@ private:
         int64_t count;
         std::string metric_name;
 
-        bool IsComplete() const { return !metric_name.empty(); }
+        bool IsComplete() const {
+            if (metric_name.empty()) {
+                return false;
+            }
+            // `metric_name` alone is not enough: a LatencyRecorder whose expose()
+            // stopped halfway leaves some of the percentiles behind, and writing
+            // them out as empty values would make prometheus reject the scrape.
+            for (int i = 0; i < NPERCENTILES; ++i) {
+                if (latency_percentiles[i].empty()) {
+                    return false;
+                }
+            }
+            return true;
+        }
     };
     const SummaryItems* ProcessLatencyRecorderSuffix(const butil::StringPiece& name,
                                                      const butil::StringPiece& desc);
@@ -109,7 +122,10 @@ static bool MatchWordIgnoreCase(const char* p, const char* end, const char* word
 // Whether `s` is a number prometheus would accept as a sample value: a float64
 // in the decimal, or one of the specials it spells as "+Inf"/"-Inf"/"NaN"
 // (case-insensitive). The spelled-out "Infinity" is not part of the grammar,
-// so it is rejected even though Go's strconv.ParseFloat would accept it.
+// so it is rejected even though Go's strconv.ParseFloat would accept it. Nor
+// is a signed NaN: prometheus consumes the sign and then only looks for Inf
+// after it, so "-nan", which is what glibc's printf("%g") makes of a negative
+// NaN, would fail the whole scrape.
 //
 // Everything else is rejected: a quoted string, the json of a Window<Histogram>
 // or a compound PassiveStatus, and the bare `true`/'false` of a bool gflag,
@@ -120,12 +136,14 @@ static bool MatchWordIgnoreCase(const char* p, const char* end, const char* word
 // Scans the StringPiece in place, no copy and no allocation. Hexadecimal
 // floats are deliberately not accepted.
 bool IsDumpableToPrometheus(butil::StringPiece s) {
-    const char* p = s.data();
-    const char* const end = p + s.size();
-    if (p == end) {
+    if (s.empty()) {
         return false;
     }
+    const char* p = s.data();
+    const char* const end = p + s.size();
+    bool has_sign = false;
     if (*p == '+' || *p == '-') {
+        has_sign = true;
         ++p;
         if (p == end) {
             return false;   // a lone sign
@@ -155,8 +173,9 @@ bool IsDumpableToPrometheus(butil::StringPiece s) {
     } else {
         // The specials of the prometheus text format only: "Infinity" is not
         // one of them, and passing it through could invalidate the whole scrape.
+        // Only Inf may carry a sign, NaN may not.
         return MatchWordIgnoreCase(p, end, "inf") ||
-               MatchWordIgnoreCase(p, end, "nan");
+               (!has_sign && MatchWordIgnoreCase(p, end, "nan"));
     }
     // Optional exponent, which must carry at least one digit.
     if (p != end && (*p == 'e' || *p == 'E')) {
@@ -293,6 +312,20 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
          << si->latency_avg * si->count << '\n'
          << si->metric_name << "_count " << si->count << '\n';
     return true;
+}
+
+std::vector<std::string> SynthesizedLatencyRecorderNames(
+    const butil::StringPiece& metric_name) {
+    // The very condition DumpLatencyRecorderSuffix() applies: elsewhere the
+    // sub-bvars are written out one by one and nothing is synthesized.
+    if (!metric_name.starts_with(g_server_info_prefix)) {
+        return {};
+    }
+    // The summary `X` carrying the quantile series, its `X_sum`, and the
+    // separate `X_avg_latency` gauge. `X_count` is left out on purpose, it is
+    // the `_count` bvar which reserves itself.
+    std::string name(metric_name.data(), metric_name.size());
+    return {name, name + "_sum", name + "_avg_latency"};
 }
 
 void PrometheusMetricsService::default_method(::google::protobuf::RpcController* cntl_base,

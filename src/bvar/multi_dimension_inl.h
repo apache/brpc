@@ -244,7 +244,7 @@ MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*
     }
     size_t n = 0;
     std::string key;
-    for (auto &label_name : label_names) {
+    for (auto& label_name : label_names) {
         value_ptr_type bvar = get_stats_impl(label_name);
         if (nullptr == bvar) {
             continue;
@@ -252,8 +252,9 @@ MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*
         std::ostringstream oss;
         bvar->describe(oss, options->quote_string);
         make_dump_key(&key, label_name);
+        // A false asks to stop dumping, as Dumper::dump() does.
         if (!dumper->dump_mvar(key, oss.str())) {
-            continue;
+            break;
         }
         n++;
     }
@@ -371,9 +372,6 @@ bool MultiDimension<T, KeyType, Shared>::append_labels_kvpair_body(
 template <typename T, typename KeyType, bool Shared>
 template <typename K>
 bool MultiDimension<T, KeyType, Shared>::is_valid_lables_value(const K& labels_value) const {
-    if (!_label_names_valid) {
-        return false;
-    }
     if (this->count_labels() != labels_value.size()) {
         LOG(ERROR) << "Invalid labels count" << this->count_labels()
                    << " != " << labels_value.size();
@@ -384,21 +382,49 @@ bool MultiDimension<T, KeyType, Shared>::is_valid_lables_value(const K& labels_v
 
 template <typename T, typename KeyType, bool Shared>
 template <typename U>
-std::enable_if_t<detail::IsCompositeMetric<U>::value, bool>
-MultiDimension<T, KeyType, Shared>::are_label_names_valid(const key_type& labels) {
+std::enable_if_t<detail::IsCompositeMetric<U>::value, std::string>
+MultiDimension<T, KeyType, Shared>::find_reserved_label(const key_type& labels) {
     const std::vector<MetricFamily>& families = U::list_metric_families();
     for (const auto& label : labels) {
         for (const auto& family : families) {
             for (const auto& reserved : family.reserved_labels) {
                 if (label == reserved) {
-                    LOG(ERROR) << "Label name `" << label
-                               << "` is reserved by the composite metric";
-                    return false;
+                    return label;
                 }
             }
         }
     }
-    return true;
+    return std::string();
+}
+
+namespace detail {
+// `a, b, c`. Built for a log message only, never on the recording path.
+template <typename KeyType>
+std::string join_label_names(const KeyType& labels) {
+    std::string joined;
+    for (auto& label : labels) {
+        if (!joined.empty()) {
+            joined.append(", ");
+        }
+        joined.append(label);
+    }
+    return joined;
+}
+}  // namespace detail
+
+template <typename T, typename KeyType, bool Shared>
+bool MultiDimension<T, KeyType, Shared>::are_label_names_valid(const key_type& labels) {
+    std::string reserved = find_reserved_label(labels);
+    if (reserved.empty()) {
+        return true;
+    }
+    // Recording keeps working, only exposing does not: a sample would carry
+    // the same label twice, which is not valid prometheus text. Rename the
+    // outer label and the metric comes back.
+    LOG(ERROR) << "MultiDimension with labels[" << detail::join_label_names(labels)
+               << "] uses the label name `" << reserved
+               << "` reserved by its composite metric, it cannot be exposed";
+    return false;
 }
 
 template <typename T, typename KeyType, bool Shared>

@@ -19,6 +19,10 @@
 #ifndef BRPC_PROMETHEUS_METRICS_SERVICE_H
 #define BRPC_PROMETHEUS_METRICS_SERVICE_H
 
+#include <string>
+#include <vector>
+#include "butil/iobuf.h"
+#include "butil/strings/string_piece.h"
 #include "brpc/builtin_service.pb.h"
 
 namespace brpc {
@@ -37,6 +41,16 @@ butil::StringPiece GetMetricsName(const std::string& name);
 // what PrometheusMetricsDumper writes out and everything else it skips.
 bool IsDumpableToPrometheus(butil::StringPiece value);
 int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output);
+
+// The prometheus metric names that PrometheusMetricsDumper synthesizes for a
+// LatencyRecorder exposed as `metric_name`, which no bvar is exposed under and
+// which nothing therefore reserves on its own. Empty when the dumper leaves
+// that recorder alone, see DumpLatencyRecorderSuffix().
+// Whoever exposes the recorder is responsible for reserving these, otherwise a
+// plain bvar may take one and a single scrape ends up carrying two metrics
+// under the same name, which prometheus rejects as a whole.
+std::vector<std::string> SynthesizedLatencyRecorderNames(
+    const butil::StringPiece& metric_name);
 
 } // namepace brpc
 

@@ -28,16 +28,37 @@
 #include "butil/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
 #include "butil/string_splitter.h"               // butil::StringSplitter
 #include "butil/errno.h"                         // berror
+#include "butil/float_util.h"                    // butil::IsFinite
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
 #include "butil/threading/platform_thread.h"
 #include "butil/reloadable_flags.h"
+#include "butil/strings/string_number_conversions.h" // butil::DoubleToString
 #include "bvar/gflag.h"
 #include "bvar/detail/prometheus_name_registry.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
 
 namespace bvar {
+
+namespace detail {
+
+std::string prometheus_double_to_string(double value) {
+    if (BAIDU_UNLIKELY(!butil::IsFinite(value))) {
+        if (butil::IsNaN(value)) {
+            return "NaN";
+        }
+        return value > 0 ? "+Inf" : "-Inf";
+    }
+    std::string result = butil::DoubleToString(value);
+    size_t decimal = !result.empty() && result[0] == '-' ? 1 : 0;
+    if (decimal < result.size() && result[decimal] == '.') {
+        result.insert(decimal, 1, '0');
+    }
+    return result;
+}
+
+}  // namespace detail
 
 DEFINE_bool(save_series, true,
             "Save values of last 60 seconds, last 60 minutes, "
@@ -772,7 +793,13 @@ public:
     CommonFileDumper(const std::string& filename, butil::StringPiece prefix)
         : FileDumper(filename, prefix)
         , _separator(":") {}
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        return dump_impl(name, desc, _separator);
+    }
+    // -mbvar_dump is turned on to get the multiple dimension vars out, so the
+    // labels a sample carries in its name are what the file is there for.
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
         return dump_impl(name, desc, _separator);
     }
 private:
@@ -784,7 +811,12 @@ public:
     PrometheusFileDumper(const std::string& filename, butil::StringPiece prefix)
         : FileDumper(filename, prefix)
         , _separator(" ") {}
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        return dump_impl(name, desc, _separator);
+    }
+    // `name{label="value"} 3` is the prometheus text format this file holds.
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
         return dump_impl(name, desc, _separator);
     }
 private:
@@ -813,7 +845,7 @@ public:
                     new CommonFileDumper(path.AddExtension("data").value(), s), 
                     (WildcardMatcher *)nullptr);
     }
-    ~FileDumperGroup() {
+    ~FileDumperGroup() override {
         for (size_t i = 0; i < dumpers.size(); ++i) {
             delete dumpers[i].first;
             delete dumpers[i].second;
@@ -829,6 +861,14 @@ public:
         }
         // dump to default file
         return dumpers.back().first->dump(name, desc);
+    }
+
+    // The samples of a Histogram belong in the dump file as much as any other
+    // value. They route by the same wildcards, which see the whole name
+    // including the labels.
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        return dump(name, desc);
     }
 private:
     std::vector<std::pair<FileDumper *, WildcardMatcher*> > dumpers;
