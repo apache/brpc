@@ -28,7 +28,11 @@
 #include "butil/sys_byteorder.h"
 #include "brpc/adapter_transport.h"
 #include "brpc/handshake/handshake_io.h"
+#include "brpc/input_messenger.h"
 #include "brpc/policy/transport_handshake_protocol.h"
+#if BRPC_WITH_RDMA
+#include "brpc/rdma_transport.h"
+#endif
 #include "brpc/socket.h"
 #include "brpc/transport_handshake.h"
 
@@ -84,6 +88,16 @@ static void* RunBlockingHandshakeRead(void* arg) {
     read->error = errno;
     return NULL;
 }
+
+class TestAppConnect : public AppConnect {
+public:
+    void StartConnect(const Socket*, void (*done)(int, void*),
+                      void* data) override {
+        done(0, data);
+    }
+
+    void StopConnect(Socket*) override {}
+};
 
 static FrameSpec FixedSpec(const char* magic, size_t magic_len,
                            size_t total_len) {
@@ -604,6 +618,91 @@ TEST(TransportHandshakeTest,
     ASSERT_EQ(nullptr, socket->parsing_context());
     socket->SetFailed();
 }
+
+#if BRPC_WITH_RDMA
+TEST(TransportHandshakeTest,
+     inherited_adapter_connect_is_not_wrapped_twice) {
+    int first_fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, first_fds));
+    butil::fd_guard first_peer(first_fds[1]);
+
+    const std::shared_ptr<AppConnect> original =
+        std::make_shared<TestAppConnect>();
+
+    SocketOptions first_options;
+    first_options.fd = first_fds[0];
+    first_options.user =
+        static_cast<SocketUser*>(get_or_new_client_side_messenger());
+    first_options.need_on_edge_trigger = true;
+    first_options.socket_mode = SOCKET_MODE_RDMA;
+    first_options.app_connect = original;
+
+    SocketId first_id;
+    ASSERT_EQ(0, Socket::Create(first_options, &first_id));
+    SocketUniquePtr first_socket;
+    ASSERT_EQ(0, Socket::Address(first_id, &first_socket));
+
+    const std::shared_ptr<AppConnect> wrapped =
+        AdapterTransport::Get(first_socket.get())->Connect();
+    ASSERT_NE(nullptr, wrapped);
+    EXPECT_NE(original.get(), wrapped.get());
+
+    int second_fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, second_fds));
+    butil::fd_guard second_peer(second_fds[1]);
+
+    SocketOptions second_options = first_options;
+    second_options.fd = second_fds[0];
+    second_options.app_connect = wrapped;
+
+    SocketId second_id;
+    ASSERT_EQ(0, Socket::Create(second_options, &second_id));
+    SocketUniquePtr second_socket;
+    ASSERT_EQ(0, Socket::Address(second_id, &second_socket));
+
+    const std::shared_ptr<AppConnect> inherited =
+        AdapterTransport::Get(second_socket.get())->Connect();
+    EXPECT_EQ(wrapped.get(), inherited.get());
+
+    first_socket->SetFailed();
+    second_socket->SetFailed();
+}
+
+TEST(TransportHandshakeTest,
+     unavailable_client_upgrade_publishes_tcp_fallback) {
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    butil::fd_guard peer_fd(fds[1]);
+
+    const std::shared_ptr<AppConnect> original =
+        std::make_shared<TestAppConnect>();
+
+    SocketOptions options;
+    options.fd = fds[0];
+    options.user =
+        static_cast<SocketUser*>(get_or_new_client_side_messenger());
+    options.need_on_edge_trigger = true;
+    options.socket_mode = SOCKET_MODE_RDMA;
+    options.app_connect = original;
+
+    SocketId id;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(id, &socket));
+
+    AdapterTransport* adapter = AdapterTransport::Get(socket.get());
+    RdmaTransport* rdma_transport =
+        static_cast<RdmaTransport*>(adapter->high_speed_transport());
+    ASSERT_NE(nullptr, rdma_transport);
+    rdma_transport->Release();
+
+    const std::shared_ptr<AppConnect> connect = adapter->Connect();
+    EXPECT_EQ(original.get(), connect.get());
+    EXPECT_EQ(FALLBACK_TCP, adapter->handshake_phase());
+
+    socket->SetFailed();
+}
+#endif
 
 }  // namespace handshake
 }  // namespace brpc

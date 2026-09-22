@@ -194,6 +194,26 @@ TEST(UBShmHandshakeAdapterTest, short_name_is_zero_padded) {
     }
 }
 
+TEST(UBShmHandshakeAdapterTest, rejects_unterminated_remote_name) {
+    brpc::ubring::HelloMessage message{};
+    message.msg_len = 64;
+    message.hello_ver = 2;
+    message.impl_ver = 1;
+    message.len = 4096;
+    memset(message.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN);
+
+    std::string payload(
+        sizeof(HelloMessageLayout), '\0');
+    message.Serialize(&payload[0]);
+
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    brpc::ubring::HelloMessage decoded{};
+    errno = 0;
+    EXPECT_EQ(brpc::handshake::STEP_ERROR,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(EPROTO, errno);
+}
+
 TEST(UBShmHandshakeAdapterTest, disabled_hello_requests_tcp_fallback) {
     brpc::ubring::UBShmHandshakeAdapter adapter;
     std::string payload;

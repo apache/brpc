@@ -53,6 +53,21 @@ public:
     explicit AdapterConnect(const std::shared_ptr<AppConnect>& app_connect)
         : _app_connect(app_connect) {}
 
+    static std::shared_ptr<AppConnect> Wrap(
+        const std::shared_ptr<AppConnect>& app_connect) {
+        if (std::dynamic_pointer_cast<AdapterConnect>(app_connect)) {
+            return app_connect;
+        }
+        return std::make_shared<AdapterConnect>(app_connect);
+    }
+
+    static std::shared_ptr<AppConnect> Unwrap(
+        const std::shared_ptr<AppConnect>& app_connect) {
+        const std::shared_ptr<AdapterConnect> adapter =
+            std::dynamic_pointer_cast<AdapterConnect>(app_connect);
+        return adapter ? adapter->_app_connect : app_connect;
+    }
+
     void StartConnect(const Socket* socket,
                       void (*done)(int, void*), void* data) override {
         ApplicationConnectTask* task = new ApplicationConnectTask{
@@ -427,7 +442,14 @@ int AdapterTransport::Reset(int32_t expected_nref) {
 
 std::shared_ptr<AppConnect> AdapterTransport::Connect() {
     if (upgrade_capable(_mode)) {
-        return std::make_shared<AdapterConnect>(_default_connect);
+        return AdapterConnect::Wrap(_default_connect);
+    }
+    SocketUser* const client_messenger =
+        static_cast<SocketUser*>(get_client_side_messenger());
+    if (client_messenger != NULL &&
+        _socket->user() == client_messenger) {
+        FallbackToTcp();
+        return AdapterConnect::Unwrap(_tcp_transport->Connect());
     }
     return _tcp_transport->Connect();
 }

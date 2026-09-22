@@ -557,7 +557,9 @@ StepResult RdmaServerHandshakeAdapter::RunRdmaServerHandshake(
     callbacks.transport.set_tcp_active = [transport]() {
         transport->DeactivateUpgrade();
     };
-    callbacks.transport.on_failed = []() {};
+    callbacks.transport.on_failed = [transport]() {
+        transport->DeactivateUpgrade();
+    };
     return GetSession(socket)->RunServer(callbacks);
 }
 #endif

@@ -194,8 +194,15 @@ handshake::StepResult UBShmHandshakeAdapter::ParseHello(
         errno = EPROTO;
         return handshake::STEP_ERROR;
     }
-    return NegotiationValid(*message) ?
-        handshake::STEP_OK : handshake::STEP_FALLBACK;
+    if (!NegotiationValid(*message)) {
+        return handshake::STEP_FALLBACK;
+    }
+    if (strnlen(message->shm_name, SHM_MAX_NAME_BUFF_LEN) ==
+        SHM_MAX_NAME_BUFF_LEN) {
+        errno = EPROTO;
+        return handshake::STEP_ERROR;
+    }
+    return handshake::STEP_OK;
 }
 
 bool UBShmHandshakeAdapter::NegotiationValid(
@@ -334,11 +341,14 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
             transport->DeactivateUpgrade();
             return STEP_FALLBACK;
         }
+        const size_t remote_name_len =
+            strnlen(remote.shm_name, SHM_MAX_NAME_BUFF_LEN);
+
         ubring::SHM remote_trx_shm = {
             NULL, remote.len, 0, {0},
             static_cast<uint32_t>(socket->fd())};
-        strncpy(remote_trx_shm.name, remote.shm_name,
-                SHM_MAX_NAME_BUFF_LEN);
+        memcpy(remote_trx_shm.name, remote.shm_name,
+               remote_name_len + 1);
 
         const size_t local_shm_len =
             static_cast<size_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
@@ -382,7 +392,9 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     callbacks.transport.set_tcp_active = [transport]() {
         transport->DeactivateUpgrade();
     };
-    callbacks.transport.on_failed = []() {};
+    callbacks.transport.on_failed = [transport]() {
+        transport->DeactivateUpgrade();
+    };
     const StepResult result = GetSession(socket)->RunServer(callbacks);
     if (result == STEP_OK) {
         transport->FinishUpgrade();
