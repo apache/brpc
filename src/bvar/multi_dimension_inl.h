@@ -25,9 +25,6 @@
 
 namespace bvar {
 
-DECLARE_int32(bvar_latency_p1);
-DECLARE_int32(bvar_latency_p2);
-DECLARE_int32(bvar_latency_p3);
 DECLARE_uint32(max_multi_dimension_stats_count);
 
 static const std::string ALLOW_UNUSED METRIC_TYPE_COUNTER = "counter";
@@ -36,24 +33,38 @@ static const std::string ALLOW_UNUSED METRIC_TYPE_HISTOGRAM = "histogram";
 static const std::string ALLOW_UNUSED METRIC_TYPE_GAUGE = "gauge";
 
 template <typename T, typename KeyType, bool Shared>
-MultiDimension<T, KeyType, Shared>::MultiDimension(const key_type& labels)
+template <typename... Args,
+          std::enable_if_t<std::is_constructible<
+              T, const typename std::decay<Args>::type&...>::value, int>>
+MultiDimension<T, KeyType, Shared>::MultiDimension(const key_type& labels,
+                                                   Args&&... args)
     : Base(labels)
-    , _max_stats_count(FLAGS_max_multi_dimension_stats_count) {
+    , _label_names_valid(are_label_names_valid(labels))
+    , _max_stats_count(FLAGS_max_multi_dimension_stats_count)
+    , _new_value(make_value_factory(std::forward<Args>(args)...)) {
     _metric_map.Modify(init_flatmap);
 }
 
 template <typename T, typename KeyType, bool Shared>
+template <typename... Args,
+          std::enable_if_t<std::is_constructible<
+              T, const typename std::decay<Args>::type&...>::value, int>>
 MultiDimension<T, KeyType, Shared>::MultiDimension(const butil::StringPiece& name,
-                                           const key_type& labels)
-    : MultiDimension(labels) {
+                                                   const key_type& labels,
+                                                   Args&&... args)
+    : MultiDimension(labels, std::forward<Args>(args)...) {
     this->expose(name);
 }
 
 template <typename T, typename KeyType, bool Shared>
+template <typename... Args,
+          std::enable_if_t<std::is_constructible<
+              T, const typename std::decay<Args>::type&...>::value, int>>
 MultiDimension<T, KeyType, Shared>::MultiDimension(const butil::StringPiece& prefix,
-                                           const butil::StringPiece& name,
-                                           const key_type& labels)
-    : MultiDimension(labels) {
+                                                   const butil::StringPiece& name,
+                                                   const key_type& labels,
+                                                   Args&&... args)
+    : MultiDimension(labels, std::forward<Args>(args)...) {
     this->expose_as(prefix, name);
 }
 
@@ -201,8 +212,8 @@ MultiDimension<T, KeyType, Shared>::get_stats_impl(
             *do_write = true;
         }
 
-        if (nullptr == cache_metric) {
-            cache_metric = new_value();
+        if (cache_metric == nullptr) {
+            cache_metric = _new_value();
         }
         insert_metrics_map(bg, labels_value, cache_metric);
         return 1;
@@ -224,7 +235,7 @@ bool MultiDimension<T, KeyType, Shared>::has_stats(const K& labels_value) {
 
 template <typename T, typename KeyType, bool Shared>
 template <typename U>
-typename std::enable_if<!butil::is_same<LatencyRecorder, U>::value, size_t>::type
+std::enable_if_t<!detail::IsCompositeMetric<U>::value, size_t>
 MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions* options) {
     std::vector<key_type> label_names;
     list_stats(&label_names);
@@ -232,164 +243,130 @@ MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*
         return 0;
     }
     size_t n = 0;
-    for (auto &label_name : label_names) {
+    std::string key;
+    for (auto& label_name : label_names) {
         value_ptr_type bvar = get_stats_impl(label_name);
         if (nullptr == bvar) {
             continue;
         }
         std::ostringstream oss;
         bvar->describe(oss, options->quote_string);
-        std::ostringstream oss_key;
-        make_dump_key(oss_key, label_name);
-        if (!dumper->dump_mvar(oss_key.str(), oss.str())) {
-            continue;
+        make_dump_key(&key, label_name);
+        // A false asks to stop dumping, as Dumper::dump() does.
+        if (!dumper->dump_mvar(key, oss.str())) {
+            break;
         }
         n++;
     }
     return n;
 }
 
+namespace detail {
+// Forwards to another Dumper and counts the metrics that went through, which is
+// how MultiDimension answers with the number of dumped metrics rather than the
+// number of times it called dump_samples().
+class CountingDumper : public Dumper {
+public:
+    explicit CountingDumper(Dumper* dumper) : _dumper(dumper), _count(0) {}
+
+    // Only what the wrapped dumper accepted is counted: a false is a request to
+    // stop, that metric did not make it out.
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        if (!_dumper->dump(name, desc)) {
+            return false;
+        }
+        ++_count;
+        return true;
+    }
+    bool dump_mvar(const std::string& name, const butil::StringPiece& desc) override {
+        if (!_dumper->dump_mvar(name, desc)) {
+            return false;
+        }
+        ++_count;
+        return true;
+    }
+    // A comment describes a family, it is not a metric of its own.
+    bool dump_comment(const std::string& name, const std::string& type) override {
+        return _dumper->dump_comment(name, type);
+    }
+
+    size_t count() const { return _count; }
+
+private:
+    Dumper* _dumper;
+    size_t _count;
+};
+}  // namespace detail
+
 template <typename T, typename KeyType, bool Shared>
 template <typename U>
-typename std::enable_if<butil::is_same<LatencyRecorder, U>::value, size_t>::type
+std::enable_if_t<detail::IsCompositeMetric<U>::value, size_t>
 MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*) {
     std::vector<key_type> label_names;
     list_stats(&label_names);
     if (label_names.empty()) {
         return 0;
     }
-    // The latency of one quantile. The quantile must be a fraction to meet
-    // prometheus specification, e.g. 0.99 for p99.
-    struct LatencyPercentile {
-        double quantile;
-        int64_t latency;
-    };
-    // All the values dumped for one label set.
-    struct DumpedStats {
-        const key_type* label_name;
-        LatencyPercentile latency_percentiles[5];
-        int64_t avg_latency;
-        int64_t max_latency;
-        int64_t qps;
-        int64_t count;
-    };
-    // Read all the values in one traversal, so that a LatencyRecorder is looked
-    // up only once no matter how many metrics are dumped for it. Keep the values
-    // instead of the LatencyRecorder pointers, which delete_stats() may free.
-    std::vector<DumpedStats> stats_list;
-    stats_list.reserve(label_names.size());
-    for (const auto& label_name : label_names) {
-        bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
-        if (!bvar) {
-            continue;
+    const std::vector<MetricFamily>& families = U::list_metric_families();
+    detail::CountingDumper counting_dumper(dumper);
+    std::string family_name;
+    std::string labels;
+    // Families outside, label sets inside.
+    for (size_t f = 0; f < families.size(); ++f) {
+        // The main family of a type carries no suffix, a Histogram has one.
+        family_name.assign(this->name());
+        if (families[f].suffix != nullptr) {
+            family_name.append(families[f].suffix);
         }
-        DumpedStats stats{};
-        stats.label_name = &label_name;
-        stats.latency_percentiles[0].quantile = FLAGS_bvar_latency_p1 / 100.0;
-        stats.latency_percentiles[1].quantile = FLAGS_bvar_latency_p2 / 100.0;
-        stats.latency_percentiles[2].quantile = FLAGS_bvar_latency_p3 / 100.0;
-        stats.latency_percentiles[3].quantile = 0.999;
-        stats.latency_percentiles[4].quantile = 0.9999;
-        for (auto& lp : stats.latency_percentiles) {
-            lp.latency = bvar->latency_percentile(lp.quantile);
+        // One TYPE line per family, ahead of all its samples.
+        if (!counting_dumper.dump_comment(family_name, families[f].type)) {
+            break;
         }
-        stats.avg_latency = bvar->latency();
-        stats.max_latency = bvar->max_latency();
-        stats.qps = bvar->qps();
-        stats.count = bvar->count();
-        stats_list.push_back(stats);
-    }
-
-    size_t n = 0;
-
-    // To meet prometheus specification, we must guarantee no second TYPE line for one metric name
-
-    // latency comment
-    dumper->dump_comment(this->name() + "_latency", METRIC_TYPE_GAUGE);
-    for (const auto& stats : stats_list) {
-        for (const auto& lp : stats.latency_percentiles) {
-            std::ostringstream oss_latency_key;
-            make_dump_key(oss_latency_key, *stats.label_name, "_latency", lp.quantile);
-            if (dumper->dump_mvar(oss_latency_key.str(), std::to_string(lp.latency))) {
-                n++;
+        for (const auto& label_name : label_names) {
+            value_ptr_type bvar = get_stats_impl(label_name);
+            if (bvar == nullptr) {
+                continue;
+            }
+            labels.clear();
+            append_labels_kvpair_body(&labels, label_name);
+            // A false asks to stop dumping, as Dumper::dump() does. Going on
+            // would write samples under a family whose TYPE line the dumper
+            // has already given up on.
+            if (!bvar->dump_samples(&counting_dumper, f, family_name, labels)) {
+                return counting_dumper.count();
             }
         }
     }
-
-    // avg_latency comment
-    // The average latency has to be a separate metric rather than a series of
-    // `_latency` without a quantile label, otherwise an aggregation over
-    // `_latency` would silently mix the average into the percentiles.
-    dumper->dump_comment(this->name() + "_avg_latency", METRIC_TYPE_GAUGE);
-    for (const auto& stats : stats_list) {
-        std::ostringstream oss_avg_latency_key;
-        make_dump_key(oss_avg_latency_key, *stats.label_name, "_avg_latency");
-        if (dumper->dump_mvar(oss_avg_latency_key.str(), std::to_string(stats.avg_latency))) {
-            n++;
-        }
-    }
-
-    // max_latency comment
-    dumper->dump_comment(this->name() + "_max_latency", METRIC_TYPE_GAUGE);
-    for (const auto& stats : stats_list) {
-        std::ostringstream oss_max_latency_key;
-        make_dump_key(oss_max_latency_key, *stats.label_name, "_max_latency");
-        if (dumper->dump_mvar(oss_max_latency_key.str(), std::to_string(stats.max_latency))) {
-            n++;
-        }
-    }
-
-    // qps comment
-    dumper->dump_comment(this->name() + "_qps", METRIC_TYPE_GAUGE);
-    for (const auto& stats : stats_list) {
-        std::ostringstream oss_qps_key;
-        make_dump_key(oss_qps_key, *stats.label_name, "_qps");
-        if (dumper->dump_mvar(oss_qps_key.str(), std::to_string(stats.qps))) {
-            n++;
-        }
-    }
-
-    // count comment
-    dumper->dump_comment(this->name() + "_count", METRIC_TYPE_COUNTER);
-    for (const auto& stats : stats_list) {
-        std::ostringstream oss_count_key;
-        make_dump_key(oss_count_key, *stats.label_name, "_count");
-        if (dumper->dump_mvar(oss_count_key.str(), std::to_string(stats.count))) {
-            n++;
-        }
-    }
-    return n;
+    return counting_dumper.count();
 }
 
 template <typename T, typename KeyType, bool Shared>
-void MultiDimension<T, KeyType, Shared>::make_dump_key(std::ostream& os, const key_type& labels_value,
-                                                       const std::string& suffix, double quantile) {
-    os << this->name();
-    if (!suffix.empty()) {
-        os << suffix;
-    }
-    make_labels_kvpair_string(os, labels_value, quantile);
+void MultiDimension<T, KeyType, Shared>::make_dump_key(
+    std::string* key, const key_type& labels_value) {
+    key->assign(this->name());
+    key->push_back('{');
+    append_labels_kvpair_body(key, labels_value);
+    key->push_back('}');
 }
 
 template <typename T, typename KeyType, bool Shared>
-void MultiDimension<T, KeyType, Shared>::make_labels_kvpair_string(std::ostream& os,
-                                                                   const key_type& labels_value,
-                                                                   double quantile) {
-    os << "{";
+bool MultiDimension<T, KeyType, Shared>::append_labels_kvpair_body(
+    std::string* key, const key_type& labels_value) {
     auto label_key = this->_labels.cbegin();
     auto label_value = labels_value.cbegin();
-    char comma[2] = {'\0', '\0'};
+    bool has_label = false;
     for (; label_key != this->_labels.cend() && label_value != labels_value.cend();
         label_key++, label_value++) {
-        os << comma << label_key->c_str() << "=\"" << label_value->c_str() << "\"";
-        comma[0] = ',';
+        if (has_label) {
+            key->push_back(',');
+        }
+        key->append(label_key->data(), label_key->size());
+        key->append("=\"");
+        key->append(label_value->data(), label_value->size());
+        key->push_back('"');
+        has_label = true;
     }
-    // The `quantile` label must be parsable as a float, so a non-positive
-    // `quantile` means "this metric is not a quantile series".
-    if (quantile > 0) {
-        os << comma << "quantile=\"" << quantile << "\"";
-    }
-    os << "}";
+    return has_label;
 }
 
 template <typename T, typename KeyType, bool Shared>
@@ -401,6 +378,53 @@ bool MultiDimension<T, KeyType, Shared>::is_valid_lables_value(const K& labels_v
         return false;
     }
     return true;
+}
+
+template <typename T, typename KeyType, bool Shared>
+template <typename U>
+std::enable_if_t<detail::IsCompositeMetric<U>::value, std::string>
+MultiDimension<T, KeyType, Shared>::find_reserved_label(const key_type& labels) {
+    const std::vector<MetricFamily>& families = U::list_metric_families();
+    for (const auto& label : labels) {
+        for (const auto& family : families) {
+            for (const auto& reserved : family.reserved_labels) {
+                if (label == reserved) {
+                    return label;
+                }
+            }
+        }
+    }
+    return std::string();
+}
+
+namespace detail {
+// `a, b, c`. Built for a log message only, never on the recording path.
+template <typename KeyType>
+std::string join_label_names(const KeyType& labels) {
+    std::string joined;
+    for (auto& label : labels) {
+        if (!joined.empty()) {
+            joined.append(", ");
+        }
+        joined.append(label);
+    }
+    return joined;
+}
+}  // namespace detail
+
+template <typename T, typename KeyType, bool Shared>
+bool MultiDimension<T, KeyType, Shared>::are_label_names_valid(const key_type& labels) {
+    std::string reserved = find_reserved_label(labels);
+    if (reserved.empty()) {
+        return true;
+    }
+    // Recording keeps working, only exposing does not: a sample would carry
+    // the same label twice, which is not valid prometheus text. Rename the
+    // outer label and the metric comes back.
+    LOG(ERROR) << "MultiDimension with labels[" << detail::join_label_names(labels)
+               << "] uses the label name `" << reserved
+               << "` reserved by its composite metric, it cannot be exposed";
+    return false;
 }
 
 template <typename T, typename KeyType, bool Shared>

@@ -266,15 +266,42 @@ class VarsDumper : public bvar::Dumper {
 public:
     explicit VarsDumper(butil::IOBufBuilder& os, bool use_html)
         : _os(os), _use_html(use_html) {}
+
+    DISALLOW_COPY_AND_ASSIGN(VarsDumper);
     
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        // A composite metric writes its samples under `name{label="value"}`,
+        // which is neither a legal id (the quotes would close the attribute
+        // early) nor reachable by the $("#value-" + name) of the script below.
+        // No series is exposed under such a name either, so nothing could
+        // live-update it: print the value plainly.
+        return dump_impl(name, desc, name.find('{') == std::string::npos);
+    }
+
+    // /vars lists every sample of a composite metric too. None of them is a
+    // bvar of its own, so none is refreshed by the script below: a histogram
+    // writes `foo_sum` and `foo_count` without any brace group, and those would
+    // otherwise get a span that stays at the value of the first page load
+    // forever, looking frozen next to the neighbours that do tick.
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        return dump_impl(name, desc, false);
+    }
+
+    void move_to(butil::IOBuf& buf) {
+        _os.move_to(buf);
+    }
+
+private:
+
+    bool dump_impl(const std::string& name, const butil::StringPiece& desc,
+                   bool live_updatable) {
         bool plot = false;
         if (_use_html) {
             bvar::SeriesOptions series_options;
             series_options.test_only = true;
-            const int rc = bvar::Variable::describe_series_exposed(
-                name, _os, series_options);
-            plot = (rc == 0);
+            int rc = bvar::Variable::describe_series_exposed(name, _os, series_options);
+            plot = rc == 0;
             if (plot) {
                 _os << "<tr class=\"variable\">";
             } else {
@@ -282,13 +309,19 @@ public:
             }
         }
         if (_use_html) {
-            _os << "<td>" << name << "</td><td><span id=\"value-" << name << "\">";
+            _os << "<td>" << name << "</td><td>";
+            if (live_updatable) {
+                _os << "<span id=\"value-" << name << "\">";
+            }
         } else {
             _os << name << VAR_SEP;
         }
         _os << desc;
         if (_use_html) {
-            _os << "</span></td></tr>\n";
+            if (live_updatable) {
+                _os << "</span>";
+            }
+            _os << "</td></tr>\n";
             if (plot) {
                 _os << "<tr class=\"detail-row\"><td colspan=\"2\">"
                     "<div class=\"detail\"><div id=\"" << name
@@ -301,13 +334,6 @@ public:
         return true;
     }
 
-    void move_to(butil::IOBuf& buf) {
-        _os.move_to(buf);
-    }
-    
-private:
-    DISALLOW_COPY_AND_ASSIGN(VarsDumper);
-    
     butil::IOBufBuilder & _os;
     bool _use_html;
 };

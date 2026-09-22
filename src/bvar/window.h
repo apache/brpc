@@ -167,6 +167,7 @@ protected:
                     DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (rc == 0 &&
+            HasPlottableSeries<value_type>::value &&
             _series_sampler == nullptr &&
             FLAGS_save_series) {
             _series_sampler = new SeriesSampler(this, _var_op);

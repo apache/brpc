@@ -25,6 +25,7 @@
 #include "bvar/status.h"
 #include "bvar/passive_status.h"
 #include "bvar/latency_recorder.h"
+#include "bvar/histogram.h"
 #include "bvar/gflag.h"
 #include "bvar/scoped_timer.h"
 #include "bvar/mvariable.h"

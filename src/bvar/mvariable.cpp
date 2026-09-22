@@ -17,11 +17,13 @@
 
 // Date: 2021/11/17 14:37:53
 
+#include <utility>
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include "butil/logging.h"                       // LOG
 #include "butil/errno.h"                         // berror
 #include "butil/containers/flat_map.h"           // butil::FlatMap
+#include "butil/memory/scope_guard.h"
 #include "butil/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
 #include "butil/file_util.h"                     // butil::FilePath
 #include "butil/reloadable_flags.h"
@@ -175,6 +177,13 @@ int MVariableBase::expose_impl(const butil::StringPiece& prefix,
         }     
     }
     to_underscored_name(&_name, name);
+
+    bool expose_succeeded = false;
+    BUTIL_SCOPE_EXIT {
+        if (!expose_succeeded) {
+            _name.clear();
+        }
+    };
    
     if (count_exposed() > (size_t)FLAGS_bvar_max_multi_dimension_metric_number) {
         LOG(ERROR) << "Too many metric seen, overflow detected, max metric count:"
@@ -189,6 +198,7 @@ int MVariableBase::expose_impl(const butil::StringPiece& prefix,
         if (entry == nullptr) {
             entry = &m[_name];
             entry->ref = _ref;
+            expose_succeeded = true;
             return 0;
         }
     }
@@ -203,16 +213,14 @@ int MVariableBase::expose_impl(const butil::StringPiece& prefix,
     }
 
     LOG(WARNING) << "Already exposed `" << _name << "' whose describe is`"
-               << get_description() << "'";
-    _name.clear();
-    return 0;
+                 << get_description() << "'";
+    return -1;
 }
 
 bool MVariableBase::hide() {
     if (_name.empty()) {
         return false;
     }
-
     MVarMapWithLock& m = get_mvar_map();
     {
         BAIDU_SCOPED_LOCK(m.mutex);
@@ -223,7 +231,6 @@ bool MVariableBase::hide() {
             CHECK(false) << "`" << _name << "' must exist";
         }
     }
-    _name.clear();
     // Remove previous exposure if needed (hide() waits for in-flight readers
     // and invalidates `_ref`).
     // Always start the new exposure with a fresh `_ref`,  because a previous
@@ -231,14 +238,45 @@ bool MVariableBase::hide() {
     if (_ref != nullptr) {
         _ref->hide_and_wait();
     }
+
+    _name.clear();
     return true;
 }
 
 #ifdef UNIT_TEST
 void MVariableBase::hide_all() {
+    struct MVariableToHide {
+        MVariableBase* variable;
+        SharedExposedRef ref;
+    };
+
+    std::vector<MVariableToHide> variables;
     MVarMapWithLock& m = get_mvar_map();
-    BAIDU_SCOPED_LOCK(m.mutex);
-    m.clear();
+    // Snapshot the owners while detaching the map entries. Waiting for readers
+    // must happen outside the MVarMap lock.
+    {
+        BAIDU_SCOPED_LOCK(m.mutex);
+        variables.reserve(m.size());
+        for (MVarMap::const_iterator it = m.begin(); it != m.end(); ++it) {
+            MVariableToHide variable;
+            variable.ref = it->second.ref;
+            variable.variable = variable.ref->acquire();
+            if (variable.variable != nullptr) {
+                variables.push_back(std::move(variable));
+            }
+        }
+        m.clear();
+    }
+
+    for (auto& variable : variables) {
+        // Touch the owner while the reference taken by acquire() above is still
+        // held: release() lets a concurrent destructor run to completion, and
+        // hide_and_wait() blocks until the last reference is gone, so it has to
+        // come after release() rather than before it.
+        variable.variable->_name.clear();
+        variable.ref->release();
+        variable.ref->hide_and_wait();
+    }
 }
 #endif // end UNIT_TEST
 
@@ -263,7 +301,54 @@ void MVariableBase::list_exposed(std::vector<std::string>* names) {
     }
 }
 
-size_t MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
+// Enforces FLAGS_bvar_max_dump_multi_dimension_metric_number over the whole
+// dump rather than only in between two mvars. A composite metric writes a
+// dozen lines or more per label set, so a single MultiDimension<Histogram>
+// holding the label sets max_multi_dimension_stats_count allows is already
+// hundreds of thousands of lines, all of which reached the output before
+// anyone got to look at the count.
+class LimitedDumper : public Dumper {
+public:
+    LimitedDumper(Dumper* dumper, size_t max_metric_count)
+        : _dumper(dumper), _left(max_metric_count), _truncated(false) {}
+
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        return take_one() && _dumper->dump(name, desc);
+    }
+    bool dump_mvar(const std::string& name, const butil::StringPiece& desc) override {
+        return take_one() && _dumper->dump_mvar(name, desc);
+    }
+    // A comment is not a metric of its own, but one that no sample may follow
+    // would be left dangling.
+    bool dump_comment(const std::string& name, const std::string& type) override {
+        if (_left == 0) {
+            _truncated = true;
+            return false;
+        }
+        return _dumper->dump_comment(name, type);
+    }
+
+    // True once the budget is gone, whether or not anything was refused yet.
+    bool exhausted() const { return _left == 0; }
+    // True if something was actually refused.
+    bool truncated() const { return _truncated; }
+
+private:
+    bool take_one() {
+        if (_left == 0) {
+            _truncated = true;
+            return false;
+        }
+        --_left;
+        return true;
+    }
+
+    Dumper* _dumper;
+    size_t _left;
+    bool _truncated;
+};
+
+int MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
     if (nullptr == dumper) {
         LOG(ERROR) << "Parameter[dumper] is nullptr";
         return -1;
@@ -274,14 +359,17 @@ size_t MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
     }
     std::vector<std::string> mvars;
     list_exposed(&mvars);
+    // The validator of the flag keeps it non negative.
+    LimitedDumper limited_dumper(
+        dumper, static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number));
     size_t n = 0;
-    for (auto& mvar : mvars) {
+    for (size_t i = 0; i < mvars.size(); ++i) {
         MVariableBase* var = nullptr;
         SharedExposedRef ref;
         {
             MVarMapWithLock& m = get_mvar_map();
             BAIDU_SCOPED_LOCK(m.mutex);
-            MVarEntry* entry = m.seek(mvar);
+            MVarEntry* entry = m.seek(mvars[i]);
             if (entry) {
                 ref = entry->ref;
                 var = ref->acquire();
@@ -290,12 +378,15 @@ size_t MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
         if (var != nullptr) {
             // Call dump() outside the MVarMap lock to avoid deadlock when the dump()
             // yields the bthread.
-            n += var->dump(dumper, &opt);
+            n += var->dump(&limited_dumper, &opt);
             ref->release();
         }
-        if (n > static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number)) {
-            LOG(WARNING) << "truncated because of exceed max dump multi dimension label number["
-                         << FLAGS_bvar_max_dump_multi_dimension_metric_number << "]";
+        if (limited_dumper.exhausted()) {
+            // An exact fit on the last mvar has lost nothing.
+            if (limited_dumper.truncated() || i + 1 < mvars.size()) {
+                LOG(WARNING) << "truncated because of exceed max dump multi dimension label number["
+                             << FLAGS_bvar_max_dump_multi_dimension_metric_number << "]";
+            }
             break;
         }
     }

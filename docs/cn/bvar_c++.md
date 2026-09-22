@@ -7,6 +7,7 @@
     - [bvar::Miner](#bvarminer)
 - [bvar::IntRecorder](#bvarintrecorder)
 - [bvar::LatencyRecorder](#bvarlatencyrecorder)
+- [bvar::Histogram](#bvarhistogram)
 - [bvar::Window](#bvarwindow)
     - [How to use bvar::Window](#how-to-use-bvarwindow)
 - [bvar::PerSecond](#bvarpersecond)
@@ -39,6 +40,7 @@ bvar分为多个具体的类，常用的有：
 | bvar::WindowEx\<T\> | 获得某个bvar在一段时间内的累加值。不依赖其他的bvar，需要给它发送数据 |
 | bvar::PerSecondEx\<T\>|  获得某个bvar在一段时间内平均每秒的累加值。不依赖其他的bvar，需要给它发送数据 |
 | bvar::LatencyRecorder| 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了 |
+| bvar::Histogram | 把观测值落到一组固定的桶里，只导出各个桶的计数，分位值由监控系统算。创建时必须显式给出桶的上界 |
 | bvar::Status\<T\> | 记录和显示一个值，拥有额外的set_value函数 |
 | bvar::PassiveStatus | 按需显示值。在一些场合中，我们无法set_value或不知道以何种频率set_value，更适合的方式也许是当需要显示时才打印。用户传入打印回调函数实现这个目的 |
 | bvar::GFlag | 将重要的gflags公开为bvar，以便监控它们 |
@@ -417,6 +419,56 @@ LatencyRecorder write_latency("table2_my_table_write");  // produces 4 variables
 write_latency << the_latency_of_write;
 ```
 
+# bvar::Histogram
+
+把数据落到一组固定的桶里，统计每个桶的数量，也就是prometheus的histogram。
+
+```c++
+// 显式选择桶的上界，另有一个+Inf桶
+bvar::Histogram g_write_latency("table2_my_table_write_latency",
+                                {10, 20, 50, 100, 500, 1000, 5000});
+// In your write function
+g_write_latency << the_latency_of_write;
+```
+
+Histogram也没有默认构造函数，桶的上界必须在创建时给出（initializer_list / vector)：
+
+```c++
+bvar::Histogram g_size("foo_size", {128, 1024, 8192, 65536});
+
+std::vector<double> bounds = LoadBoundsFromConfig();
+bvar::Histogram g_size2("foo_size2", bvar::Histogram::BucketSchema(bounds));
+```
+
+桶的上界由Histogram::BucketSchema描述，语义与prometheus的`le`一致：下标i的桶统计满足`bound_at(i-1) < v <= bound_at(i)`的v，最后额外有一个`+Inf`桶。
+
+桶数上限是`MAX_HISTOGRAM_BUCKETS`（32，含`+Inf`）。边界和观测值均使用double，上界必须有限、严格递增且非空；不满足时Histogram::BucketSchema会打error日志并丢掉有问题的上界（全空则退化为`{1}`），非有限的观测值会被忽略。
+
+一个Histogram导出为一族prometheus指标，而不是一个值：
+```
+# HELP table2_my_table_write_latency
+# TYPE table2_my_table_write_latency histogram
+table2_my_table_write_latency_bucket{le="10"} 3
+table2_my_table_write_latency_bucket{le="20"} 17
+...
+table2_my_table_write_latency_bucket{le="+Inf"} 4021
+table2_my_table_write_latency_sum 1234567
+table2_my_table_write_latency_count 4021
+```
+
+桶计数从构造起一直累加、不会减少，导出时转换为prometheus期望的按`le`累计的计数。分位值由prometheus监控系统计算：`histogram_quantile(0.99, sum by (le)(rate(table2_my_table_write_latency_bucket[1m])))`。
+
+想在进程内看最近一段时间的分布，套一个Window，读它的桶计数：
+```c++
+bvar::Window<bvar::Histogram> g_write_latency_1m(&g_write_latency, 60);
+// 最近60秒的分布：counts[i]是落在对应桶区间内的个数，
+// 不是prometheus导出格式中跨桶累计的计数
+bvar::Histogram::Value v = g_write_latency_1m.get_value();
+```
+注意：Window<Histogram>::describe()只能输出json，所以prometheus抓取不到Window<Histogram>。
+
+Histogram也可以放进MultiDimension，用法见[mbvar文档](mbvar_c++.md#bvarhistogram)。
+
 # bvar::Window
 
 获得之前一段时间内的统计值。Window不能独立存在，必须依赖于一个已有的计数器。Window会自动更新，不用给它发送数据。出于性能考虑，Window的数据来自于每秒一次对原计数器的采样，在最差情况下，Window的返回值有1秒的延时。
@@ -655,4 +707,3 @@ static bvar::GFlag s_gflag_my_flag_that_matters_with_prefix("foo_bar", "my_flag_
 原理和性能见[babylon介绍](https://github.com/baidu/babylon/tree/main/example/use-counter-with-bvar)。
 
 目前只支持bazel编译方式：`--define with_babylon_counter=true`，babylon版本要求：>= 1.4.4。打开开关后，即可使用基于babylon counter实现的更高性能的bvar，无需修改代码。
-

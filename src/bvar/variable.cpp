@@ -18,28 +18,50 @@
 // Date: 2014/09/22 19:04:47
 
 #include <pthread.h>
-#include <set>                                  // std::set
-#include <fstream>                              // std::ifstream
-#include <sstream>                              // std::ostringstream
+#include <set>                                   // std::set
+#include <fstream>                               // std::ifstream
+#include <sstream>                               // std::ostringstream
 #include <gflags/gflags.h>
 #include "butil/macros.h"                        // BAIDU_CASSERT
 #include "butil/containers/flat_map.h"           // butil::FlatMap
+#include "butil/memory/scope_guard.h"
 #include "butil/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
 #include "butil/string_splitter.h"               // butil::StringSplitter
 #include "butil/errno.h"                         // berror
+#include "butil/float_util.h"                    // butil::IsFinite
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
 #include "butil/threading/platform_thread.h"
 #include "butil/reloadable_flags.h"
+#include "butil/strings/string_number_conversions.h" // butil::DoubleToString
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
 
 namespace bvar {
 
+namespace detail {
+
+std::string prometheus_double_to_string(double value) {
+    if (BAIDU_UNLIKELY(!butil::IsFinite(value))) {
+        if (butil::IsNaN(value)) {
+            return "NaN";
+        }
+        return value > 0 ? "+Inf" : "-Inf";
+    }
+    std::string result = butil::DoubleToString(value);
+    size_t decimal = !result.empty() && result[0] == '-' ? 1 : 0;
+    if (decimal < result.size() && result[decimal] == '.') {
+        result.insert(decimal, 1, '0');
+    }
+    return result;
+}
+
+}  // namespace detail
+
 DEFINE_bool(save_series, true,
-            "Save values of last 60 seconds, last 60 minutes,"
-            " last 24 hours and last 30 days for plotting");
+            "Save values of last 60 seconds, last 60 minutes, "
+            "last 24 hours and last 30 days for plotting");
 
 DEFINE_bool(quote_vector, true,
             "Quote description of Vector<> to make it valid to noah");
@@ -179,7 +201,14 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         }
     }
     to_underscored_name(&_name, name);
-    
+
+    bool expose_succeeded = false;
+    BUTIL_SCOPE_EXIT {
+        if (!expose_succeeded) {
+            _name.clear();
+        }
+    };
+
     VarMapWithLock& m = get_var_map(_name);
     {
         BAIDU_SCOPED_LOCK(m.mutex);
@@ -188,6 +217,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
             entry = &m[_name];
             entry->ref = _ref;
             entry->display_filter = display_filter;
+            expose_succeeded = true;
             return 0;
         }
     }
@@ -202,7 +232,6 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         
     LOG(ERROR) << "Already exposed `" << _name << "' whose value is `"
                << describe_exposed(_name) << '\'';
-    _name.clear();
     return -1;
 }
 
@@ -224,7 +253,6 @@ bool Variable::hide() {
             CHECK(false) << "`" << _name << "' must exist";
         }
     }
-    _name.clear();
     // Remove previous exposure if needed (hide() waits for in-flight readers
     // and invalidates `_ref`).
     // Always start the new exposure with a fresh `_ref`,  because a previous
@@ -232,6 +260,7 @@ bool Variable::hide() {
     if (_ref != nullptr) {
         _ref->hide_and_wait();
     }
+    _name.clear();
     return true;
 }
 
@@ -530,6 +559,73 @@ DumpOptions::DumpOptions()
     , display_filter(DISPLAY_ON_PLAIN_TEXT)
 {}
 
+bool Variable::dump(Dumper* dumper, const DumpOptions& options,
+                    const std::string& name) const {
+    CharArrayStreamBuf streambuf;
+    std::ostream os(&streambuf);
+    describe(os, options.quote_string);
+    return dumper->dump(name, streambuf.data());
+}
+
+// Dump the variable exposed as `name` into `dumper`.
+// Returns 1 if it was dumped, 0 if there's no such variable or
+// it's filtered out, -1 if `dumper` asked to stop.
+static int dump_exposed_one(Dumper* dumper,
+                            const DumpOptions& options,
+                            const std::string& name) {
+    VarMapWithLock& m = get_var_map(name);
+    Variable* var = nullptr;
+    Variable::SharedExposedRef ref;
+    {
+        BAIDU_SCOPED_LOCK(m.mutex);
+        VarEntry* p = m.seek(name);
+        if (p == nullptr) {
+            return 0;
+        }
+        if (!(options.display_filter & p->display_filter)) {
+            return 0;
+        }
+        ref = p->ref;
+        var = ref->acquire();
+    }
+    if (var == nullptr) {
+        // The variable is being destructed.
+        return 0;
+    }
+    // Dump outside the VarMap lock to avoid deadlock when the user callback
+    // (e.g. PassiveStatus) yields the bthread, same as describe_exposed().
+    bool ok = var->dump(dumper, options, name);
+    ref->release();
+    return ok ? 1 : -1;
+}
+
+// Tees everything going through the wrapped dumper into `info`, implementing
+// FLAGS_bvar_log_dumpped without duplicating the describe() of every variable.
+class LoggingDumper : public Dumper {
+public:
+    LoggingDumper(Dumper* dumper, std::ostringstream* info)
+        : _dumper(dumper), _info(info) {}
+
+    bool dump(const std::string& name,
+              const butil::StringPiece& desc) override {
+        (*_info) << '\n' << name << ": " << desc;
+        return _dumper->dump(name, desc);
+    }
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        (*_info) << '\n' << name << ": " << desc;
+        return _dumper->dump_mvar(name, desc);
+    }
+    bool dump_comment(const std::string& name,
+                      const std::string& type) override {
+        return _dumper->dump_comment(name, type);
+    }
+
+private:
+    Dumper* _dumper;
+    std::ostringstream* _info;
+};
+
 int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
     if (nullptr == dumper) {
         LOG(ERROR) << "Parameter[dumper] is nullptr";
@@ -539,8 +635,6 @@ int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
     if (poptions) {
         opt = *poptions;
     }
-    CharArrayStreamBuf streambuf;
-    std::ostream os(&streambuf);
     int count = 0;
     WildcardMatcher black_matcher(opt.black_wildcards,
                                   opt.question_mark,
@@ -551,6 +645,8 @@ int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
 
     std::ostringstream dumpped_info;
     const bool log_dummped = FLAGS_bvar_log_dumpped;
+    LoggingDumper logging_dumper(dumper, &dumpped_info);
+    Dumper* d = log_dummped ? &logging_dumper : dumper;
 
     if (white_matcher.wildcards().empty() &&
         !white_matcher.exact_names().empty()) {
@@ -559,18 +655,11 @@ int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
              it != white_matcher.exact_names().end(); ++it) {
             const std::string& name = *it;
             if (!black_matcher.match(name)) {
-                if (bvar::Variable::describe_exposed(
-                        name, os, opt.quote_string, opt.display_filter) != 0) {
-                    continue;
-                }
-                if (log_dummped) {
-                    dumpped_info << '\n' << name << ": " << streambuf.data();
-                }
-                if (!dumper->dump(name, streambuf.data())) {
+                int rc = dump_exposed_one(d, opt, name);
+                if (rc < 0) {
                     return -1;
                 }
-                streambuf.reset();
-                ++count;
+                count += rc;
             }
         }
     } else {
@@ -579,22 +668,14 @@ int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
         bvar::Variable::list_exposed(&varnames, opt.display_filter);
         // Sort the names to make them more readable.
         std::sort(varnames.begin(), varnames.end());
-        for (std::vector<std::string>::const_iterator
-                 it = varnames.begin(); it != varnames.end(); ++it) {
+        for (auto it = varnames.begin(); it != varnames.end(); ++it) {
             const std::string& name = *it;
             if (white_matcher.match(name) && !black_matcher.match(name)) {
-                if (bvar::Variable::describe_exposed(
-                        name, os, opt.quote_string, opt.display_filter) != 0) {
-                    continue;
-                }
-                if (log_dummped) {
-                    dumpped_info << '\n' << name << ": " << streambuf.data();
-                }
-                if (!dumper->dump(name, streambuf.data())) {
+                int rc = dump_exposed_one(d, opt, name);
+                if (rc < 0) {
                     return -1;
                 }
-                streambuf.reset();
-                ++count;
+                count += rc;
             }
         }
     }
@@ -698,7 +779,13 @@ public:
     CommonFileDumper(const std::string& filename, butil::StringPiece prefix)
         : FileDumper(filename, prefix)
         , _separator(":") {}
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        return dump_impl(name, desc, _separator);
+    }
+    // -mbvar_dump is turned on to get the multiple dimension vars out, so the
+    // labels a sample carries in its name are what the file is there for.
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
         return dump_impl(name, desc, _separator);
     }
 private:
@@ -710,7 +797,12 @@ public:
     PrometheusFileDumper(const std::string& filename, butil::StringPiece prefix)
         : FileDumper(filename, prefix)
         , _separator(" ") {}
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
+        return dump_impl(name, desc, _separator);
+    }
+    // `name{label="value"} 3` is the prometheus text format this file holds.
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
         return dump_impl(name, desc, _separator);
     }
 private:
@@ -739,7 +831,7 @@ public:
                     new CommonFileDumper(path.AddExtension("data").value(), s), 
                     (WildcardMatcher *)nullptr);
     }
-    ~FileDumperGroup() {
+    ~FileDumperGroup() override {
         for (size_t i = 0; i < dumpers.size(); ++i) {
             delete dumpers[i].first;
             delete dumpers[i].second;
@@ -755,6 +847,14 @@ public:
         }
         // dump to default file
         return dumpers.back().first->dump(name, desc);
+    }
+
+    // The samples of a Histogram belong in the dump file as much as any other
+    // value. They route by the same wildcards, which see the whole name
+    // including the labels.
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        return dump(name, desc);
     }
 private:
     std::vector<std::pair<FileDumper *, WildcardMatcher*> > dumpers;
