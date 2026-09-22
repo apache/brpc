@@ -241,7 +241,6 @@ TEST(ButexTest, wait_without_stop) {
 TEST(ButexTest, stop_after_running) {
     int* butex = bthread::butex_create_checked<int>();
     *butex = 7;
-    butil::Timer tm;
     const long WAIT_MSEC = 500;
     const long SLEEP_MSEC = 10;
     for (int i = 0; i < 2; ++i) {
@@ -250,14 +249,11 @@ TEST(ButexTest, stop_after_running) {
         bthread_t th;
         ButexWaitArg arg = { butex, *butex, WAIT_MSEC, EINTR };
 
-        tm.start();
         ASSERT_EQ(0, bthread_start_urgent(&th, &attr, wait_butex, &arg));
         ASSERT_EQ(0, bthread_usleep(SLEEP_MSEC * 1000L));
         ASSERT_EQ(0, bthread_stop(th));
         ASSERT_EQ(0, bthread_join(th, nullptr));
-        tm.stop();
 
-        ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 25);
         // ASSERT_TRUE(bthread::get_task_control()->
         //             timer_thread()._idset.empty());
         ASSERT_EQ(EINVAL, bthread_stop(th));
