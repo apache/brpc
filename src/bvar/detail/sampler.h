@@ -304,7 +304,7 @@ private:
 
     // The operator can't be inversed.
     // We reset the reducer and save the result as a sample.
-    // Suming up samples gives the result within a window.
+    // Summing up samples gives the result within a window.
     // In this case, get_value() of `_source` gives wrong answer and
     // should not be called.
     T take_sample_of(butil::true_type) { return _source.reset(); }

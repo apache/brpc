@@ -219,9 +219,9 @@ public:
     // The contract of Window<>/ReducerSampler
     Op op() const { return Op(); }
     InvOp inv_op() const { return InvOp(); }
-    // Expose the shared data carrier, so that ReducerSampler holds it instead
-    // of `this`. Sampling then keeps reading valid memory even if this
-    // Percentile is destructed before the sampler is recycled.
+    // Expose the shared data carrier, so that ReducerSampler holds it
+    // instead of `this`. Sampling then keeps reading valid memory even
+    // if this Histogram is destructed before the sampler is recycled.
     shared_combiner_type share_combiner() const {
 #if WITH_BABYLON_COUNTER
         return _storage;

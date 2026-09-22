@@ -796,12 +796,12 @@ TEST_F(HistogramTest, values_of_dead_threads_are_kept) {
 
 static void check_snapshots_while_recording(bvar::Histogram* h,
                                             int64_t nrecords) {
-    bvar::Histogram::Value v;
-    uint64_t last_counts[4] = {};
+    bvar::Histogram::Value v = h->get_value();
+    std::vector<uint64_t> last_counts(v.num_buckets, 0);
     for (int i = 0; i < 1000 || v.num < nrecords; ++i) {
         v = h->get_value();
         uint64_t total = 0;
-        for (size_t b = 0; b < arraysize(last_counts); ++b) {
+        for (size_t b = 0; b < last_counts.size(); ++b) {
             total += v.counts[b];
             // Every sample is taken after the previous one returned and a
             // bucket count only ever grows, so this snapshot cannot hold less
@@ -842,7 +842,7 @@ static const size_t PERF_OPS_PER_THREAD = 500000;
 
 struct PerfArgs {
     bvar::Histogram* h;
-    long elapsed_ns;
+    int64_t elapsed_ns;
 };
 
 static void* record_into_histogram(void* arg) {
@@ -865,7 +865,7 @@ static double time_records(bvar::Histogram* h, size_t nthread) {
         EXPECT_EQ(0, pthread_create(&threads[i], nullptr,
                                     record_into_histogram, &args[i]));
     }
-    long total_ns = 0;
+    int64_t total_ns = 0;
     for (size_t i = 0; i < nthread; ++i) {
         EXPECT_EQ(0, pthread_join(threads[i], nullptr));
         total_ns += args[i].elapsed_ns;
