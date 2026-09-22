@@ -198,7 +198,7 @@ public:
         // would not be ignored
         take_sample();
     }
-    ~ReducerSampler() {}
+    ~ReducerSampler() override = default;
 
     void take_sample() override {
         // Make _q ready.
@@ -222,21 +222,7 @@ public:
         }
 
         Sample<T> latest;
-        if (butil::is_same<InvOp, VoidOp>::value) {
-            // The operator can't be inversed.
-            // We reset the reducer and save the result as a sample.
-            // Suming up samples gives the result within a window.
-            // In this case, get_value() of _reducer gives wrong answer and
-            // should not be called.
-            latest.data = _source.reset();
-        } else {
-            // The operator can be inversed.
-            // We save the result as a sample.
-            // Inversed operation between latest and oldest sample within a
-            // window gives result.
-            // get_value() of _reducer can still be called.
-            latest.data = _source.get_value();
-        }
+        latest.data = take_sample_of(butil::is_same<InvOp, VoidOp>());
         latest.time_us = butil::cpuwide_time_us();
         _q.elim_push(latest);
     }
@@ -313,6 +299,23 @@ public:
     }
 
 private:
+    // Tag dispatch instead of a runtime branch on is_same<InvOp, VoidOp>, so
+    // that only the taken branch is instantiated.
+
+    // The operator can't be inversed.
+    // We reset the reducer and save the result as a sample.
+    // Suming up samples gives the result within a window.
+    // In this case, get_value() of `_source` gives wrong answer and
+    // should not be called.
+    T take_sample_of(butil::true_type) { return _source.reset(); }
+
+    // The operator can be inversed.
+    // We save the result as a sample.
+    // Inversed operation between latest and oldest sample within a
+    // window gives result.
+    // get_value() of `_source` can still be called.
+    T take_sample_of(butil::false_type) { return _source.get_value(); }
+
     source_type _source;
     time_t _window_size;
     butil::BoundedQueue<Sample<T> > _q;

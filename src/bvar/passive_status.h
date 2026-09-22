@@ -102,7 +102,7 @@ public:
         , _series_sampler(nullptr) {
     }
 
-    ~PassiveStatus() {
+    ~PassiveStatus() override {
         hide();
         if (_sampler) {
             _sampler->destroy();
@@ -160,11 +160,6 @@ public:
             _series_sampler->describe(os);
         }
         return 0;
-    }
-
-    Tp reset() {
-        CHECK(false) << "PassiveStatus::reset() should never be called, abort";
-        abort();
     }
 
 protected:

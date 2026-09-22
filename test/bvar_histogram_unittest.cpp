@@ -21,6 +21,7 @@
 #include <stdio.h>                      // snprintf
 #include <string.h>                     // memset
 #include <algorithm>                    // std::max
+#include <iomanip>                      // std::setprecision
 #include <limits>
 #include <map>
 #include <memory>                       // std::make_shared
@@ -30,6 +31,7 @@
 #include <gtest/gtest.h>
 #include <butil/atomicops.h>
 #include <butil/float_util.h>
+#include <butil/logging.h>
 #include <butil/strings/string_number_conversions.h>
 #include <butil/time.h>
 #include "bvar/bvar.h"
@@ -43,6 +45,54 @@ namespace {
 // Test builds use -fno-access-control (see test/CMakeLists.txt), so the tests
 // below call private members such as Histogram::get_value() directly.
 class HistogramTest : public testing::Test {};
+
+#if WITH_BABYLON_COUNTER
+
+// One thread's slice of a Histogram, the babylon backed replacement of the
+// ElementContainer tested below.
+TEST_F(HistogramTest, histogram_slot) {
+    bvar::Histogram::BucketSchema schema({10, 20, 30});
+    bvar::detail::HistogramSlot slot;
+    // Freshly constructed, before any add().
+    bvar::Histogram::Value v = slot.load(schema.num_buckets());
+    ASSERT_EQ(0, v.num);
+    ASSERT_DOUBLE_EQ(0.0, v.sum);
+    ASSERT_EQ(0u, v.counts[0]);
+
+    slot.add(schema.index_of(5.25), 5.25);
+    slot.add(schema.index_of(25.5), 25.5);
+    slot.add(schema.index_of(1000.75), 1000.75);
+    v = slot.load(schema.num_buckets());
+    ASSERT_EQ(3, v.num);
+    ASSERT_DOUBLE_EQ(1031.5, v.sum);
+    ASSERT_EQ(4u, v.num_buckets);
+    ASSERT_EQ(1u, v.counts[0]);   // 5.25    -> (-inf, 10]
+    ASSERT_EQ(0u, v.counts[1]);
+    ASSERT_EQ(1u, v.counts[2]);   // 25.5    -> (20, 30]
+    ASSERT_EQ(1u, v.counts[3]);   // 1000.75 -> +Inf
+}
+
+// A slot is taken lazily, on the first record of a thread, and the storage
+// aggregates every slot ever taken.
+TEST_F(HistogramTest, histogram_storage) {
+    bvar::Histogram::BucketSchema schema({10, 20, 30});
+    bvar::detail::HistogramStorage storage(schema.num_buckets());
+    // No thread has recorded anything, yet the combined value already knows
+    // how wide the histogram is.
+    bvar::Histogram::Value v = storage.combine_agents();
+    ASSERT_EQ(0, v.num);
+    ASSERT_EQ(4u, v.num_buckets);
+
+    storage.add(schema.index_of(5.25), 5.25);
+    storage.add(schema.index_of(25.5), 25.5);
+    v = storage.combine_agents();
+    ASSERT_EQ(2, v.num);
+    ASSERT_DOUBLE_EQ(30.75, v.sum);
+    ASSERT_EQ(1u, v.counts[0]);
+    ASSERT_EQ(1u, v.counts[2]);
+}
+
+#else
 
 // The element container of a Histogram::Value, which is the generic mutex one:
 // the value is far too wide to be atomical.
@@ -75,6 +125,8 @@ TEST_F(HistogramTest, element_container) {
     ASSERT_EQ(0, v.num);
     ASSERT_EQ(0u, v.counts[3]);
 }
+
+#endif // WITH_BABYLON_COUNTER
 
 // Fixed workload for export and performance tests, not a library default.
 static bvar::Histogram::BucketSchema test_latency_schema() {
@@ -724,4 +776,119 @@ TEST_F(HistogramTest, multithreaded) {
     }
     ASSERT_DOUBLE_EQ((double)expected_sum * nrecords / 40, v.sum);
 }
+
+// What a thread recorded outlives it: the AgentCombiner backend commits a
+// dying agent into its global result, the babylon one keeps the slot of an
+// exited thread around for whichever thread inherits its id later.
+TEST_F(HistogramTest, values_of_dead_threads_are_kept) {
+    int64_t nvalues = 100;
+    bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20, 30}));
+    AddArgs args = {&h, nvalues};
+    for (int64_t round = 1; round <= 3; ++round) {
+        pthread_t th;
+        ASSERT_EQ(0, pthread_create(&th, nullptr, add_values, &args));
+        ASSERT_EQ(0, pthread_join(th, nullptr));
+        // Every round runs on a thread which is gone by the time count() reads
+        // what it recorded, and the next one may well reuse its slot.
+        ASSERT_EQ(nvalues * round, h.count());
+    }
+}
+
+static void check_snapshots_while_recording(bvar::Histogram* h,
+                                            int64_t nrecords) {
+    bvar::Histogram::Value v;
+    uint64_t last_counts[4] = {};
+    for (int i = 0; i < 1000 || v.num < nrecords; ++i) {
+        v = h->get_value();
+        uint64_t total = 0;
+        for (size_t b = 0; b < arraysize(last_counts); ++b) {
+            total += v.counts[b];
+            // Every sample is taken after the previous one returned and a
+            // bucket count only ever grows, so this snapshot cannot hold less
+            // than the last one did.
+            ASSERT_LE(last_counts[b], v.counts[b]) << "i=" << i << " bucket=" << b;
+            last_counts[b] = v.counts[b];
+        }
+        ASSERT_EQ(v.num, (int64_t)total) << "i=" << i;
+    }
+}
+
+// The invariant the per thread seqlock buys, the mutex of the ElementContainer
+// without WITH_BABYLON_COUNTER: a snapshot never mixes a bucket that has
+// already been incremented with a `num` that has not. It holds for the slice
+// of one thread, and summing consistent slices keeps it, so the whole snapshot
+// still satisfies the `+Inf bucket == _count` rule of the prometheus format
+// while other threads are recording.
+TEST_F(HistogramTest, snapshot_is_self_consistent_under_contention) {
+    int64_t nvalues = 50000;
+    bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20, 30}));
+
+    pthread_t threads[4];
+    AddArgs args = {&h, nvalues};
+    for (size_t i = 0; i < arraysize(threads); ++i) {
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr, add_values, &args));
+    }
+
+    int64_t nrecords = (int64_t)arraysize(threads) * nvalues;
+    check_snapshots_while_recording(&h, nrecords);
+
+    for (size_t i = 0; i < arraysize(threads); ++i) {
+        ASSERT_EQ(0, pthread_join(threads[i], nullptr));
+    }
+    ASSERT_EQ(nrecords, h.count());
+}
+
+static const size_t PERF_OPS_PER_THREAD = 500000;
+
+struct PerfArgs {
+    bvar::Histogram* h;
+    long elapsed_ns;
+};
+
+static void* record_into_histogram(void* arg) {
+    PerfArgs* args = (PerfArgs*)arg;
+    butil::Timer timer;
+    timer.start();
+    for (size_t i = 0; i < PERF_OPS_PER_THREAD; ++i) {
+        *args->h << (double)(i % 40);
+    }
+    timer.stop();
+    args->elapsed_ns = timer.n_elapsed();
+    return nullptr;
+}
+
+static double time_records(bvar::Histogram* h, size_t nthread) {
+    PerfArgs proto = {h, 0};
+    std::vector<PerfArgs> args(nthread, proto);
+    std::vector<pthread_t> threads(nthread);
+    for (size_t i = 0; i < nthread; ++i) {
+        EXPECT_EQ(0, pthread_create(&threads[i], nullptr,
+                                    record_into_histogram, &args[i]));
+    }
+    long total_ns = 0;
+    for (size_t i = 0; i < nthread; ++i) {
+        EXPECT_EQ(0, pthread_join(threads[i], nullptr));
+        total_ns += args[i].elapsed_ns;
+    }
+    return (double)total_ns / (double)(PERF_OPS_PER_THREAD * nthread);
+}
+
+TEST_F(HistogramTest, write_perf) {
+#if WITH_BABYLON_COUNTER
+    const char* backend = "babylon";
+#else
+    const char* backend = "combiner";
+#endif // WITH_BABYLON_COUNTER
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2)
+        << "threads\t" << backend << " (ns per record)\n";
+    for (size_t nthread = 1; nthread <= 8; nthread *= 2) {
+        bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20, 30}));
+        double ns = time_records(&h, nthread);
+        ASSERT_EQ((int64_t)(PERF_OPS_PER_THREAD * nthread), h.count());
+        oss << nthread << '\t' << ns << '\n';
+    }
+    LOG(INFO) << "Histogram write performance:\n" << oss.str();
+}
+
 }  // namespace

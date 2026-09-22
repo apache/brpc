@@ -424,7 +424,10 @@ cc_library(
     deps = [
         ":butil",
     ]  + select({
-        "//bazel/config:with_babylon_counter": ["@babylon//:concurrent_counter"],
+        "//bazel/config:with_babylon_counter": [
+            "@babylon//:concurrent_counter",
+            "@babylon//:concurrent_thread_local",
+        ],
         "//conditions:default": [],
     }),
 )
