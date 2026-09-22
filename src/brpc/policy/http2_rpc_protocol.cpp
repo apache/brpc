@@ -29,6 +29,7 @@ DECLARE_int32(http_verbose_max_body_length);
 DECLARE_int32(health_check_interval);
 DECLARE_bool(usercode_in_pthread);
 DECLARE_int64(socket_max_unwritten_bytes);
+DECLARE_uint32(http_max_header_count);
 
 namespace policy {
 
@@ -729,6 +730,11 @@ H2ParseResult H2StreamContext::OnHeaders(
                 << ", stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
+        // The whole block went through the decoder, the connection is in a
+        // consistent state again and only this stream needs to be reset.
+        if (_rejected_error != H2_NO_ERROR) {
+            return MakeH2Error(_rejected_error, stream_id());
+        }
         if (frame_head.flags & H2_FLAGS_END_STREAM) {
             return OnEndStream();
         }
@@ -790,6 +796,10 @@ H2ParseResult H2StreamContext::OnContinuation(
             LOG(ERROR) << "Incomplete header: payload_size=" << frame_head.payload_size
                 << ", stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
+        }
+        // See the same check in H2StreamContext::OnHeaders().
+        if (_rejected_error != H2_NO_ERROR) {
+            return MakeH2Error(_rejected_error, stream_id());
         }
         if (_stream_ended) {
             return OnEndStream();
@@ -1294,7 +1304,8 @@ H2StreamContext::H2StreamContext(bool read_body_progressively)
     , _remote_window_left(0)
     , _deferred_window_update(0)
     , _correlation_id(INVALID_BTHREAD_ID.value)
-    , _decoded_header_list_size(0) {
+    , _decoded_header_list_size(0)
+    , _rejected_error(H2_NO_ERROR) {
     header().set_version(2, 0);
 #ifndef NDEBUG
     get_h2_bvars()->h2_stream_context_count << 1;
@@ -1349,6 +1360,14 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                        << max_header_list_size << ", stream_id=" << _stream_id;
             return -1;
         }
+        if (_rejected_error != H2_NO_ERROR) {
+            // The stream is already refused, keep feeding the decoder so that
+            // the dynamic table stays in sync with the peer, but stop spending
+            // memory on fields nobody is going to read. A peer that keeps
+            // piling them up still runs into max_header_list_size above, which
+            // escalates to a connection error as it has to.
+            continue;
+        }
         const char* const name = pair.name.c_str();
         bool matched = false;
         if (name[0] == ':') { // reserved names
@@ -1364,10 +1383,12 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                     matched = true;
                     HttpMethod method;
                     if (!Str2HttpMethod(pair.value.c_str(), &method)) {
-                        LOG(ERROR) << "Invalid method=" << pair.value;
-                        return -1;
+                        LOG(ERROR) << "Invalid method=" << pair.value
+                                   << ", stream_id=" << _stream_id;
+                        _rejected_error = H2_PROTOCOL_ERROR;
+                    } else {
+                        h.set_method(method);
                     }
-                    h.set_method(method);
                 }
                 break;
             case 'p':
@@ -1380,11 +1401,16 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                     // would take the whole header block, since HPACK does not
                     // order pseudo-headers and :method may not have arrived.
                     if (pair.value != "*" && (pair.value.empty() || pair.value[0] != '/')) {
-                        LOG(ERROR) << "Invalid path=" << pair.value;
-                        return -1;
+                        LOG(ERROR) << "Invalid path=" << pair.value
+                                   << ", stream_id=" << _stream_id;
+                        _rejected_error = H2_PROTOCOL_ERROR;
+                    } else if (h.uri().SetH2Path(pair.value) != 0) {
+                        // Including path/query/fragment. The only way this
+                        // fails is too many query parameters.
+                        LOG(ERROR) << h.uri().status().error_cstr()
+                                   << ", stream_id=" << _stream_id;
+                        _rejected_error = H2_ENHANCE_YOUR_CALM;
                     }
-                    // Including path/query/fragment
-                    h.uri().SetH2Path(pair.value);
                 }
                 break;
             case 's':
@@ -1396,24 +1422,34 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                     char* endptr = nullptr;
                     const int sc = strtol(pair.value.c_str(), &endptr, 10);
                     if (*endptr != '\0') {
-                        LOG(ERROR) << "Invalid status=" << pair.value;
-                        return -1;
+                        LOG(ERROR) << "Invalid status=" << pair.value
+                                   << ", stream_id=" << _stream_id;
+                        _rejected_error = H2_PROTOCOL_ERROR;
+                    } else {
+                        h.set_status_code(sc);
                     }
-                    h.set_status_code(sc);
                 }
                 break;
             default:
                 break;
             }
             if (!matched) {
-                LOG(ERROR) << "Unknown name=`" << name << '\'';
-                return -1;
+                LOG(ERROR) << "Unknown pseudo-header=`" << name
+                           << "', stream_id=" << _stream_id;
+                _rejected_error = H2_PROTOCOL_ERROR;
             }
         } else if (name[0] == 'c' &&
                    strcmp(name + 1, /*c*/"ontent-type") == 0) {
             h.set_content_type(pair.value);
         } else {
             h.AppendHeader(pair.name, pair.value);
+            if (FLAGS_http_max_header_count > 0 &&
+                h.HeaderCount() > FLAGS_http_max_header_count) {
+                LOG(ERROR) << "Too many headers, max="
+                           << FLAGS_http_max_header_count
+                           << ", stream_id=" << _stream_id;
+                _rejected_error = H2_ENHANCE_YOUR_CALM;
+            }
         }
 
         if (FLAGS_http_verbose) {

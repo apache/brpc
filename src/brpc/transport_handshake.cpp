@@ -131,6 +131,29 @@ StepResult HandshakeSession::ReceiveAck(const HandshakeCodec& codec,
     return codec.parse_ack(payload, enabled);
 }
 
+StepResult HandshakeSession::SendExtension(const HandshakeCodec& codec,
+                                          bool enabled) {
+    CHECK(codec.build_extension);
+    std::string payload;
+    const StepResult result = codec.build_extension(enabled, &payload);
+    if (result != STEP_OK) {
+        return result;
+    }
+    return ConvertFrameResult(
+        FrameCodec::WriteFrame(_io, codec.extension_frame, payload));
+}
+
+StepResult HandshakeSession::ReceiveExtension(const HandshakeCodec& codec,
+                                             HandshakeInput* input) {
+    CHECK(codec.parse_extension);
+    std::string payload;
+    const FrameResult frame_result = input != NULL
+        ? FrameCodec::ParseBufferedFrame(input, codec.extension_frame, &payload)
+        : FrameCodec::ReadFrame(_io, codec.extension_frame, false, &payload);
+    const StepResult result = ConvertFrameResult(frame_result);
+    return result == STEP_OK ? codec.parse_extension(payload) : result;
+}
+
 StepResult HandshakeSession::SelectAndReceiveHello(
     const std::vector<HandshakeCodec>& codecs, HandshakeInput* input,
     bool push_back_on_not_mine, const HandshakeCodec** selected) {
@@ -203,6 +226,20 @@ StepResult HandshakeSession::RunClient(
     }
     bool enabled = result == STEP_OK;
 
+    if (enabled && callbacks.codec.build_extension) {
+        CHECK(callbacks.codec.parse_extension);
+        SetPhase(EXTENSION_SEND);
+        if (SendExtension(callbacks.codec, true) != STEP_OK) {
+            return FinishWithFailure(this, callbacks.transport.on_failed);
+        }
+        SetPhase(EXTENSION_WAIT);
+        result = ReceiveExtension(callbacks.codec, NULL);
+        if (result != STEP_OK && result != STEP_FALLBACK) {
+            return FinishWithFailure(this, callbacks.transport.on_failed);
+        }
+        enabled = result == STEP_OK;
+    }
+
     if (enabled) {
         SetPhase(NEGOTIATING);
         result = callbacks.transport.negotiate_resources();
@@ -241,7 +278,7 @@ StepResult HandshakeSession::RunServer(
     }
 
     const HandshakeCodec* selected = NULL;
-    if (phase() != ACK_WAIT) {
+    if (phase() != ACK_WAIT && phase() != EXTENSION_WAIT) {
         const int previous_phase = phase();
         _local_enabled = false;
         SetPhase(HELLO_WAIT);
@@ -290,7 +327,8 @@ StepResult HandshakeSession::RunServer(
         if (SendHello(*selected, enabled) != STEP_OK) {
             return FinishWithFailure(this, callbacks.transport.on_failed);
         }
-        SetPhase(ACK_WAIT);
+        SetPhase(enabled && selected->parse_extension
+                     ? EXTENSION_WAIT : ACK_WAIT);
     } else {
         for (size_t i = 0; i < callbacks.codecs.size(); ++i) {
             if (callbacks.codecs[i].protocol_version == protocol_version()) {
@@ -299,6 +337,24 @@ StepResult HandshakeSession::RunServer(
             }
         }
         CHECK(selected != NULL);
+    }
+
+    if (phase() == EXTENSION_WAIT) {
+        StepResult result = ReceiveExtension(*selected, callbacks.input);
+        if (result == STEP_NEED_MORE) {
+            return STEP_NEED_MORE;
+        }
+        if (result != STEP_OK && result != STEP_FALLBACK) {
+            return FinishWithFailure(this, callbacks.transport.on_failed);
+        }
+        if (result == STEP_FALLBACK) {
+            _local_enabled = false;
+        }
+        SetPhase(EXTENSION_SEND);
+        if (SendExtension(*selected, _local_enabled) != STEP_OK) {
+            return FinishWithFailure(this, callbacks.transport.on_failed);
+        }
+        SetPhase(ACK_WAIT);
     }
 
     // Always try the ACK callback once. For a non-blocking server it returns

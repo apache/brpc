@@ -49,7 +49,7 @@ static const size_t MAGIC_LEN = 2;
 static const size_t HELLO_LEN = 64;
 static const size_t ACK_LEN = 4;
 #if BRPC_WITH_UBRING
-static const uint16_t HELLO_VERSION = 2;
+static const uint16_t HELLO_VERSION = 3;
 static const uint16_t IMPL_VERSION = 1;
 #endif  // BRPC_WITH_UBRING
 static const uint32_t ACK_OK = 0x1;
@@ -96,6 +96,24 @@ void HelloMessage::Serialize(void* data) const {
     memcpy(current_pos, shm_name, SHM_MAX_NAME_BUFF_LEN);
 }
 
+void HelloFormatExtension::Serialize(void* data) const {
+    char* current = static_cast<char*>(data);
+    const uint16_t length = butil::HostToNet16(extension_len);
+    const uint16_t format = butil::HostToNet16(format_id);
+    memcpy(current, &length, sizeof(length));
+    memcpy(current + sizeof(length), &format, sizeof(format));
+}
+
+void HelloFormatExtension::Deserialize(const void* data) {
+    const char* current = static_cast<const char*>(data);
+    uint16_t length;
+    uint16_t format;
+    memcpy(&length, current, sizeof(length));
+    memcpy(&format, current + sizeof(length), sizeof(format));
+    extension_len = butil::NetToHost16(length);
+    format_id = butil::NetToHost16(format);
+}
+
 void HelloMessage::Deserialize(const void* data) {
     const char* current_pos = static_cast<const char*>(data);
     uint16_t net_msg_len;
@@ -132,9 +150,32 @@ std::string HelloMessage::toString() const {
 
 handshake::HandshakeCodec UBShmHandshakeAdapter::MakeCodec() const {
     handshake::HandshakeCodec codec{};
-    codec.protocol_version = 2;
+    codec.protocol_version = 3;
     codec.hello_frame = handshake::ubshm_wire::HelloFrameSpec();
     codec.ack_frame = handshake::ubshm_wire::AckFrameSpec();
+    codec.extension_frame = handshake::FrameSpec(
+        NULL, 0, HelloFormatExtension::WIRE_SIZE,
+        HelloFormatExtension::WIRE_SIZE, handshake::FrameSpec::FIXED);
+    codec.build_extension = [](bool enabled, std::string* payload) {
+        const HelloFormatExtension extension = {
+            HelloFormatExtension::WIRE_SIZE,
+            static_cast<uint16_t>(enabled ? UBR_DATA_FORMAT_LEGACY_64
+                                          : UBR_DATA_FORMAT_NONE)};
+        payload->resize(HelloFormatExtension::WIRE_SIZE);
+        extension.Serialize(&(*payload)[0]);
+        return handshake::STEP_OK;
+    };
+    codec.parse_extension = [](const std::string& payload) {
+        if (payload.size() != HelloFormatExtension::WIRE_SIZE) {
+            errno = EPROTO;
+            return handshake::STEP_ERROR;
+        }
+        HelloFormatExtension extension{};
+        extension.Deserialize(payload.data());
+        return extension.extension_len == HelloFormatExtension::WIRE_SIZE &&
+                       extension.format_id == UBR_DATA_FORMAT_LEGACY_64
+                   ? handshake::STEP_OK : handshake::STEP_FALLBACK;
+    };
     codec.build_ack = [](bool enabled, std::string* payload) {
         const uint32_t flags_be = butil::HostToNet32(
             enabled ? handshake::ubshm_wire::ACK_OK : 0);
@@ -190,7 +231,7 @@ handshake::StepResult UBShmHandshakeAdapter::ParseHello(
         return handshake::STEP_ERROR;
     }
     message->Deserialize(payload.data());
-    if (message->msg_len < handshake::ubshm_wire::HELLO_LEN) {
+    if (message->msg_len != handshake::ubshm_wire::HELLO_LEN) {
         errno = EPROTO;
         return handshake::STEP_ERROR;
     }
@@ -397,6 +438,8 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     };
     const StepResult result = GetSession(socket)->RunServer(callbacks);
     if (result == STEP_OK) {
+        transport->GetUBShmEp()->SetNegotiatedDataFormat(
+            ubring::UBR_DATA_FORMAT_LEGACY_64);
         transport->FinishUpgrade();
         LOG_IF(INFO, ubring::FLAGS_ub_trace_verbose)
             << "Server handshake ends (use ubring) on "

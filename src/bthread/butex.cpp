@@ -573,26 +573,62 @@ void wait_for_butex(void* arg) {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
         if (b->value.load(butil::memory_order_relaxed) != bw->expected_value) {
             bw->waiter_state = WAITER_STATE_UNMATCHEDVALUE;
-        } else if (bw->waiter_state == WAITER_STATE_READY/*1*/ &&
-                   !bw->task_meta->interrupted) {
-            if (args->prepend) {
-                b->waiters.Prepend(bw);
-            } else {
-                b->waiters.Append(bw);
-            }
-            bw->container.store(b, butil::memory_order_relaxed);
+        } else {
+            // Checking `interrupted` and publishing `bw->container` must be
+            // atomic with respect to TaskGroup::interrupt(), which sets
+            // `interrupted` and consumes `current_waiter` under the same
+            // `version_lock`. Otherwise interrupt() may consume `bw` in between
+            // and its erase_from_butex() does nothing because `container` is
+            // still nullptr, leaving this bthread queued but never woken up.
+            // `container` cannot be published upfront: it must stay nullptr until
+            // the bthread is off its stack, see the comment after this block.
+            bool suspend = false;
+            {
+                // Only the interrupted check, the enqueue and the container
+                // store belong under `version_lock', so that they are atomic
+                // w.r.t. TaskGroup::interrupt(). The tracer update is kept here
+                // too because set_status_unsafe() takes no lock and this makes
+                // the transition to SUSPENDED atomic w.r.t. TraceImpl().
+                BAIDU_SCOPED_LOCK(bw->task_meta->version_lock);
+                if (bw->waiter_state == WAITER_STATE_READY/*1*/ &&
+                    !bw->task_meta->interrupted) {
+                    if (args->prepend) {
+                        b->waiters.Prepend(bw);
+                    } else {
+                        b->waiters.Append(bw);
+                    }
+                    bw->container.store(b, butil::memory_order_relaxed);
 #ifdef BRPC_BTHREAD_TRACER
-            bw->control->_task_tracer.set_status(TASK_STATUS_SUSPENDED, bw->task_meta);
+                    TaskTracer::set_status_unsafe(TASK_STATUS_SUSPENDED, bw->task_meta);
 #endif // BRPC_BTHREAD_TRACER
-            if (bw->abstime != nullptr) {
+                    suspend = true;
+                }
+            }
+            if (suspend && bw->abstime != nullptr) {
                 bw->sleep_id = get_global_timer_thread()->schedule(
                     erase_from_butex_and_wakeup, bw, *bw->abstime);
                 if (!bw->sleep_id) {  // TimerThread stopped.
+                    // No timer will ever fire, so `bw` must not stay queued.
+                    // CAUTION: erase_from_butex_and_wakeup() must NOT be called
+                    // here. It takes `waiter_lock` (already held) and then, via
+                    // TaskGroup::ready_to_run{,_remote}() ->
+                    // TaskTracer::set_status(), `version_lock` as well. Both are
+                    // non-recursive, so calling it self-deadlocks.
                     errno = ESTOP;
-                    erase_from_butex_and_wakeup(bw);
+                    bw->RemoveFromList();
+                    bw->container.store(nullptr, butil::memory_order_relaxed);
+                    bw->waiter_state = WAITER_STATE_TIMEDOUT;
+                    suspend = false;
                 }
             }
-            return;
+            if (suspend) {
+                return;
+            }
+            // Not suspended: the bthread has already been switched out by
+            // set_remained()/sched() in butex_wait(), so nobody else will run
+            // it. Fall through to re-schedule it below. This covers value
+            // unmatched, already timed out (waiter_state != READY), already
+            // interrupted, and the ESTOP path above.
         }
     }
     
@@ -619,33 +655,64 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
     TaskMeta* task = nullptr;
     ButexPthreadWaiter pw;
     pw.tid = 0;
+    // Initialize `container` to nullptr before `pw` is published to
+    // `current_waiter` below: a concurrent TaskGroup::interrupt() may consume
+    // `pw` and call erase_from_butex() on it, which must observe either nullptr
+    // (a no-op) or a valid Butex, never stack garbage. `container` stays nullptr
+    // until `pw` is queued.
+    pw.container.store(nullptr, butil::memory_order_relaxed);
     pw.sig.store(PTHREAD_NOT_SIGNALLED, butil::memory_order_relaxed);
     int rc = 0;
-    
+
     if (g) {
         task = g->current_task();
         task->current_waiter.store(&pw, butil::memory_order_release);
     }
-    b->waiter_lock.lock();
-    if (b->value.load(butil::memory_order_relaxed) != expected_value) {
-        b->waiter_lock.unlock();
-        errno = EWOULDBLOCK;
-        rc = -1;
-    } else if (task != nullptr && task->interrupted) {
-        b->waiter_lock.unlock();
-        // Race with set and may consume multiple interruptions, which are OK.
-        task->interrupted = false;
-        errno = EINTR;
-        rc = -1;
-    } else {
-        if (prepend) {
-            b->waiters.Prepend(&pw);
+    bool queued = false;
+    {
+        BAIDU_SCOPED_LOCK(b->waiter_lock);
+        if (b->value.load(butil::memory_order_relaxed) != expected_value) {
+            errno = EWOULDBLOCK;
+            rc = -1;
+        } else if (task != nullptr) {
+            // Checking `interrupted` and publishing `container` must be atomic
+            // with respect to TaskGroup::interrupt(), which sets `interrupted`
+            // and consumes `current_waiter` under the same version_lock.
+            // Otherwise interrupt() may consume `pw' in between and its
+            // erase_from_butex() does nothing because `container' is still
+            // nullptr, leaving `pw` queued but never woken up.
+            BAIDU_SCOPED_LOCK(task->version_lock);
+            if (task->interrupted) {
+                // Already interrupted before queueing: consume it and return
+                // EINTR without blocking. An interruption that arrives after
+                // `pw` is queued is handled by the epilogue below instead.
+                // Race with set and may consume multiple interruptions,
+                // which are OK.
+                task->interrupted = false;
+                errno = EINTR;
+                rc = -1;
+            } else {
+                if (prepend) {
+                    b->waiters.Prepend(&pw);
+                } else {
+                    b->waiters.Append(&pw);
+                }
+                pw.container.store(b, butil::memory_order_relaxed);
+                queued = true;
+            }
         } else {
-            b->waiters.Append(&pw);
+            // A non-bthread pthread cannot be interrupted, so there is no race
+            // with interrupt() and no need to hold `version_lock` here.
+            if (prepend) {
+                b->waiters.Prepend(&pw);
+            } else {
+                b->waiters.Append(&pw);
+            }
+            pw.container.store(b, butil::memory_order_relaxed);
+            queued = true;
         }
-        pw.container.store(b, butil::memory_order_relaxed);
-        b->waiter_lock.unlock();
-
+    }
+    if (queued) {
 #ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
         bvar::Adder<int64_t>& num_waiters = butex_waiter_count();
         num_waiters << 1;
@@ -655,7 +722,8 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
         num_waiters << -1;
 #endif
     }
-    if (task) {
+
+    if (task != nullptr) {
         // If current_waiter is nullptr, TaskGroup::interrupt() is running and
         // using pw, spin until current_waiter != nullptr.
         BT_LOOP_WHEN(task->current_waiter.exchange(

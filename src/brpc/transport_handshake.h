@@ -60,6 +60,8 @@ enum Phase {
     NEGOTIATING = 4,
     ACK_SEND = 5,
     ACK_WAIT = 6,
+    EXTENSION_SEND = 7,
+    EXTENSION_WAIT = 8,
     ESTABLISHED = 0x100,
     FALLBACK_TCP = 0x200,
     FAILED = 0x300,
@@ -80,10 +82,15 @@ struct HandshakeCodec {
     int protocol_version;
     FrameSpec hello_frame;
     FrameSpec ack_frame;
+    FrameSpec extension_frame;
     std::function<StepResult(bool, std::string*)> build_hello;
     std::function<StepResult(const std::string&)> parse_hello;
     std::function<StepResult(bool, std::string*)> build_ack;
     std::function<StepResult(const std::string&, bool*)> parse_ack;
+    // Optional exchange between hello and ACK. Protocols without an
+    // extension leave these callbacks empty.
+    std::function<StepResult(bool, std::string*)> build_extension;
+    std::function<StepResult(const std::string&)> parse_extension;
 };
 
 // Resource-specific operations supplied by a Transport and invoked by the
@@ -178,6 +185,9 @@ private:
     StepResult SendAck(const HandshakeCodec& codec, bool enabled);
     StepResult ReceiveAck(const HandshakeCodec& codec,
                           HandshakeInput* input, bool* enabled);
+    StepResult SendExtension(const HandshakeCodec& codec, bool enabled);
+    StepResult ReceiveExtension(const HandshakeCodec& codec,
+                                HandshakeInput* input);
     StepResult SelectAndReceiveHello(
         const std::vector<HandshakeCodec>& codecs, HandshakeInput* input,
         bool push_back_on_not_mine, const HandshakeCodec** selected);

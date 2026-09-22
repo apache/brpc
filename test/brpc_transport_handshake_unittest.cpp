@@ -319,6 +319,70 @@ TEST(TransportHandshakeTest, client_runs_codec_and_resource_sequence) {
     ASSERT_EQ(7, session.protocol_version());
 }
 
+TEST(TransportHandshakeTest, client_exchanges_extension_before_ack) {
+    MemoryHandshakeIO io("HSOKE");
+    HandshakeSession session;
+    session.SetIOForTest(&io);
+    ClientHandshakeCallbacks callbacks{};
+    callbacks.codec = MakeTestCodec();
+    callbacks.codec.extension_frame = FixedSpec(NULL, 0, 1);
+    callbacks.codec.build_extension = [](bool enabled, std::string* payload) {
+        *payload = enabled ? "E" : "N";
+        return STEP_OK;
+    };
+    callbacks.codec.parse_extension = [](const std::string& payload) {
+        return payload == "E" ? STEP_OK : STEP_FALLBACK;
+    };
+    callbacks.transport.prepare_resources = []() { return STEP_OK; };
+    callbacks.transport.negotiate_resources = []() { return STEP_OK; };
+    callbacks.transport.set_high_speed_active = []() {};
+    callbacks.transport.set_tcp_active = []() {};
+    callbacks.transport.on_failed = []() {};
+
+    ASSERT_EQ(STEP_OK, session.RunClient(callbacks));
+    EXPECT_EQ("HSLOE1", io.output());
+    EXPECT_EQ(ESTABLISHED, session.phase());
+}
+
+TEST(TransportHandshakeTest, server_resumes_fragmented_extension_then_ack) {
+    MemoryHandshakeIO io;
+    HandshakeSession session;
+    session.SetIOForTest(&io);
+    butil::IOBuf source;
+    source.append("HSOK", 4);
+    IOBufHandshakeInput input(&source);
+    ServerHandshakeCallbacks callbacks{};
+    callbacks.fallback_on_not_mine = false;
+    HandshakeCodec codec = MakeTestCodec();
+    codec.extension_frame = FixedSpec(NULL, 0, 2);
+    codec.build_extension = [](bool enabled, std::string* payload) {
+        *payload = enabled ? "E1" : "E0";
+        return STEP_OK;
+    };
+    codec.parse_extension = [](const std::string& payload) {
+        return payload == "E1" ? STEP_OK : STEP_FALLBACK;
+    };
+    callbacks.codecs.push_back(codec);
+    callbacks.input = &input;
+    callbacks.transport.prepare_resources = []() { return STEP_OK; };
+    callbacks.transport.negotiate_resources = []() { return STEP_OK; };
+    callbacks.transport.set_high_speed_active = []() {};
+    callbacks.transport.set_tcp_active = []() {};
+    callbacks.transport.on_failed = []() {};
+
+    ASSERT_EQ(STEP_NEED_MORE, session.RunServer(callbacks));
+    EXPECT_EQ(EXTENSION_WAIT, session.phase());
+    EXPECT_EQ("HSLO", io.output());
+    source.append("E", 1);
+    ASSERT_EQ(STEP_NEED_MORE, session.RunServer(callbacks));
+    EXPECT_EQ(EXTENSION_WAIT, session.phase());
+    source.append("11", 2);  // Remainder of extension, then ACK.
+    ASSERT_EQ(STEP_OK, session.RunServer(callbacks));
+    EXPECT_EQ("HSLOE1", io.output());
+    EXPECT_TRUE(source.empty());
+    EXPECT_EQ(ESTABLISHED, session.phase());
+}
+
 TEST(TransportHandshakeTest, client_resource_failure_falls_back_before_io) {
     MemoryHandshakeIO io;
     HandshakeSession session;

@@ -258,85 +258,103 @@ MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*
     if (label_names.empty()) {
         return 0;
     }
-    size_t n = 0;
-    // To meet prometheus specification, we must guarantee no second TYPE line for one metric name
-
-    // latency comment
-    dumper->dump_comment(this->name() + "_latency", METRIC_TYPE_GAUGE);
-    for (auto &label_name : label_names) {
+    // The latency of one quantile. The quantile must be a fraction to meet
+    // prometheus specification, e.g. 0.99 for p99.
+    struct LatencyPercentile {
+        double quantile;
+        int64_t latency;
+    };
+    // All the values dumped for one label set.
+    struct DumpedStats {
+        const key_type* label_name;
+        LatencyPercentile latency_percentiles[5];
+        int64_t avg_latency;
+        int64_t max_latency;
+        int64_t qps;
+        int64_t count;
+    };
+    // Read all the values in one traversal, so that a LatencyRecorder is looked
+    // up only once no matter how many metrics are dumped for it. Keep the values
+    // instead of the LatencyRecorder pointers, which delete_stats() may free.
+    std::vector<DumpedStats> stats_list;
+    stats_list.reserve(label_names.size());
+    for (const auto& label_name : label_names) {
         bvar::LatencyRecorder* bvar = get_stats_impl(label_name);
         if (!bvar) {
             continue;
         }
-
-        // latency
-        std::ostringstream oss_latency_key;
-        make_dump_key(oss_latency_key, label_name, "_latency");
-        if (dumper->dump_mvar(oss_latency_key.str(), std::to_string(bvar->latency()))) {
-            n++;
+        DumpedStats stats{};
+        stats.label_name = &label_name;
+        stats.latency_percentiles[0].quantile = FLAGS_bvar_latency_p1 / 100.0;
+        stats.latency_percentiles[1].quantile = FLAGS_bvar_latency_p2 / 100.0;
+        stats.latency_percentiles[2].quantile = FLAGS_bvar_latency_p3 / 100.0;
+        stats.latency_percentiles[3].quantile = 0.999;
+        stats.latency_percentiles[4].quantile = 0.9999;
+        for (auto& lp : stats.latency_percentiles) {
+            lp.latency = bvar->latency_percentile(lp.quantile);
         }
-        // latency_percentiles
-        // p1/p2/p3
-        int latency_percentiles[3] {FLAGS_bvar_latency_p1, FLAGS_bvar_latency_p2, FLAGS_bvar_latency_p3};
-        for (auto lp : latency_percentiles) {
-            std::ostringstream oss_lp_key;
-            make_dump_key(oss_lp_key, label_name, "_latency", lp);
-            if (dumper->dump_mvar(oss_lp_key.str(), std::to_string(bvar->latency_percentile(lp / 100.0)))) {
+        stats.avg_latency = bvar->latency();
+        stats.max_latency = bvar->max_latency();
+        stats.qps = bvar->qps();
+        stats.count = bvar->count();
+        stats_list.push_back(stats);
+    }
+
+    size_t n = 0;
+
+    // To meet prometheus specification, we must guarantee no second TYPE line for one metric name
+
+    // latency comment
+    dumper->dump_comment(this->name() + "_latency", METRIC_TYPE_GAUGE);
+    for (const auto& stats : stats_list) {
+        for (const auto& lp : stats.latency_percentiles) {
+            std::ostringstream oss_latency_key;
+            make_dump_key(oss_latency_key, *stats.label_name, "_latency", lp.quantile);
+            if (dumper->dump_mvar(oss_latency_key.str(), std::to_string(lp.latency))) {
                 n++;
             }
         }
-        // 999
-        std::ostringstream oss_p999_key;
-        make_dump_key(oss_p999_key, label_name, "_latency", 999);
-        if (dumper->dump_mvar(oss_p999_key.str(), std::to_string(bvar->latency_percentile(0.999)))) {
-            n++;
-        }
-        // 9999
-        std::ostringstream oss_p9999_key;
-        make_dump_key(oss_p9999_key, label_name, "_latency", 9999);
-        if (dumper->dump_mvar(oss_p9999_key.str(), std::to_string(bvar->latency_percentile(0.9999)))) {
+    }
+
+    // avg_latency comment
+    // The average latency has to be a separate metric rather than a series of
+    // `_latency` without a quantile label, otherwise an aggregation over
+    // `_latency` would silently mix the average into the percentiles.
+    dumper->dump_comment(this->name() + "_avg_latency", METRIC_TYPE_GAUGE);
+    for (const auto& stats : stats_list) {
+        std::ostringstream oss_avg_latency_key;
+        make_dump_key(oss_avg_latency_key, *stats.label_name, "_avg_latency");
+        if (dumper->dump_mvar(oss_avg_latency_key.str(), std::to_string(stats.avg_latency))) {
             n++;
         }
     }
 
     // max_latency comment
     dumper->dump_comment(this->name() + "_max_latency", METRIC_TYPE_GAUGE);
-    for (auto &label_name : label_names) {
-        LatencyRecorder* bvar = get_stats_impl(label_name);
-        if (nullptr == bvar) {
-            continue;
-        }
+    for (const auto& stats : stats_list) {
         std::ostringstream oss_max_latency_key;
-        make_dump_key(oss_max_latency_key, label_name, "_max_latency");
-        if (dumper->dump_mvar(oss_max_latency_key.str(), std::to_string(bvar->max_latency()))) {
+        make_dump_key(oss_max_latency_key, *stats.label_name, "_max_latency");
+        if (dumper->dump_mvar(oss_max_latency_key.str(), std::to_string(stats.max_latency))) {
             n++;
         }
     }
 
     // qps comment
     dumper->dump_comment(this->name() + "_qps", METRIC_TYPE_GAUGE);
-    for (auto &label_name : label_names) {
-        LatencyRecorder* bvar = get_stats_impl(label_name);
-        if (nullptr == bvar) {
-            continue;
-        }
+    for (const auto& stats : stats_list) {
         std::ostringstream oss_qps_key;
-        make_dump_key(oss_qps_key, label_name, "_qps");
-        if (dumper->dump_mvar(oss_qps_key.str(), std::to_string(bvar->qps()))) {
+        make_dump_key(oss_qps_key, *stats.label_name, "_qps");
+        if (dumper->dump_mvar(oss_qps_key.str(), std::to_string(stats.qps))) {
             n++;
         }
     }
 
     // count comment
     dumper->dump_comment(this->name() + "_count", METRIC_TYPE_COUNTER);
-    for (auto &label_name : label_names) {
-        LatencyRecorder* bvar = get_stats_impl(label_name);
-        if (nullptr == bvar) {
-            continue;
-        }
+    for (const auto& stats : stats_list) {
         std::ostringstream oss_count_key;
-        make_dump_key(oss_count_key, label_name, "_count");
-        if (dumper->dump_mvar(oss_count_key.str(), std::to_string(bvar->count()))) {
+        make_dump_key(oss_count_key, *stats.label_name, "_count");
+        if (dumper->dump_mvar(oss_count_key.str(), std::to_string(stats.count))) {
             n++;
         }
     }
@@ -345,7 +363,7 @@ MultiDimension<T, KeyType, Shared>::dump_impl(Dumper* dumper, const DumpOptions*
 
 template <typename T, typename KeyType, bool Shared>
 void MultiDimension<T, KeyType, Shared>::make_dump_key(std::ostream& os, const key_type& labels_value,
-                                               const std::string& suffix, int quantile) {
+                                                       const std::string& suffix, double quantile) {
     os << this->name();
     if (!suffix.empty()) {
         os << suffix;
@@ -354,8 +372,9 @@ void MultiDimension<T, KeyType, Shared>::make_dump_key(std::ostream& os, const k
 }
 
 template <typename T, typename KeyType, bool Shared>
-void MultiDimension<T, KeyType, Shared>::make_labels_kvpair_string(
-    std::ostream& os, const key_type& labels_value, int quantile) {
+void MultiDimension<T, KeyType, Shared>::make_labels_kvpair_string(std::ostream& os,
+                                                                   const key_type& labels_value,
+                                                                   double quantile) {
     os << "{";
     auto label_key = this->_labels.cbegin();
     auto label_value = labels_value.cbegin();
@@ -365,6 +384,8 @@ void MultiDimension<T, KeyType, Shared>::make_labels_kvpair_string(
         os << comma << label_key->c_str() << "=\"" << label_value->c_str() << "\"";
         comma[0] = ',';
     }
+    // The `quantile` label must be parsable as a float, so a non-positive
+    // `quantile` means "this metric is not a quantile series".
     if (quantile > 0) {
         os << comma << "quantile=\"" << quantile << "\"";
     }

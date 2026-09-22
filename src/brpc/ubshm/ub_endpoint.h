@@ -46,8 +46,8 @@ DECLARE_bool(ub_disable_bthread);
 
 class BAIDU_CACHELINE_ALIGNMENT UBShmEndpoint : public SocketUser {
 friend class Socket;
-  friend class ::brpc::UBShmTransport;
-  friend class ::brpc::handshake::UBShmServerHandshakeAdapter;
+friend class ::brpc::UBShmTransport;
+friend class ::brpc::handshake::UBShmServerHandshakeAdapter;
 
 public:
     explicit UBShmEndpoint(Socket* s);
@@ -61,6 +61,12 @@ public:
 
     // Reset the endpoint (for next use)
     void Reset();
+    void SetNegotiatedDataFormat(UbrDataFormat format) {
+        _negotiated_data_format = format;
+    }
+    UbrDataFormat negotiated_data_format() const {
+        return _negotiated_data_format;
+    }
 
     // Cut data from the given IOBuf list and use UBRING to send
     // Return bytes cut if success, -1 if failed and errno set
@@ -105,7 +111,7 @@ private:
     // Release resources
     void DeallocateResources();
 
-  // Poll CQ and get the work completion
+    // Poll CQ and get the work completion
     static void PollIn(UBShmEndpoint* ep, uint32_t ep_event);
 
     static void PollOut(UBShmEndpoint* ep, uint32_t ep_event);
@@ -113,6 +119,7 @@ private:
     // Not owner
     Socket* _socket;
     SocketId _socket_id;
+    UbrDataFormat _negotiated_data_format{UBR_DATA_FORMAT_NONE};
 
     // ub resource
     ubring::UBRing* _ub_ring{nullptr};
@@ -122,14 +129,14 @@ private:
     DISALLOW_COPY_AND_ASSIGN(UBShmEndpoint);
 
     struct PollerSidOp {
-    enum OpType { ADD, REMOVE, MOD };
+        enum OpType { ADD, REMOVE, MOD };
         SocketId sid;
-    uint32_t event;
+        uint32_t event;
         OpType type;
     };
 
     struct PollerSidOpHash {
-    std::size_t operator()(const PollerSidOp &op) const { return op.sid; }
+        std::size_t operator()(const PollerSidOp& op) const { return op.sid; }
     };
 
     struct PollerSidOpEqual {
@@ -141,7 +148,7 @@ private:
     // Poller instance
     struct BAIDU_CACHELINE_ALIGNMENT Poller {
         bthread_t tid{INVALID_BTHREAD};
-    butil::MPSCQueue<PollerSidOp, butil::ObjectPoolAllocator<PollerSidOp>> op_queue;
+        butil::MPSCQueue<PollerSidOp, butil::ObjectPoolAllocator<PollerSidOp>> op_queue;
         // Callback used for io_uring/spdk etc
         std::function<void()> callback;
         // Init and Destroy function
@@ -156,7 +163,7 @@ private:
     };
     static std::vector<PollerGroup> _poller_groups;
 
-  void PollerRegisterEvent(PollerSidOp::OpType op, uint32_t events = EPOLLET);
+    void PollerRegisterEvent(PollerSidOp::OpType op, uint32_t events = EPOLLET);
 };
 
 }  // namespace ubring

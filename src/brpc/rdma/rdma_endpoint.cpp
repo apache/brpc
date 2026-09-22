@@ -37,8 +37,7 @@ DECLARE_int32(task_group_ntags);
 namespace brpc {
 namespace rdma {
 
-extern ibv_cq *(*IbvCreateCq)(ibv_context *, int, void *, ibv_comp_channel *,
-                              int);
+extern ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int);
 extern int (*IbvDestroyCq)(ibv_cq*);
 extern ibv_comp_channel* (*IbvCreateCompChannel)(ibv_context*);
 extern int (*IbvDestroyCompChannel)(ibv_comp_channel*);
@@ -108,15 +107,29 @@ RdmaResource::~RdmaResource() {
     }
 }
 
-RdmaEndpoint::RdmaEndpoint(Socket *s)
-    : _socket(s), _resource(nullptr),
-      _send_cq_events(0), _recv_cq_events(0), _cq_sid(INVALID_SOCKET_ID),
-      _sq_size(FLAGS_rdma_sq_size), _rq_size(FLAGS_rdma_rq_size),
-      _remote_recv_block_size(0), _accumulated_ack(0), _unsolicited(0),
-      _unsolicited_bytes(0), _sq_current(0), _sq_unsignaled(0), _sq_sent(0),
-      _rq_received(0), _local_window_capacity(0), _remote_window_capacity(0),
-      _sq_imm_window_size(0), _remote_rq_window_size(0), _sq_window_size(0),
-      _new_rq_wrs(0) {
+RdmaEndpoint::RdmaEndpoint(Socket* s)
+    : _socket(s)
+    , _resource(nullptr)
+    , _send_cq_events(0)
+    , _recv_cq_events(0)
+    , _cq_sid(INVALID_SOCKET_ID)
+    , _sq_size(FLAGS_rdma_sq_size)
+    , _rq_size(FLAGS_rdma_rq_size)
+    , _remote_recv_block_size(0)
+    , _accumulated_ack(0)
+    , _unsolicited(0)
+    , _unsolicited_bytes(0)
+    , _sq_current(0)
+    , _sq_unsignaled(0)
+    , _sq_sent(0)
+    , _rq_received(0)
+    , _local_window_capacity(0)
+    , _remote_window_capacity(0)
+    , _sq_imm_window_size(0)
+    , _remote_rq_window_size(0)
+    , _sq_window_size(0)
+    , _new_rq_wrs(0)
+{
     if (_sq_size < MIN_QP_SIZE) {
         _sq_size = MIN_QP_SIZE;
     }
@@ -1347,9 +1360,9 @@ void RdmaEndpoint::PollingModeRelease(bthread_tag_t tag) {
 
 void RdmaEndpoint::PollerAddCqSid() {
     auto index = butil::fmix32(_cq_sid) % FLAGS_rdma_poller_num;
-    auto &group = _poller_groups[bthread_self_tag()];
-    auto &pollers = group.pollers;
-    auto &poller = pollers[index];
+    auto& group = _poller_groups[bthread_self_tag()];
+    auto& pollers = group.pollers;
+    auto& poller = pollers[index];
     if (INVALID_SOCKET_ID != _cq_sid) {
         poller.op_queue.Enqueue(CqSidOp{_cq_sid, CqSidOp::ADD});
     }
@@ -1357,9 +1370,9 @@ void RdmaEndpoint::PollerAddCqSid() {
 
 void RdmaEndpoint::PollerRemoveCqSid() {
     auto index = butil::fmix32(_cq_sid) % FLAGS_rdma_poller_num;
-    auto &group = _poller_groups[bthread_self_tag()];
-    auto &pollers = group.pollers;
-    auto &poller = pollers[index];
+    auto& group = _poller_groups[bthread_self_tag()];
+    auto& pollers = group.pollers;
+    auto& poller = pollers[index];
     if (INVALID_SOCKET_ID != _cq_sid) {
         poller.op_queue.Enqueue(CqSidOp{_cq_sid, CqSidOp::REMOVE});
     }

@@ -47,7 +47,7 @@ namespace ubring {
 DECLARE_int32(data_queue_size);
 DECLARE_bool(ub_trace_verbose);
 
-// UBSHM v2 wire payload. HandshakeSession owns framing and ACK exchange;
+// UBSHM v3 wire payload. HandshakeSession owns framing and ACK exchange;
 // this type and UBShmHandshakeAdapter only handle protocol fields.
 struct HelloMessage {
     void Serialize(void* data) const;
@@ -59,6 +59,20 @@ struct HelloMessage {
     uint16_t impl_ver;
     uint64_t len;
     char shm_name[SHM_MAX_NAME_BUFF_LEN];
+};
+
+enum UbrDataFormat {
+    UBR_DATA_FORMAT_NONE = 0,
+    UBR_DATA_FORMAT_LEGACY_64 = 1,
+};
+
+struct HelloFormatExtension {
+    static const uint16_t WIRE_SIZE = 4;
+    uint16_t extension_len;
+    uint16_t format_id;
+
+    void Serialize(void* data) const;
+    void Deserialize(const void* data);
 };
 
 class UBShmHandshakeAdapter {

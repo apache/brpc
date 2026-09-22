@@ -31,6 +31,7 @@
 #include "brpc/rdma/rdma_helper.h"
 #endif
 #if BRPC_WITH_UBRING
+#include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/ub_helper.h"
 #include "brpc/ubshm/ubr_trx.h"
 #endif
@@ -355,6 +356,8 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         };
         const handshake::StepResult result = adapter->_handshake.RunClient(callbacks);
         if (result == handshake::STEP_OK) {
+            transport->GetUBShmEp()->SetNegotiatedDataFormat(
+                ubring::UBR_DATA_FORMAT_LEGACY_64);
             transport->FinishUpgrade();
         }
         if (result == handshake::STEP_ERROR && connect_error == 0) {
@@ -501,6 +504,8 @@ void AdapterTransport::Debug(std::ostream& os) {
     case handshake::NEGOTIATING: state = "NEGOTIATING"; break;
     case handshake::ACK_SEND: state = "ACK_SEND"; break;
     case handshake::ACK_WAIT: state = "ACK_WAIT"; break;
+    case handshake::EXTENSION_SEND: state = "EXTENSION_SEND"; break;
+    case handshake::EXTENSION_WAIT: state = "EXTENSION_WAIT"; break;
     case handshake::ESTABLISHED: state = "ESTABLISHED"; break;
     case handshake::FALLBACK_TCP: state = "FALLBACK_TCP"; break;
     case handshake::FAILED: state = "FAILED"; break;
