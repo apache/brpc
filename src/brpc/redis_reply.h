@@ -181,6 +181,7 @@ inline void RedisReply::Reset() {
     _type = REDIS_REPLY_NIL;
     _length = 0;
     _data.array.last_index = -1;
+    _data.array.used_bytes = 0;
     _data.array.replies = nullptr;
     // _arena should not be reset because further memory allocation needs it.
 }
