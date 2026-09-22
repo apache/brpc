@@ -269,19 +269,19 @@ public:
                       << " ms before responding play request";
             bthread_usleep(_sleep_ms * 1000L);
         }
-        // Keep the stream alive until the sender exits, even if a failed send
-        // synchronously runs OnStop() and releases the framework's references.
-        // The guard structurally enforces the handoff: it drops the reference
-        // on any early return and is detached to the sender once it starts.
-        butil::intrusive_ptr<PlayingDummyStream> sender_ref(this);
+        // Reserve a reference for the sender bthread, keeping the stream alive
+        // until SendData() returns, even if a failed send synchronously runs
+        // OnStop() and releases the framework's references. The reference
+        // belongs to the sender from the moment it is acquired, so only the
+        // failed creation path gives it back.
+        AddRefManually();
         int rc = bthread_start_background(&_play_thread, nullptr,
                                           RunSendData, this);
         if (rc) {
+            RemoveRefManually();
             status->set_error(rc, "Fail to create thread");
             return;
         }
-        // The sender bthread now owns the reference held by the guard.
-        sender_ref.detach();
         State expected = STATE_UNPLAYING;
         if (!_state.compare_exchange_strong(expected, STATE_PLAYING)) {
             if (expected == STATE_STOPPED) {
@@ -388,14 +388,13 @@ public:
     }
 
     // Starts the sender bthread and returns its id. The framework keeps one
-    // reference until OnStop() drops it; a second reference is handed to the
-    // sender bthread through the same guarded transfer used in production.
+    // reference until OnStop() drops it; a second reference is reserved for
+    // the sender bthread, exactly like PlayingDummyStream::OnPlay does.
     bthread_t Start() {
         _framework_ref.reset(this);
-        butil::intrusive_ptr<SelfStopStream> sender_ref(this);
+        AddRefManually();
         CHECK_EQ(0, bthread_start_background(
                         &_sender, nullptr, RunSender, this));
-        sender_ref.detach();
         // Publish _sender before the sender bthread reads it in OnStop().
         _sender_ready.store(true, butil::memory_order_release);
         return _sender;
