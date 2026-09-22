@@ -269,9 +269,16 @@ public:
                       << " ms before responding play request";
             bthread_usleep(_sleep_ms * 1000L);
         }
+        // Reserve a reference for the sender bthread, keeping the stream alive
+        // until SendData() returns, even if a failed send synchronously runs
+        // OnStop() and releases the framework's references. The reference
+        // belongs to the sender from the moment it is acquired, so only the
+        // failed creation path gives it back.
+        AddRefManually();
         int rc = bthread_start_background(&_play_thread, nullptr,
                                           RunSendData, this);
         if (rc) {
+            RemoveRefManually();
             status->set_error(rc, "Fail to create thread");
             return;
         }
@@ -289,8 +296,17 @@ public:
     void OnStop() {
         LOG(INFO) << "OnStop of PlayingDummyStream=" << this;
         if (_state.exchange(STATE_STOPPED) == STATE_PLAYING) {
+            // A send failure can invoke this callback on the sender bthread
+            // itself. bthread_stop() only sets the stop flag that SendData's
+            // loop checks, so it must be called on the current bthread too,
+            // otherwise the sender loops and sleeps forever while holding its
+            // stream reference. Only joining the current bthread is unsafe, so
+            // skip just the join on the self-callback path; the sender's own
+            // reference keeps the stream alive until SendData returns.
             bthread_stop(_play_thread);
-            bthread_join(_play_thread, nullptr);
+            if (_play_thread != bthread_self()) {
+                bthread_join(_play_thread, nullptr);
+            }
         }
     }
 
@@ -298,7 +314,10 @@ public:
     
 private:
     static void* RunSendData(void* arg) {
-        ((PlayingDummyStream*)arg)->SendData();
+        // Adopt the reference acquired before starting this bthread.
+        butil::intrusive_ptr<PlayingDummyStream> stream(
+            static_cast<PlayingDummyStream*>(arg), false);
+        stream->SendData();
         return nullptr;
     }
 
@@ -340,6 +359,90 @@ void PlayingDummyStream::SendData() {
     }
 
     LOG(INFO) << "Quit SendData of PlayingDummyStream=" << this;
+}
+
+// Regression test for a use-after-free where a send failure synchronously ran
+// OnStop() on the sender bthread and dropped the framework's reference while
+// SendData() was still using the stream. This reproduces the ordering
+// deterministically without a socket: the sender bthread runs OnStop() itself,
+// which releases the framework's reference, and then keeps touching the stream.
+class SelfStopStream : public brpc::RtmpServerStream {
+public:
+    SelfStopStream(butil::atomic<bool>* destroyed,
+                   butil::atomic<bool>* alive_after_stop,
+                   butil::atomic<bool>* stop_on_sender)
+        : _destroyed(destroyed)
+        , _alive_after_stop(alive_after_stop)
+        , _stop_on_sender(stop_on_sender)
+        , _sender_ready(false) {}
+    ~SelfStopStream() override {
+        _destroyed->store(true, butil::memory_order_relaxed);
+    }
+
+    void OnStop() override {
+        _stop_on_sender->store(_sender == bthread_self(),
+                               butil::memory_order_relaxed);
+        // Drop the framework's reference from within OnStop(), exactly like
+        // RtmpServerStream::RunOnFailed does on the sender bthread.
+        _framework_ref.reset();
+    }
+
+    // Starts the sender bthread and returns its id. The framework keeps one
+    // reference until OnStop() drops it; a second reference is reserved for
+    // the sender bthread, exactly like PlayingDummyStream::OnPlay does.
+    bthread_t Start() {
+        _framework_ref.reset(this);
+        AddRefManually();
+        CHECK_EQ(0, bthread_start_background(
+                        &_sender, nullptr, RunSender, this));
+        // Publish _sender before the sender bthread reads it in OnStop().
+        _sender_ready.store(true, butil::memory_order_release);
+        return _sender;
+    }
+
+private:
+    static void* RunSender(void* arg) {
+        butil::intrusive_ptr<SelfStopStream> self(
+            static_cast<SelfStopStream*>(arg), false);
+        while (!self->_sender_ready.load(butil::memory_order_acquire)) {
+            bthread_usleep(100);
+        }
+        // Run OnStop() on this very bthread, releasing the framework reference.
+        self->OnStop();
+        // The stream must still be alive here, kept by the sender's reference.
+        self->_alive_after_stop->store(
+            !self->_destroyed->load(butil::memory_order_relaxed) &&
+                self->ref_count() >= 1,
+            butil::memory_order_relaxed);
+        return nullptr;
+    }
+
+    butil::atomic<bool>* _destroyed;
+    butil::atomic<bool>* _alive_after_stop;
+    butil::atomic<bool>* _stop_on_sender;
+    butil::atomic<bool> _sender_ready;
+    bthread_t _sender;
+    butil::intrusive_ptr<SelfStopStream> _framework_ref;
+};
+
+TEST(RtmpTest, on_stop_on_sender_bthread_keeps_stream_alive) {
+    butil::atomic<bool> destroyed(false);
+    butil::atomic<bool> alive_after_stop(false);
+    butil::atomic<bool> stop_on_sender(false);
+    bthread_t sender;
+    {
+        butil::intrusive_ptr<SelfStopStream> stream(
+            new SelfStopStream(&destroyed, &alive_after_stop, &stop_on_sender));
+        sender = stream->Start();
+        ASSERT_EQ(0, bthread_join(sender, nullptr));
+        // OnStop ran on the sender bthread and the stream survived it.
+        ASSERT_TRUE(stop_on_sender.load(butil::memory_order_relaxed));
+        ASSERT_TRUE(alive_after_stop.load(butil::memory_order_relaxed));
+        // The sender's reference is gone but the test still holds one.
+        ASSERT_FALSE(destroyed.load(butil::memory_order_relaxed));
+    }
+    // The last reference is gone now, the stream must be destroyed.
+    ASSERT_TRUE(destroyed.load(butil::memory_order_relaxed));
 }
 
 class PlayingDummyService : public brpc::RtmpService {
