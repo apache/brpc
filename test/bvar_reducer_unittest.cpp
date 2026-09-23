@@ -182,6 +182,11 @@ TEST_F(ReducerTest, max) {
     ASSERT_EQ(30, reducer2.get_value());
     reducer2 << std::numeric_limits<int>::max();
     ASSERT_EQ(std::numeric_limits<int>::max(), reducer2.get_value());
+
+    bvar::Maxer<double> reducer3;
+    ASSERT_EQ(std::numeric_limits<double>::lowest(), reducer3.get_value());
+    reducer3 << -30.5 << -10.5 << -20.5;
+    ASSERT_EQ(-10.5, reducer3.get_value());
 }
 
 bvar::Adder<long> g_a;
@@ -300,6 +305,8 @@ TEST_F(ReducerTest, babylon_counter_backend) {
                   "Adder<double> should be backed by a babylon counter");
     static_assert(IsBabylonBacked<bvar::Maxer<int64_t> >::value,
                   "Maxer<int64_t> should be backed by a babylon counter");
+    static_assert(!IsBabylonBacked<bvar::Maxer<double> >::value,
+                  "Maxer<double> should use the generic implementation");
     static_assert(IsBabylonBacked<bvar::Miner<int64_t> >::value,
                   "Miner<int64_t> should be backed by a babylon counter");
     // babylon counters only support arithmetic types not larger than 8 bytes.

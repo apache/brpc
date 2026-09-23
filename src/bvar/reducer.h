@@ -78,6 +78,15 @@ template <typename T>
 using EnableIfBabylonCounter =
     std::enable_if_t<IsBabylonCounterSupported<T>::value>;
 
+// babylon::GenericsConcurrentMaxer initializes its aggregation value with
+// numeric_limits<T>::min(). For floating-point types this is the smallest
+// positive normalized value, so an aggregation containing only negative values
+// is treated as empty. Keep floating-point Maxer instances on the generic
+// implementation until babylon fixes its aggregation identity.
+template <typename T>
+using EnableIfBabylonMaxerCounter = std::enable_if_t<
+    IsBabylonCounterSupported<T>::value && std::is_integral<T>::value>;
+
 template<typename T, typename Counter, typename Op, typename InvOp>
 class BabylonVariable: public Variable {
 public:
@@ -442,13 +451,13 @@ public:
     typedef T value_type;
     typedef typename Base::sampler_type sampler_type;
 
-    Maxer() : Base(std::numeric_limits<T>::min()) {}
+    Maxer() : Base(std::numeric_limits<T>::lowest()) {}
     Maxer(const butil::StringPiece& name)
-        : Base(std::numeric_limits<T>::min()) {
+        : Base(std::numeric_limits<T>::lowest()) {
         this->expose(name);
     }
     Maxer(const butil::StringPiece& prefix, const butil::StringPiece& name)
-        : Base(std::numeric_limits<T>::min()) {
+        : Base(std::numeric_limits<T>::lowest()) {
         this->expose_as(prefix, name);
     }
     ~Maxer() override { Variable::hide(); }
@@ -485,13 +494,14 @@ public:
         return std::max(result, _default_value);
     }
 private:
-    T _default_value{std::numeric_limits<T>::min()};
+    T _default_value{std::numeric_limits<T>::lowest()};
 };
 } // namespace detail
 
-// Numerical types supported by babylon counter.
+// Integral types supported by babylon counter. Floating-point Maxer uses the
+// generic implementation because babylon's aggregation identity is incorrect.
 template <typename T>
-class Maxer<T, detail::EnableIfBabylonCounter<T>>
+class Maxer<T, detail::EnableIfBabylonMaxerCounter<T>>
     : public detail::BabylonVariable<T, detail::ConcurrentMaxer<T>,
                                      detail::MaxTo<T>, detail::VoidOp> {
 public:
