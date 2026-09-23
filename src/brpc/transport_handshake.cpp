@@ -18,12 +18,47 @@
 #include "brpc/transport_handshake.h"
 
 #include <errno.h>
+#include <cstring>
 
 #include "butil/logging.h"
 #include "butil/object_pool.h"
+#include "butil/sys_byteorder.h"
 
 namespace brpc {
 namespace handshake {
+
+namespace {
+
+const size_t COMMON_ACK_SIZE = sizeof(uint32_t);
+const uint32_t COMMON_ACK_OK = 0x1;
+
+}  // namespace
+
+StepResult HandshakeProtocol::BuildAck(bool enabled, std::string* payload) {
+    CHECK(payload != NULL);
+    const uint32_t flags = butil::HostToNet32(enabled ? COMMON_ACK_OK : 0);
+    payload->assign(reinterpret_cast<const char*>(&flags), sizeof(flags));
+    return STEP_OK;
+}
+
+StepResult HandshakeProtocol::ParseAck(const std::string& payload,
+                                       bool* enabled) {
+    CHECK(enabled != NULL);
+    if (payload.size() != COMMON_ACK_SIZE) {
+        errno = EPROTO;
+        return STEP_ERROR;
+    }
+    uint32_t flags = 0;
+    memcpy(&flags, payload.data(), sizeof(flags));
+    *enabled = (butil::NetToHost32(flags) & COMMON_ACK_OK) != 0;
+    return STEP_OK;
+}
+
+const FrameSpec& HandshakeProtocol::ExtensionFrameSpec() const {
+    static const FrameSpec empty_spec(
+        NULL, 0, 0, 0, FrameSpec::FIXED);
+    return empty_spec;
+}
 
 ServerHandshakeContext* ServerHandshakeContext::Create(
     HandshakeAdapter* adapter) {
@@ -40,22 +75,16 @@ void ServerHandshakeContext::Destroy() {
     butil::return_object(this);
 }
 
-static StepResult FinishWithFailure(
-    HandshakeSession* session, const std::function<void()>& on_failed) {
-    if (on_failed) {
-        on_failed();
-    }
+static StepResult FinishWithFailure(HandshakeSession* session,
+                                    HandshakeTransport* transport) {
+    transport->OnFailed();
     session->MarkFailed();
     return STEP_ERROR;
 }
 
-static StepResult FinishWithFallback(
-    HandshakeSession* session, const std::function<void()>& set_tcp_active) {
-    session->PublishFallback([&set_tcp_active]() {
-        if (set_tcp_active) {
-            set_tcp_active();
-        }
-    });
+static StepResult FinishWithFallback(HandshakeSession* session,
+                                     HandshakeTransport* transport) {
+    session->PublishFallback([transport]() { transport->OnFallback(); });
     return STEP_FALLBACK;
 }
 
@@ -73,202 +102,198 @@ static StepResult ConvertFrameResult(FrameResult result) {
     return STEP_ERROR;
 }
 
-StepResult HandshakeSession::SendHello(const HandshakeCodec& codec,
+StepResult HandshakeSession::SendHello(HandshakeProtocol* protocol,
                                        bool enabled) {
-    CHECK(codec.build_hello);
     std::string payload;
-    const StepResult result = codec.build_hello(enabled, &payload);
+    const StepResult result = protocol->BuildHello(enabled, &payload);
     if (result != STEP_OK) {
         return result;
     }
     return ConvertFrameResult(
-        FrameCodec::WriteFrame(_io, codec.hello_frame, payload));
+        FrameCodec::WriteFrame(_io, protocol->HelloFrameSpec(), payload));
 }
 
-StepResult HandshakeSession::ReceiveHello(const HandshakeCodec& codec,
+StepResult HandshakeSession::ReceiveHello(HandshakeProtocol* protocol,
                                           HandshakeInput* input,
                                           bool push_back_on_not_mine,
                                           bool* magic_matched) {
-    CHECK(codec.parse_hello);
     std::string payload;
     const FrameResult frame_result = input != NULL
         ? FrameCodec::ParseBufferedFrame(
-              input, codec.hello_frame, &payload, magic_matched)
+              input, protocol->HelloFrameSpec(), &payload, magic_matched)
         : FrameCodec::ReadFrame(
-              _io, codec.hello_frame, push_back_on_not_mine, &payload);
+              _io, protocol->HelloFrameSpec(), push_back_on_not_mine,
+              &payload);
     const StepResult result = ConvertFrameResult(frame_result);
     if (result != STEP_OK) {
         return result;
     }
-    set_protocol_version(codec.protocol_version);
-    return codec.parse_hello(payload);
+    set_protocol_version(protocol->ProtocolVersion());
+    return protocol->ParseHello(payload);
 }
 
-StepResult HandshakeSession::SendAck(const HandshakeCodec& codec,
+StepResult HandshakeSession::SendAck(HandshakeProtocol* protocol,
                                      bool enabled) {
-    CHECK(codec.build_ack);
     std::string payload;
-    const StepResult result = codec.build_ack(enabled, &payload);
+    const StepResult result = protocol->BuildAck(enabled, &payload);
     if (result != STEP_OK) {
         return result;
     }
     return ConvertFrameResult(
-        FrameCodec::WriteFrame(_io, codec.ack_frame, payload));
+        FrameCodec::WriteFrame(_io, protocol->AckFrameSpec(), payload));
 }
 
-StepResult HandshakeSession::ReceiveAck(const HandshakeCodec& codec,
+StepResult HandshakeSession::ReceiveAck(HandshakeProtocol* protocol,
                                         HandshakeInput* input,
                                         bool* enabled) {
-    CHECK(codec.parse_ack);
     std::string payload;
     const FrameResult frame_result = input != NULL
-        ? FrameCodec::ParseBufferedFrame(input, codec.ack_frame, &payload)
-        : FrameCodec::ReadFrame(_io, codec.ack_frame, false, &payload);
+        ? FrameCodec::ParseBufferedFrame(
+              input, protocol->AckFrameSpec(), &payload)
+        : FrameCodec::ReadFrame(
+              _io, protocol->AckFrameSpec(), false, &payload);
     const StepResult result = ConvertFrameResult(frame_result);
     if (result != STEP_OK) {
         return result;
     }
-    return codec.parse_ack(payload, enabled);
+    return protocol->ParseAck(payload, enabled);
 }
 
-StepResult HandshakeSession::SendExtension(const HandshakeCodec& codec,
+StepResult HandshakeSession::SendExtension(HandshakeProtocol* protocol,
                                           bool enabled) {
-    CHECK(codec.build_extension);
     std::string payload;
-    const StepResult result = codec.build_extension(enabled, &payload);
+    const StepResult result = protocol->BuildExtension(enabled, &payload);
     if (result != STEP_OK) {
         return result;
     }
     return ConvertFrameResult(
-        FrameCodec::WriteFrame(_io, codec.extension_frame, payload));
+        FrameCodec::WriteFrame(
+            _io, protocol->ExtensionFrameSpec(), payload));
 }
 
-StepResult HandshakeSession::ReceiveExtension(const HandshakeCodec& codec,
+StepResult HandshakeSession::ReceiveExtension(HandshakeProtocol* protocol,
                                              HandshakeInput* input) {
-    CHECK(codec.parse_extension);
     std::string payload;
     const FrameResult frame_result = input != NULL
-        ? FrameCodec::ParseBufferedFrame(input, codec.extension_frame, &payload)
-        : FrameCodec::ReadFrame(_io, codec.extension_frame, false, &payload);
+        ? FrameCodec::ParseBufferedFrame(
+              input, protocol->ExtensionFrameSpec(), &payload)
+        : FrameCodec::ReadFrame(
+              _io, protocol->ExtensionFrameSpec(), false, &payload);
     const StepResult result = ConvertFrameResult(frame_result);
-    return result == STEP_OK ? codec.parse_extension(payload) : result;
+    return result == STEP_OK ? protocol->ParseExtension(payload) : result;
 }
 
 StepResult HandshakeSession::SelectAndReceiveHello(
-    const std::vector<HandshakeCodec>& codecs, HandshakeInput* input,
-    bool push_back_on_not_mine, const HandshakeCodec** selected) {
-    CHECK(!codecs.empty());
+    const std::vector<HandshakeProtocol*>& protocols, HandshakeInput* input,
+    bool push_back_on_not_mine, HandshakeProtocol** selected) {
+    CHECK(!protocols.empty());
     CHECK(selected != NULL);
     if (input == NULL) {
         // A blocking byte stream cannot try a second codec after consuming
         // bytes from the fd. Such protocols must select a single codec before
         // entering the common session.
-        CHECK_EQ(1UL, codecs.size());
-        *selected = &codecs.front();
-        return ReceiveHello(**selected, NULL, push_back_on_not_mine);
+        CHECK_EQ(1UL, protocols.size());
+        *selected = protocols.front();
+        return ReceiveHello(*selected, NULL, push_back_on_not_mine);
     }
 
     bool need_more = false;
-    for (size_t i = 0; i < codecs.size(); ++i) {
+    for (size_t i = 0; i < protocols.size(); ++i) {
         bool magic_matched = false;
         const StepResult result = ReceiveHello(
-            codecs[i], input, false, &magic_matched);
+            protocols[i], input, false, &magic_matched);
         if (result == STEP_NOT_MINE) {
             continue;
         }
         if (result == STEP_NEED_MORE) {
             if (magic_matched) {
-                *selected = &codecs[i];
-                set_protocol_version(codecs[i].protocol_version);
+                *selected = protocols[i];
+                set_protocol_version(protocols[i]->ProtocolVersion());
                 return STEP_NEED_MORE;
             }
             need_more = true;
             continue;
         }
-        *selected = &codecs[i];
+        *selected = protocols[i];
         return result;
     }
     return need_more ? STEP_NEED_MORE : STEP_NOT_MINE;
 }
 
-StepResult HandshakeSession::RunClient(
-    const ClientHandshakeCallbacks& callbacks) {
-    CHECK(callbacks.transport.prepare_resources);
-    CHECK(callbacks.transport.negotiate_resources);
-    CHECK(callbacks.transport.set_high_speed_active);
-    CHECK(callbacks.transport.set_tcp_active);
+StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
+                                       HandshakeTransport* transport) {
+    CHECK(protocol != NULL);
+    CHECK(transport != NULL);
+    transport->OnProtocolSelected(protocol);
     // A client handshake runs once on a potentially reused bthread. Do not
     // let an errno left by earlier work override this handshake's result.
     errno = 0;
 
     SetPhase(PREPARING);
-    StepResult result = callbacks.transport.prepare_resources();
+    StepResult result = transport->PrepareResources();
     if (result == STEP_FALLBACK) {
-        return FinishWithFallback(this, callbacks.transport.set_tcp_active);
+        return FinishWithFallback(this, transport);
     }
     if (result != STEP_OK) {
-        return FinishWithFailure(this, callbacks.transport.on_failed);
+        return FinishWithFailure(this, transport);
     }
 
     SetPhase(HELLO_SEND);
-    if (SendHello(callbacks.codec, true) != STEP_OK) {
-        return FinishWithFailure(this, callbacks.transport.on_failed);
+    if (SendHello(protocol, true) != STEP_OK) {
+        return FinishWithFailure(this, transport);
     }
 
     SetPhase(HELLO_WAIT);
-    result = ReceiveHello(callbacks.codec, NULL, false);
+    result = ReceiveHello(protocol, NULL, false);
     if (result == STEP_NOT_MINE || result == STEP_NEED_MORE) {
         errno = EPROTO;
     }
     if (result == STEP_ERROR || result == STEP_NOT_MINE ||
         result == STEP_NEED_MORE) {
-        return FinishWithFailure(this, callbacks.transport.on_failed);
+        return FinishWithFailure(this, transport);
     }
     bool enabled = result == STEP_OK;
 
-    if (enabled && callbacks.codec.build_extension) {
-        CHECK(callbacks.codec.parse_extension);
+    if (enabled && protocol->HasExtension()) {
         SetPhase(EXTENSION_SEND);
-        if (SendExtension(callbacks.codec, true) != STEP_OK) {
-            return FinishWithFailure(this, callbacks.transport.on_failed);
+        if (SendExtension(protocol, true) != STEP_OK) {
+            return FinishWithFailure(this, transport);
         }
         SetPhase(EXTENSION_WAIT);
-        result = ReceiveExtension(callbacks.codec, NULL);
+        result = ReceiveExtension(protocol, NULL);
         if (result != STEP_OK && result != STEP_FALLBACK) {
-            return FinishWithFailure(this, callbacks.transport.on_failed);
+            return FinishWithFailure(this, transport);
         }
         enabled = result == STEP_OK;
     }
 
     if (enabled) {
         SetPhase(NEGOTIATING);
-        result = callbacks.transport.negotiate_resources();
+        result = transport->NegotiateResources();
         if (result != STEP_OK && result != STEP_FALLBACK) {
-            return FinishWithFailure(this, callbacks.transport.on_failed);
+            return FinishWithFailure(this, transport);
         }
         enabled = result == STEP_OK;
     }
 
     SetPhase(ACK_SEND);
-    if (SendAck(callbacks.codec, enabled) != STEP_OK) {
-        return FinishWithFailure(this, callbacks.transport.on_failed);
+    if (SendAck(protocol, enabled) != STEP_OK) {
+        return FinishWithFailure(this, transport);
     }
 
     if (enabled) {
-        callbacks.transport.set_high_speed_active();
+        transport->OnEstablished();
         MarkEstablished();
         return STEP_OK;
     }
-    return FinishWithFallback(this, callbacks.transport.set_tcp_active);
+    return FinishWithFallback(this, transport);
 }
 
 StepResult HandshakeSession::RunServer(
-    const ServerHandshakeCallbacks& callbacks) {
-    CHECK(!callbacks.codecs.empty());
-    CHECK(callbacks.transport.prepare_resources);
-    CHECK(callbacks.transport.negotiate_resources);
-    CHECK(callbacks.transport.set_high_speed_active);
-    CHECK(callbacks.transport.set_tcp_active);
+    const std::vector<HandshakeProtocol*>& protocols, HandshakeInput* input,
+    HandshakeTransport* transport, bool fallback_on_not_mine) {
+    CHECK(!protocols.empty());
+    CHECK(transport != NULL);
 
     // Once TCP fallback has been published, subsequent bytes are application
     // protocol data and must bypass every upgrade codec without changing the
@@ -277,17 +302,16 @@ StepResult HandshakeSession::RunServer(
         return STEP_NOT_MINE;
     }
 
-    const HandshakeCodec* selected = NULL;
+    HandshakeProtocol* selected = NULL;
     if (phase() != ACK_WAIT && phase() != EXTENSION_WAIT) {
         const int previous_phase = phase();
         _local_enabled = false;
         SetPhase(HELLO_WAIT);
         StepResult result = SelectAndReceiveHello(
-            callbacks.codecs, callbacks.input,
-            callbacks.fallback_on_not_mine, &selected);
+            protocols, input, fallback_on_not_mine, &selected);
         if (result == STEP_NOT_MINE) {
-            if (callbacks.fallback_on_not_mine) {
-                return FinishWithFallback(this, callbacks.transport.set_tcp_active);
+            if (fallback_on_not_mine) {
+                return FinishWithFallback(this, transport);
             }
             SetPhase(UNINITIALIZED);
             return STEP_NOT_MINE;
@@ -299,40 +323,48 @@ StepResult HandshakeSession::RunServer(
             return STEP_NEED_MORE;
         }
         if (result == STEP_ERROR) {
-            return FinishWithFailure(this, callbacks.transport.on_failed);
+            return FinishWithFailure(this, transport);
+        }
+        CHECK(selected != NULL);
+        transport->OnProtocolSelected(selected);
+        if (result == STEP_FALLBACK) {
+            // Publish the disabled transport state immediately. The server
+            // still sends a disabled hello and consumes the peer ACK before
+            // publishing the terminal FALLBACK_TCP phase.
+            transport->OnFallback();
         }
         bool enabled = result == STEP_OK;
 
         if (enabled) {
             SetPhase(PREPARING);
-            result = callbacks.transport.prepare_resources();
+            result = transport->PrepareResources();
             if (result != STEP_OK && result != STEP_FALLBACK) {
-                return FinishWithFailure(this, callbacks.transport.on_failed);
+                return FinishWithFailure(this, transport);
             }
             enabled = result == STEP_OK;
         }
 
         if (enabled) {
             SetPhase(NEGOTIATING);
-            result = callbacks.transport.negotiate_resources();
+            result = transport->NegotiateResources();
             if (result != STEP_OK && result != STEP_FALLBACK) {
-                return FinishWithFailure(this, callbacks.transport.on_failed);
+                return FinishWithFailure(this, transport);
             }
             enabled = result == STEP_OK;
         }
 
         SetPhase(HELLO_SEND);
-        CHECK(selected != NULL);
         _local_enabled = enabled;
-        if (SendHello(*selected, enabled) != STEP_OK) {
-            return FinishWithFailure(this, callbacks.transport.on_failed);
+        if (SendHello(selected, enabled) != STEP_OK) {
+            return FinishWithFailure(this, transport);
         }
-        SetPhase(enabled && selected->parse_extension
-                     ? EXTENSION_WAIT : ACK_WAIT);
+        SetPhase(enabled && selected->HasExtension()
+                     ? EXTENSION_WAIT
+                     : ACK_WAIT);
     } else {
-        for (size_t i = 0; i < callbacks.codecs.size(); ++i) {
-            if (callbacks.codecs[i].protocol_version == protocol_version()) {
-                selected = &callbacks.codecs[i];
+        for (size_t i = 0; i < protocols.size(); ++i) {
+            if (protocols[i]->ProtocolVersion() == protocol_version()) {
+                selected = protocols[i];
                 break;
             }
         }
@@ -340,19 +372,19 @@ StepResult HandshakeSession::RunServer(
     }
 
     if (phase() == EXTENSION_WAIT) {
-        StepResult result = ReceiveExtension(*selected, callbacks.input);
+        StepResult result = ReceiveExtension(selected, input);
         if (result == STEP_NEED_MORE) {
             return STEP_NEED_MORE;
         }
         if (result != STEP_OK && result != STEP_FALLBACK) {
-            return FinishWithFailure(this, callbacks.transport.on_failed);
+            return FinishWithFailure(this, transport);
         }
         if (result == STEP_FALLBACK) {
             _local_enabled = false;
         }
         SetPhase(EXTENSION_SEND);
-        if (SendExtension(*selected, _local_enabled) != STEP_OK) {
-            return FinishWithFailure(this, callbacks.transport.on_failed);
+        if (SendExtension(selected, _local_enabled) != STEP_OK) {
+            return FinishWithFailure(this, transport);
         }
         SetPhase(ACK_WAIT);
     }
@@ -362,30 +394,28 @@ StepResult HandshakeSession::RunServer(
     // coalesced in the input buffer this consumes the ACK without waiting for
     // another socket edge.
     bool peer_enabled = false;
-    StepResult result = ReceiveAck(
-        *selected, callbacks.input, &peer_enabled);
+    StepResult result = ReceiveAck(selected, input, &peer_enabled);
     if (result == STEP_NEED_MORE) {
         return STEP_NEED_MORE;
     }
     if (result == STEP_ERROR || result == STEP_NOT_MINE) {
-        return FinishWithFailure(this, callbacks.transport.on_failed);
+        return FinishWithFailure(this, transport);
     }
     if (result == STEP_FALLBACK) {
-        return FinishWithFallback(this, callbacks.transport.set_tcp_active);
+        return FinishWithFallback(this, transport);
     }
     if (!peer_enabled) {
-        return FinishWithFallback(this, callbacks.transport.set_tcp_active);
+        return FinishWithFallback(this, transport);
     }
     if (!_local_enabled) {
         errno = EPROTO;
-        return FinishWithFailure(this, callbacks.transport.on_failed);
+        return FinishWithFailure(this, transport);
     }
-    if (callbacks.validate_established &&
-        callbacks.validate_established() != STEP_OK) {
-        return FinishWithFailure(this, callbacks.transport.on_failed);
+    if (transport->ValidateEstablished() != STEP_OK) {
+        return FinishWithFailure(this, transport);
     }
 
-    callbacks.transport.set_high_speed_active();
+    transport->OnEstablished();
     MarkEstablished();
     return STEP_OK;
 }

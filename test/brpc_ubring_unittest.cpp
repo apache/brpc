@@ -110,24 +110,23 @@ TEST(HelloFormatExtensionTest, deserialize_unknown_format) {
 }
 
 TEST(UBShmHandshakeAdapterTest, rejects_unsupported_format_extension) {
-    const brpc::handshake::HandshakeCodec codec =
-        brpc::ubring::UBShmHandshakeAdapter().MakeCodec();
+    brpc::ubring::UBShmHandshakeAdapter adapter;
     std::string payload;
     ASSERT_EQ(brpc::handshake::STEP_OK,
-              codec.build_extension(true, &payload));
+              adapter.BuildExtension(true, &payload));
     EXPECT_EQ(std::string("\0\4\0\1", 4), payload);
     EXPECT_EQ(brpc::handshake::STEP_OK,
-              codec.parse_extension(payload));
+              adapter.ParseExtension(payload));
 
     payload[3] = 2;
     EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              codec.parse_extension(payload));
+              adapter.ParseExtension(payload));
     payload[3] = 0;
     EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              codec.parse_extension(payload));
+              adapter.ParseExtension(payload));
     payload[1] = 3;
     EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              codec.parse_extension(payload));
+              adapter.ParseExtension(payload));
 }
 
 TEST_F(HelloMessageTest, serialize_deserialize_roundtrip) {
@@ -231,10 +230,9 @@ TEST(UBShmHandshakeAdapterTest, codec_uses_v3_wire_format) {
                         SHM_MAX_NAME_BUFF_LEN));
 
     std::string frame;
-    const brpc::handshake::HandshakeCodec codec = adapter.MakeCodec();
     ASSERT_EQ(brpc::handshake::FRAME_OK,
               brpc::handshake::FrameCodec::Encode(
-                  codec.hello_frame, payload, &frame));
+                  adapter.HelloFrameSpec(), payload, &frame));
     ASSERT_EQ(64, frame.size());
     EXPECT_EQ("UB", frame.substr(0, 2));
 }

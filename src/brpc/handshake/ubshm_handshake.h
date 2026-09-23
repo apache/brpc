@@ -75,11 +75,32 @@ struct HelloFormatExtension {
     void Deserialize(const void* data);
 };
 
-class UBShmHandshakeAdapter {
+class UBShmHandshakeAdapter : public handshake::HandshakeProtocol {
 public:
-    UBShmHandshakeAdapter() = default;
+    UBShmHandshakeAdapter()
+        : _local_len(0), _server_reply(false), _remote() {}
 
-    handshake::HandshakeCodec MakeCodec() const;
+    int ProtocolVersion() const override { return 3; }
+    const handshake::FrameSpec& HelloFrameSpec() const override;
+    const handshake::FrameSpec& AckFrameSpec() const override;
+    handshake::StepResult BuildHello(
+        bool enabled, std::string* payload) override;
+    handshake::StepResult ParseHello(
+        const std::string& payload) override;
+    bool HasExtension() const override { return true; }
+    const handshake::FrameSpec& ExtensionFrameSpec() const override;
+    handshake::StepResult BuildExtension(
+        bool enabled, std::string* payload) override;
+    handshake::StepResult ParseExtension(
+        const std::string& payload) override;
+
+    void ConfigureClientHello(uint64_t len, const char* shm_name);
+    void ConfigureServerReply(uint64_t len) {
+        _local_len = len;
+        _server_reply = true;
+    }
+    const HelloMessage& remote() const { return _remote; }
+
     handshake::StepResult BuildHello(
         bool enabled, uint64_t len, const char* shm_name,
         std::string* payload) const;
@@ -88,6 +109,10 @@ public:
 
 private:
     bool NegotiationValid(const HelloMessage& message) const;
+    uint64_t _local_len;
+    std::string _local_name;
+    bool _server_reply;
+    HelloMessage _remote;
     DISALLOW_COPY_AND_ASSIGN(UBShmHandshakeAdapter);
 };
 

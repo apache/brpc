@@ -19,7 +19,6 @@
 #define BRPC_TRANSPORT_HANDSHAKE_H
 
 #include <cstddef>
-#include <functional>
 #include <string>
 #include <vector>
 
@@ -75,50 +74,72 @@ enum StepResult {
     STEP_ERROR,
 };
 
-// A protocol describes only its fields and resource-independent wire values.
-// HandshakeSession owns framing and I/O through FrameCodec. The callbacks may
-// retain strongly typed parsed state in their protocol adapter.
-struct HandshakeCodec {
-    int protocol_version;
-    FrameSpec hello_frame;
-    FrameSpec ack_frame;
-    FrameSpec extension_frame;
-    std::function<StepResult(bool, std::string*)> build_hello;
-    std::function<StepResult(const std::string&)> parse_hello;
-    std::function<StepResult(bool, std::string*)> build_ack;
-    std::function<StepResult(const std::string&, bool*)> parse_ack;
-    // Optional exchange between hello and ACK. Protocols without an
-    // extension leave these callbacks empty.
-    std::function<StepResult(bool, std::string*)> build_extension;
-    std::function<StepResult(const std::string&)> parse_extension;
+// Wire-level participant in a transport upgrade. Implementations own parsed
+// protocol state; HandshakeSession owns framing and phase orchestration.
+class HandshakeProtocol {
+public:
+    virtual ~HandshakeProtocol() = default;
+
+    virtual int ProtocolVersion() const = 0;
+    virtual const FrameSpec& HelloFrameSpec() const = 0;
+    virtual const FrameSpec& AckFrameSpec() const = 0;
+    virtual StepResult BuildHello(bool enabled, std::string* payload) = 0;
+    virtual StepResult ParseHello(const std::string& payload) = 0;
+
+    // RDMA and UBSHM use the same four-byte, network-order ACK. Protocols
+    // with a different ACK format may override these methods.
+    virtual StepResult BuildAck(bool enabled, std::string* payload);
+    virtual StepResult ParseAck(const std::string& payload, bool* enabled);
+
+    virtual bool HasExtension() const { return false; }
+    virtual const FrameSpec& ExtensionFrameSpec() const;
+    virtual StepResult BuildExtension(bool, std::string*) {
+        return STEP_ERROR;
+    }
+    virtual StepResult ParseExtension(const std::string&) {
+        return STEP_ERROR;
+    }
 };
 
-// Resource-specific operations supplied by a Transport and invoked by the
-// common coordinator. Wire I/O and field codec invocation remain owned by
-// HandshakeSession.
-struct TransportUpgradeOps {
-    std::function<StepResult()> prepare_resources;
-    std::function<StepResult()> negotiate_resources;
-    std::function<void()> set_high_speed_active;
-    std::function<void()> set_tcp_active;
-    std::function<void()> on_failed;
+// Resource-level participant in a transport upgrade. Cleanup remains part of
+// this contract: resources may already exist when negotiation falls back or
+// a framing/I/O error terminates the handshake.
+class HandshakeTransport {
+public:
+    virtual ~HandshakeTransport() = default;
+
+    virtual void OnProtocolSelected(HandshakeProtocol*) {}
+    virtual StepResult PrepareResources() = 0;
+    virtual StepResult NegotiateResources() = 0;
+    virtual void OnEstablished() = 0;
+    virtual void OnFallback() = 0;
+    virtual void OnFailed() = 0;
+    virtual StepResult ValidateEstablished() { return STEP_OK; }
 };
 
-struct ClientHandshakeCallbacks {
-    HandshakeCodec codec;
-    TransportUpgradeOps transport;
+// Participant for a server that recognizes an upgrade protocol only to
+// negotiate TCP fallback. It owns no high-speed resources.
+class FallbackHandshakeTransport : public HandshakeTransport {
+public:
+    StepResult PrepareResources() override { return STEP_OK; }
+    StepResult NegotiateResources() override { return STEP_OK; }
+    void OnEstablished() override {}
+    void OnFallback() override {}
+    void OnFailed() override {}
 };
 
-// The server driver is independent of the input mode. A parser callback can
-// return STEP_NEED_MORE, while a blocking callback waits before returning.
-struct ServerHandshakeCallbacks {
-    bool fallback_on_not_mine;
-    // Buffered parsers may offer multiple codecs (RDMA v2/v3). Blocking
-    // server handshakes currently provide exactly one codec.
-    std::vector<HandshakeCodec> codecs;
-    HandshakeInput* input;
-    TransportUpgradeOps transport;
-    std::function<StepResult()> validate_established;
+class FallbackHandshakeProtocol : public HandshakeProtocol {
+public:
+    StepResult ParseHello(const std::string&) override {
+        return STEP_FALLBACK;
+    }
+    StepResult ParseAck(const std::string& payload, bool* enabled) override {
+        bool ignored = false;
+        const StepResult result = HandshakeProtocol::ParseAck(
+            payload, &ignored);
+        *enabled = false;
+        return result;
+    }
 };
 
 // Owns one connection-upgrade attempt, invokes the protocol field codec and
@@ -173,24 +194,29 @@ public:
     // restores the Socket-backed implementation.
     void SetIOForTest(HandshakeIO* io) { _io = io; }
 
-    StepResult RunClient(const ClientHandshakeCallbacks& callbacks);
-    StepResult RunServer(const ServerHandshakeCallbacks& callbacks);
+    StepResult RunClient(HandshakeProtocol* protocol,
+                         HandshakeTransport* transport);
+    StepResult RunServer(const std::vector<HandshakeProtocol*>& protocols,
+                         HandshakeInput* input,
+                         HandshakeTransport* transport,
+                         bool fallback_on_not_mine);
 
 private:
-    StepResult SendHello(const HandshakeCodec& codec, bool enabled);
-    StepResult ReceiveHello(const HandshakeCodec& codec,
+    StepResult SendHello(HandshakeProtocol* protocol, bool enabled);
+    StepResult ReceiveHello(HandshakeProtocol* protocol,
                             HandshakeInput* input,
                             bool push_back_on_not_mine,
                             bool* magic_matched = NULL);
-    StepResult SendAck(const HandshakeCodec& codec, bool enabled);
-    StepResult ReceiveAck(const HandshakeCodec& codec,
+    StepResult SendAck(HandshakeProtocol* protocol, bool enabled);
+    StepResult ReceiveAck(HandshakeProtocol* protocol,
                           HandshakeInput* input, bool* enabled);
-    StepResult SendExtension(const HandshakeCodec& codec, bool enabled);
-    StepResult ReceiveExtension(const HandshakeCodec& codec,
+    StepResult SendExtension(HandshakeProtocol* protocol, bool enabled);
+    StepResult ReceiveExtension(HandshakeProtocol* protocol,
                                 HandshakeInput* input);
     StepResult SelectAndReceiveHello(
-        const std::vector<HandshakeCodec>& codecs, HandshakeInput* input,
-        bool push_back_on_not_mine, const HandshakeCodec** selected);
+        const std::vector<HandshakeProtocol*>& protocols,
+        HandshakeInput* input, bool push_back_on_not_mine,
+        HandshakeProtocol** selected);
 
     SocketHandshakeIO _socket_io;
     HandshakeIO* _io;

@@ -72,36 +72,18 @@ void RdmaHandshakeAdapter::PrepareClientEce() {
     }
 }
 
-handshake::HandshakeCodec RdmaHandshakeAdapter::MakeCodec(
-    ParsedHello* remote) {
-    handshake::HandshakeCodec codec{};
-    codec.protocol_version = ProtocolVersion();
-    codec.hello_frame = HelloFrameSpec();
-    codec.ack_frame = RdmaAckFrameSpec();
-    codec.build_hello = [this](bool enabled, std::string* payload) {
-        return BuildLocalHello(enabled, payload);
-    };
-    codec.parse_hello = [this, remote](const std::string& payload) {
-        return ParseRemoteHello(payload, remote);
-    };
-    codec.build_ack = [](bool enabled, std::string* payload) {
-        const uint32_t flags_be = butil::HostToNet32(
-            enabled ? HELLO_ACK_RDMA_OK : 0);
-        payload->assign(reinterpret_cast<const char*>(&flags_be),
-                        sizeof(flags_be));
-        return handshake::STEP_OK;
-    };
-    codec.parse_ack = [](const std::string& payload, bool* enabled) {
-        if (payload.size() != HELLO_ACK_LEN) {
-            errno = EPROTO;
-            return handshake::STEP_ERROR;
-        }
-        uint32_t flags_be = 0;
-        memcpy(&flags_be, payload.data(), sizeof(flags_be));
-        *enabled = (butil::NetToHost32(flags_be) & HELLO_ACK_RDMA_OK) != 0;
-        return handshake::STEP_OK;
-    };
-    return codec;
+const handshake::FrameSpec& RdmaHandshakeAdapter::AckFrameSpec() const {
+    return RdmaAckFrameSpec();
+}
+
+handshake::StepResult RdmaHandshakeAdapter::BuildHello(
+    bool enabled, std::string* payload) {
+    return BuildLocalHello(enabled, payload);
+}
+
+handshake::StepResult RdmaHandshakeAdapter::ParseHello(
+    const std::string& payload) {
+    return ParseRemoteHello(payload, &_remote);
 }
 
 namespace v2_wire {
@@ -418,20 +400,23 @@ static constexpr uint16_t V2_HELLO_VERSION_INVALID =
     std::numeric_limits<uint16_t>::max();
 static constexpr size_t V3_GID_LEN = 16;
 
-static HandshakeCodec MakeRdmaFallbackCodec(int version) {
-    HandshakeCodec codec{};
-    codec.protocol_version = version;
-    codec.hello_frame = rdma::RdmaHelloFrameSpec(version);
-    codec.ack_frame = rdma::RdmaAckFrameSpec();
-    codec.parse_hello = [](const std::string&) {
-        return STEP_FALLBACK;
-    };
-    codec.build_hello = [version](bool enabled, std::string* payload) {
+class RdmaFallbackProtocol : public FallbackHandshakeProtocol {
+public:
+    explicit RdmaFallbackProtocol(int version) : _version(version) {}
+
+    int ProtocolVersion() const override { return _version; }
+    const FrameSpec& HelloFrameSpec() const override {
+        return rdma::RdmaHelloFrameSpec(_version);
+    }
+    const FrameSpec& AckFrameSpec() const override {
+        return rdma::RdmaAckFrameSpec();
+    }
+    StepResult BuildHello(bool enabled, std::string* payload) override {
         if (enabled) {
             errno = EPROTO;
             return STEP_ERROR;
         }
-        if (version == 2) {
+        if (_version == 2) {
             payload->assign(
                 rdma::HELLO_V2_MSG_LEN_MIN - rdma::HELLO_MAGIC_LEN -
                     sizeof(uint16_t),
@@ -453,24 +438,11 @@ static HandshakeCodec MakeRdmaFallbackCodec(int version) {
             return STEP_ERROR;
         }
         return STEP_OK;
-    };
-    codec.build_ack = [](bool enabled, std::string* payload) {
-        const uint32_t flags_be = butil::HostToNet32(
-            enabled ? rdma::HELLO_ACK_RDMA_OK : 0);
-        payload->assign(reinterpret_cast<const char*>(&flags_be),
-                        sizeof(flags_be));
-        return STEP_OK;
-    };
-    codec.parse_ack = [](const std::string& payload, bool* enabled) {
-        if (payload.size() != rdma::HELLO_ACK_LEN) {
-            errno = EPROTO;
-            return STEP_ERROR;
-        }
-        *enabled = false;
-        return STEP_OK;
-    };
-    return codec;
-}
+    }
+
+private:
+    int _version;
+};
 
 HandshakeAdapter* GetRdmaServerHandshakeAdapter() {
     static RdmaServerHandshakeAdapter adapter;
@@ -485,82 +457,81 @@ HandshakeSession* RdmaServerHandshakeAdapter::GetSession(
 StepResult RdmaServerHandshakeAdapter::RunFallbackServerHandshake(
     butil::IOBuf* source, Socket* socket) {
     IOBufHandshakeInput input(source);
-    ServerHandshakeCallbacks callbacks{};
-    callbacks.fallback_on_not_mine = false;
-    callbacks.codecs.push_back(MakeRdmaFallbackCodec(2));
-    callbacks.codecs.push_back(MakeRdmaFallbackCodec(3));
-    callbacks.input = &input;
-    callbacks.transport.prepare_resources = []() { return STEP_OK; };
-    callbacks.transport.negotiate_resources = []() { return STEP_OK; };
-    callbacks.transport.set_high_speed_active = []() {};
-    callbacks.transport.set_tcp_active = []() {};
-    callbacks.transport.on_failed = []() {};
-    return GetSession(socket)->RunServer(callbacks);
+    RdmaFallbackProtocol v2(2);
+    RdmaFallbackProtocol v3(3);
+    std::vector<HandshakeProtocol*> protocols;
+    protocols.push_back(&v2);
+    protocols.push_back(&v3);
+    FallbackHandshakeTransport transport;
+    return GetSession(socket)->RunServer(
+        protocols, &input, &transport, false);
 }
 
 #if BRPC_WITH_RDMA
+class RdmaServerHandshakeTransport : public HandshakeTransport {
+public:
+    RdmaServerHandshakeTransport(
+        RdmaTransport* transport, Socket* socket, butil::IOBuf* source)
+        : _transport(transport), _socket(socket), _source(source),
+          _protocol(NULL) {}
+
+    void OnProtocolSelected(HandshakeProtocol* protocol) override {
+        _protocol = static_cast<rdma::RdmaHandshakeAdapter*>(protocol);
+    }
+
+    StepResult PrepareResources() override {
+        if (_transport->PrepareUpgradeResources() == 0) {
+            return STEP_OK;
+        }
+        PLOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
+                      << _socket->description();
+        _transport->DeactivateUpgrade();
+        return STEP_FALLBACK;
+    }
+
+    StepResult NegotiateResources() override {
+        CHECK(_protocol != NULL);
+        if (_transport->NegotiateUpgradeResources(
+                _protocol->remote(), true) == 0) {
+            return STEP_OK;
+        }
+        PLOG(WARNING) << "Fail to negotiate rdma resources, fallback to tcp:"
+                      << _socket->description();
+        _transport->DeactivateUpgrade();
+        return STEP_FALLBACK;
+    }
+
+    void OnEstablished() override { _transport->ActivateUpgrade(); }
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
+
+    StepResult ValidateEstablished() override {
+        return _source->empty() ? STEP_OK : STEP_ERROR;
+    }
+
+private:
+    RdmaTransport* _transport;
+    Socket* _socket;
+    butil::IOBuf* _source;
+    rdma::RdmaHandshakeAdapter* _protocol;
+};
+
 StepResult RdmaServerHandshakeAdapter::RunRdmaServerHandshake(
     butil::IOBuf* source, Socket* socket) {
     RdmaTransport* transport = RdmaTransport::Get(socket);
     CHECK(transport->GetRdmaEp() != NULL);
 
-    rdma::ParsedHello remote{};
     std::vector<std::unique_ptr<rdma::RdmaHandshakeAdapter> > protocols =
         transport->CreateServerHandshakeAdapters();
-    IOBufHandshakeInput input(source);
-    ServerHandshakeCallbacks callbacks{};
-    callbacks.fallback_on_not_mine = false;
-    callbacks.input = &input;
+    std::vector<HandshakeProtocol*> protocol_ptrs;
+    protocol_ptrs.reserve(protocols.size());
     for (size_t i = 0; i < protocols.size(); ++i) {
-        HandshakeCodec codec = protocols[i]->MakeCodec(&remote);
-        const std::function<StepResult(const std::string&)> parse_hello =
-            codec.parse_hello;
-        codec.parse_hello = [transport, parse_hello](
-            const std::string& payload) {
-            const StepResult result = parse_hello(payload);
-            if (result == STEP_FALLBACK) {
-                transport->DeactivateUpgrade();
-            }
-            return result;
-        };
-        callbacks.codecs.push_back(codec);
+        protocol_ptrs.push_back(protocols[i].get());
     }
-    callbacks.transport.prepare_resources = [&]() {
-        if (transport->PrepareUpgradeResources() < 0) {
-            PLOG(WARNING)
-                << "Fail to allocate rdma resources, fallback to tcp:"
-                << socket->description();
-            transport->DeactivateUpgrade();
-            return STEP_FALLBACK;
-        }
-        return STEP_OK;
-    };
-    callbacks.transport.negotiate_resources = [&]() {
-        if (transport->NegotiateUpgradeResources(remote, true) < 0) {
-            PLOG(WARNING)
-                << "Fail to negotiate rdma resources, fallback to tcp:"
-                << socket->description();
-            transport->DeactivateUpgrade();
-            return STEP_FALLBACK;
-        }
-        return STEP_OK;
-    };
-    callbacks.validate_established = [&]() {
-        if (!source->empty()) {
-            return STEP_ERROR;
-        }
-        return STEP_OK;
-    };
-    callbacks.transport.set_high_speed_active = [transport]() {
-        transport->ActivateUpgrade();
-    };
-    callbacks.transport.set_tcp_active = [transport]() {
-        transport->DeactivateUpgrade();
-    };
-    callbacks.transport.on_failed = [transport]() {
-        transport->DeactivateUpgrade();
-    };
-    return GetSession(socket)->RunServer(callbacks);
+    IOBufHandshakeInput input(source);
+    RdmaServerHandshakeTransport participant(transport, socket, source);
+    return GetSession(socket)->RunServer(
+        protocol_ptrs, &input, &participant, false);
 }
 #endif
 

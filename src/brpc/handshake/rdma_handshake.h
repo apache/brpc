@@ -71,16 +71,21 @@ struct HelloMessage {
 
 // RDMA adapters implement only protocol fields. HandshakeSession owns frame
 // I/O, length validation, ACK exchange and resource callback ordering.
-class RdmaHandshakeAdapter {
+class RdmaHandshakeAdapter : public handshake::HandshakeProtocol {
 public:
     RdmaHandshakeAdapter(RdmaEndpoint* ep, int version)
-        : _ep(ep), _version(version) {}
-    virtual ~RdmaHandshakeAdapter() = default;
+        : _ep(ep), _version(version), _remote() {}
+    ~RdmaHandshakeAdapter() override = default;
 
-    int ProtocolVersion() const { return _version; }
-    handshake::HandshakeCodec MakeCodec(ParsedHello* remote);
+    int ProtocolVersion() const override { return _version; }
+    const handshake::FrameSpec& AckFrameSpec() const override;
+    handshake::StepResult BuildHello(
+        bool enabled, std::string* payload) override;
+    handshake::StepResult ParseHello(
+        const std::string& payload) override;
+    const ParsedHello& remote() const { return _remote; }
 
-    virtual const handshake::FrameSpec& HelloFrameSpec() const = 0;
+    const handshake::FrameSpec& HelloFrameSpec() const override = 0;
     virtual handshake::StepResult BuildLocalHello(
         bool enabled, std::string* payload) = 0;
     virtual handshake::StepResult ParseRemoteHello(
@@ -92,6 +97,7 @@ protected:
 
     RdmaEndpoint* _ep;
     int _version;
+    ParsedHello _remote;
 
 private:
     DISALLOW_COPY_AND_ASSIGN(RdmaHandshakeAdapter);
