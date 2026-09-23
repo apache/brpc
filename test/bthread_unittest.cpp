@@ -524,7 +524,8 @@ TEST_F(BthreadTest, stop_sleep) {
         }
         bthread_usleep(1000);
     } while (butil::cpuwide_time_us() < deadline);
-    ASSERT_TRUE(sleeping);
+    // bthread_stop is persistent, so cleanup is safe even before registration.
+    EXPECT_TRUE(sleeping);
     ASSERT_EQ(0, bthread_stop(th));
     ASSERT_EQ(0, bthread_join(th, nullptr));
 }

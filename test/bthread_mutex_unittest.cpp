@@ -59,7 +59,7 @@ TEST(MutexTest, sanity) {
         usleep(1000);
     }
     // Keep cleanup reachable even if the worker did not run in time.
-    ASSERT_EQ(257u, state->load(butil::memory_order_relaxed));
+    EXPECT_EQ(257u, state->load(butil::memory_order_relaxed));
     ASSERT_EQ(0, bthread_mutex_unlock(&m));
     ASSERT_EQ(0, bthread_join(th1, nullptr));
     ASSERT_EQ(0u, *get_butex(m));

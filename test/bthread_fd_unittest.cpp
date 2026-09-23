@@ -577,7 +577,8 @@ TEST(FDTest, close_should_wakeup_waiter) {
            butil::cpuwide_time_us() < deadline) {
         bthread_usleep(1000);
     }
-    ASSERT_NE(nullptr, meta->current_waiter.load(butil::memory_order_acquire));
+    // Keep cleanup reachable even if the waiter did not register in time.
+    EXPECT_NE(nullptr, meta->current_waiter.load(butil::memory_order_acquire));
     ASSERT_EQ(0, bthread_close(fds[0]));
     ASSERT_EQ(0, bthread_join(bth, nullptr));
     ASSERT_EQ(0, arg.result) << "errno=" << arg.error;

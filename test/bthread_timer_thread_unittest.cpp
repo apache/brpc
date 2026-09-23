@@ -255,8 +255,9 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     timespec keeper3_addtime = butil::seconds_from_now(0);
     keeper3.schedule(&timer_thread);  // start keeper3
     keeper5.schedule(&timer_thread);  // start keeper5
-    ASSERT_TRUE(keeper3.wait_started());
-    ASSERT_TRUE(keeper5.wait_started());
+    // Preserve timer-thread cleanup even when a callback starts late.
+    EXPECT_TRUE(keeper3.wait_started());
+    EXPECT_TRUE(keeper5.wait_started());
 
     TestTask test_task1(&timer_thread, &keeper1, &keeper2, 0);
     timer_thread.schedule(TestTask::routine, &test_task1, past_time);
@@ -273,8 +274,8 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     
     // wake up keeper5 to let test_task1/2 run.
     keeper5.wakeup();
-    ASSERT_TRUE(keeper2.wait_started());
-    ASSERT_TRUE(keeper4.wait_started());
+    EXPECT_TRUE(keeper2.wait_started());
+    EXPECT_TRUE(keeper4.wait_started());
 
     timer_thread.stop_and_join();
     timespec finish_time;
