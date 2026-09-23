@@ -100,10 +100,14 @@ std::ostream& operator<<(std::ostream& os, const Histogram::Value& v) {
 
 Histogram::Histogram(const BucketSchema& schema)
     : _schema(schema)
+#if WITH_BABYLON_COUNTER
+    , _storage(std::make_shared<detail::HistogramStorage>(schema.num_buckets()))
+#else
     // Both identities carry `num_buckets` so that a value combined out of no
     // agent at all still knows how wide it is.
     , _combiner(std::make_shared<combiner_type>(value_type(schema.num_buckets()),
                                                   value_type(schema.num_buckets())))
+#endif // WITH_BABYLON_COUNTER
     , _sampler(nullptr) {
 }
 
@@ -133,6 +137,9 @@ Histogram& Histogram::operator<<(double value) {
                                   << " recorded into Histogram(" << name() << ')';
         return *this;
     }
+#if WITH_BABYLON_COUNTER
+    _storage->add(_schema.index_of(value), value);
+#else
     agent_type* agent = _combiner->get_or_create_tls_agent();
     if (BAIDU_UNLIKELY(agent == nullptr)) {
         LOG(FATAL) << "Fail to create agent";
@@ -140,7 +147,16 @@ Histogram& Histogram::operator<<(double value) {
     }
     // `_schema` outlives the call, the op only borrows it to find the bucket.
     agent->element.modify(detail::AddSampleToHistogram(&_schema), value);
+#endif // WITH_BABYLON_COUNTER
     return *this;
+}
+
+Histogram::value_type Histogram::get_value() const {
+#if WITH_BABYLON_COUNTER
+    return _storage->combine_agents();
+#else
+    return _combiner->combine_agents();
+#endif // WITH_BABYLON_COUNTER
 }
 
 Histogram::sampler_type* Histogram::get_sampler() {

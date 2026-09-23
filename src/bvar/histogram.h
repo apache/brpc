@@ -19,15 +19,22 @@
 #define  BVAR_HISTOGRAM_H
 
 #include <stdint.h>                     // int64_t, uint64_t
-#include <algorithm>                    // std::lower_bound
+#include <algorithm>                    // std::max
 #include <initializer_list>             // std::initializer_list
+#include <memory>                       // std::shared_ptr
 #include <string>                       // std::string
 #include <vector>                       // std::vector
 #include "butil/strings/string_piece.h" // butil::StringPiece
 #include "bvar/variable.h"              // Variable
-#include "bvar/detail/combiner.h"       // AgentCombiner
 #include "bvar/detail/sampler.h"        // ReducerSampler
 #include "bvar/detail/series.h"         // HasPlottableSeries
+#if WITH_BABYLON_COUNTER
+#include "babylon/concurrent/thread_local.h" // EnumerableThreadLocal
+#include "butil/atomicops.h"                 // butil::atomic
+#include "butil/synchronization/seqlock.h"   // butil::Seqlock
+#else
+#include "bvar/detail/combiner.h"       // AgentCombiner
+#endif // WITH_BABYLON_COUNTER
 
 namespace bvar {
 
@@ -35,6 +42,13 @@ namespace bvar {
 // Namely a Histogram::BucketSchema takes at most MAX_HISTOGRAM_BUCKETS - 1
 // bounds.
 static const size_t MAX_HISTOGRAM_BUCKETS = 32;
+
+#if WITH_BABYLON_COUNTER
+namespace detail {
+// Defined below, once Histogram::Value is complete.
+class HistogramStorage;
+}  // namespace detail
+#endif // WITH_BABYLON_COUNTER
 
 // Bucketed distribution of the recorded values.
 //
@@ -79,9 +93,17 @@ public:
         BucketSchema(std::initializer_list<double> bounds);
         explicit BucketSchema(const std::vector<double>& bounds);
 
+        // Linear rather than a std::lower_bound: a schema holds at most
+        // MAX_HISTOGRAM_BUCKETS - 1 bounds, which is a couple of cache lines
+        // scanned straight through instead of jumped around in, and the
+        // branch of the scan predicts far better than the one of a binary
+        // search, whose direction is a coin flip at every step.
         size_t index_of(double value) const {
-            return std::lower_bound(_bounds.begin(), _bounds.end(), value) -
-                   _bounds.begin();
+            size_t index = 0;
+            while (index < _bounds.size() && _bounds[index] < value) {
+                ++index;
+            }
+            return index;
         }
 
         size_t num_buckets() const { return _bounds.size() + 1; }
@@ -148,9 +170,13 @@ public:
 
     typedef Value value_type;
     typedef detail::ReducerSampler<Histogram, value_type, Op, InvOp> sampler_type;
+#if WITH_BABYLON_COUNTER
+    typedef std::shared_ptr<detail::HistogramStorage> shared_combiner_type;
+#else
     typedef detail::AgentCombiner<value_type, value_type, Op> combiner_type;
     typedef combiner_type::self_shared_type shared_combiner_type;
     typedef combiner_type::Agent agent_type;
+#endif // WITH_BABYLON_COUNTER
 
     explicit Histogram(const BucketSchema& schema);
     Histogram(const butil::StringPiece& name, const BucketSchema& schema);
@@ -168,7 +194,11 @@ public:
     const BucketSchema& schema() const { return _schema; }
 
     bool valid() const {
+#if WITH_BABYLON_COUNTER
+        return _storage != nullptr;
+#else
         return _combiner != nullptr && _combiner->valid();
+#endif // WITH_BABYLON_COUNTER
     }
 
     void describe(std::ostream& os, bool quote_string) const override;
@@ -189,10 +219,16 @@ public:
     // The contract of Window<>/ReducerSampler
     Op op() const { return Op(); }
     InvOp inv_op() const { return InvOp(); }
-    // Expose the shared data carrier, so that ReducerSampler holds it instead
-    // of `this`. Sampling then keeps reading valid memory even if this
-    // Percentile is destructed before the sampler is recycled.
-    shared_combiner_type share_combiner() const { return _combiner; }
+    // Expose the shared data carrier, so that ReducerSampler holds it
+    // instead of `this`. Sampling then keeps reading valid memory even
+    // if this Histogram is destructed before the sampler is recycled.
+    shared_combiner_type share_combiner() const {
+#if WITH_BABYLON_COUNTER
+        return _storage;
+#else
+        return _combiner;
+#endif // WITH_BABYLON_COUNTER
+    }
     sampler_type* get_sampler();
 
 private:
@@ -202,10 +238,14 @@ private:
 
     // Snapshot of all the values recorded so far. Walks through every thread
     // that ever recorded into this Histogram.
-    value_type get_value() const { return _combiner->combine_agents(); }
+    value_type get_value() const;
 
     BucketSchema _schema;
+#if WITH_BABYLON_COUNTER
+    shared_combiner_type _storage;
+#else
     shared_combiner_type _combiner;
+#endif // WITH_BABYLON_COUNTER
     sampler_type* _sampler;
 };
 
@@ -219,6 +259,101 @@ namespace detail {
 template <>
 struct HasPlottableSeries<Histogram::Value> : butil::false_type {};
 
+#if WITH_BABYLON_COUNTER
+
+// One thread's slice of a Histogram.
+//
+// Only the thread owning the slot writes it, so the counters are updated with
+// a relaxed load plus a relaxed store rather than an atomic read-modify-write.
+// They are atomic all the same because the sampling thread reads them while
+// they are being written, which the seqlock allows but does not by itself make
+// race free. The seqlock is what keeps the buckets, the sum and the count of one
+// slot mutually consistent.
+class HistogramSlot {
+public:
+    HistogramSlot() {
+        for (size_t i = 0; i < MAX_HISTOGRAM_BUCKETS; ++i) {
+            _counts[i].store(0, butil::memory_order_relaxed);
+        }
+    }
+
+    DISALLOW_COPY_AND_ASSIGN(HistogramSlot);
+
+    void add(size_t bucket_index, double value) {
+        _seqlock.store([&] {
+            relaxed_add(&_counts[bucket_index], (uint64_t)1);
+            relaxed_add(&_sum, value);
+            relaxed_add(&_num, (int64_t)1);
+        });
+    }
+
+    Histogram::Value load(size_t num_buckets) const {
+        return _seqlock.load([&] {
+            Histogram::Value v(num_buckets);
+            for (size_t i = 0; i < num_buckets; ++i) {
+                v.counts[i] = _counts[i].load(butil::memory_order_relaxed);
+            }
+            v.sum = _sum.load(butil::memory_order_relaxed);
+            v.num = _num.load(butil::memory_order_relaxed);
+            return v;
+        });
+    }
+
+private:
+    template <typename T, typename U>
+    static void relaxed_add(butil::atomic<T>* target, U delta) {
+        target->store(target->load(butil::memory_order_relaxed) + delta,
+                      butil::memory_order_relaxed);
+    }
+
+    butil::Seqlock<> _seqlock;
+    butil::atomic<uint64_t> _counts[MAX_HISTOGRAM_BUCKETS];
+    butil::atomic<double> _sum{0.0};
+    butil::atomic<int64_t> _num{0};
+};
+
+// The per thread slices of one Histogram and their aggregation.
+//
+// babylon's EnumerableThreadLocal hands out one slot per thread and walks every
+// slot any thread ever took, which is how a thread that has exited keeps
+// contributing what it recorded, the way AgentCombiner commits a dying agent
+// into its global result. babylon recycles the thread id of an exited thread,
+// so a later thread inherits the slot and accumulates on top of it: correct
+// here because a Histogram only ever adds to its buckets and never clears one.
+class HistogramStorage {
+public:
+    explicit HistogramStorage(size_t num_buckets) : _num_buckets(num_buckets) {}
+
+    DISALLOW_COPY_AND_ASSIGN(HistogramStorage);
+
+    // Records one value into the slot of the calling thread.
+    void add(size_t bucket_index, double value) {
+        _slots.local().add(bucket_index, value);
+    }
+
+    // [Threadsafe] Everything recorded so far by every thread that ever
+    // recorded into this Histogram. Named after AgentCombiner::combine_agents()
+    // so that detail::CombinerSampleSource fits either backend.
+    Histogram::Value combine_agents() const {
+        Histogram::Value result(_num_buckets);
+        _slots.for_each([&](const HistogramSlot* iter, const HistogramSlot* end) {
+            for (; iter != end; ++iter) {
+                result += iter->load(_num_buckets);
+            }
+        });
+        return result;
+    }
+
+private:
+    // Leaky: the id allocator behind the thread ids is never destroyed, which
+    // is what a Histogram of static storage duration needs. The thread ids
+    // themselves are still recycled when a thread exits.
+    babylon::EnumerableThreadLocal<HistogramSlot, true> _slots;
+    size_t _num_buckets;
+};
+
+#else
+
 // The op of the writing path takes a recorded value rather than another
 // Histogram::Value, and needs the schema to find its bucket.
 struct AddSampleToHistogram {
@@ -230,6 +365,8 @@ struct AddSampleToHistogram {
 
     const Histogram::BucketSchema* schema;
 };
+
+#endif // WITH_BABYLON_COUNTER
 
 }  // namespace detail
 
