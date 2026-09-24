@@ -1,5 +1,7 @@
 # FlatBuffers messages
 
+[中文版](../cn/flatbuffers.md)
+
 bRPC provides optional IOBuf-backed FlatBuffers messages, builders, and service
 descriptors. The message-construction approach builds on
 [apache/brpc#3196](https://github.com/apache/brpc/pull/3196).
