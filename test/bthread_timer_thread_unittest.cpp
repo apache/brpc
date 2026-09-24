@@ -102,6 +102,9 @@ public:
         ASSERT_TRUE(!_run_times.empty());
         long diff = timespec_diff_us(_run_times[0], expect_run_time);
         EXPECT_GE(diff, 0);
+        // Keep a generous bound to catch a stalled timer without depending on
+        // narrow scheduler-latency assumptions.
+        EXPECT_LT(diff, 10000000L);
     }
     
     void expect_not_run() {
@@ -141,22 +144,22 @@ TEST(TimerThreadTest, RunTasks) {
     bthread::TimerThread timer_thread;
     ASSERT_EQ(0, timer_thread.start(nullptr));
 
-    timespec _2s_later = butil::milliseconds_from_now(20);
-    TimeKeeper keeper1(_2s_later, "keeper1");
+    timespec time_20ms_later = butil::milliseconds_from_now(20);
+    TimeKeeper keeper1(time_20ms_later, "keeper1");
     keeper1.schedule(&timer_thread);
 
-    TimeKeeper keeper2(butil::seconds_from_now(3600), "keeper2");
+    timespec time_1h_later = butil::seconds_from_now(3600);
+    TimeKeeper keeper2(time_1h_later, "keeper2");
     keeper2.schedule(&timer_thread);
     
-    timespec _1s_later = butil::milliseconds_from_now(10);
-    TimeKeeper keeper3(_1s_later, "keeper3");
+    timespec time_10ms_later = butil::milliseconds_from_now(10);
+    TimeKeeper keeper3(time_10ms_later, "keeper3");
     keeper3.schedule(&timer_thread);
 
-    timespec _10s_later = butil::seconds_from_now(3600);
-    TimeKeeper keeper4(_10s_later, "keeper4");
+    TimeKeeper keeper4(time_1h_later, "keeper4");
     keeper4.schedule(&timer_thread);
 
-    TimeKeeper keeper5(_10s_later, "keeper5");
+    TimeKeeper keeper5(time_1h_later, "keeper5");
     keeper5.schedule(&timer_thread);
     
     ASSERT_EQ(0, timer_thread.unschedule(keeper2._task_id));
@@ -176,7 +179,7 @@ TEST(TimerThreadTest, RunTasks) {
     timer_thread.stop_and_join();
     tm.stop();
     // stop_and_join() should wake the timer thread instead of waiting for the
-    // tasks scheduled 10 seconds later. Allow for CI runner scheduling delays.
+    // tasks scheduled an hour later. Allow for CI runner scheduling delays.
     ASSERT_LT(tm.m_elapsed(), 10000);
 
     // verify all runs in expected time range.

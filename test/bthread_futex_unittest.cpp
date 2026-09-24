@@ -115,54 +115,89 @@ TEST(FutexTest, futex_wake_before_wait) {
     ASSERT_EQ(ETIMEDOUT, errno);
 }
 
-void* dummy_waiter(void* lock) {
+struct DummyWaiterArg {
+    butil::atomic<int>* lock;
+    butil::atomic<int>* registered;
+    butil::atomic<bool>* cleaning_up;
+};
+
+void* dummy_waiter(void* void_arg) {
+    DummyWaiterArg* arg = static_cast<DummyWaiterArg*>(void_arg);
     timespec timeout = butil::seconds_to_timespec(10);
+    // Publish readiness before entering the wait so the controller does not
+    // start measuring wakeups while threads are still being created.
+    arg->registered->fetch_add(1, butil::memory_order_release);
     int rc;
     do {
-        rc = bthread::futex_wait_private(lock, 0, &timeout);
+        rc = bthread::futex_wait_private(arg->lock, 0, &timeout);
     } while (rc != 0 && errno == EINTR);
+    if (arg->cleaning_up->load(butil::memory_order_acquire) &&
+        rc == -1 && errno == EWOULDBLOCK) {
+        return nullptr;
+    }
     EXPECT_EQ(0, rc);
     return nullptr;
 }
 
 TEST(FutexTest, futex_wake_many_waiters_perf) {
-    
     butil::atomic<int> lock1(0);
+    butil::atomic<int> registered(0);
+    butil::atomic<bool> cleaning_up(false);
+    DummyWaiterArg arg = { &lock1, &registered, &cleaning_up };
     std::vector<pthread_t> threads;
     for (size_t i = 0; i < 1000; ++i) {
         pthread_t th;
-        if (pthread_create(&th, nullptr, dummy_waiter, &lock1) != 0) {
+        if (pthread_create(&th, nullptr, dummy_waiter, &arg) != 0) {
             break;
         }
         threads.push_back(th);
     }
     ASSERT_FALSE(threads.empty());
     size_t N = threads.size();
+    const int64_t registration_deadline =
+        butil::cpuwide_time_us() + 10000000L;
+    while (registered.load(butil::memory_order_acquire) !=
+               static_cast<int>(N) &&
+           butil::cpuwide_time_us() < registration_deadline) {
+        usleep(1000);
+    }
+    const bool all_registered =
+        registered.load(butil::memory_order_acquire) == static_cast<int>(N);
+
     int nwakeup = 0;
     int64_t wake_ns = 0;
-    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    const int64_t wake_deadline = butil::cpuwide_time_us() + 10000000L;
     butil::Timer tm;
-    while (static_cast<size_t>(nwakeup) < N &&
-           butil::cpuwide_time_us() < deadline) {
-        tm.start();
-        int rc = bthread::futex_wake_private(&lock1, 1);
-        tm.stop();
-        EXPECT_GE(rc, 0);
-        if (rc > 0) {
-            nwakeup += rc;
-            wake_ns += tm.n_elapsed();
-        } else {
-            usleep(1000);
+    if (all_registered) {
+        while (static_cast<size_t>(nwakeup) < N &&
+               butil::cpuwide_time_us() < wake_deadline) {
+            tm.start();
+            int rc = bthread::futex_wake_private(&lock1, 1);
+            tm.stop();
+            EXPECT_GE(rc, 0);
+            if (rc > 0) {
+                nwakeup += rc;
+                wake_ns += tm.n_elapsed();
+            } else {
+                usleep(1000);
+            }
         }
     }
-    // Also release late waiters on failure; a wake alone is not persistent.
+    // Also release waiters if a wake assertion fails; a wake alone is not
+    // persistent, and a worker that races with this store gets EWOULDBLOCK.
+    cleaning_up.store(true, butil::memory_order_release);
     lock1.store(1);
     bthread::futex_wake_private(&lock1, INT_MAX);
     for (pthread_t th : threads) {
         EXPECT_EQ(0, pthread_join(th, nullptr));
     }
-    ASSERT_EQ(N, static_cast<size_t>(nwakeup));
-    printf("N=%lu, futex_wake a thread = %" PRId64 "ns\n", N, wake_ns / N);
+    EXPECT_TRUE(all_registered)
+        << "Timed out waiting for all futex waiters to register";
+    EXPECT_EQ(N, static_cast<size_t>(nwakeup));
+    if (nwakeup != 0) {
+        printf("N=%lu, futex_wake a thread = %" PRId64 "ns\n", N,
+               wake_ns / nwakeup);
+    }
 
     size_t REP = 10000;
     nwakeup = 0;

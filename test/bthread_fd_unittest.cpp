@@ -677,7 +677,9 @@ TEST(FDTest, connect_timeout_with_full_accept_queue) {
         reinterpret_cast<sockaddr*>(&address), length, &deadline);
     int error = errno;
     ASSERT_EQ(-1, rc);
-    ASSERT_EQ(ETIMEDOUT, error);
+    // tcp_abort_on_overflow may turn an accept-queue overflow into an RST.
+    ASSERT_TRUE(error == ETIMEDOUT || error == ECONNREFUSED)
+        << "errno=" << error;
     EXPECT_TRUE(butil::is_blocking(client));
 }
 #endif
