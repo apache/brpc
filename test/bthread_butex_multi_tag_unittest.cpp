@@ -181,6 +181,8 @@ TEST(BthreadButexMultiTest, butex_requeue) {
     attr2.tag = 2;
     bthread_start_background(&tid2, &attr2, butex_requeue_func2, &args);
     ack.wait();
+    ASSERT_NO_FATAL_FAILURE(WaitForWaiter(tid1));
+    ASSERT_NO_FATAL_FAILURE(WaitForWaiter(tid2));
     {
         std::unique_lock<bthread::Mutex> lk(mutex);
         cond.notify_all();
