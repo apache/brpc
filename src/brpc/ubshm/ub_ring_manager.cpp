@@ -15,10 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <new>
 #include <gflags/gflags.h>
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "butil/logging.h"
+#include "butil/scoped_lock.h"
 
 namespace brpc {
 namespace ubring {
@@ -41,11 +43,11 @@ uint64_t g_ub_event_cnt = 0;
 uint64_t g_ubr_listener_num = 0;
 
 RETURN_CODE UBRingManager::GetUbrDealMsgMaxCnt(const uint32_t capacity, uint32_t *deal_msg_max_cnt) {
-    if (UNLIKELY(deal_msg_max_cnt == nullptr)) {
+    if (BAIDU_UNLIKELY(deal_msg_max_cnt == nullptr)) {
         LOG(ERROR) << "Get update factor failed, deal_msg_max_cnt is null.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(FLAGS_tail_update_after_read == 0)) {
+    if (BAIDU_UNLIKELY(FLAGS_tail_update_after_read == 0)) {
         LOG(ERROR) << "Get update factor failed, factor is 0.";
         return UBRING_ERR;
     }
@@ -66,7 +68,7 @@ RETURN_CODE UBRingManager::UbrMgrDefault()
 
 RETURN_CODE UBRingManager::UbrMgrInit() {
     RETURN_CODE rc = UbrMgrDefault();
-    if (UNLIKELY(rc != UBRING_OK)) {
+    if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Ubr manager set default values failed.";
         return rc;
     }
@@ -79,7 +81,7 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
     g_ubr_mgr.trx_mgr_unit_id = (uint64_t *)malloc(trx_mgr_id_size);
     size_t trx_mgr_ctl_size = g_ubr_mgr.trx_cap * sizeof(UbrCleanupCtl *);
     g_ubr_mgr.trx_mgr_unit_ctl = (UbrCleanupCtl **)malloc(trx_mgr_ctl_size);
-    if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr ||
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_status == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_id == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_ctl == nullptr)) {
@@ -105,7 +107,7 @@ void UBRingManager::UbrMgrFini() {
     while (busy) {
         busy = false;
         {
-            LOCK_GUARD(g_ubr_trx_mgr_mtx);
+            BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
             if (g_ubr_mgr.trx_mgr_unit_ctl != nullptr) {
                 for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
                     UbrCleanupCtl* ctl = g_ubr_mgr.trx_mgr_unit_ctl[i];
@@ -127,7 +129,7 @@ void UBRingManager::UbrMgrFini() {
         }
     }
     {
-        LOCK_GUARD(g_ubr_trx_mgr_mtx);
+        BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
         if (g_ubr_mgr.trx_mgr_unit_ctl != nullptr) {
             for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
                 UbrCleanupCtl* ctl = g_ubr_mgr.trx_mgr_unit_ctl[i];
@@ -143,7 +145,7 @@ void UBRingManager::UbrMgrFini() {
         FREE_PTR(g_ubr_mgr.trx_mgr_unit_ctl);
     }
     {
-        LOCK_GUARD(g_ubr_listener_mgr_mtx);
+        BAIDU_SCOPED_LOCK(g_ubr_listener_mgr_mtx);
     }
     g_ubr_mgr.trx_num = 0;
     g_ubr_mgr.trx_cap = 0;
@@ -151,17 +153,17 @@ void UBRingManager::UbrMgrFini() {
 }
 
 RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
-    if (UNLIKELY(trx == nullptr)) {
+    if (BAIDU_UNLIKELY(trx == nullptr)) {
         LOG(ERROR) << "Acquire trx failed, trx is null.";
         return UBRING_ERR;
     }
 
-    if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Acquire trx failed, trx_mgr is null.";
         return UBRING_ERR;
     }
 
-    LOCK_GUARD(g_ubr_trx_mgr_mtx);
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
     if (g_ubr_mgr.trx_num >= g_ubr_mgr.trx_cap) {
         LOG(ERROR) << "Acquire trx failed, trx number is full.";
         return UBRING_ERR;
@@ -169,9 +171,12 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
 
     for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
         if (g_ubr_mgr.trx_mgr_unit_status[i] == UBR_MGR_UNIT_FREE) {
-            memset(&g_ubr_mgr.trx_mgr[i], 0, sizeof(UbrTrx));
-            // The explicit re-initialization after memset is deliberate: it
-            // documents the per-acquisition invariants of these fields.
+            // Value-initialize the slot so its butil::atomic members are
+            // properly constructed while every other field is zeroed, which
+            // is what the previous memset did.
+            new (&g_ubr_mgr.trx_mgr[i]) UbrTrx();
+            // The explicit re-initialization is deliberate: it documents the
+            // per-acquisition invariants of these fields.
             g_ubr_mgr.trx_mgr[i].close_timer = nullptr;
             g_ubr_mgr.trx_mgr[i].hb_timer = nullptr;
             g_ubr_mgr.trx_mgr[i].cleanup_ctl = nullptr;
@@ -202,23 +207,23 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
 
 RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx,
                                                 uint64_t expect_ubr_id) {
-    if (UNLIKELY(trx == nullptr)) {
+    if (BAIDU_UNLIKELY(trx == nullptr)) {
         LOG(ERROR) << "Release trx failed, trx is null.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Release trx failed, trx_mgr is null.";
         return UBRING_ERR;
     }
 
-    LOCK_GUARD(g_ubr_trx_mgr_mtx);
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
     uint32_t idx = trx->trx_mgr_index;
     if (g_ubr_mgr.trx_mgr_unit_status[idx] == UBR_MGR_UNIT_FREE) {
         LOG(INFO) << "Release trx already freed, name=" << trx->local_shm.name;
         return UBRING_OK;
     }
 
-    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_id[idx] != expect_ubr_id)) {
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr_unit_id[idx] != expect_ubr_id)) {
         // The slot was released and acquired again meanwhile; the stale
         // caller must not touch the new occupant.
         LOG(WARNING) << "Release stale trx refused, name=" << trx->local_shm.name;
@@ -242,8 +247,8 @@ RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx,
 }
 
 UbrCleanupCtl* UBRingManager::SnapshotUnitCleanupCtl(uint32_t idx) {
-    LOCK_GUARD(g_ubr_trx_mgr_mtx);
-    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr || idx >= g_ubr_mgr.trx_cap)) {
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr || idx >= g_ubr_mgr.trx_cap)) {
         return nullptr;
     }
     UbrCleanupCtl* ctl = g_ubr_mgr.trx_mgr_unit_ctl[idx];
@@ -254,8 +259,8 @@ UbrCleanupCtl* UBRingManager::SnapshotUnitCleanupCtl(uint32_t idx) {
 }
 
 bool UBRingManager::IsUbrTrxSlotUsed(uint32_t idx, uint64_t expect_ubr_id) {
-    LOCK_GUARD(g_ubr_trx_mgr_mtx);
-    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_id == nullptr ||
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr_unit_id == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_status == nullptr ||
                  idx >= g_ubr_mgr.trx_cap)) {
         return false;
@@ -267,8 +272,8 @@ bool UBRingManager::IsUbrTrxSlotUsed(uint32_t idx, uint64_t expect_ubr_id) {
 bool UBRingManager::TryPublishUnitCleanupCtl(uint32_t idx,
                                              uint64_t expect_ubr_id,
                                              UbrCleanupCtl *ctl) {
-    LOCK_GUARD(g_ubr_trx_mgr_mtx);
-    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_status == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_id == nullptr ||
                  idx >= g_ubr_mgr.trx_cap ||
@@ -283,8 +288,8 @@ bool UBRingManager::TryPublishUnitCleanupCtl(uint32_t idx,
 }
 
 bool UBRingManager::DetachUnitCleanupCtl(uint32_t idx, UbrCleanupCtl *ctl) {
-    LOCK_GUARD(g_ubr_trx_mgr_mtx);
-    if (UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
                  idx >= g_ubr_mgr.trx_cap ||
                  g_ubr_mgr.trx_mgr_unit_ctl[idx] != ctl)) {
         return false;
@@ -320,7 +325,7 @@ void UBRingManager::LinkInfoFini(void) {
         return;
     }
     {
-        LOCK_GUARD(g_link_info_mgr_mtx);
+        BAIDU_SCOPED_LOCK(g_link_info_mgr_mtx);
         FREE_PTR(g_link_info_mgr.all_link_info);
         FREE_PTR(g_link_info_mgr.link_mgr_unit_status);
     }
@@ -366,11 +371,11 @@ void UBRingManager::ReleaseLinkInfoFromMgr(UbrTrx *trx) {
 
 int32_t UBRingManager::UbEventCallback(const char *shm_name)
 {
-    if (UNLIKELY(shm_name == nullptr)) {
+    if (BAIDU_UNLIKELY(shm_name == nullptr)) {
         LOG(ERROR) << "Ub event callback failed, shm name is null.";
         return UBRING_ERR;
     }
-    if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Ub event callback failed, trx mgr is null.";
         return UBRING_ERR;
     }

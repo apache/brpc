@@ -24,9 +24,6 @@
 #include "butil/compiler_specific.h"
 #include "butil/logging.h"
 
-#define LIKELY(x) BAIDU_LIKELY(x)
-#define UNLIKELY(x) BAIDU_UNLIKELY(x)
-
 #ifndef UNREFERENCE_PARAM
 #define UNREFERENCE_PARAM(x) ((void)(x))
 #endif
@@ -42,11 +39,11 @@
 #endif
 
 #ifdef __cplusplus
-#include <atomic>
-using AtomicInt = std::atomic<int>;
-using AtomicBool = std::atomic<bool>;
-using AtomicUintFast64 = std::atomic<uint_fast64_t>;
-using AtomicUintFast8 = std::atomic<uint_fast8_t>;
+#include "butil/atomicops.h"
+using AtomicInt = butil::atomic<int>;
+using AtomicBool = butil::atomic<bool>;
+using AtomicUintFast64 = butil::atomic<uint_fast64_t>;
+using AtomicUintFast8 = butil::atomic<uint_fast8_t>;
 #define ATOMIC_INIT(var, value) var.store(value)
 #define ATOMIC_STORE(var, value) var.store(value)
 #define ATOMIC_LOAD(var) var.load()

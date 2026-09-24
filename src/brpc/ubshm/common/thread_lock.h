@@ -30,7 +30,7 @@ extern "C" {
 
 static inline void UnlockMutex(pthread_mutex_t **mtx)
 {
-    if (LIKELY(mtx != nullptr && *mtx != nullptr)) {
+    if (BAIDU_LIKELY(mtx != nullptr && *mtx != nullptr)) {
         pthread_mutex_unlock(*mtx);
     } else {
         LOG(ERROR) << "Invalid input for mtx.";

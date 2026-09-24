@@ -234,7 +234,7 @@ private:
     struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {
         PollerGroup() : pollers(FLAGS_ub_poller_num), running(false) {}
         std::vector<Poller> pollers;
-        std::atomic<bool> running;
+        butil::atomic<bool> running;
     };
     static std::vector<PollerGroup> _poller_groups;
 

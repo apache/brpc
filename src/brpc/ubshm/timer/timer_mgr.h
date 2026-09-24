@@ -39,8 +39,10 @@ typedef uint64_t (*UbrTimerBackoffFn)(void* arg, uint64_t cur_interval_us);
 // re-arm itself after every run until deleted. One-shot timers release
 // their handle slot before running the callback, so the callback may free
 // the object that stores the slot; the task object itself is released
-// automatically.
-RETURN_CODE UbrTimerStart(UbrTimerId* slot, uint64_t delay_us,
+// automatically. `slot' must point to a real butil::atomic<UbrTimerId>
+// object, so start and delete can race on one RMW without reinterpreting
+// plain storage as an atomic.
+RETURN_CODE UbrTimerStart(butil::atomic<UbrTimerId>* slot, uint64_t delay_us,
                           uint64_t interval_us, void* (*cb)(void*),
                           void* arg,
                           UbrTimerBackoffFn backoff = nullptr);
@@ -59,7 +61,7 @@ RETURN_CODE UbrTimerStart(UbrTimerId* slot, uint64_t delay_us,
 // Returns 1 when this caller did not acquire timer ownership. The callback,
 // another deleter, or the scheduling path is responsible for settling the
 // timer resources, so this caller must not reclaim them.
-int UbrTimerDel(UbrTimerId* slot);
+int UbrTimerDel(butil::atomic<UbrTimerId>* slot);
 
 // Delete and wait until a possibly running callback finished, so the
 // caller can free resources reachable from `arg'. Never call this on the
@@ -68,7 +70,7 @@ int UbrTimerDel(UbrTimerId* slot);
 // 1) and cannot be waited for through the slot. The wait polls with
 // bthread_usleep, which degrades to ::usleep on plain pthread callers
 // (e.g. process-exit paths).
-void UbrTimerDelAndWait(UbrTimerId* slot);
+void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot);
 
 }  // namespace ubring
 }  // namespace brpc

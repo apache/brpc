@@ -144,7 +144,7 @@ struct UbrCleanupCtl {
     TagUbrTrx* trx;                              // immutable
     uint64_t ubr_id;                             // immutable generation
     AtomicInt state;                             // UbrCleanupState
-    UbrTimerId timer;                            // delayed clear timer
+    butil::atomic<UbrTimerId> timer;             // delayed clear timer
     // References: timer/callback (held from a successful schedule until
     // the callback fully returned, or released by whoever cancels the
     // timer before it fires) + starter (until the schedule call
@@ -167,9 +167,9 @@ typedef struct TagUbrTrx {
     UbrTrxType type;
     SHM local_shm;
     SHM remote_shm;
-    UbrTimerId close_timer;
-    UbrTimerId hb_timer;
-    UbrCleanupCtl* cleanup_ctl;
+    butil::atomic<UbrTimerId> close_timer;
+    butil::atomic<UbrTimerId> hb_timer;
+    butil::atomic<UbrCleanupCtl*> cleanup_ctl;
     // Last io ids seen by the close-check timer, used to reset its
     // back-off polling interval when the link has traffic.
     uint64_t close_chk_in_io_id;
