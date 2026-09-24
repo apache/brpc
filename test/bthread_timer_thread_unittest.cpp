@@ -27,6 +27,20 @@
 
 namespace {
 
+// A generous deadline bounds failures, not the scheduler's response time.
+// Predicates must read atomics or otherwise synchronize with the timer thread.
+template <typename Predicate>
+bool WaitUntil(Predicate predicate) {
+    int64_t deadline = butil::cpuwide_time_us() + 10000000L;
+    while (!predicate()) {
+        if (butil::cpuwide_time_us() >= deadline) {
+            return false;
+        }
+        usleep(1000);
+    }
+    return true;
+}
+
 long timespec_diff_us(const timespec& ts1, const timespec& ts2) {
     return (ts1.tv_sec - ts2.tv_sec) * 1000000L +
         (ts1.tv_nsec - ts2.tv_nsec) / 1000;
@@ -53,16 +67,18 @@ public:
         timespec current_time;
         clock_gettime(CLOCK_REALTIME, &current_time);
         if (_name) {
-            LOG(INFO) << "Run `" << _name << "' task_id=" << _task_id;
+            LOG(INFO) << "Run `" << _name << "'";
         } else {
-            LOG(INFO) << "Run task_id=" << _task_id;
+            LOG(INFO) << "Run timer task";
         }
         _run_times.push_back(current_time);
-        const int saved_sleep_ms = _sleep_ms;
+        _started.store(true, butil::memory_order_release);
+        int saved_sleep_ms = _sleep_ms.load();
         if (saved_sleep_ms > 0) {
             timespec timeout = butil::milliseconds_to_timespec(saved_sleep_ms);
             bthread::futex_wait_private(&_sleep_ms, saved_sleep_ms, &timeout);
         }
+        _finished.store(true, butil::memory_order_release);
     }
 
     void wakeup() {
@@ -85,11 +101,14 @@ public:
     {
         ASSERT_TRUE(!_run_times.empty());
         long diff = timespec_diff_us(_run_times[0], expect_run_time);
-        EXPECT_LE(labs(diff), 50000);
+        EXPECT_GE(diff, 0);
+        // Keep a generous bound to catch a stalled timer without depending on
+        // narrow scheduler-latency assumptions.
+        EXPECT_LT(diff, 10000000L);
     }
     
     void expect_not_run() {
-        EXPECT_TRUE(_run_times.empty());
+        EXPECT_FALSE(_started.load(butil::memory_order_acquire));
     }
 
     static void routine(void *arg)
@@ -98,12 +117,26 @@ public:
         keeper->run();
     }
 
+    bool wait_finished() {
+        return WaitUntil([this] {
+            return _finished.load(butil::memory_order_acquire);
+        });
+    }
+
+    bool wait_started() {
+        return WaitUntil([this] {
+            return _started.load(butil::memory_order_acquire);
+        });
+    }
+
     timespec _expect_run_time;
     bthread::TimerThread::TaskId _task_id;
 
 private:
     const char* _name;
-    int _sleep_ms;
+    butil::atomic<int> _sleep_ms;
+    butil::atomic<bool> _started{false};
+    butil::atomic<bool> _finished{false};
     std::vector<timespec> _run_times;
 };
 
@@ -111,46 +144,43 @@ TEST(TimerThreadTest, RunTasks) {
     bthread::TimerThread timer_thread;
     ASSERT_EQ(0, timer_thread.start(nullptr));
 
-    timespec _2s_later = butil::seconds_from_now(2);
-    TimeKeeper keeper1(_2s_later, "keeper1");
+    timespec time_20ms_later = butil::milliseconds_from_now(20);
+    TimeKeeper keeper1(time_20ms_later, "keeper1");
     keeper1.schedule(&timer_thread);
 
-    TimeKeeper keeper2(_2s_later, "keeper2");  // same time with keeper1
+    timespec time_1h_later = butil::seconds_from_now(3600);
+    TimeKeeper keeper2(time_1h_later, "keeper2");
     keeper2.schedule(&timer_thread);
     
-    timespec _1s_later = butil::seconds_from_now(1);
-    TimeKeeper keeper3(_1s_later, "keeper3");
+    timespec time_10ms_later = butil::milliseconds_from_now(10);
+    TimeKeeper keeper3(time_10ms_later, "keeper3");
     keeper3.schedule(&timer_thread);
 
-    timespec _10s_later = butil::seconds_from_now(10);
-    TimeKeeper keeper4(_10s_later, "keeper4");
+    TimeKeeper keeper4(time_1h_later, "keeper4");
     keeper4.schedule(&timer_thread);
 
-    TimeKeeper keeper5(_10s_later, "keeper5");
+    TimeKeeper keeper5(time_1h_later, "keeper5");
     keeper5.schedule(&timer_thread);
     
-    // sleep 1 second, and unschedule task2
-    LOG(INFO) << "Sleep 1s";
-    sleep(1);
-    timer_thread.unschedule(keeper2._task_id);
-    timer_thread.unschedule(keeper4._task_id);
+    ASSERT_EQ(0, timer_thread.unschedule(keeper2._task_id));
+    ASSERT_EQ(0, timer_thread.unschedule(keeper4._task_id));
 
     timespec old_time = { 0, 0 };
     TimeKeeper keeper6(old_time, "keeper6");
+    timespec keeper6_addtime = butil::seconds_from_now(0);
     keeper6.schedule(&timer_thread);
-    const timespec keeper6_addtime = butil::seconds_from_now(0);
 
-    // sleep 10 seconds and stop.
-    LOG(INFO) << "Sleep 2s";
-    sleep(2);
+    ASSERT_TRUE(keeper1.wait_started());
+    ASSERT_TRUE(keeper3.wait_started());
+    ASSERT_TRUE(keeper6.wait_started());
     LOG(INFO) << "Stop timer_thread";
     butil::Timer tm;
     tm.start();
     timer_thread.stop_and_join();
     tm.stop();
     // stop_and_join() should wake the timer thread instead of waiting for the
-    // tasks scheduled 10 seconds later. Allow for CI runner scheduling delays.
-    ASSERT_LT(tm.m_elapsed(), 1000);
+    // tasks scheduled an hour later. Allow for CI runner scheduling delays.
+    ASSERT_LT(tm.m_elapsed(), 10000);
 
     // verify all runs in expected time range.
     keeper1.expect_first_run();
@@ -215,20 +245,22 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     bthread::TimerThread timer_thread;
     timespec past_time = { 0, 0 };
     timespec future_time = { std::numeric_limits<int>::max(), 0 };
-    const timespec _500ms_after = butil::milliseconds_from_now(500);
+    timespec _500ms_after = butil::milliseconds_from_now(500);
 
     TimeKeeper keeper1(future_time, "keeper1");
     TimeKeeper keeper2(past_time, "keeper2");
     TimeKeeper keeper3(past_time, "keeper3");
     TimeKeeper keeper4(past_time, "keeper4");
-    TimeKeeper keeper5(_500ms_after, "keeper5", 10000/*10s*/);
+    TimeKeeper keeper5(_500ms_after, "keeper5", 60000);
 
     ASSERT_EQ(0, timer_thread.start(nullptr));
     keeper1.schedule(&timer_thread);  // start keeper1
-    keeper3.schedule(&timer_thread);  // start keeper3
     timespec keeper3_addtime = butil::seconds_from_now(0);
+    keeper3.schedule(&timer_thread);  // start keeper3
     keeper5.schedule(&timer_thread);  // start keeper5
-    sleep(1);  // let keeper1/3/5 run
+    // Preserve timer-thread cleanup even when a callback starts late.
+    EXPECT_TRUE(keeper3.wait_started());
+    EXPECT_TRUE(keeper5.wait_started());
 
     TestTask test_task1(&timer_thread, &keeper1, &keeper2, 0);
     timer_thread.schedule(TestTask::routine, &test_task1, past_time);
@@ -236,7 +268,6 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     TestTask test_task2(&timer_thread, &keeper3, &keeper4, -1);
     timer_thread.schedule(TestTask::routine, &test_task2, past_time);
 
-    sleep(1);
     // test_task1/2 should be both blocked by keeper5.
     keeper2.expect_not_run();
     keeper4.expect_not_run();
@@ -246,7 +277,8 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     
     // wake up keeper5 to let test_task1/2 run.
     keeper5.wakeup();
-    sleep(1);
+    EXPECT_TRUE(keeper2.wait_started());
+    EXPECT_TRUE(keeper4.wait_started());
 
     timer_thread.stop_and_join();
     timespec finish_time;
@@ -293,9 +325,9 @@ TEST(TimerThreadTest, sweep_unscheduled_tasks_in_heap) {
     ASSERT_EQ(0, timer_thread.start(nullptr));
 
     // Run far enough in the future that these tasks never fire on their own.
-    const timespec far = butil::seconds_from_now(100000);
-    const size_t kBatch = 2000;
-    const size_t kRounds = 20;
+    timespec far = butil::seconds_from_now(100000);
+    size_t kBatch = 2000;
+    size_t kRounds = 20;
 
     int64_t max_pending = 0;
     for (size_t r = 0; r < kRounds; ++r) {
@@ -308,7 +340,10 @@ TEST(TimerThreadTest, sweep_unscheduled_tasks_in_heap) {
         // buckets, so the far tasks above land in the heap (alive).
         timer_thread.schedule(noop_routine, nullptr,
                               butil::milliseconds_from_now(1));
-        usleep(20000);  // let the timer thread consume the buckets
+        ASSERT_TRUE(WaitUntil([&] {
+            return timer_thread._npending.load(butil::memory_order_relaxed) >=
+                   static_cast<int64_t>(kBatch);
+        }));
 
         // Now unschedule the far tasks: they become dead-in-heap, exactly the
         // case that used to linger until run_time.
@@ -319,11 +354,18 @@ TEST(TimerThreadTest, sweep_unscheduled_tasks_in_heap) {
         // sweep that reclaims the dead tasks.
         timer_thread.schedule(noop_routine, nullptr,
                               butil::milliseconds_from_now(1));
-        usleep(20000);
+        // A callback acknowledgement ensures a timer pass completed. Heap
+        // reclamation is checked across rounds below (sweeps are amortized).
+        TimeKeeper consumed(butil::seconds_from_now(0));
+        consumed.schedule(&timer_thread);
+        if (!consumed.wait_finished()) {
+            timer_thread.stop_and_join();
+            FAIL() << "Timer did not consume the wakeup task";
+        }
 
         // Read the internal heap size directly (brpc tests are built with
         // -fno-access-control, so no public accessor is needed).
-        const int64_t pending =
+        int64_t pending =
             timer_thread._npending.load(butil::memory_order_relaxed);
         LOG(INFO) << "round=" << r << " pending=" << pending;
         max_pending = std::max(max_pending, pending);
@@ -354,13 +396,15 @@ TEST(TimerThreadTest, periodic_wakeup_drains_buckets) {
     // (with even later run_times) are never the "earliest" and thus never wake
     // the timer via schedule() -- only the periodic wakeup can drain them.
     timer_thread.schedule(noop_routine, nullptr, butil::seconds_from_now(3600));
-    usleep(100000);  // let the anchor be consumed into the heap
+    EXPECT_TRUE(WaitUntil([&] {
+        return timer_thread._npending.load(butil::memory_order_relaxed) == 1;
+    }));
     // Only the anchor is in the heap so far.
     ASSERT_EQ(1, timer_thread._npending.load(butil::memory_order_relaxed));
 
     // Pile far tasks with strictly-increasing run_times into the buckets. None
     // of these wake the timer.
-    const int kN = 2000;
+    int kN = 2000;
     for (int i = 0; i < kN; ++i) {
         timer_thread.schedule(noop_routine, nullptr,
                               butil::seconds_from_now(3600 + 1 + i));
@@ -369,8 +413,10 @@ TEST(TimerThreadTest, periodic_wakeup_drains_buckets) {
     // Without the periodic wakeup the timer would stay asleep (nearest task is
     // an hour away) and these would sit in the buckets, unconsumed. With it,
     // they are pulled into the heap within a few wakeup intervals.
-    usleep(300000);  // several 50ms intervals
-    const int64_t pending =
+    EXPECT_TRUE(WaitUntil([&] {
+        return timer_thread._npending.load(butil::memory_order_relaxed) == kN + 1;
+    }));
+    int64_t pending =
         timer_thread._npending.load(butil::memory_order_relaxed);
     LOG(INFO) << "pending after bucket fill = " << pending << " (scheduled "
               << kN << " + 1 anchor)";

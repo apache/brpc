@@ -21,6 +21,8 @@
 #include "bthread/condition_variable.h"
 #include "bthread/countdown_event.h"
 #include "bthread/mutex.h"
+#include "bthread/task_group.h"
+#include "bthread/task_meta.h"
 
 DECLARE_int32(task_group_ntags);
 
@@ -33,7 +35,18 @@ int main(int argc, char* argv[]) {
 
 namespace {
 
-std::vector<bthread_tag_t> butex_wake_return(2, 0);
+// Observe registration, not just arrival immediately before a blocking call.
+void WaitForWaiter(bthread_t tid) {
+    auto* meta = bthread::TaskGroup::address_meta(tid);
+    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    while (meta->current_waiter.load(butil::memory_order_acquire) == nullptr &&
+           butil::cpuwide_time_us() < deadline) {
+        bthread_usleep(1000);
+    }
+    ASSERT_NE(nullptr, meta->current_waiter.load(butil::memory_order_acquire));
+}
+
+std::vector<bthread_tag_t> butex_wake_return;
 
 void* butex_wake_func(void* arg) {
     auto mutex = static_cast<bthread::Mutex*>(arg);
@@ -45,19 +58,23 @@ void* butex_wake_func(void* arg) {
 }
 
 TEST(BthreadButexMultiTest, butex_wake) {
+    butex_wake_return.clear();
     bthread::Mutex mutex;
     mutex.lock();
     bthread_t tid1;
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     attr.tag = 1;
-    bthread_start_urgent(&tid1, &attr, butex_wake_func, &mutex);
+    ASSERT_EQ(0, bthread_start_urgent(&tid1, &attr, butex_wake_func, &mutex));
+    ASSERT_NO_FATAL_FAILURE(WaitForWaiter(tid1));
     mutex.unlock();
     bthread_join(tid1, nullptr);
-    ASSERT_EQ(butex_wake_return[0], butex_wake_return[1]);
+    ASSERT_EQ(2ul, butex_wake_return.size());
+    ASSERT_EQ(1, butex_wake_return[0]);
+    ASSERT_EQ(1, butex_wake_return[1]);
 }
 
-std::vector<bthread_tag_t> butex_wake_all_return1(2, 0);
-std::vector<bthread_tag_t> butex_wake_all_return2(2, 0);
+std::vector<bthread_tag_t> butex_wake_all_return1;
+std::vector<bthread_tag_t> butex_wake_all_return2;
 
 struct ButexWakeAllArgs {
     bthread::CountdownEvent* ev;
@@ -87,6 +104,8 @@ void* butex_wake_all_func2(void* arg) {
 }
 
 TEST(BthreadButexMultiTest, butex_wake_all) {
+    butex_wake_all_return1.clear();
+    butex_wake_all_return2.clear();
     bthread::CountdownEvent ev(2);
     bthread::CountdownEvent ack(2);
     ButexWakeAllArgs args{&ev, &ack};
@@ -98,15 +117,21 @@ TEST(BthreadButexMultiTest, butex_wake_all) {
     attr2.tag = 2;
     bthread_start_background(&tid2, &attr2, butex_wake_all_func2, &args);
     ack.wait();
+    ASSERT_NO_FATAL_FAILURE(WaitForWaiter(tid1));
+    ASSERT_NO_FATAL_FAILURE(WaitForWaiter(tid2));
     ev.signal(2);
     bthread_join(tid1, nullptr);
     bthread_join(tid2, nullptr);
-    ASSERT_EQ(butex_wake_all_return1[0], butex_wake_all_return1[1]);
-    ASSERT_EQ(butex_wake_all_return2[0], butex_wake_all_return2[1]);
+    ASSERT_EQ(2ul, butex_wake_all_return1.size());
+    ASSERT_EQ(2ul, butex_wake_all_return2.size());
+    ASSERT_EQ(1, butex_wake_all_return1[0]);
+    ASSERT_EQ(1, butex_wake_all_return1[1]);
+    ASSERT_EQ(2, butex_wake_all_return2[0]);
+    ASSERT_EQ(2, butex_wake_all_return2[1]);
 }
 
-std::vector<bthread_tag_t> butex_requeue_return1(2, 0);
-std::vector<bthread_tag_t> butex_requeue_return2(2, 0);
+std::vector<bthread_tag_t> butex_requeue_return1;
+std::vector<bthread_tag_t> butex_requeue_return2;
 
 struct ButexRequeueArgs {
     bthread::Mutex* mutex;
@@ -119,11 +144,11 @@ void* butex_requeue_func1(void* arg) {
     auto mutex = p->mutex;
     auto cond = p->cond;
     auto ack = p->ack;
-    butex_wake_all_return1.push_back(bthread_self_tag());
+    butex_requeue_return1.push_back(bthread_self_tag());
     std::unique_lock<bthread::Mutex> lk(*mutex);
     ack->signal();
     cond->wait(lk);
-    butex_wake_all_return1.push_back(bthread_self_tag());
+    butex_requeue_return1.push_back(bthread_self_tag());
     return nullptr;
 }
 
@@ -132,15 +157,17 @@ void* butex_requeue_func2(void* arg) {
     auto mutex = p->mutex;
     auto cond = p->cond;
     auto ack = p->ack;
-    butex_wake_all_return2.push_back(bthread_self_tag());
+    butex_requeue_return2.push_back(bthread_self_tag());
     std::unique_lock<bthread::Mutex> lk(*mutex);
     ack->signal();
     cond->wait(lk);
-    butex_wake_all_return2.push_back(bthread_self_tag());
+    butex_requeue_return2.push_back(bthread_self_tag());
     return nullptr;
 }
 
 TEST(BthreadButexMultiTest, butex_requeue) {
+    butex_requeue_return1.clear();
+    butex_requeue_return2.clear();
     bthread::Mutex mutex;
     bthread::ConditionVariable cond;
     bthread::CountdownEvent ack(2);
@@ -154,6 +181,8 @@ TEST(BthreadButexMultiTest, butex_requeue) {
     attr2.tag = 2;
     bthread_start_background(&tid2, &attr2, butex_requeue_func2, &args);
     ack.wait();
+    ASSERT_NO_FATAL_FAILURE(WaitForWaiter(tid1));
+    ASSERT_NO_FATAL_FAILURE(WaitForWaiter(tid2));
     {
         std::unique_lock<bthread::Mutex> lk(mutex);
         cond.notify_all();
@@ -164,8 +193,12 @@ TEST(BthreadButexMultiTest, butex_requeue) {
     }
     bthread_join(tid1, nullptr);
     bthread_join(tid2, nullptr);
-    ASSERT_EQ(butex_wake_all_return1[0], butex_wake_all_return1[1]);
-    ASSERT_EQ(butex_wake_all_return2[0], butex_wake_all_return2[1]);
+    ASSERT_EQ(2ul, butex_requeue_return1.size());
+    ASSERT_EQ(2ul, butex_requeue_return2.size());
+    ASSERT_EQ(1, butex_requeue_return1[0]);
+    ASSERT_EQ(1, butex_requeue_return1[1]);
+    ASSERT_EQ(2, butex_requeue_return2[0]);
+    ASSERT_EQ(2, butex_requeue_return2[1]);
 }
 
 }  // namespace
