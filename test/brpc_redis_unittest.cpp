@@ -544,6 +544,82 @@ TEST_F(RedisTest, cmd_format) {
     request.AddCommand("  get   key'ext'   value  ");  // == get key ext value
     ASSERT_STREQ("*4\r\n$3\r\nget\r\n$3\r\nkey\r\n$3\r\next\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
     request.Clear();
+
+    // empty %b must still form a component (issue: empty arg was dropped)
+    {
+        std::string empty;
+        request.AddCommand("set key %b", empty.data(), empty.size());
+        ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                     request._buf.to_string().c_str());
+        request.Clear();
+    }
+    // empty %s must still form a component
+    {
+        std::string empty;
+        request.AddCommand("set key %s", empty.c_str());
+        ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                     request._buf.to_string().c_str());
+        request.Clear();
+    }
+    // %b with binary data containing \0
+    {
+        const char bin[] = {'a', '\0', 'b'};
+        request.AddCommand("set key %b", bin, (size_t)3);
+        ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$3\r\na\x00"
+                     "b\r\n",
+                     request._buf.to_string().c_str());
+        request.Clear();
+    }
+}
+
+// Format-only checks: do not need a running redis-server.
+TEST_F(RedisTest, empty_and_null_format_args) {
+    butil::IOBuf buf;
+    const std::string empty;
+
+    // empty %b still forms a component
+    ASSERT_TRUE(
+        brpc::RedisCommandFormat(&buf, "set key %b", empty.data(), empty.size())
+            .ok());
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                 buf.to_string().c_str());
+    buf.clear();
+
+    // empty %s still forms a component
+    ASSERT_TRUE(
+        brpc::RedisCommandFormat(&buf, "set key %s", empty.c_str()).ok());
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                 buf.to_string().c_str());
+    buf.clear();
+
+    // %b with NULL + size 0 is a valid empty arg (no deref)
+    ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "set key %b",
+                                         (const char*)nullptr, (size_t)0)
+                    .ok());
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                 buf.to_string().c_str());
+    buf.clear();
+
+    // %s with NULL must report an error instead of strlen(UB)/crash
+    ASSERT_FALSE(
+        brpc::RedisCommandFormat(&buf, "set key %s", (const char*)nullptr)
+            .ok());
+    buf.clear();
+
+    // %b with NULL + size>0 must report an error instead of append(UB)/crash
+    ASSERT_FALSE(brpc::RedisCommandFormat(&buf, "set key %b",
+                                          (const char*)nullptr, (size_t)3)
+                     .ok());
+    buf.clear();
+
+    // multiple consecutive empty args: no state crosstalk, exact count
+    ASSERT_TRUE(brpc::RedisCommandFormat(
+                    &buf, "mset %b %b %b", empty.data(), empty.size(),
+                    empty.data(), empty.size(), empty.data(), empty.size())
+                    .ok());
+    ASSERT_STREQ("*4\r\n$4\r\nmset\r\n$0\r\n\r\n$0\r\n\r\n$0\r\n\r\n",
+                 buf.to_string().c_str());
+    buf.clear();
 }
 
 TEST_F(RedisTest, quote_and_escape) {

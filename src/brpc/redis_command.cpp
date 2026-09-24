@@ -113,20 +113,25 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
     char quote_char = 0;
     const char* quote_pos = fmt;
     int nargs = 0;
+    // Set after consuming %s/%b so that an empty arg still forms a component
+    // (e.g. "set key %b" with an empty value must emit 3 components, not 2).
+    bool format_arg_in_comp = false;
     for (; *c; ++c) {
         if (*c != '%' || c[1] == '\0') {
             if (*c == ' ') {
                 if (quote_char) {
                     compbuf.push_back(*c);
-                } else if (!compbuf.empty()) {
+                } else if (!compbuf.empty() || format_arg_in_comp) {
                     FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                    format_arg_in_comp = false;
                 }
             } else if (*c == '"' || *c == '\'') {  // Check quotation.
                 if (!quote_char) {  // begin quote
                     quote_char = *c;
                     quote_pos = c;
-                    if (!compbuf.empty()) {
+                    if (!compbuf.empty() || format_arg_in_comp) {
                         FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                        format_arg_in_comp = false;
                     }
                 } else if (quote_char == *c) {
                     const char last_char = (compbuf.empty() ? 0 : compbuf.back());
@@ -139,6 +144,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                     } else { // end quote
                         quote_char = 0;
                         FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                        format_arg_in_comp = false;
                     }
                 } else {
                     compbuf.push_back(*c);
@@ -153,18 +159,30 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
             switch(c[1]) {
             case 's':
                 arg = va_arg(ap, char*);
+                // strlen(NULL) is UB; forbid it explicitly instead of crashing.
+                if (arg == nullptr) {
+                    return butil::Status(EINVAL, "%%s argument is NULL");
+                }
                 size = strlen(arg);
                 if (size > 0) {
                     compbuf.append(arg, size);
                 }
+                format_arg_in_comp = true;
                 ++nargs;
                 break;
             case 'b':
                 arg = va_arg(ap, char*);
                 size = va_arg(ap, size_t);
+                // append(NULL, n>0) is UB; size==0 with NULL is a valid empty.
+                if (arg == nullptr && size > 0) {
+                    return butil::Status(EINVAL,
+                                         "%%b argument is NULL with size=%lu",
+                                         (unsigned long)size);
+                }
                 if (size > 0) {
                     compbuf.append(arg, size);
                 }
+                format_arg_in_comp = true;
                 ++nargs;
                 break;
             case '%':
@@ -282,8 +300,9 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                              (int)ctx_size, ctx_begin, quote_pos - fmt);
     }
     
-    if (!compbuf.empty()) {
+    if (!compbuf.empty() || format_arg_in_comp) {
         FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+        format_arg_in_comp = false;
     }
 
     LOG_IF(ERROR, nargs == 0) << "You must call RedisCommandNoFormat() "
