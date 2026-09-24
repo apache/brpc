@@ -729,6 +729,10 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
         BT_LOOP_WHEN(task->current_waiter.exchange(
                          nullptr, butil::memory_order_acquire) == nullptr,
                      30/*nops before sched_yield*/);
+        // TaskGroup::interrupt() updates `interrupted` under `version_lock`.
+        // Keep the check, clear, and signal classification together so this
+        // epilogue neither races with nor consumes a concurrent interruption.
+        BAIDU_SCOPED_LOCK(task->version_lock);
         if (task->interrupted) {
             task->interrupted = false;
             // If interrupted after enqueueing but before futex_wait_private,
