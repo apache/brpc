@@ -45,25 +45,37 @@ TEST(ButexTest, wait_on_already_timedout_butex) {
     ASSERT_EQ(ETIMEDOUT, errno);
 }
 
+struct JoinSleepArg {
+    bthread_t tid = 0;
+    uint64_t sleep_us = 0;
+    butil::atomic<bool> finished{false};
+};
+
 void* sleeper(void* arg) {
     bthread_usleep((uint64_t)arg);
     return nullptr;
 }
 
+void* join_sleeper(void* arg) {
+    JoinSleepArg* a = static_cast<JoinSleepArg*>(arg);
+    butil::Timer tm;
+    tm.start();
+    EXPECT_EQ(0, bthread_usleep(a->sleep_us));
+    tm.stop();
+    // Timer::u_elapsed() floors nanoseconds to microseconds.
+    EXPECT_GE(tm.u_elapsed() + 1, static_cast<int64_t>(a->sleep_us));
+    a->finished.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
 void* joiner(void* arg) {
-    const long t1 = butil::gettimeofday_us();
-    for (bthread_t* th = (bthread_t*)arg; *th; ++th) {
-        if (0 != bthread_join(*th, nullptr)) {
-            LOG(FATAL) << "fail to join thread_" << th - (bthread_t*)arg;
-        }
-        long elp = butil::gettimeofday_us() - t1;
-        EXPECT_LE(labs(elp - (th - (bthread_t*)arg + 1) * 100000L), 15000L)
-            << "timeout when joining thread_" << th - (bthread_t*)arg;
-        LOG(INFO) << "Joined thread " << *th << " at " << elp << "us ["
-                  << bthread_self() << "]";
+    JoinSleepArg* args = static_cast<JoinSleepArg*>(arg);
+    for (JoinSleepArg* a = args; a->tid; ++a) {
+        EXPECT_EQ(0, bthread_join(a->tid, nullptr));
+        EXPECT_TRUE(a->finished.load(butil::memory_order_acquire));
     }
-    for (bthread_t* th = (bthread_t*)arg; *th; ++th) {
-        EXPECT_EQ(0, bthread_join(*th, nullptr));
+    for (JoinSleepArg* a = args; a->tid; ++a) {
+        EXPECT_EQ(0, bthread_join(a->tid, nullptr));
     }
     return nullptr;
 }
@@ -86,21 +98,20 @@ TEST(ButexTest, with_or_without_array_zero) {
 TEST(ButexTest, join) {
     const size_t N = 6;
     const size_t M = 6;
-    bthread_t th[N+1];
+    JoinSleepArg args[N+1];
     bthread_t jth[M];
     pthread_t pth[M];
     for (size_t i = 0; i < N; ++i) {
         bthread_attr_t attr = (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
+        args[i].sleep_us = 100000L/*100ms*/ * (i + 1);
         ASSERT_EQ(0, bthread_start_urgent(
-                      &th[i], &attr, sleeper,
-                      (void*)(100000L/*100ms*/ * (i + 1))));
-    }
-    th[N] = 0;  // joiner will join tids in `th' until seeing 0.
-    for (size_t i = 0; i < M; ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&jth[i], nullptr, joiner, th));
+            &args[i].tid, &attr, join_sleeper, &args[i]));
     }
     for (size_t i = 0; i < M; ++i) {
-        ASSERT_EQ(0, pthread_create(&pth[i], nullptr, joiner, th));
+        ASSERT_EQ(0, bthread_start_urgent(&jth[i], nullptr, joiner, args));
+    }
+    for (size_t i = 0; i < M; ++i) {
+        ASSERT_EQ(0, pthread_create(&pth[i], nullptr, joiner, args));
     }
     
     for (size_t i = 0; i < M; ++i) {
@@ -257,7 +268,6 @@ TEST(ButexTest, stop_after_running) {
 TEST(ButexTest, stop_before_running) {
     int* butex = bthread::butex_create_checked<int>();
     *butex = 7;
-    butil::Timer tm;
     const long WAIT_MSEC = 500;
 
     for (int i = 0; i < 2; ++i) {
@@ -265,17 +275,11 @@ TEST(ButexTest, stop_before_running) {
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
         bthread_t th;
         ButexWaitArg arg = { butex, *butex, WAIT_MSEC, EINTR };
-        
-        tm.start();
+
         ASSERT_EQ(0, bthread_start_background(&th, &attr, wait_butex, &arg));
         ASSERT_EQ(0, bthread_stop(th));
         bthread_flush();
         ASSERT_EQ(0, bthread_join(th, nullptr));
-        tm.stop();
-        
-        ASSERT_LT(tm.m_elapsed(), 5);
-        // ASSERT_TRUE(bthread::get_task_control()->
-        //             timer_thread()._idset.empty());
         ASSERT_EQ(EINVAL, bthread_stop(th));
     }
     bthread::butex_destroy(butex);

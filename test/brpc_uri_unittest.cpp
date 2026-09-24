@@ -15,9 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "brpc/uri.h"
+
+namespace brpc {
+DECLARE_uint32(http_max_query_count);
+}
 
 TEST(URITest, everything) {
     brpc::URI uri;
@@ -345,6 +350,33 @@ TEST(URITest, invalid_query) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL("http://a.b.c/?a-b-c:def"));
     ASSERT_EQ("a-b-c:def", uri.query());
+}
+
+TEST(URITest, too_many_queries) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_query_count = 4;
+
+    brpc::URI uri;
+    ASSERT_EQ(0, uri.SetHttpURL("http://a.com/s?a=1&b=2&c=3&d=4")) << uri.status();
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s?a=1&b=2&c=3&d=4&e=5"));
+    ASSERT_STREQ("More than 4 query parameters in url", uri.status().error_cstr());
+    // Repeated keys collapse into one map entry, but the splitter still walks
+    // every segment, so they count.
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s?a=1&a=2&a=3&a=4&a=5"));
+    // An empty query is not one parameter.
+    brpc::FLAGS_http_max_query_count = 1;
+    ASSERT_EQ(0, uri.SetHttpURL("http://a.com/s?")) << uri.status();
+
+    brpc::FLAGS_http_max_query_count = 4;
+    ASSERT_EQ(0, uri.SetH2Path("/s?a=1&b=2&c=3&d=4")) << uri.status();
+    ASSERT_EQ(-1, uri.SetH2Path("/s?a=1&b=2&c=3&d=4&e=5"));
+    ASSERT_STREQ("More than 4 query parameters in :path", uri.status().error_cstr());
+    // The next path clears the failure rather than inheriting it.
+    ASSERT_EQ(0, uri.SetH2Path("/s?a=1")) << uri.status();
+
+    brpc::FLAGS_http_max_query_count = 0;
+    ASSERT_EQ(0, uri.SetHttpURL("http://a.com/s?a=1&b=2&c=3&d=4&e=5")) << uri.status();
+    ASSERT_EQ(0, uri.SetH2Path("/s?a=1&b=2&c=3&d=4&e=5")) << uri.status();
 }
 
 TEST(URITest, high_bit_bytes) {

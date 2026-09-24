@@ -49,11 +49,9 @@ static const size_t MAGIC_LEN = 2;
 static const size_t HELLO_LEN = 64;
 static const size_t ACK_LEN = 4;
 #if BRPC_WITH_UBRING
-static const uint16_t HELLO_VERSION = 2;
+static const uint16_t HELLO_VERSION = 3;
 static const uint16_t IMPL_VERSION = 1;
 #endif  // BRPC_WITH_UBRING
-static const uint32_t ACK_OK = 0x1;
-
 static const FrameSpec& HelloFrameSpec() {
     static const FrameSpec spec(
         MAGIC, MAGIC_LEN, HELLO_LEN, HELLO_LEN, FrameSpec::FIXED);
@@ -96,6 +94,24 @@ void HelloMessage::Serialize(void* data) const {
     memcpy(current_pos, shm_name, SHM_MAX_NAME_BUFF_LEN);
 }
 
+void HelloFormatExtension::Serialize(void* data) const {
+    char* current = static_cast<char*>(data);
+    const uint16_t length = butil::HostToNet16(extension_len);
+    const uint16_t format = butil::HostToNet16(format_id);
+    memcpy(current, &length, sizeof(length));
+    memcpy(current + sizeof(length), &format, sizeof(format));
+}
+
+void HelloFormatExtension::Deserialize(const void* data) {
+    const char* current = static_cast<const char*>(data);
+    uint16_t length;
+    uint16_t format;
+    memcpy(&length, current, sizeof(length));
+    memcpy(&format, current + sizeof(length), sizeof(format));
+    extension_len = butil::NetToHost16(length);
+    format_id = butil::NetToHost16(format);
+}
+
 void HelloMessage::Deserialize(const void* data) {
     const char* current_pos = static_cast<const char*>(data);
     uint16_t net_msg_len;
@@ -130,30 +146,65 @@ std::string HelloMessage::toString() const {
     return std::string(buf.data(), static_cast<size_t>(n));
 }
 
-handshake::HandshakeCodec UBShmHandshakeAdapter::MakeCodec() const {
-    handshake::HandshakeCodec codec{};
-    codec.protocol_version = 2;
-    codec.hello_frame = handshake::ubshm_wire::HelloFrameSpec();
-    codec.ack_frame = handshake::ubshm_wire::AckFrameSpec();
-    codec.build_ack = [](bool enabled, std::string* payload) {
-        const uint32_t flags_be = butil::HostToNet32(
-            enabled ? handshake::ubshm_wire::ACK_OK : 0);
-        payload->assign(reinterpret_cast<const char*>(&flags_be),
-                        sizeof(flags_be));
-        return handshake::STEP_OK;
-    };
-    codec.parse_ack = [](const std::string& payload, bool* enabled) {
-        if (payload.size() != handshake::ubshm_wire::ACK_LEN) {
-            errno = EPROTO;
-            return handshake::STEP_ERROR;
-        }
-        uint32_t flags_be = 0;
-        memcpy(&flags_be, payload.data(), sizeof(flags_be));
-        *enabled = (butil::NetToHost32(flags_be) &
-                    handshake::ubshm_wire::ACK_OK) != 0;
-        return handshake::STEP_OK;
-    };
-    return codec;
+const handshake::FrameSpec& UBShmHandshakeAdapter::HelloFrameSpec() const {
+    return handshake::ubshm_wire::HelloFrameSpec();
+}
+
+const handshake::FrameSpec& UBShmHandshakeAdapter::AckFrameSpec() const {
+    return handshake::ubshm_wire::AckFrameSpec();
+}
+
+const handshake::FrameSpec&
+UBShmHandshakeAdapter::ExtensionFrameSpec() const {
+    static const handshake::FrameSpec spec(
+        NULL, 0, HelloFormatExtension::WIRE_SIZE,
+        HelloFormatExtension::WIRE_SIZE, handshake::FrameSpec::FIXED);
+    return spec;
+}
+
+void UBShmHandshakeAdapter::ConfigureClientHello(
+    uint64_t len, const char* shm_name) {
+    _local_len = len;
+    _local_name = shm_name != NULL ? shm_name : "";
+    _server_reply = false;
+}
+
+handshake::StepResult UBShmHandshakeAdapter::BuildHello(
+    bool enabled, std::string* payload) {
+    const char* name = NULL;
+    if (enabled) {
+        name = _server_reply ? _remote.shm_name : _local_name.c_str();
+    }
+    return BuildHello(enabled, enabled ? _local_len : 0, name, payload);
+}
+
+handshake::StepResult UBShmHandshakeAdapter::ParseHello(
+    const std::string& payload) {
+    return ParseHello(payload, &_remote);
+}
+
+handshake::StepResult UBShmHandshakeAdapter::BuildExtension(
+    bool enabled, std::string* payload) {
+    const HelloFormatExtension extension = {
+        HelloFormatExtension::WIRE_SIZE,
+        static_cast<uint16_t>(enabled ? UBR_DATA_FORMAT_LEGACY_64
+                                      : UBR_DATA_FORMAT_NONE)};
+    payload->resize(HelloFormatExtension::WIRE_SIZE);
+    extension.Serialize(&(*payload)[0]);
+    return handshake::STEP_OK;
+}
+
+handshake::StepResult UBShmHandshakeAdapter::ParseExtension(
+    const std::string& payload) {
+    if (payload.size() != HelloFormatExtension::WIRE_SIZE) {
+        errno = EPROTO;
+        return handshake::STEP_ERROR;
+    }
+    HelloFormatExtension extension{};
+    extension.Deserialize(payload.data());
+    return extension.extension_len == HelloFormatExtension::WIRE_SIZE &&
+                   extension.format_id == UBR_DATA_FORMAT_LEGACY_64
+               ? handshake::STEP_OK : handshake::STEP_FALLBACK;
 }
 
 handshake::StepResult UBShmHandshakeAdapter::BuildHello(
@@ -190,7 +241,7 @@ handshake::StepResult UBShmHandshakeAdapter::ParseHello(
         return handshake::STEP_ERROR;
     }
     message->Deserialize(payload.data());
-    if (message->msg_len < handshake::ubshm_wire::HELLO_LEN) {
+    if (message->msg_len != handshake::ubshm_wire::HELLO_LEN) {
         errno = EPROTO;
         return handshake::STEP_ERROR;
     }
@@ -240,15 +291,16 @@ private:
 };
 
 
-static HandshakeCodec MakeUBShmFallbackCodec() {
-    HandshakeCodec codec{};
-    codec.protocol_version = 2;
-    codec.hello_frame = ubshm_wire::HelloFrameSpec();
-    codec.ack_frame = ubshm_wire::AckFrameSpec();
-    codec.parse_hello = [](const std::string&) {
-        return STEP_FALLBACK;
-    };
-    codec.build_hello = [](bool enabled, std::string* payload) {
+class UBShmFallbackProtocol : public FallbackHandshakeProtocol {
+public:
+    int ProtocolVersion() const override { return 2; }
+    const FrameSpec& HelloFrameSpec() const override {
+        return ubshm_wire::HelloFrameSpec();
+    }
+    const FrameSpec& AckFrameSpec() const override {
+        return ubshm_wire::AckFrameSpec();
+    }
+    StepResult BuildHello(bool enabled, std::string* payload) override {
         if (enabled) {
             errno = EPROTO;
             return STEP_ERROR;
@@ -258,24 +310,8 @@ static HandshakeCodec MakeUBShmFallbackCodec() {
         butil::RawPacker(&(*payload)[0])
             .pack16(static_cast<uint16_t>(ubshm_wire::HELLO_LEN));
         return STEP_OK;
-    };
-    codec.build_ack = [](bool enabled, std::string* payload) {
-        const uint32_t flags_be = butil::HostToNet32(
-            enabled ? ubshm_wire::ACK_OK : 0);
-        payload->assign(reinterpret_cast<const char*>(&flags_be),
-                        sizeof(flags_be));
-        return STEP_OK;
-    };
-    codec.parse_ack = [](const std::string& payload, bool* enabled) {
-        if (payload.size() != ubshm_wire::ACK_LEN) {
-            errno = EPROTO;
-            return STEP_ERROR;
-        }
-        *enabled = false;
-        return STEP_OK;
-    };
-    return codec;
-}
+    }
+};
 
 HandshakeAdapter* GetUBShmServerHandshakeAdapter() {
     static UBShmServerHandshakeAdapter adapter;
@@ -290,71 +326,47 @@ HandshakeSession* UBShmServerHandshakeAdapter::GetSession(
 StepResult UBShmServerHandshakeAdapter::RunFallbackServerHandshake(
     butil::IOBuf* source, Socket* socket) {
     IOBufHandshakeInput input(source);
-    ServerHandshakeCallbacks callbacks{};
-    callbacks.fallback_on_not_mine = false;
-    callbacks.codecs.push_back(MakeUBShmFallbackCodec());
-    callbacks.input = &input;
-    callbacks.transport.prepare_resources = []() { return STEP_OK; };
-    callbacks.transport.negotiate_resources = []() { return STEP_OK; };
-    callbacks.transport.set_high_speed_active = []() {};
-    callbacks.transport.set_tcp_active = []() {};
-    callbacks.transport.on_failed = []() {};
-    return GetSession(socket)->RunServer(callbacks);
+    UBShmFallbackProtocol protocol;
+    std::vector<HandshakeProtocol*> protocols(1, &protocol);
+    FallbackHandshakeTransport transport;
+    return GetSession(socket)->RunServer(
+        protocols, &input, &transport, false);
 }
 
 #if BRPC_WITH_UBRING
-StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
-    butil::IOBuf* source, Socket* socket) {
-    UBShmTransport* transport = UBShmTransport::Get(socket);
-    CHECK(transport->GetUBShmEp() != NULL);
+class UBShmServerHandshakeTransport : public HandshakeTransport {
+public:
+    UBShmServerHandshakeTransport(
+        UBShmTransport* transport, ubring::UBShmHandshakeAdapter* protocol,
+        Socket* socket, butil::IOBuf* source)
+        : _transport(transport), _protocol(protocol), _socket(socket),
+          _source(source) {}
 
-    ubring::HelloMessage remote{};
-    ubring::UBShmHandshakeAdapter wire;
-    IOBufHandshakeInput input(source);
-    ServerHandshakeCallbacks callbacks{};
-    callbacks.fallback_on_not_mine = false;
-    callbacks.input = &input;
-    HandshakeCodec codec = wire.MakeCodec();
-    codec.parse_hello = [&](const std::string& payload) {
-        const StepResult result = wire.ParseHello(payload, &remote);
-        if (result == STEP_OK || result == STEP_FALLBACK) {
-            LOG_IF(INFO, ubring::FLAGS_ub_trace_verbose)
-                << "server receive handshake message : "
-                << remote.toString();
-        }
-        if (result == STEP_FALLBACK) {
-            transport->DeactivateUpgrade();
-        }
-        return result;
-    };
-    codec.build_hello = [&](bool enabled, std::string* payload) {
-        const uint64_t len = enabled
-            ? static_cast<uint64_t>(ubring::FLAGS_data_queue_size) *
-                  MB_TO_BYTE
-            : 0;
-        return wire.BuildHello(
-            enabled, len, enabled ? remote.shm_name : NULL, payload);
-    };
-    callbacks.codecs.push_back(codec);
-    callbacks.transport.prepare_resources = [&]() {
+    void OnProtocolSelected(HandshakeProtocol*) override {
+        LOG_IF(INFO, ubring::FLAGS_ub_trace_verbose)
+            << "server receive handshake message : "
+            << _protocol->remote().toString();
+    }
+
+    StepResult PrepareResources() override {
         if (!ubring::IsUBAvailable()) {
-            transport->DeactivateUpgrade();
+            _transport->DeactivateUpgrade();
             return STEP_FALLBACK;
         }
+        const ubring::HelloMessage& remote = _protocol->remote();
         const size_t remote_name_len =
             strnlen(remote.shm_name, SHM_MAX_NAME_BUFF_LEN);
 
         ubring::SHM remote_trx_shm = {
             NULL, remote.len, 0, {0},
-            static_cast<uint32_t>(socket->fd())};
-        memcpy(remote_trx_shm.name, remote.shm_name,
-               remote_name_len + 1);
+            static_cast<uint32_t>(_socket->fd())};
+        memcpy(remote_trx_shm.name, remote.shm_name, remote_name_len + 1);
 
         const size_t local_shm_len =
             static_cast<size_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
         ubring::SHM local_trx_shm = {
             NULL, local_shm_len, 0, {0},
-            static_cast<uint32_t>(socket->fd())};
+            static_cast<uint32_t>(_socket->fd())};
         char client_name[SHM_MAX_NAME_BUFF_LEN + 1];
         memcpy(client_name, remote.shm_name, SHM_MAX_NAME_BUFF_LEN);
         client_name[SHM_MAX_NAME_BUFF_LEN] = '\0';
@@ -366,37 +378,54 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
             local_trx_shm.name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
             client_name, SERVER_SHM_NAME_SUFFIX);
         if (UNLIKELY(result < 0)) {
-            transport->DeactivateUpgrade();
+            _transport->DeactivateUpgrade();
             return STEP_FALLBACK;
         }
-        if (transport->PrepareServerUpgradeResources(
+        if (_transport->PrepareServerUpgradeResources(
                 &remote_trx_shm, &local_trx_shm) < 0) {
             LOG(WARNING)
                 << "Fail to allocate ub resources, fallback to tcp:"
-                << socket->description();
-            transport->DeactivateUpgrade();
+                << _socket->description();
+            _transport->DeactivateUpgrade();
             return STEP_FALLBACK;
         }
         return STEP_OK;
-    };
-    callbacks.transport.negotiate_resources = []() { return STEP_OK; };
-    callbacks.validate_established = [&]() {
-        if (!source->empty()) {
-            return STEP_ERROR;
-        }
-        return STEP_OK;
-    };
-    callbacks.transport.set_high_speed_active = [transport]() {
-        transport->ActivateUpgrade();
-    };
-    callbacks.transport.set_tcp_active = [transport]() {
-        transport->DeactivateUpgrade();
-    };
-    callbacks.transport.on_failed = [transport]() {
-        transport->DeactivateUpgrade();
-    };
-    const StepResult result = GetSession(socket)->RunServer(callbacks);
+    }
+
+    StepResult NegotiateResources() override { return STEP_OK; }
+    void OnEstablished() override { _transport->ActivateUpgrade(); }
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
+
+    StepResult ValidateEstablished() override {
+        return _source->empty() ? STEP_OK : STEP_ERROR;
+    }
+
+private:
+    UBShmTransport* _transport;
+    ubring::UBShmHandshakeAdapter* _protocol;
+    Socket* _socket;
+    butil::IOBuf* _source;
+};
+
+StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
+    butil::IOBuf* source, Socket* socket) {
+    UBShmTransport* transport = UBShmTransport::Get(socket);
+    CHECK(transport->GetUBShmEp() != NULL);
+
+    ubring::UBShmHandshakeAdapter wire;
+    const uint64_t local_shm_len =
+        static_cast<uint64_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
+    wire.ConfigureServerReply(local_shm_len);
+    IOBufHandshakeInput input(source);
+    std::vector<HandshakeProtocol*> protocols(1, &wire);
+    UBShmServerHandshakeTransport participant(
+        transport, &wire, socket, source);
+    const StepResult result = GetSession(socket)->RunServer(
+        protocols, &input, &participant, false);
     if (result == STEP_OK) {
+        transport->GetUBShmEp()->SetNegotiatedDataFormat(
+            ubring::UBR_DATA_FORMAT_LEGACY_64);
         transport->FinishUpgrade();
         LOG_IF(INFO, ubring::FLAGS_ub_trace_verbose)
             << "Server handshake ends (use ubring) on "

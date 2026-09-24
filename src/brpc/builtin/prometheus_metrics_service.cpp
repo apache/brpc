@@ -181,6 +181,12 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
     if (!si->IsComplete()) {
         return true;
     }
+    // The average latency can not be a quantile series of the summary below,
+    // because the quantile label must be parsable as a float. Dump it as a
+    // separate gauge, which is the same as the multi dimension one does.
+    *_os << "# HELP " << si->metric_name << "_avg_latency" << '\n'
+         << "# TYPE " << si->metric_name << "_avg_latency gauge\n"
+         << si->metric_name << "_avg_latency " << si->latency_avg << '\n';
     *_os << "# HELP " << si->metric_name << '\n'
          << "# TYPE " << si->metric_name << " summary\n"
          << si->metric_name << "{quantile=\""
@@ -198,8 +204,6 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
          << si->latency_percentiles[4] << '\n'
          << si->metric_name << "{quantile=\"1\"} "
          << si->latency_percentiles[5] << '\n'
-         << si->metric_name << "{quantile=\"avg\"} "
-         << si->latency_avg << '\n'
          << si->metric_name << "_sum "
          // There is no sum of latency in bvar output, just use
          // average * count as approximation

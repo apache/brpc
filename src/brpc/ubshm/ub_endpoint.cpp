@@ -66,6 +66,7 @@ void UBShmEndpoint::Reset() {
     delete _ub_ring;
     _ub_ring = nullptr;
     _poller_sid = INVALID_SOCKET_ID;
+    _negotiated_data_format = UBR_DATA_FORMAT_NONE;
 }
 
 bool UBShmEndpoint::IsWritable() const {

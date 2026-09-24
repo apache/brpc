@@ -85,10 +85,18 @@ struct TaskMeta {
     // Scheduling of the thread can be delayed.
     bool about_to_quit{false};
     
-    // [Not Reset] guarantee visibility of version_butex.
+    // [Not Reset] Serializes the version bump at bthread end (in task_runner)
+    // with accessors that validate the version before touching other fields of
+    // this TaskMeta (get_attr/set_stopped/interrupt/set_butex_waiter/...). It
+    // makes their "check version then read/write field" sequence atomic w.r.t.
+    // the bump, so they never operate on a slot that got recycled in between.
     pthread_spinlock_t version_lock{};
-    
-    // [Not Reset] only modified by one bthread at any time, no need to be atomic
+
+    // [Not Reset] Backed by a butex (internally `butil::atomic<int>`). The version
+    // bump at bthread end is published with a release store, and join() observes
+    // it with an acquire load so the joined bthread's prior writes are visible
+    // after join() returns. All lock-free accesses must be atomic; liveness
+    // checks and reads before publishing a new task only need relaxed loads.
     uint32_t* version_butex{nullptr};
 
     // The identifier. It does not have to be here, however many code is

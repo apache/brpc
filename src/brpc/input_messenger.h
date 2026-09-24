@@ -30,6 +30,11 @@ namespace brpc {
 namespace rdma {
 class RdmaEndpoint;
 }
+
+namespace urma {
+class UrmaEndpoint;
+}
+
 namespace ubring {
 class UBShmEndpoint;
 }
@@ -100,6 +105,7 @@ friend class TcpTransport;
 friend class RdmaTransport;
 friend class AdapterTransport;
 friend class rdma::RdmaEndpoint;
+friend class urma::UrmaEndpoint;
 friend class ubring::UBShmEndpoint;
 friend class InputMessengerProcessor;
 public:

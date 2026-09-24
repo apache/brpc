@@ -57,9 +57,18 @@ class ChannelBalancer;
 namespace rdma {
 class RdmaEndpoint;
 }
+
+namespace urma {
+class UrmaEndpoint;
+class UrmaConnect;
+class UrmaHandshakeClientV2;
+class UrmaHandshakeServerV2;
+class UrmaHandshakeClientV3;
+class UrmaHandshakeServerV3;
+}
+
 namespace ubring {
     class UBShmEndpoint;
-    class UBConnect;
 }
 namespace handshake {
 class SocketHandshakeIO;
@@ -262,6 +271,9 @@ struct SocketOptions {
     // user->BeforeRecycle() before recycling.
     int fd{-1};
     butil::EndPoint remote_side;
+    // Client source address. For IPv4/IPv6, the port is ignored for binding
+    // and the OS allocates a source port. IPv4 IP_ANY disables explicit binding.
+    // Unix-domain addresses are preserved, including their paths.
     butil::EndPoint local_side;
     std::string device_name;
     // If `connect_on_create' is true and `fd' is less than 0,
@@ -328,8 +340,13 @@ friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class rdma::RdmaEndpoint;
 friend class ubring::UBShmEndpoint;
-friend class ubring::UBConnect;
 friend class UBShmTransport;
+friend class urma::UrmaEndpoint;
+friend class urma::UrmaConnect;
+friend class urma::UrmaHandshakeClientV2;
+friend class urma::UrmaHandshakeServerV2;
+friend class urma::UrmaHandshakeClientV3;
+friend class urma::UrmaHandshakeServerV3;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
@@ -342,6 +359,7 @@ friend class AdapterTransport;
 friend class handshake::SocketHandshakeIO;
 friend class TcpTransport;
 friend class RdmaTransport;
+friend class UrmaTransport;
 friend class TransportFactory;
     class SharedPart;
     struct WriteRequest;
@@ -877,8 +895,14 @@ private:
     // Address of peer. Initialized by SocketOptions.remote_side.
     butil::EndPoint _remote_side;
 
-    // Address of self. Initialized in ResetFileDescriptor().
+    // Runtime local endpoint. Updated in ResetFileDescriptor() and cleared
+    // in WaitAndReset().
     butil::EndPoint _local_side;
+
+    // Client binding address from SocketOptions.local_side, preserved across
+    // health-check/revive. IPv4/IPv6 network ports are normalized to 0;
+    // Unix-domain addresses and extended endpoint type tags are preserved.
+    butil::EndPoint _bind_local_side;
 
     // The device name of the client's network adapter.
     std::string _device_name;

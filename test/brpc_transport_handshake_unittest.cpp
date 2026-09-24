@@ -105,32 +105,116 @@ static FrameSpec FixedSpec(const char* magic, size_t magic_len,
                      FrameSpec::FIXED);
 }
 
-static HandshakeCodec MakeTestCodec(std::string* calls = NULL) {
-    HandshakeCodec codec{};
-    codec.protocol_version = 7;
-    codec.hello_frame = FixedSpec("HS", 2, 4);
-    codec.ack_frame = FixedSpec(NULL, 0, 1);
-    codec.build_hello = [calls](bool enabled, std::string* payload) {
-        if (calls) *calls += "build ";
+class TestHandshakeProtocol : public HandshakeProtocol {
+public:
+    explicit TestHandshakeProtocol(std::string* calls = NULL)
+        : _calls(calls), _with_extension(false),
+          _extension_size(0) {}
+
+    int ProtocolVersion() const override { return 7; }
+    const FrameSpec& HelloFrameSpec() const override {
+        static const FrameSpec spec = FixedSpec("HS", 2, 4);
+        return spec;
+    }
+    const FrameSpec& AckFrameSpec() const override {
+        static const FrameSpec spec = FixedSpec(NULL, 0, 1);
+        return spec;
+    }
+    StepResult BuildHello(bool enabled, std::string* payload) override {
+        Append("build ");
         *payload = enabled ? "LO" : "NO";
         return STEP_OK;
-    };
-    codec.parse_hello = [calls](const std::string& payload) {
-        if (calls) *calls += "parse ";
+    }
+    StepResult ParseHello(const std::string& payload) override {
+        Append("parse ");
         return payload == "OK" ? STEP_OK : STEP_FALLBACK;
-    };
-    codec.build_ack = [calls](bool enabled, std::string* payload) {
-        if (calls) *calls += enabled ? "ack1 " : "ack0 ";
+    }
+    StepResult BuildAck(bool enabled, std::string* payload) override {
+        Append(enabled ? "ack1 " : "ack0 ");
         *payload = enabled ? "1" : "0";
         return STEP_OK;
-    };
-    codec.parse_ack = [calls](const std::string& payload, bool* enabled) {
-        if (calls) *calls += "parse_ack ";
+    }
+    StepResult ParseAck(
+        const std::string& payload, bool* enabled) override {
+        Append("parse_ack ");
         *enabled = payload == "1";
         return payload == "1" || payload == "0" ? STEP_OK : STEP_ERROR;
-    };
-    return codec;
-}
+    }
+    bool HasExtension() const override { return _with_extension; }
+    const FrameSpec& ExtensionFrameSpec() const override {
+        return _extension_spec;
+    }
+    StepResult BuildExtension(
+        bool enabled, std::string* payload) override {
+        *payload = enabled
+            ? std::string("E1", _extension_size)
+            : std::string("E0", _extension_size);
+        return STEP_OK;
+    }
+    StepResult ParseExtension(const std::string& payload) override {
+        return payload == std::string("E1", _extension_size)
+            ? STEP_OK : STEP_FALLBACK;
+    }
+    void EnableExtension(size_t size) {
+        _with_extension = true;
+        _extension_size = size;
+        _extension_spec = FixedSpec(NULL, 0, size);
+    }
+
+private:
+    void Append(const char* value) {
+        if (_calls != NULL) {
+            *_calls += value;
+        }
+    }
+
+    std::string* _calls;
+    bool _with_extension;
+    size_t _extension_size;
+    FrameSpec _extension_spec;
+};
+
+class TestHandshakeTransport : public HandshakeTransport {
+public:
+    explicit TestHandshakeTransport(std::string* calls = NULL)
+        : prepare_result(STEP_OK), negotiate_result(STEP_OK),
+          validate_result(STEP_OK), tcp_active(false),
+          high_speed_active(false), failed(false), _calls(calls) {}
+
+    StepResult PrepareResources() override {
+        Append("prepare ");
+        return prepare_result;
+    }
+    StepResult NegotiateResources() override {
+        Append("negotiate ");
+        return negotiate_result;
+    }
+    void OnEstablished() override {
+        high_speed_active = true;
+        Append("activate");
+    }
+    void OnFallback() override { tcp_active = true; }
+    void OnFailed() override { failed = true; }
+    StepResult ValidateEstablished() override {
+        Append("validate ");
+        return validate_result;
+    }
+
+    StepResult prepare_result;
+    StepResult negotiate_result;
+    StepResult validate_result;
+    bool tcp_active;
+    bool high_speed_active;
+    bool failed;
+
+private:
+    void Append(const char* value) {
+        if (_calls != NULL) {
+            *_calls += value;
+        }
+    }
+    std::string* _calls;
+};
 
 static std::string MakeUBShmHello() {
     std::string frame(64, '\0');
@@ -298,43 +382,68 @@ TEST(TransportHandshakeTest, client_runs_codec_and_resource_sequence) {
     session.SetIOForTest(&io);
     std::string calls;
 
-    ClientHandshakeCallbacks callbacks{};
-    callbacks.codec = MakeTestCodec(&calls);
-    callbacks.transport.prepare_resources = [&]() {
-        calls += "prepare ";
-        return STEP_OK;
-    };
-    callbacks.transport.negotiate_resources = [&]() {
-        calls += "negotiate ";
-        return STEP_OK;
-    };
-    callbacks.transport.set_high_speed_active = [&]() { calls += "activate"; };
-    callbacks.transport.set_tcp_active = []() {};
-    callbacks.transport.on_failed = []() {};
+    TestHandshakeProtocol protocol(&calls);
+    TestHandshakeTransport transport(&calls);
 
-    ASSERT_EQ(STEP_OK, session.RunClient(callbacks));
+    ASSERT_EQ(STEP_OK, session.RunClient(&protocol, &transport));
     ASSERT_EQ("prepare build parse negotiate ack1 activate", calls);
     ASSERT_EQ("HSLO1", io.output());
     ASSERT_EQ(ESTABLISHED, session.phase());
     ASSERT_EQ(7, session.protocol_version());
 }
 
+TEST(TransportHandshakeTest, client_exchanges_extension_before_ack) {
+    MemoryHandshakeIO io("HSOKE");
+    HandshakeSession session;
+    session.SetIOForTest(&io);
+    TestHandshakeProtocol protocol;
+    protocol.EnableExtension(1);
+    TestHandshakeTransport transport;
+
+    ASSERT_EQ(STEP_OK, session.RunClient(&protocol, &transport));
+    EXPECT_EQ("HSLOE1", io.output());
+    EXPECT_EQ(ESTABLISHED, session.phase());
+}
+
+TEST(TransportHandshakeTest, server_resumes_fragmented_extension_then_ack) {
+    MemoryHandshakeIO io;
+    HandshakeSession session;
+    session.SetIOForTest(&io);
+    butil::IOBuf source;
+    source.append("HSOK", 4);
+    IOBufHandshakeInput input(&source);
+    TestHandshakeProtocol protocol;
+    protocol.EnableExtension(2);
+    std::vector<HandshakeProtocol*> protocols(1, &protocol);
+    TestHandshakeTransport transport;
+
+    ASSERT_EQ(STEP_NEED_MORE,
+              session.RunServer(protocols, &input, &transport, false));
+    EXPECT_EQ(EXTENSION_WAIT, session.phase());
+    EXPECT_EQ("HSLO", io.output());
+    source.append("E", 1);
+    ASSERT_EQ(STEP_NEED_MORE,
+              session.RunServer(protocols, &input, &transport, false));
+    EXPECT_EQ(EXTENSION_WAIT, session.phase());
+    source.append("11", 2);  // Remainder of extension, then ACK.
+    ASSERT_EQ(STEP_OK,
+              session.RunServer(protocols, &input, &transport, false));
+    EXPECT_EQ("HSLOE1", io.output());
+    EXPECT_TRUE(source.empty());
+    EXPECT_EQ(ESTABLISHED, session.phase());
+}
+
 TEST(TransportHandshakeTest, client_resource_failure_falls_back_before_io) {
     MemoryHandshakeIO io;
     HandshakeSession session;
     session.SetIOForTest(&io);
-    bool tcp_active = false;
+    TestHandshakeProtocol protocol;
+    TestHandshakeTransport transport;
+    transport.prepare_result = STEP_FALLBACK;
+    transport.negotiate_result = STEP_ERROR;
 
-    ClientHandshakeCallbacks callbacks{};
-    callbacks.codec = MakeTestCodec();
-    callbacks.transport.prepare_resources = []() { return STEP_FALLBACK; };
-    callbacks.transport.negotiate_resources = []() { return STEP_ERROR; };
-    callbacks.transport.set_high_speed_active = []() {};
-    callbacks.transport.set_tcp_active = [&]() { tcp_active = true; };
-    callbacks.transport.on_failed = []() {};
-
-    ASSERT_EQ(STEP_FALLBACK, session.RunClient(callbacks));
-    ASSERT_TRUE(tcp_active);
+    ASSERT_EQ(STEP_FALLBACK, session.RunClient(&protocol, &transport));
+    ASSERT_TRUE(transport.tcp_active);
     ASSERT_TRUE(io.output().empty());
     ASSERT_EQ(FALLBACK_TCP, session.phase());
 }
@@ -348,33 +457,19 @@ TEST(TransportHandshakeTest, server_resumes_at_buffered_ack) {
     IOBufHandshakeInput input(&source);
     std::string calls;
 
-    ServerHandshakeCallbacks callbacks{};
-    callbacks.fallback_on_not_mine = false;
-    callbacks.codecs.push_back(MakeTestCodec(&calls));
-    callbacks.input = &input;
-    callbacks.transport.prepare_resources = [&]() {
-        calls += "prepare ";
-        return STEP_OK;
-    };
-    callbacks.transport.negotiate_resources = [&]() {
-        calls += "negotiate ";
-        return STEP_OK;
-    };
-    callbacks.validate_established = [&]() {
-        calls += "validate ";
-        return STEP_OK;
-    };
-    callbacks.transport.set_high_speed_active = [&]() { calls += "activate"; };
-    callbacks.transport.set_tcp_active = []() {};
-    callbacks.transport.on_failed = []() {};
+    TestHandshakeProtocol protocol(&calls);
+    std::vector<HandshakeProtocol*> protocols(1, &protocol);
+    TestHandshakeTransport transport(&calls);
 
-    ASSERT_EQ(STEP_NEED_MORE, session.RunServer(callbacks));
+    ASSERT_EQ(STEP_NEED_MORE,
+              session.RunServer(protocols, &input, &transport, false));
     ASSERT_EQ(ACK_WAIT, session.phase());
     ASSERT_EQ("HSLO", io.output());
     ASSERT_TRUE(source.empty());
 
     source.append("1", 1);
-    ASSERT_EQ(STEP_OK, session.RunServer(callbacks));
+    ASSERT_EQ(STEP_OK,
+              session.RunServer(protocols, &input, &transport, false));
     ASSERT_EQ("parse prepare negotiate build parse_ack validate activate",
               calls);
     ASSERT_EQ(ESTABLISHED, session.phase());
@@ -387,22 +482,17 @@ TEST(TransportHandshakeTest, server_resource_failure_falls_back_after_ack) {
     butil::IOBuf source;
     source.append("HSOK0", 5);
     IOBufHandshakeInput input(&source);
-    bool tcp_active = false;
+    TestHandshakeProtocol protocol;
+    std::vector<HandshakeProtocol*> protocols(1, &protocol);
+    TestHandshakeTransport transport;
+    transport.prepare_result = STEP_FALLBACK;
+    transport.negotiate_result = STEP_ERROR;
 
-    ServerHandshakeCallbacks callbacks{};
-    callbacks.fallback_on_not_mine = false;
-    callbacks.codecs.push_back(MakeTestCodec());
-    callbacks.input = &input;
-    callbacks.transport.prepare_resources = []() { return STEP_FALLBACK; };
-    callbacks.transport.negotiate_resources = []() { return STEP_ERROR; };
-    callbacks.transport.set_high_speed_active = []() {};
-    callbacks.transport.set_tcp_active = [&]() { tcp_active = true; };
-    callbacks.transport.on_failed = []() {};
-
-    ASSERT_EQ(STEP_FALLBACK, session.RunServer(callbacks));
+    ASSERT_EQ(STEP_FALLBACK,
+              session.RunServer(protocols, &input, &transport, false));
     ASSERT_EQ("HSNO", io.output());
     ASSERT_TRUE(source.empty());
-    ASSERT_TRUE(tcp_active);
+    ASSERT_TRUE(transport.tcp_active);
     ASSERT_EQ(FALLBACK_TCP, session.phase());
 }
 
@@ -413,24 +503,20 @@ TEST(TransportHandshakeTest, server_falls_back_without_consuming_other_magic) {
     butil::IOBuf source;
     source.append("XXok", 4);
     IOBufHandshakeInput input(&source);
-    bool tcp_active = false;
+    TestHandshakeProtocol protocol;
+    std::vector<HandshakeProtocol*> protocols(1, &protocol);
+    TestHandshakeTransport transport;
+    transport.prepare_result = STEP_ERROR;
+    transport.negotiate_result = STEP_ERROR;
 
-    ServerHandshakeCallbacks callbacks{};
-    callbacks.fallback_on_not_mine = true;
-    callbacks.codecs.push_back(MakeTestCodec());
-    callbacks.input = &input;
-    callbacks.transport.prepare_resources = []() { return STEP_ERROR; };
-    callbacks.transport.negotiate_resources = []() { return STEP_ERROR; };
-    callbacks.transport.set_high_speed_active = []() {};
-    callbacks.transport.set_tcp_active = [&]() { tcp_active = true; };
-    callbacks.transport.on_failed = []() {};
-
-    ASSERT_EQ(STEP_FALLBACK, session.RunServer(callbacks));
-    ASSERT_TRUE(tcp_active);
+    ASSERT_EQ(STEP_FALLBACK,
+              session.RunServer(protocols, &input, &transport, true));
+    ASSERT_TRUE(transport.tcp_active);
     ASSERT_EQ(4UL, source.size());
     ASSERT_EQ(FALLBACK_TCP, session.phase());
 
-    ASSERT_EQ(STEP_NOT_MINE, session.RunServer(callbacks));
+    ASSERT_EQ(STEP_NOT_MINE,
+              session.RunServer(protocols, &input, &transport, true));
     ASSERT_EQ(4UL, source.size());
     ASSERT_EQ(FALLBACK_TCP, session.phase());
 }
@@ -442,22 +528,18 @@ TEST(TransportHandshakeTest, server_enters_hello_phase_after_magic_matches) {
     butil::IOBuf source;
     IOBufHandshakeInput input(&source);
 
-    ServerHandshakeCallbacks callbacks{};
-    callbacks.fallback_on_not_mine = false;
-    callbacks.codecs.push_back(MakeTestCodec());
-    callbacks.input = &input;
-    callbacks.transport.prepare_resources = []() { return STEP_OK; };
-    callbacks.transport.negotiate_resources = []() { return STEP_OK; };
-    callbacks.transport.set_high_speed_active = []() {};
-    callbacks.transport.set_tcp_active = []() {};
-    callbacks.transport.on_failed = []() {};
+    TestHandshakeProtocol protocol;
+    std::vector<HandshakeProtocol*> protocols(1, &protocol);
+    TestHandshakeTransport transport;
 
     source.append("H", 1);
-    ASSERT_EQ(STEP_NEED_MORE, session.RunServer(callbacks));
+    ASSERT_EQ(STEP_NEED_MORE,
+              session.RunServer(protocols, &input, &transport, false));
     ASSERT_EQ(UNINITIALIZED, session.phase());
 
     source.append("S", 1);
-    ASSERT_EQ(STEP_NEED_MORE, session.RunServer(callbacks));
+    ASSERT_EQ(STEP_NEED_MORE,
+              session.RunServer(protocols, &input, &transport, false));
     ASSERT_EQ(HELLO_WAIT, session.phase());
     ASSERT_EQ(7, session.protocol_version());
     ASSERT_EQ(2UL, source.size());

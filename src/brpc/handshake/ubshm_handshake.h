@@ -47,7 +47,7 @@ namespace ubring {
 DECLARE_int32(data_queue_size);
 DECLARE_bool(ub_trace_verbose);
 
-// UBSHM v2 wire payload. HandshakeSession owns framing and ACK exchange;
+// UBSHM v3 wire payload. HandshakeSession owns framing and ACK exchange;
 // this type and UBShmHandshakeAdapter only handle protocol fields.
 struct HelloMessage {
     void Serialize(void* data) const;
@@ -61,11 +61,46 @@ struct HelloMessage {
     char shm_name[SHM_MAX_NAME_BUFF_LEN];
 };
 
-class UBShmHandshakeAdapter {
-public:
-    UBShmHandshakeAdapter() = default;
+enum UbrDataFormat {
+    UBR_DATA_FORMAT_NONE = 0,
+    UBR_DATA_FORMAT_LEGACY_64 = 1,
+};
 
-    handshake::HandshakeCodec MakeCodec() const;
+struct HelloFormatExtension {
+    static const uint16_t WIRE_SIZE = 4;
+    uint16_t extension_len;
+    uint16_t format_id;
+
+    void Serialize(void* data) const;
+    void Deserialize(const void* data);
+};
+
+class UBShmHandshakeAdapter : public handshake::HandshakeProtocol {
+public:
+    UBShmHandshakeAdapter()
+        : _local_len(0), _server_reply(false), _remote() {}
+
+    int ProtocolVersion() const override { return 3; }
+    const handshake::FrameSpec& HelloFrameSpec() const override;
+    const handshake::FrameSpec& AckFrameSpec() const override;
+    handshake::StepResult BuildHello(
+        bool enabled, std::string* payload) override;
+    handshake::StepResult ParseHello(
+        const std::string& payload) override;
+    bool HasExtension() const override { return true; }
+    const handshake::FrameSpec& ExtensionFrameSpec() const override;
+    handshake::StepResult BuildExtension(
+        bool enabled, std::string* payload) override;
+    handshake::StepResult ParseExtension(
+        const std::string& payload) override;
+
+    void ConfigureClientHello(uint64_t len, const char* shm_name);
+    void ConfigureServerReply(uint64_t len) {
+        _local_len = len;
+        _server_reply = true;
+    }
+    const HelloMessage& remote() const { return _remote; }
+
     handshake::StepResult BuildHello(
         bool enabled, uint64_t len, const char* shm_name,
         std::string* payload) const;
@@ -74,6 +109,10 @@ public:
 
 private:
     bool NegotiationValid(const HelloMessage& message) const;
+    uint64_t _local_len;
+    std::string _local_name;
+    bool _server_reply;
+    HelloMessage _remote;
     DISALLOW_COPY_AND_ASSIGN(UBShmHandshakeAdapter);
 };
 

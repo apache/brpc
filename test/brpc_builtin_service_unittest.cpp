@@ -60,6 +60,17 @@
 DEFINE_bool(foo, false, "Flags for UT");
 BRPC_VALIDATE_GFLAG(foo, brpc::PassValidate);
 
+// A reloadable string gflag so that FlagsService is able to modify its
+// value via ?setvalue=. String flags must register the validator manually,
+// see comments in butil/reloadable_flags.h.
+DEFINE_string(reloadable_string_flag_for_ut, "", "Flags for UT");
+static bool PassValidateStringFlag(const char*, const std::string&) {
+    return true;
+}
+const bool ALLOW_UNUSED dummy_validate_reloadable_string_flag_for_ut =
+    GFLAGS_NAMESPACE::RegisterFlagValidator(
+        &FLAGS_reloadable_string_flag_for_ut, PassValidateStringFlag);
+
 namespace brpc {
 DECLARE_bool(enable_rpcz);
 DECLARE_bool(rpcz_hex_log_id);
@@ -684,6 +695,62 @@ TEST_F(BuiltinServiceTest, connections) {
 TEST_F(BuiltinServiceTest, flags) {
     TestFlags(false);
     TestFlags(true);
+}
+
+TEST_F(BuiltinServiceTest, flags_escaping) {
+    // Save all flags and restore them on any exit of this test, since the
+    // /flags service below modifies `reloadable_string_flag_for_ut'.
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FlagsService service;
+    const std::string payload = "<svg onload=alert(1)>&\"'";
+    const std::string escaped = brpc::WebEscape(payload);
+
+    // Reflected: the ?setvalue= value is echoed into the html page.
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
+        SetUpController(&cntl, true);
+        cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
+        cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, payload);
+        service.default_method(&cntl, &req, &res, &done);
+        EXPECT_FALSE(cntl.Failed());
+        const std::string& body = cntl.response_attachment().to_string();
+        EXPECT_EQ(std::string::npos, body.find(payload))
+            << "unescaped payload in html: " << body;
+        CheckContent(cntl, escaped.c_str());
+    }
+    // Stored: ?setvalue&withform renders the flag value stored above.
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
+        SetUpController(&cntl, true);
+        cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
+        cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, "");
+        cntl.http_request().uri().SetQuery("withform", "");
+        service.default_method(&cntl, &req, &res, &done);
+        EXPECT_FALSE(cntl.Failed());
+        const std::string& body = cntl.response_attachment().to_string();
+        EXPECT_EQ(std::string::npos, body.find(payload))
+            << "unescaped payload in html: " << body;
+        CheckContent(cntl, escaped.c_str());
+    }
+    // Plain text output is not html-escaped.
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
+        SetUpController(&cntl, false);
+        cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
+        cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, payload);
+        service.default_method(&cntl, &req, &res, &done);
+        EXPECT_FALSE(cntl.Failed());
+        CheckContent(cntl, payload.c_str());
+    }
 }
 
 TEST_F(BuiltinServiceTest, bad_method) {

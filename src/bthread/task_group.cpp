@@ -84,103 +84,6 @@ BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, nullptr);
 
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
-AtomicInteger128::Value AtomicInteger128::load() const {
-#ifdef __x86_64__
-    (void)_mutex;
-    (void)_seq;
-    __m128i value = _mm_load_si128(reinterpret_cast<const __m128i*>(&_value));
-    return {value[0], value[1]};
-#elif defined(__ARM_NEON)
-    (void)_mutex;
-    (void)_seq;
-    int64x2_t value = vld1q_s64(reinterpret_cast<const int64_t*>(&_value));
-    return {value[0], value[1]};
-#elif defined(__riscv) && __riscv_xlen == 64
-    (void)_mutex;
-    // RISC-V: Seqlock-based atomic 128-bit load.
-    int64_t v1, v2;
-    uint64_t seq0, seq1;
-    do {
-        __asm__ volatile(
-            "ld %0, %1\n\t"
-            : "=r"(seq0)
-            : "m"(_seq)
-            : "memory"
-        );
-        if (seq0 & 1) continue;
-        __asm__ volatile("fence r, rw\n\t" ::: "memory");
-        __asm__ volatile(
-            "ld %0, %2\n\t"
-            "ld %1, %3\n\t"
-            : "=r"(v1), "=r"(v2)
-            : "m"(_value.v1), "m"(_value.v2)
-            : "memory"
-        );
-        __asm__ volatile("fence r, rw\n\t" ::: "memory");
-        __asm__ volatile(
-            "ld %0, %1\n\t"
-            : "=r"(seq1)
-            : "m"(_seq)
-            : "memory"
-        );
-    } while (seq0 != seq1);
-    return {v1, v2};
-#else
-    BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
-    return _value;
-#endif
-}
-
-void AtomicInteger128::store(Value value) {
-#ifdef __x86_64__
-    (void)_seq;
-    __m128i v = _mm_load_si128(reinterpret_cast<__m128i*>(&value));
-    _mm_store_si128(reinterpret_cast<__m128i*>(&_value), v);
-#elif defined(__ARM_NEON)
-    (void)_seq;
-    int64x2_t v = vld1q_s64(reinterpret_cast<int64_t*>(&value));
-    vst1q_s64(reinterpret_cast<int64_t*>(&_value), v);
-#elif defined(__riscv) && __riscv_xlen == 64
-    (void)_mutex;
-    // RISC-V: Seqlock-based atomic 128-bit store.
-    uint64_t old_seq;
-    __asm__ volatile(
-        "ld %0, %1\n\t"
-        : "=r"(old_seq)
-        : "m"(_seq)
-        : "memory"
-    );
-    uint64_t new_seq = old_seq + 1;
-    __asm__ volatile(
-        "fence w, w\n\t"
-        "sd %1, %0\n\t"
-        : "=m"(_seq)
-        : "r"(new_seq)
-        : "memory"
-    );
-    __asm__ volatile("fence w, w\n\t" ::: "memory");
-    __asm__ volatile(
-        "sd %2, %0\n\t"
-        "sd %3, %1\n\t"
-        : "=m"(_value.v1), "=m"(_value.v2)
-        : "r"(value.v1), "r"(value.v2)
-        : "memory"
-    );
-    __asm__ volatile("fence w, w\n\t" ::: "memory");
-    new_seq++;
-    __asm__ volatile(
-        "sd %1, %0\n\t"
-        : "=m"(_seq)
-        : "r"(new_seq)
-        : "memory"
-    );
-#else
-    BAIDU_SCOPED_LOCK(const_cast<FastPthreadMutex&>(_mutex));
-    _value = value;
-#endif
-}
-
-
 int TaskGroup::get_attr(bthread_t tid, bthread_attr_t* out) {
     TaskMeta* const m = address_meta(tid);
     if (m != nullptr) {
@@ -249,7 +152,9 @@ static double get_cumulated_cputime_from_this(void* arg) {
 
 int64_t TaskGroup::cumulated_cputime_ns() const {
     CPUTimeStat cpu_time_stat = _cpu_time_stat.load();
-    // Add the elapsed time of running bthread.
+    // Add elapsed time only for a running non-main task. cpuwide_time_ns()
+    // advances while the worker is parked, so including the main task would
+    // count idle waiting as worker usage.
     int64_t cumulated_cputime_ns = cpu_time_stat.cumulated_cputime_ns();
     if (!cpu_time_stat.is_main_task()) {
         cumulated_cputime_ns += butil::cpuwide_time_ns() - cpu_time_stat.last_run_ns();
@@ -286,7 +191,7 @@ void TaskGroup::run_main_task() {
     }
     // Don't forget to add elapse of last wait_task.
     current_task()->stat.cputime_ns +=
-        butil::cpuwide_time_ns() - _cpu_time_stat.load_unsafe().last_run_ns();
+        butil::cpuwide_time_ns() - _cpu_time_stat.load_for_writer().last_run_ns();
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
@@ -380,7 +285,9 @@ int TaskGroup::init(size_t runqueue_capacity) {
     m->cpuwide_start_ns = butil::cpuwide_time_ns();
     m->stat = EMPTY_STAT;
     m->attr = BTHREAD_ATTR_TASKGROUP;
-    m->tid = make_tid(*m->version_butex, slot);
+    auto version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+    m->tid = make_tid(static_cast<uint32_t>(
+        version->load(butil::memory_order_relaxed)), slot);
     m->set_stack(stk);
 
 #ifdef BUTIL_USE_ASAN
@@ -520,9 +427,17 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
 #ifdef BRPC_BTHREAD_TRACER
             tracing = TaskTracer::set_end_status_unsafe(m);
 #endif // BRPC_BTHREAD_TRACER
-            if (0 == ++*m->version_butex) {
-                ++*m->version_butex;
+            // Bump the version with a release store so that it pairs with the
+            // acquire load in TaskGroup::join(): all memory writes made by this
+            // bthread become visible to the joining thread. Atomic access also
+            // avoids data races with the lock-free reads in join() and exists().
+            auto* version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+            uint32_t next_version = static_cast<uint32_t>(
+                version->load(butil::memory_order_relaxed)) + 1;
+            if (0 == next_version) {
+                ++next_version;
             }
+            version->store(static_cast<int>(next_version), butil::memory_order_release);
         }
         butex_wake_except(m->version_butex, 0);
 
@@ -590,7 +505,9 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
-    m->tid = make_tid(*m->version_butex, slot);
+    auto version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+    m->tid = make_tid(static_cast<uint32_t>(
+        version->load(butil::memory_order_relaxed)), slot);
 
     TaskGroup* g = *pg;
     m->priority_index = g->_cur_meta->priority_index;
@@ -662,7 +579,9 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     }
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
-    m->tid = make_tid(*m->version_butex, slot);
+    auto* version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+    m->tid = make_tid(static_cast<uint32_t>(
+        version->load(butil::memory_order_relaxed)), slot);
     m->priority_index = _cur_meta->priority_index;
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
@@ -709,16 +628,18 @@ int TaskGroup::join(bthread_t tid, void** return_value) {
         return EINVAL;
     }
     const uint32_t expected_version = get_version(tid);
-    while (*m->version_butex == expected_version) {
-        if (butex_wait(m->version_butex, expected_version, nullptr) < 0 &&
+    // Acquire load pairs with the release store performed when the joined
+    // bthread ends (see the version bump above), ensuring all of its memory
+    // writes are visible after join() returns. This matches the semantic
+    // guarantee provided by pthread_join() across supported architectures.
+    auto* version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+    const int expected_version_int = static_cast<int>(expected_version);
+    while (version->load(butil::memory_order_acquire) == expected_version_int) {
+        if (butex_wait(m->version_butex, expected_version_int, nullptr) < 0 &&
             errno != EWOULDBLOCK && errno != EINTR) {
             return errno;
         }
     }
-    // Ensure all memory writes made by the joined bthread are visible to
-    // the joining thread after join returns. This matches the semantic
-    // guarantee provided by pthread_join() across supported architectures.
-    butil::atomic_thread_fence(butil::memory_order_acquire);
     if (return_value) {
         *return_value = nullptr;
     }
@@ -729,7 +650,10 @@ bool TaskGroup::exists(bthread_t tid) {
     if (tid != 0) {  // tid of bthread is never 0.
         TaskMeta* m = address_meta(tid);
         if (m != nullptr) {
-            return (*m->version_butex == get_version(tid));
+            auto version = reinterpret_cast<butil::atomic<int>*>(m->version_butex);
+            // Only check liveness; unlike join(), no user data is acquired.
+            return static_cast<uint32_t>(version->load(butil::memory_order_relaxed))
+                == get_version(tid);
         }
     }
     return false;
@@ -821,7 +745,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
 
     TaskMeta* const cur_meta = g->_cur_meta;
     int64_t now = butil::cpuwide_time_ns();
-    CPUTimeStat cpu_time_stat = g->_cpu_time_stat.load_unsafe();
+    CPUTimeStat cpu_time_stat = g->_cpu_time_stat.load_for_writer();
     int64_t elp_ns = now - cpu_time_stat.last_run_ns();
     cur_meta->stat.cputime_ns += elp_ns;
     // Update cpu_time_stat.
@@ -1124,7 +1048,7 @@ int TaskGroup::usleep(TaskGroup** pg, uint64_t timeout_us) {
 bool erase_from_butex_because_of_interruption(ButexWaiter* bw);
 
 static int interrupt_and_consume_waiters(
-    bthread_t tid, ButexWaiter** pw, uint64_t* sleep_id) {
+    bthread_t tid, ButexWaiter** bw, uint64_t* sleep_id) {
     TaskMeta* const m = TaskGroup::address_meta(tid);
     if (m == nullptr) {
         return EINVAL;
@@ -1132,7 +1056,7 @@ static int interrupt_and_consume_waiters(
     const uint32_t given_ver = get_version(tid);
     BAIDU_SCOPED_LOCK(m->version_lock);
     if (given_ver == *m->version_butex) {
-        *pw = m->current_waiter.exchange(nullptr, butil::memory_order_acquire);
+        *bw = m->current_waiter.exchange(nullptr, butil::memory_order_acquire);
         *sleep_id = m->current_sleep;
         m->current_sleep = 0;  // only one stopper gets the sleep_id
         m->interrupted = true;

@@ -181,6 +181,7 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/scoped_locale.cc
     ${PROJECT_SOURCE_DIR}/test/scope_guard_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/optional_unittest.cpp
+    ${PROJECT_SOURCE_DIR}/test/seqlock_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/butil_unittest_main.cpp
 	)
 

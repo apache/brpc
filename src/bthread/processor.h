@@ -22,33 +22,7 @@
 #ifndef BTHREAD_PROCESSOR_H
 #define BTHREAD_PROCESSOR_H
 
-#include "butil/build_config.h"
-
-// Pause instruction to prevent excess processor bus usage, only works in GCC
-# ifndef cpu_relax
-#if defined(ARCH_CPU_ARM_FAMILY)
-# define cpu_relax() asm volatile("yield\n": : :"memory")
-#elif defined(ARCH_CPU_RISCV_FAMILY)
-// Use the pause hint (Zihintpause extension). Encoding 0x0100000F
-// (fence 0, 1) is a HINT on all RISC-V implementations: it never traps
-// and is ignored on CPUs without Zihintpause. On CPUs with Zihintpause
-// it provides a multi-cycle stall hint that reduces power and improves
-// resource fairness during spin-wait loops. Matches the Linux kernel's
-// RISC-V cpu_relax() behavior. .word is used instead of .insn or the
-// pause mnemonic for maximum assembler compatibility.
-# define cpu_relax() asm volatile(".word 0x0100000f\n": : :"memory")
-#elif defined(ARCH_CPU_LOONGARCH64_FAMILY)
-# define cpu_relax() asm volatile("nop\n": : :"memory");
-#else
-# define cpu_relax() asm volatile("pause\n": : :"memory")
-#endif
-# endif
-
-// Compile read-write barrier
-# ifndef barrier
-# define barrier() asm volatile("": : :"memory")
-# endif
-
+#include "butil/processor.h"
 
 # define BT_LOOP_WHEN(expr, num_spins)                                  \
     do {                                                                \

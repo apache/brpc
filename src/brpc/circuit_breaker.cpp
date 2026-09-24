@@ -18,6 +18,7 @@
 #include "brpc/circuit_breaker.h"
 
 #include <cmath>
+#include <errno.h>
 #include <gflags/gflags.h>
 
 #include "brpc/errno.pb.h"
@@ -191,7 +192,9 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     // since the latency corresponding to ELIMIT is usually very small, we
     // cannot handle it as a successful request. Here we simply ignore the requests
     // that returned ELIMIT.
-    if (error_code == ELIMIT) {
+    // Canceled requests do not indicate a server failure and should not
+    // contribute samples or count as successful half-open probes either.
+    if (error_code == ELIMIT || error_code == ECANCELED) {
         return true;
     }
     if (_broken.load(butil::memory_order_relaxed)) {

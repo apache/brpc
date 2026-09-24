@@ -31,6 +31,7 @@
 #include "brpc/rdma/rdma_helper.h"
 #endif
 #if BRPC_WITH_UBRING
+#include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/ub_helper.h"
 #include "brpc/ubshm/ubr_trx.h"
 #endif
@@ -119,6 +120,95 @@ struct ClientHandshakeTask {
     void* data;
     SocketUniquePtr socket;
 };
+
+#if BRPC_WITH_RDMA
+class RdmaClientHandshakeTransport : public handshake::HandshakeTransport {
+public:
+    RdmaClientHandshakeTransport(
+        RdmaTransport* transport, rdma::RdmaHandshakeAdapter* protocol,
+        Socket* socket, int* connect_error)
+        : _transport(transport), _protocol(protocol), _socket(socket),
+          _connect_error(connect_error) {}
+
+    handshake::StepResult PrepareResources() override {
+        if (_transport->PrepareUpgradeResources() == 0) {
+            return handshake::STEP_OK;
+        }
+        errno = 0;
+        return handshake::STEP_FALLBACK;
+    }
+
+    handshake::StepResult NegotiateResources() override {
+        return _transport->NegotiateUpgradeResources(
+                   _protocol->remote(), false) == 0
+            ? handshake::STEP_OK : handshake::STEP_FALLBACK;
+    }
+
+    void OnEstablished() override { _transport->ActivateUpgrade(); }
+
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+
+    void OnFailed() override {
+        _transport->DeactivateUpgrade();
+        const int saved_errno = errno != 0 ? errno : EPROTO;
+        *_connect_error = saved_errno;
+        _socket->SetFailed(saved_errno,
+                           "Fail to complete rdma handshake from %s: %s",
+                           _socket->description().c_str(),
+                           berror(saved_errno));
+    }
+
+private:
+    RdmaTransport* _transport;
+    rdma::RdmaHandshakeAdapter* _protocol;
+    Socket* _socket;
+    int* _connect_error;
+};
+#endif
+
+#if BRPC_WITH_UBRING
+class UBShmClientHandshakeTransport : public handshake::HandshakeTransport {
+public:
+    UBShmClientHandshakeTransport(
+        UBShmTransport* transport, ubring::SHM* local_shm,
+        const std::string& shm_name, Socket* socket, int* connect_error)
+        : _transport(transport), _local_shm(local_shm),
+          _shm_name(shm_name), _socket(socket),
+          _connect_error(connect_error) {}
+
+    handshake::StepResult PrepareResources() override {
+        return _transport->PrepareUpgradeResources(
+                   _local_shm, _shm_name.c_str()) == 0
+            ? handshake::STEP_OK : handshake::STEP_FALLBACK;
+    }
+
+    handshake::StepResult NegotiateResources() override {
+        return _transport->NegotiateUpgradeResources(
+                   _local_shm, _shm_name.c_str()) == 0
+            ? handshake::STEP_OK : handshake::STEP_FALLBACK;
+    }
+
+    void OnEstablished() override { _transport->ActivateUpgrade(); }
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+
+    void OnFailed() override {
+        _transport->DeactivateUpgrade();
+        const int saved_errno = errno != 0 ? errno : EPROTO;
+        *_connect_error = saved_errno;
+        _socket->SetFailed(saved_errno,
+                           "Fail to complete ubring handshake from %s: %s",
+                           _socket->description().c_str(),
+                           berror(saved_errno));
+    }
+
+private:
+    UBShmTransport* _transport;
+    ubring::SHM* _local_shm;
+    std::string _shm_name;
+    Socket* _socket;
+    int* _connect_error;
+};
+#endif
 
 }  // namespace
 
@@ -250,35 +340,10 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         std::unique_ptr<rdma::RdmaHandshakeAdapter> protocol =
             transport->CreateClientHandshakeAdapter();
         CHECK(protocol != NULL);
-        rdma::ParsedHello remote{};
-        handshake::ClientHandshakeCallbacks callbacks{};
-        callbacks.codec = protocol->MakeCodec(&remote);
-        callbacks.transport.prepare_resources = [&]() {
-            if (transport->PrepareUpgradeResources() == 0) {
-                return handshake::STEP_OK;
-            }
-            errno = 0;
-            return handshake::STEP_FALLBACK;
-        };
-        callbacks.transport.negotiate_resources = [&]() {
-            return transport->NegotiateUpgradeResources(remote, false) == 0
-                ? handshake::STEP_OK : handshake::STEP_FALLBACK;
-        };
-        callbacks.transport.set_high_speed_active = [transport]() {
-            transport->ActivateUpgrade();
-        };
-        callbacks.transport.set_tcp_active = [transport]() {
-            transport->DeactivateUpgrade();
-        };
-        callbacks.transport.on_failed = [&]() {
-            const int saved_errno = errno != 0 ? errno : EPROTO;
-            connect_error = saved_errno;
-            socket->SetFailed(saved_errno,
-                              "Fail to complete rdma handshake from %s: %s",
-                              socket->description().c_str(),
-                              berror(saved_errno));
-        };
-        const handshake::StepResult result = adapter->_handshake.RunClient(callbacks);
+        RdmaClientHandshakeTransport participant(
+            transport, protocol.get(), socket, &connect_error);
+        const handshake::StepResult result = adapter->_handshake.RunClient(
+            protocol.get(), &participant);
         if (result == handshake::STEP_OK &&
             transport->StartUpgradeEvents() < 0) {
             const int saved_errno = errno != 0 ? errno : ERDMA;
@@ -317,44 +382,16 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
             NULL, local_shm_len, 0, {0}, static_cast<uint32_t>(socket->fd())};
         const auto shm_name_str =
             butil::endpoint2str(socket->local_side());
-        ubring::HelloMessage remote{};
         ubring::UBShmHandshakeAdapter wire;
-        handshake::ClientHandshakeCallbacks callbacks{};
-        callbacks.codec = wire.MakeCodec();
-        callbacks.codec.build_hello = [&](bool enabled, std::string* payload) {
-            CHECK(enabled);
-            return wire.BuildHello(true, local_shm_len, shm_name_str.c_str(),
-                                   payload);
-        };
-        callbacks.codec.parse_hello = [&](const std::string& payload) {
-            return wire.ParseHello(payload, &remote);
-        };
-        callbacks.transport.prepare_resources = [&]() {
-            return transport->PrepareUpgradeResources(
-                       &local_trx_shm, shm_name_str.c_str()) == 0
-                ? handshake::STEP_OK : handshake::STEP_FALLBACK;
-        };
-        callbacks.transport.negotiate_resources = [&]() {
-            return transport->NegotiateUpgradeResources(
-                       &local_trx_shm, shm_name_str.c_str()) == 0
-                ? handshake::STEP_OK : handshake::STEP_FALLBACK;
-        };
-        callbacks.transport.set_high_speed_active = [transport]() {
-            transport->ActivateUpgrade();
-        };
-        callbacks.transport.set_tcp_active = [transport]() {
-            transport->DeactivateUpgrade();
-        };
-        callbacks.transport.on_failed = [&]() {
-            const int saved_errno = errno != 0 ? errno : EPROTO;
-            connect_error = saved_errno;
-            socket->SetFailed(saved_errno,
-                              "Fail to complete ubring handshake from %s: %s",
-                              socket->description().c_str(),
-                              berror(saved_errno));
-        };
-        const handshake::StepResult result = adapter->_handshake.RunClient(callbacks);
+        wire.ConfigureClientHello(local_shm_len, shm_name_str.c_str());
+        UBShmClientHandshakeTransport participant(
+            transport, &local_trx_shm, shm_name_str.c_str(), socket,
+            &connect_error);
+        const handshake::StepResult result = adapter->_handshake.RunClient(
+            &wire, &participant);
         if (result == handshake::STEP_OK) {
+            transport->GetUBShmEp()->SetNegotiatedDataFormat(
+                ubring::UBR_DATA_FORMAT_LEGACY_64);
             transport->FinishUpgrade();
         }
         if (result == handshake::STEP_ERROR && connect_error == 0) {
@@ -501,6 +538,8 @@ void AdapterTransport::Debug(std::ostream& os) {
     case handshake::NEGOTIATING: state = "NEGOTIATING"; break;
     case handshake::ACK_SEND: state = "ACK_SEND"; break;
     case handshake::ACK_WAIT: state = "ACK_WAIT"; break;
+    case handshake::EXTENSION_SEND: state = "EXTENSION_SEND"; break;
+    case handshake::EXTENSION_WAIT: state = "EXTENSION_WAIT"; break;
     case handshake::ESTABLISHED: state = "ESTABLISHED"; break;
     case handshake::FALLBACK_TCP: state = "FALLBACK_TCP"; break;
     case handshake::FAILED: state = "FAILED"; break;

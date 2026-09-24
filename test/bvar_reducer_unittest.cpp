@@ -279,6 +279,72 @@ TEST_F(ReducerTest, non_primitive) {
     ASSERT_EQ(9, adder.get_value().x);
 }
 
+// The generic Adder/Maxer/Miner keep their data in a shared AgentCombiner and
+// hence expose share_combiner(), while the babylon-backed ones keep a value-type
+// counter and do not. This tells the two implementations apart.
+template <typename R>
+struct IsBabylonBacked
+    : std::integral_constant<bool, !bvar::detail::HasShareCombiner<R>::value> {};
+
+// Which implementation backs a given value type is decided by SFINAE at compile
+// time, so a malformed condition silently makes the babylon-backed partial
+// specializations unreachable without failing any runtime assertion. Assert the
+// selection statically.
+TEST_F(ReducerTest, babylon_counter_backend) {
+#if WITH_BABYLON_COUNTER
+    static_assert(IsBabylonBacked<bvar::Adder<int> >::value,
+                  "Adder<int> should be backed by a babylon counter");
+    static_assert(IsBabylonBacked<bvar::Adder<int64_t> >::value,
+                  "Adder<int64_t> should be backed by a babylon counter");
+    static_assert(IsBabylonBacked<bvar::Adder<double> >::value,
+                  "Adder<double> should be backed by a babylon counter");
+    static_assert(IsBabylonBacked<bvar::Maxer<int64_t> >::value,
+                  "Maxer<int64_t> should be backed by a babylon counter");
+    static_assert(IsBabylonBacked<bvar::Miner<int64_t> >::value,
+                  "Miner<int64_t> should be backed by a babylon counter");
+    // babylon counters only support arithmetic types not larger than 8 bytes.
+    // The types they reject must fall back to the generic implementation rather
+    // than break the build.
+    static_assert(IsBabylonBacked<bvar::Adder<long double> >::value ==
+                  (sizeof(long double) <= 8),
+                  "Adder<long double> should follow the size constraint");
+    static_assert(!IsBabylonBacked<bvar::Adder<std::string> >::value,
+                  "Adder<std::string> should be backed by an AgentCombiner");
+    static_assert(!IsBabylonBacked<bvar::Adder<Foo> >::value,
+                  "Adder<Foo> should be backed by an AgentCombiner");
+#else
+    static_assert(!IsBabylonBacked<bvar::Adder<int64_t> >::value,
+                  "Adder<int64_t> should be backed by an AgentCombiner");
+    static_assert(!IsBabylonBacked<bvar::Maxer<int64_t> >::value,
+                  "Maxer<int64_t> should be backed by an AgentCombiner");
+    static_assert(!IsBabylonBacked<bvar::Miner<int64_t> >::value,
+                  "Miner<int64_t> should be backed by an AgentCombiner");
+#endif // WITH_BABYLON_COUNTER
+}
+
+// reset() must return the accumulated value and restore the identity of the
+// operator, which is how Window<> samples an operator without inverse. This runs
+// against whichever implementation backs the value type, hence it covers the
+// babylon counters as well when WITH_BABYLON_COUNTER is enabled.
+TEST_F(ReducerTest, reset) {
+    bvar::Adder<int> adder;
+    adder << 3 << 1;
+    ASSERT_EQ(4, adder.reset());
+    ASSERT_EQ(0, adder.get_value());
+    adder << 2;
+    ASSERT_EQ(2, adder.reset());
+
+    bvar::Maxer<int> maxer;
+    maxer << 3 << 1;
+    ASSERT_EQ(3, maxer.reset());
+    ASSERT_EQ(std::numeric_limits<int>::min(), maxer.get_value());
+
+    bvar::Miner<int> miner;
+    miner << 3 << 1;
+    ASSERT_EQ(1, miner.reset());
+    ASSERT_EQ(std::numeric_limits<int>::max(), miner.get_value());
+}
+
 bool g_stop = false;
 struct StringAppenderResult {
     int count;
