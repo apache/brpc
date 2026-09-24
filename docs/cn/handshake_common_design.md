@@ -12,14 +12,16 @@
 | 组件 | 职责 |
 | --- | --- |
 | `AdapterTransport` | 持有 TCP 与候选高速 Transport，启动客户端握手、分发服务端输入，并选择数据面 |
-| `HandshakeSession` | 管理握手阶段、帧收发、增量解析和终态发布 |
-| 协议 adapter / `HandshakeCodec` | 编解码 RDMA 或 UBSHM 的协议字段，校验版本和参数 |
-| `TransportUpgradeOps` | 调用具体 Transport 的资源准备、协商、激活和回退操作 |
+| `HandshakeSession` | 执行公共客户端和服务端状态机，管理帧收发、增量解析和终态发布 |
+| `HandshakeProtocol` | 定义 hello、ACK 和扩展帧，编解码协议字段并保存协议状态 |
+| `HandshakeTransport` | 准备和协商资源，处理升级成功、TCP 回退及失败清理 |
+| RDMA / UBSHM protocol | 实现各自的 wire format、版本兼容和字段校验 |
 | `RdmaEndpoint` / `UBShmEndpoint` | 管理各自的资源和数据面，不驱动完整握手流程 |
 
 客户端在 TCP 连接建立后启动握手 bthread；服务端通过 `InputMessenger`
-增量解析 hello、扩展字段（若协议需要）和 ACK。公共层保留选中的协议
-adapter，因为 ACK 本身不带 magic。
+增量解析 hello、扩展字段（若协议需要）和 ACK。`AdapterTransport` 选择具体的
+protocol 和 transport participant，`HandshakeSession` 只负责调用参与者并编排流程。
+服务端通过协议版本恢复选中的 protocol，因为 ACK 本身不带 magic。
 
 ## 状态与回退
 
@@ -39,7 +41,7 @@ adapter，因为 ACK 本身不带 magic。
 - RDMA 保持既有 v2/v3 wire format、协议 ID 和注册名称。
 - UBSHM 使用 v3 hello。64 字节 hello 后，双方交换 4 字节网络序格式扩展；
   只有双方选择 `LEGACY_64` 才能升级，否则回退 TCP。ACK 仍为 4 字节。
-- 公共 framing 仅负责帧边界，协议字段由各自 codec 解释。
+- 公共 framing 仅负责帧边界，协议字段由各自 `HandshakeProtocol` 解释。
 
 ## 验证重点
 
