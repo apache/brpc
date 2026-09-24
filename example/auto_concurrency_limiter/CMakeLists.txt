@@ -16,7 +16,7 @@
 # under the License.
 
 cmake_minimum_required(VERSION 3.16...3.28)
-project(asynchronous_echo_c++ C CXX)
+project(auto_concurrency_limiter C CXX)
 
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/BrpcExample.cmake)
 
@@ -26,10 +26,10 @@ brpc_example_find_common_deps(DYNAMIC_LIB)
 
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER cl_test.proto)
 
-add_executable(asynchronous_echo_client client.cpp ${PROTO_SRC})
-brpc_example_configure_target(asynchronous_echo_client)
-add_executable(asynchronous_echo_server server.cpp ${PROTO_SRC})
-brpc_example_configure_target(asynchronous_echo_server)
+add_executable(auto_concurrency_limiter_client client.cpp ${PROTO_SRC})
+brpc_example_configure_target(auto_concurrency_limiter_client)
+add_executable(auto_concurrency_limiter_server server.cpp ${PROTO_SRC})
+brpc_example_configure_target(auto_concurrency_limiter_server)
 
-target_link_libraries(asynchronous_echo_client PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
-target_link_libraries(asynchronous_echo_server PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(auto_concurrency_limiter_client PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(auto_concurrency_limiter_server PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
