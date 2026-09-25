@@ -153,12 +153,14 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 compbuf.push_back(*c);
             }
         } else {
-            char *arg;
+            const char* arg;
             size_t size;
 
             switch(c[1]) {
             case 's':
-                arg = va_arg(ap, char*);
+                // Callers pass const char* (c_str()/data()); read it back with
+                // the exact type to avoid UB at the variadic boundary.
+                arg = va_arg(ap, const char*);
                 // strlen(NULL) is UB; forbid it explicitly instead of crashing.
                 if (arg == nullptr) {
                     return butil::Status(EINVAL, "%%s argument is NULL");
@@ -171,7 +173,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 ++nargs;
                 break;
             case 'b':
-                arg = va_arg(ap, char*);
+                arg = va_arg(ap, const char*);
                 size = va_arg(ap, size_t);
                 // append(NULL, n>0) is UB; size==0 with NULL is a valid empty.
                 if (arg == nullptr && size > 0) {
