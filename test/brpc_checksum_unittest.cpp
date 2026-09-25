@@ -152,10 +152,9 @@ class ChecksumAttachmentEndToEndTest : public ::testing::Test {
 protected:
     void SetUp() override {
         ASSERT_EQ(0, server_.AddService(&svc_, brpc::SERVER_DOESNT_OWN_SERVICE));
-        ASSERT_EQ(0, server_.Start(port_, nullptr));
+        ASSERT_EQ(0, server_.Start(0, nullptr));
         brpc::ChannelOptions options;
-        ASSERT_EQ(0, channel_.Init(butil::EndPoint(butil::my_ip(), port_),
-                                    &options));
+        ASSERT_EQ(0, channel_.Init(server_.listen_address(), &options));
     }
 
     void TearDown() override {
@@ -163,7 +162,6 @@ protected:
         server_.Join();
     }
 
-    const int port_ = 8934;
     brpc::Server server_;
     ChecksumEchoServiceImpl svc_;
     brpc::Channel channel_;

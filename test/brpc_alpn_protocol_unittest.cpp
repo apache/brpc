@@ -28,7 +28,7 @@
 #include "butil/fd_guard.h"
 #include "echo.pb.h"
 
-DEFINE_string(listen_addr, "0.0.0.0:8011", "Server listen address.");
+DEFINE_string(listen_addr, "0.0.0.0:0", "Server listen address.");
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -89,8 +89,7 @@ public:
                 reinterpret_cast<const unsigned char*>(raw_alpn.data()), raw_alpn.size());
     
         // TCP connect.
-        butil::EndPoint endpoint;
-        butil::str2endpoint(FLAGS_listen_addr.data(), &endpoint);
+        const butil::EndPoint endpoint = _server.listen_address();
 
         int cli_fd = butil::tcp_connect(endpoint, nullptr);
         butil::fd_guard guard(cli_fd);
