@@ -98,7 +98,7 @@ bool RedisRequest::AddCommand(const butil::StringPiece& command) {
         ++_ncommand;
         return true;
     } else {
-        CHECK(st.ok()) << st;
+        LOG(ERROR) << "RedisRequest::AddCommand failed: " << st;
         _has_error = true;
         return false;
     }
@@ -114,7 +114,7 @@ bool RedisRequest::AddCommandByComponents(const butil::StringPiece* components,
         ++_ncommand;
         return true;
     } else {
-        CHECK(st.ok()) << st;
+        LOG(ERROR) << "RedisRequest::AddCommand failed: " << st;
         _has_error = true;
         return false;
     }
@@ -132,7 +132,7 @@ bool RedisRequest::AddCommandWithArgs(const char* fmt, ...) {
         ++_ncommand;
         return true;
     } else {
-        CHECK(st.ok()) << st;
+        LOG(ERROR) << "RedisRequest::AddCommand failed: " << st;
         _has_error = true;
         return false;
     }
@@ -147,7 +147,7 @@ bool RedisRequest::AddCommandV(const char* fmt, va_list ap) {
         ++_ncommand;
         return true;
     } else {
-        CHECK(st.ok()) << st;
+        LOG(ERROR) << "RedisRequest::AddCommand failed: " << st;
         _has_error = true;
         return false;
     }

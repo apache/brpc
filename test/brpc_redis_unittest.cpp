@@ -625,6 +625,21 @@ TEST_F(RedisTest, empty_and_null_format_args) {
     buf.clear();
 }
 
+// NULL through the public AddCommand path must return false / set has_error,
+// not abort the process (the failure branch used to CHECK and crash).
+TEST_F(RedisTest, addcommand_null_returns_false) {
+    brpc::RedisRequest request;
+
+    ASSERT_FALSE(request.AddCommand("set key %s", (const char*)nullptr));
+    ASSERT_TRUE(request.has_error());
+    ASSERT_FALSE(request.AddCommand("ping"));  // sticky: still false after error
+
+    request.Clear();
+    ASSERT_FALSE(
+        request.AddCommand("set key %b", (const char*)nullptr, (size_t)3));
+    ASSERT_TRUE(request.has_error());
+}
+
 TEST_F(RedisTest, quote_and_escape) {
     if (g_redis_pid < 0) {
         puts("Skipped due to absence of redis-server");
