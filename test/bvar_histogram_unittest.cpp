@@ -703,14 +703,20 @@ TEST_F(HistogramTest, window) {
     bvar::Histogram h(bvar::Histogram::BucketSchema({0.5, 1.5, 3.0}));
     bvar::Window<bvar::Histogram> w(&h, 10);
 
-    h << 0.25 << 1.25;
-    sleep(1);
-    h << 2.5;
-    // One more second so that get_value() has a sample taken after the last
-    // value, to diff against the construction-time baseline.
-    sleep(1);
+    h << 0.25 << 1.25 << 2.5;
 
-    bvar::Histogram::Value wv = w.get_value();
+    // Window values are produced by the global sampler thread. Wait until it
+    // observes all writes instead of assuming a fixed sleep covers a sampling
+    // round, which is not guaranteed when the test host is busy.
+    bvar::Histogram::Value wv;
+    for (int i = 0; i < 50; ++i) {
+        wv = w.get_value();
+        if (wv.num == 3) {
+            break;
+        }
+        usleep(100 * 1000);
+    }
+
     // Everything recorded, all of it inside the window.
     ASSERT_EQ(3, wv.num);
     ASSERT_DOUBLE_EQ(4.0, wv.sum);
