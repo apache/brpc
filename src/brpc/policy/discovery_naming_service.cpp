@@ -134,6 +134,12 @@ inline Channel* GetOrNewDiscoveryChannel() {
     return s_discovery_channel;
 }
 
+void ResetDiscoveryChannelForTesting() {
+    delete s_discovery_channel;
+    s_discovery_channel = nullptr;
+    s_init_discovery_channel_once = PTHREAD_ONCE_INIT;
+}
+
 bool DiscoveryRegisterParam::IsValid() const {
     return !appid.empty() && !hostname.empty() && !addrs.empty() &&
             !env.empty() && !zone.empty() && !version.empty();

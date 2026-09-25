@@ -70,6 +70,16 @@ bool IsIPListEqual(const std::set<butil::ip_t>& s1, const std::set<butil::ip_t>&
     return true;
 }
 
+class ScopedDiscoveryChannelReset {
+public:
+    ScopedDiscoveryChannelReset() {
+        brpc::policy::ResetDiscoveryChannelForTesting();
+    }
+    ~ScopedDiscoveryChannelReset() {
+        brpc::policy::ResetDiscoveryChannelForTesting();
+    }
+};
+
 TEST(NamingServiceTest, sanity) {
     std::vector<brpc::ServerNode> servers;
 
@@ -418,8 +428,8 @@ public:
 };
 
 TEST(NamingServiceTest, consul_with_backup_file) {
+    GFLAGS_NAMESPACE::FlagSaver flags_saver;
     brpc::policy::FLAGS_consul_enable_degrade_to_file_naming_service = true;
-    const int saved_hc_interval = brpc::FLAGS_health_check_interval;
     brpc::FLAGS_health_check_interval = 1;
     const char *address_list[] =  {
         "10.127.0.1:1234",
@@ -478,7 +488,6 @@ TEST(NamingServiceTest, consul_with_backup_file) {
     for (size_t i = 0; i < expected_servers.size(); ++i) {
         ASSERT_EQ(expected_servers[i], servers[i]);
     }
-    brpc::FLAGS_health_check_interval = saved_hc_interval;
 }
 
 
@@ -550,7 +559,7 @@ static const std::string s_fetchs_result = R"({
     }
 })";
 
-static std::string s_nodes_result = R"({
+static const char s_nodes_result[] = R"({
     "code": 0,
     "message": "0",
     "ttl": 1,
@@ -580,13 +589,17 @@ public:
         , _cancel_count(0) {}
     virtual ~DiscoveryNamingServiceImpl() {}
 
+    void SetNodesResult(const std::string& nodes_result) {
+        _nodes_result = nodes_result;
+    }
+
     void Nodes(google::protobuf::RpcController* cntl_base,
                const test::HttpRequest*,
                test::HttpResponse*,
                google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
-        cntl->response_attachment().append(s_nodes_result);
+        cntl->response_attachment().append(_nodes_result);
     }
 
     void Fetchs(google::protobuf::RpcController* cntl_base,
@@ -659,9 +672,12 @@ private:
     int _cancel_count;
 
     std::set<std::string> _addrs;
+    std::string _nodes_result;
 };
 
 TEST(NamingServiceTest, discovery_sanity) {
+    GFLAGS_NAMESPACE::FlagSaver flags_saver;
+    ScopedDiscoveryChannelReset reset_discovery_channel;
     brpc::policy::FLAGS_discovery_renew_interval_s = 1;
     brpc::Server server;
     DiscoveryNamingServiceImpl svc;
@@ -680,8 +696,12 @@ TEST(NamingServiceTest, discovery_sanity) {
 
     const std::string server_address =
         butil::endpoint2str(server.listen_address()).c_str();
-    s_nodes_result.replace(s_nodes_result.find("127.0.0.1:8635"),
-                           strlen("127.0.0.1:8635"), server_address);
+    std::string nodes_result(s_nodes_result);
+    const size_t server_address_pos = nodes_result.find("127.0.0.1:8635");
+    ASSERT_NE(std::string::npos, server_address_pos);
+    nodes_result.replace(server_address_pos, strlen("127.0.0.1:8635"),
+                         server_address);
+    svc.SetNodesResult(nodes_result);
     brpc::policy::DiscoveryNamingService dcns;
     std::vector<brpc::ServerNode> servers;
     ASSERT_EQ(0, dcns.GetServers("admin.test", &servers));
