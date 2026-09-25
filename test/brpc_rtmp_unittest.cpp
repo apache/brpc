@@ -1173,14 +1173,14 @@ TEST(RtmpTest, successfully_play_streams) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8571, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8571", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1205,14 +1205,14 @@ TEST(RtmpTest, fail_to_play_streams) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8571, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8571", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1236,14 +1236,14 @@ TEST(RtmpTest, successfully_publish_streams) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8571, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8571", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1299,14 +1299,14 @@ TEST(RtmpTest, failed_to_publish_streams) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8575, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8575", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1409,14 +1409,14 @@ TEST(RtmpTest, destroy_client_streams_during_creation) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8574, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8574", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1441,14 +1441,14 @@ TEST(RtmpTest, destroy_retrying_client_streams_during_creation) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8574, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8574", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1474,14 +1474,15 @@ TEST(RtmpTest, retrying_stream) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8576, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
+    const butil::EndPoint server_address = server.listen_address();
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8576", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server_address, rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1500,7 +1501,7 @@ TEST(RtmpTest, retrying_stream) {
     server.Join();
     LOG(INFO) << "Stopped server and sleep for a while";
     sleep(3);
-    ASSERT_EQ(0, server.Start(8576, &server_opt));
+    ASSERT_EQ(0, server.Start(server_address, &server_opt));
     sleep(3);
     for (int i = 0; i < NSTREAM; ++i) {
         ASSERT_EQ(1, cstreams[i]->_called_on_first_message);

@@ -707,7 +707,7 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(new test::EchoService(),
                                    brpc::SERVER_OWNS_SERVICE));
-    ASSERT_EQ(0, server.Start(9237, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
     std::string unknown_method;
     brpc::Server::MethodProperty* mp = nullptr;
               

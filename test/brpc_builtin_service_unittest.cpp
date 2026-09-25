@@ -562,13 +562,13 @@ TEST_F(BuiltinServiceTest, customized_health) {
     brpc::ServerOptions opt;
     MyHealthReporter hr;
     opt.health_reporter = &hr;
-    ASSERT_EQ(0, _server.Start(9798, &opt));
+    ASSERT_EQ(0, _server.Start(0, &opt));
     brpc::HealthRequest req;
     brpc::HealthResponse res;
     brpc::ChannelOptions copt;
     copt.protocol = brpc::PROTOCOL_HTTP;
     brpc::Channel chan;
-    ASSERT_EQ(0, chan.Init("127.0.0.1:9798", &copt));
+    ASSERT_EQ(0, chan.Init(_server.listen_address(), &copt));
     brpc::Controller cntl;
     cntl.http_request().uri() = "/health";
     chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
@@ -597,7 +597,7 @@ public:
 
 TEST_F(BuiltinServiceTest, normal_grpc_health) {
     brpc::ServerOptions opt;
-    ASSERT_EQ(0, _server.Start(9798, &opt));
+    ASSERT_EQ(0, _server.Start(0, &opt));
 
     grpc::health::v1::HealthCheckResponse response;
     grpc::health::v1::HealthCheckRequest request;
@@ -606,7 +606,7 @@ TEST_F(BuiltinServiceTest, normal_grpc_health) {
     brpc::ChannelOptions copt;
     copt.protocol = "h2:grpc";
     brpc::Channel chan;
-    ASSERT_EQ(0, chan.Init("127.0.0.1:9798", &copt));
+    ASSERT_EQ(0, chan.Init(_server.listen_address(), &copt));
     grpc::health::v1::Health_Stub stub(&chan);
     stub.Check(&cntl, &request, &response, nullptr);
     EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -624,7 +624,7 @@ TEST_F(BuiltinServiceTest, customized_grpc_health) {
     brpc::ServerOptions opt;
     MyGrpcHealthReporter hr;
     opt.health_reporter = &hr;
-    ASSERT_EQ(0, _server.Start(9798, &opt));
+    ASSERT_EQ(0, _server.Start(0, &opt));
 
     grpc::health::v1::HealthCheckResponse response;
     grpc::health::v1::HealthCheckRequest request;
@@ -634,7 +634,7 @@ TEST_F(BuiltinServiceTest, customized_grpc_health) {
     brpc::ChannelOptions copt;
     copt.protocol = "h2:grpc";
     brpc::Channel chan;
-    ASSERT_EQ(0, chan.Init("127.0.0.1:9798", &copt));
+    ASSERT_EQ(0, chan.Init(_server.listen_address(), &copt));
 
     grpc::health::v1::Health_Stub stub(&chan);
     stub.Check(&cntl, &request, &response, nullptr);
@@ -760,7 +760,7 @@ TEST_F(BuiltinServiceTest, bad_method) {
 
 TEST_F(BuiltinServiceTest, vars) {
     // Start server to show bvars inside 
-    ASSERT_EQ(0, _server.Start("127.0.0.1:9798", nullptr));
+    ASSERT_EQ(0, _server.Start(0, nullptr));
     brpc::VarsService service;
     brpc::VarsRequest req;
     brpc::VarsResponse res;
