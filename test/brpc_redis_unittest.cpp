@@ -565,9 +565,12 @@ TEST_F(RedisTest, cmd_format) {
     {
         const char bin[] = {'a', '\0', 'b'};
         request.AddCommand("set key %b", bin, (size_t)3);
-        ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$3\r\na\x00"
-                     "b\r\n",
-                     request._buf.to_string().c_str());
+        // Compare full bytes: ASSERT_STREQ would stop at the embedded NUL and
+        // miss a payload truncated after 'a'.
+        std::string expected = "*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$3\r\n";
+        expected.append(bin, sizeof(bin));
+        expected.append("\r\n", 2);
+        ASSERT_EQ(expected, request._buf.to_string());
         request.Clear();
     }
 }
