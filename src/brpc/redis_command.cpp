@@ -158,8 +158,10 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
 
             switch(c[1]) {
             case 's':
-                // Callers pass const char* (c_str()/data()); read it back with
-                // the exact type to avoid UB at the variadic boundary.
+                // Most callers pass const char* (c_str()/data()); reading as
+                // const char* matches them exactly. char* is ABI-identical to
+                // const char*, so mutable callers stay correct in practice; a
+                // single va_arg cannot serve both types exactly.
                 arg = va_arg(ap, const char*);
                 // strlen(NULL) is UB; forbid it explicitly instead of crashing.
                 if (arg == nullptr) {
