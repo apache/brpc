@@ -15,23 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_TRANSPORT_FACTORY_H
-#define BRPC_TRANSPORT_FACTORY_H
+#include "brpc/policy/transport_handshake_protocol.h"
 
-#include "brpc/socket_mode.h"
-#include "brpc/transport.h"
+#include "butil/logging.h"
+#include "brpc/adapter_transport.h"
 
 namespace brpc {
-// Creates AdapterTransport for TCP, RDMA, and UBSHM sockets. URMA currently
-// uses its concrete transport directly.
-class TransportFactory {
-public:
-    static int ContextInitOrDie(SocketMode mode, bool server_or_not,
-                                const void* options);
-    // Create transport instance with socket mode.
-    static std::unique_ptr<Transport> CreateTransport(SocketMode mode);
-};
+namespace policy {
 
+ParseResult ParseTransportHandshake(butil::IOBuf* source, Socket* socket,
+                                     bool /*read_eof*/, const void* /*arg*/) {
+    return AdapterTransport::Get(socket)->ProcessUpgradeReadable(source);
+}
+
+void ProcessTransportHandshake(InputMessageBase* msg) {
+    DestroyingPtr<InputMessageBase> destroying_msg(msg);
+    CHECK(false) << "ProcessTransportHandshake should never be called";
+}
+
+}  // namespace policy
 }  // namespace brpc
-
-#endif  // BRPC_TRANSPORT_FACTORY_H
