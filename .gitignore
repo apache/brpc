@@ -17,8 +17,10 @@
 /test/output
 build/
 
-# Ignore hidden files
+# Ignore hidden files, but keep GitHub workflows and helpers discoverable.
 .*
+!/.github/
+/.github/scripts/__pycache__/
 *.swp
 
 # Ignore auto-generated files
