@@ -139,6 +139,39 @@ protected:
     void TearDown() {}
 };
 
+TEST(RedisCommandFormatTest, wide_numeric_conversion) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "SET key %100d tail %d", 7, 9).ok());
+
+    const std::string padded_value(99, ' ');
+    const std::string expected =
+        std::string("*5\r\n$3\r\nSET\r\n$3\r\nkey\r\n$100\r\n") +
+        padded_value + "7\r\n$4\r\ntail\r\n$1\r\n9\r\n";
+    EXPECT_EQ(expected, buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, vector_components_preserve_binary_payload) {
+    const std::string value("a\0b", 3);
+    const std::vector<butil::StringPiece> components = {
+        "SET", "key", butil::StringPiece(value.data(), value.size())};
+    brpc::RedisRequest request;
+    ASSERT_TRUE(request.AddCommandByComponents(components));
+
+    butil::IOBuf buf;
+    ASSERT_TRUE(request.SerializeTo(&buf));
+    std::string expected = "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\n";
+    expected.append(value).append("\r\n");
+    EXPECT_EQ(expected, buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, authenticator_encodes_password_and_database) {
+    brpc::policy::RedisAuthenticator authenticator("a b", 3);
+    std::string credential;
+    ASSERT_EQ(0, authenticator.GenerateCredential(&credential));
+    EXPECT_EQ("*2\r\n$4\r\nAUTH\r\n$3\r\na b\r\n"
+              "*2\r\n$6\r\nSELECT\r\n$1\r\n3\r\n", credential);
+}
+
 void AssertReplyEqual(const brpc::RedisReply& reply1,
                       const brpc::RedisReply& reply2) {
     if (&reply1 == &reply2) {
