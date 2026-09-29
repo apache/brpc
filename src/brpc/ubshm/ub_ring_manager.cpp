@@ -16,6 +16,7 @@
 // under the License.
 
 #include <new>
+#include <vector>
 #include <gflags/gflags.h>
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/ub_ring_manager.h"
@@ -99,6 +100,37 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
 }
 
 void UBRingManager::UbrMgrFini() {
+    // The pool arrays are only safe to walk once UbrMgrInit has allocated and
+    // zeroed all four of them; its allocation-failure path calls this function
+    // with some of them still null and the others uninitialized.
+    const bool pool_ready = g_ubr_mgr.trx_mgr != nullptr &&
+                            g_ubr_mgr.trx_mgr_unit_status != nullptr &&
+                            g_ubr_mgr.trx_mgr_unit_id != nullptr &&
+                            g_ubr_mgr.trx_mgr_unit_ctl != nullptr;
+
+    // Wait out close/heartbeat callbacks that are already dispatched, then
+    // stop the timers, before the pool is freed: UbrTimerDel alone is
+    // non-blocking, so a callback that already passed its generation check
+    // could still be reading UbrTrx when FREE_PTR(trx_mgr) runs.
+    // UbrTimerDelAndWait blocks until a dispatched callback has returned, but
+    // it must run without g_ubr_trx_mgr_mtx because the callbacks take that
+    // lock themselves; snapshot the slots under the lock first.
+    if (pool_ready) {
+        std::vector<uint32_t> used_slots;
+        {
+            BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+            for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
+                if (g_ubr_mgr.trx_mgr_unit_status[i] == UBR_MGR_UNIT_USED) {
+                    used_slots.push_back(i);
+                }
+            }
+        }
+        for (uint32_t i : used_slots) {
+            UbrTimerDelAndWait(&g_ubr_mgr.trx_mgr[i].close_timer);
+            UbrTimerDelAndWait(&g_ubr_mgr.trx_mgr[i].hb_timer);
+        }
+    }
+
     // Cancel the pending delayed cleanups and wait for the in-flight ones
     // (each holds one extra reference) to finish, before the pool memory
     // they touch is freed. A ctl whose timer is still starting can only be
@@ -108,7 +140,7 @@ void UBRingManager::UbrMgrFini() {
         busy = false;
         {
             BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
-            if (g_ubr_mgr.trx_mgr_unit_ctl != nullptr) {
+            if (pool_ready) {
                 for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
                     UbrCleanupCtl* ctl = g_ubr_mgr.trx_mgr_unit_ctl[i];
                     if (ctl == nullptr) {
@@ -130,7 +162,7 @@ void UBRingManager::UbrMgrFini() {
     }
     {
         BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
-        if (g_ubr_mgr.trx_mgr_unit_ctl != nullptr) {
+        if (pool_ready) {
             for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
                 UbrCleanupCtl* ctl = g_ubr_mgr.trx_mgr_unit_ctl[i];
                 if (ctl != nullptr) {
@@ -234,6 +266,18 @@ RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx,
         LOG(ERROR) << "Release trx failed, trx number is 0.";
         return UBRING_ERR;
     }
+
+    // Disarm the per-acquisition periodic timers before the slot becomes
+    // reusable: a surviving task would keep re-arming and firing against the
+    // slot's next occupant. Non-blocking delete only -- this path holds
+    // g_ubr_trx_mgr_mtx and the timer callbacks take the same lock, so
+    // UbrTimerDelAndWait would deadlock; it is not needed either, because
+    // every caller has already quiesced the per-trx callbacks before reaching
+    // here: the clear paths wait through UbrStopTrxTimer (or run on the single
+    // bthread timer thread) before they call ReleaseUbrTrxFromMgr, the force
+    // close waits in UbrTrxClose, and UbrMgrFini waits for all of them.
+    UbrTimerDel(&trx->close_timer);
+    UbrTimerDel(&trx->hb_timer);
 
     // Mutate the trx only after the generation check passed.
     trx->local_shm.addr = nullptr;
@@ -391,7 +435,8 @@ int32_t UBRingManager::UbEventCallback(const char *shm_name)
             ++g_ub_event_cnt;
             int fd = (int)g_ubr_mgr.trx_mgr[i].local_shm.fd;
             LOG(WARNING) << "Ub event callback, the fd of the faulty link is " << fd;
-            return UBRing::UbrPassiveClearTrx(&g_ubr_mgr.trx_mgr[i]);
+            const uint64_t expect_ubr_id = ATOMIC_LOAD(g_ubr_mgr.trx_mgr[i].ubr_id);
+            return UBRing::UbrPassiveClearTrx(&g_ubr_mgr.trx_mgr[i], expect_ubr_id, false);
         }
     }
     return UBRING_ERR;

@@ -35,16 +35,19 @@ typedef struct UbrTimerTask* UbrTimerId;
 // Runs on the timer thread only.
 typedef uint64_t (*UbrTimerBackoffFn)(void* arg, uint64_t cur_interval_us);
 
-// Schedule `cb(arg)' to run after `delay_us' and, when `interval_us' > 0,
+// Schedule `cb(arg, gen)' to run after `delay_us' and, when `interval_us' > 0,
 // re-arm itself after every run until deleted. One-shot timers release
 // their handle slot before running the callback, so the callback may free
 // the object that stores the slot; the task object itself is released
 // automatically. `slot' must point to a real butil::atomic<UbrTimerId>
 // object, so start and delete can race on one RMW without reinterpreting
-// plain storage as an atomic.
+// plain storage as an atomic. `gen' is an opaque value carried by the task
+// and passed back on every fire, so a callback armed for an object that was
+// later released and reused can detect that it is stale. It is required:
+// passing a wrong value silently disables the generation guard.
 RETURN_CODE UbrTimerStart(butil::atomic<UbrTimerId>* slot, uint64_t delay_us,
-                          uint64_t interval_us, void* (*cb)(void*),
-                          void* arg,
+                          uint64_t interval_us, void* (*cb)(void*, uint64_t),
+                          void* arg, uint64_t gen,
                           UbrTimerBackoffFn backoff = nullptr);
 
 // Non-blocking delete, safe to call from inside the timer callback itself.

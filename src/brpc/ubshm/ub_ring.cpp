@@ -68,6 +68,26 @@ RETURN_CODE UBRing::UbrTrxMapShm(SHM *local_shm, SHM *remote_shm)
     return UBRING_OK;
 }
 
+// Stop a per-trx timer before its slot becomes reusable. Outside a per-trx
+// timer callback this waits -- UbrTimerDelAndWait returns only after a
+// callback that was already dispatched has left the trx -- which is what lets
+// the caller clear the trx and free its shared memory afterwards. Inside the
+// callback itself the wait would join the task that is currently running, so
+// the non-blocking delete is used instead; no wait is needed there, because
+// bthread dispatches every timer callback from one global timer thread
+// (TimerThread in bthread/timer_thread.{h,cpp} is created by a single
+// pthread_once), so this trx's sibling timer callback cannot be running
+// concurrently and the non-blocking delete already removed it from the timer
+// heap.
+static void UbrStopTrxTimer(butil::atomic<UbrTimerId>* slot,
+                            bool in_timer_callback) {
+    if (in_timer_callback) {
+        UbrTimerDel(slot);
+    } else {
+        UbrTimerDelAndWait(slot);
+    }
+}
+
 static void UbrDoAsynClearWork(UbrTrx *trx, uint64_t expect_ubr_id) {
     if (BAIDU_UNLIKELY(UBRing::UbrTrxFreeShm(trx) != UBRING_OK)) {
         LOG(ERROR) << "Trx close, wait for local shm " << trx->local_shm.name << " free fail.";
@@ -97,10 +117,16 @@ static void UbrDoPassiveClearWork(UbrTrx *trx, uint64_t expect_ubr_id) {
 // per-acquisition control object, so exactly one of the delayed-clear
 // callback and a force close ever runs the cleanup. `work' is the cleanup
 // body, used directly when the timer cannot be started.
-static RETURN_CODE UbrScheduleClearTimer(UbrTrx *trx, void* (*cb)(void*),
+static RETURN_CODE UbrScheduleClearTimer(UbrTrx *trx, uint64_t expect_ubr_id,
+                                         void* (*cb)(void*, uint64_t),
                                          void (*work)(UbrTrx*, uint64_t)) {
     if (BAIDU_UNLIKELY(trx == nullptr || trx->local_shm.addr == nullptr)) {
         return UBRING_OK;                    // released trx, stale event
+    }
+    // A callback that outlived its generation must not capture the id of the
+    // slot's new occupant, nor schedule cleanup for that new transaction.
+    if (BAIDU_UNLIKELY(ATOMIC_LOAD(trx->ubr_id) != expect_ubr_id)) {
+        return UBRING_OK;                    // stale event on a reused slot
     }
     if (trx->cleanup_ctl.load() != nullptr) {
         return UBRING_OK;                    // cleanup already scheduled
@@ -111,7 +137,7 @@ static RETURN_CODE UbrScheduleClearTimer(UbrTrx *trx, void* (*cb)(void*),
         return UBRING_ERR;
     }
     ctl->trx = trx;
-    ctl->ubr_id = ATOMIC_LOAD(trx->ubr_id);
+    ctl->ubr_id = expect_ubr_id;
     ctl->state.store(UBR_CLEANUP_PENDING);
     ctl->timer = nullptr;
     ctl->ref.store(2);                       // timer/callback + starter; the
@@ -135,7 +161,8 @@ static RETURN_CODE UbrScheduleClearTimer(UbrTrx *trx, void* (*cb)(void*),
         return UBRING_OK;
     }
     RETURN_CODE rc = UbrTimerStart(&ctl->timer,
-            (uint64_t)FLAGS_ub_flying_io_timeout_s * SEC_TO_USEC, 0, cb, ctl);
+            (uint64_t)FLAGS_ub_flying_io_timeout_s * SEC_TO_USEC, 0, cb, ctl,
+            expect_ubr_id);
     if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         // The timer was never scheduled: this path owns the manager,
         // timer/callback and starter references. Roll the schedule back
@@ -186,6 +213,7 @@ RETURN_CODE UBRing::UbrTrxClose() {
         }
         return UBRING_ERR;
     }
+    const uint64_t expect_ubr_id = ATOMIC_LOAD(_trx->ubr_id);
     if (_trx->ubr_rx.remote_tx_event_q.addr != nullptr) {
         ((UbrEventQMsg *)_trx->ubr_rx.remote_tx_event_q.addr)->flag = UBR_STATE_CLOSING;
     }
@@ -211,7 +239,6 @@ RETURN_CODE UBRing::UbrTrxClose() {
             // delayed cleanup, then settle the cleanup ownership: force
             // runs the cleanup itself when it can claim it, and leaves it
             // to an already running delayed-clear callback otherwise.
-            const uint64_t expect_ubr_id = ATOMIC_LOAD(_trx->ubr_id);
             UbrTimerDelAndWait(&_trx->close_timer);
             UbrTimerDelAndWait(&_trx->hb_timer);
             UbrCleanupCtl* ctl = UBRingManager::SnapshotUnitCleanupCtl(_trx->trx_mgr_index);
@@ -254,7 +281,7 @@ RETURN_CODE UBRing::UbrTrxClose() {
     }
     _trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
     RETURN_CODE rc;
-    if (BAIDU_UNLIKELY((rc = ClearTrxResource(_trx)) != UBRING_OK)) {
+    if (BAIDU_UNLIKELY((rc = ClearTrxResource(_trx, expect_ubr_id, false)) != UBRING_OK)) {
         if (rc == UBRING_REENTRY) {
             LOG(INFO) << "Trx close, peer is closing, trx local name=" << _trx->local_shm.name;
             return UBRING_OK;
@@ -311,6 +338,7 @@ RETURN_CODE UBRing::UbrAddCloseTimer() {
     _trx->close_chk_out_io_id = ATOMIC_LOAD(_trx->ubr_tx.out_io_id);
     RETURN_CODE rc = UbrTimerStart(&_trx->close_timer, 0, interval_us,
                                    UbrTrxCloseCallback, (void*)_trx,
+                                   ATOMIC_LOAD(_trx->ubr_id),
                                    UbrCloseTimerBackoff);
     if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Start ubr close timer failed, trx local name=" << _trx->local_shm.name;
@@ -333,14 +361,49 @@ RETURN_CODE UBRing::UbrAddTimer() {
     return UBRING_OK;
 }
 
-void* UBRing::UbrTrxCloseCallback(void* args) {
+// Per-trx timer callbacks run on the process-wide bthread timer thread and can
+// still be dispatched after the UBRing that armed them started tearing down.
+// Every access to the pooled UbrTrx is therefore gated on the generation the
+// timer was armed with (the `gen' argument): the callbacks reject a stale fire
+// here, and every scheduling path re-checks expect_ubr_id under
+// g_ubr_trx_mgr_mtx (TryPublishUnitCleanupCtl) and again before running the
+// cleanup work (IsUbrTrxSlotUsed).
+//
+// A slot cannot be released and reused underneath a callback that already
+// passed that check, and the guarantee is a synchronization one, not a timing
+// one. bthread dispatches all timer callbacks from a single global timer
+// thread, so two per-trx callbacks never run concurrently, and a cleanup that
+// runs from a one-shot timer callback (the delayed-clear path) is serialized
+// after every per-trx callback that was dispatched before it. Teardown that
+// happens on any other thread waits for a dispatched callback through
+// UbrStopTrxTimer -> UbrTimerDelAndWait before it clears the trx or frees its
+// shared memory (UbrClearResourceCheck, UbrPassiveClearTrx), and the force
+// close and UbrMgrFini paths do the same. FLAGS_ub_flying_io_timeout_s only
+// delays the delayed-clear work so that in-flight IO can drain; the callback
+// side is already ordered by the timer thread. The UbrTrx pool itself is freed
+// only by UbrMgrFini, which waits for these timers first.
+void* UBRing::UbrTrxCloseCallback(void* args, uint64_t gen) {
     auto* trx = (UbrTrx*) args;
+    // UbrTrxCallbackCheck rejects a null trx (and cleared queues) before we
+    // dereference trx->ubr_id for the stale-generation check below.
     if (BAIDU_UNLIKELY(UBRing::UbrTrxCallbackCheck(trx) != UBRING_OK)) {
+        return nullptr;
+    }
+    // Reject a stale fire whose trx slot was released and reused: it must not
+    // touch the slot's new occupant.
+    if (BAIDU_UNLIKELY(ATOMIC_LOAD(trx->ubr_id) != gen)) {
         return nullptr;
     }
 
     auto* local_rx_event_q = (UbrEventQMsg *)trx->ubr_rx.local_rx_event_q.addr;
     auto* local_tx_event_q = (UbrEventQMsg *)trx->ubr_tx.local_tx_event_q.addr;
+    // UbrTrxCallbackCheck validated these before the generation check; repeat
+    // it here because a concurrent release may have cleared them since, and the
+    // dereference below is unconditional. UbrTrxHBCallback carries the same
+    // guard.
+    if (BAIDU_UNLIKELY(local_rx_event_q == nullptr || local_tx_event_q == nullptr)) {
+        return nullptr;
+    }
     if (local_rx_event_q->flag != UBR_STATE_CLOSED || local_tx_event_q->flag == UBR_STATE_CLOSED) {
         return nullptr;
     }
@@ -361,7 +424,7 @@ void* UBRing::UbrTrxCloseCallback(void* args) {
             break;
         }
         remote_rx_event_q->flag = UBR_STATE_CLOSED;
-        RETURN_CODE clear_rc = ClearTrxResource(trx);
+        RETURN_CODE clear_rc = ClearTrxResource(trx, gen, true);
         if (BAIDU_UNLIKELY(clear_rc != UBRING_OK && clear_rc != UBRING_REENTRY)) {
             LOG(ERROR) << "Trx close callback failed, " << trx->local_shm.name << " clear trx resource failed.";
             break;
@@ -378,7 +441,8 @@ RETURN_CODE UBRing::UbrAddHBTimer() {
 
     const uint64_t interval_us = (uint64_t)FLAGS_ub_hb_timer_interval_s * SEC_TO_USEC;
     RETURN_CODE rc = UbrTimerStart(&_trx->hb_timer, 0, interval_us,
-                                   UbrTrxHBCallback, (void*)_trx);
+                                   UbrTrxHBCallback, (void*)_trx,
+                                   ATOMIC_LOAD(_trx->ubr_id));
     if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Start ubr heartbeat timer failed.";
         return UBRING_ERR;
@@ -386,26 +450,27 @@ RETURN_CODE UBRing::UbrAddHBTimer() {
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrPassiveClearTrx(UbrTrx *trx) {
+RETURN_CODE UBRing::UbrPassiveClearTrx(UbrTrx *trx, uint64_t expect_ubr_id,
+                                       bool in_timer_callback) {
     RETURN_CODE passive_close_check_rc = UbrTrxCloseCheck(trx);
     if (BAIDU_UNLIKELY(passive_close_check_rc != UBRING_OK)) {
         if (passive_close_check_rc == UBRING_REENTRY) {
             LOG(INFO) << "Passive close skipped, active close in progress, name=" << trx->local_shm.name;
-            return ClearTrxResource(trx);
+            return ClearTrxResource(trx, expect_ubr_id, in_timer_callback);
         }
         return UBRING_ERR;
     }
     trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
     trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
-    // Non-blocking: this may run inside the heartbeat callback itself.
-    UbrTimerDel(&trx->close_timer);
-    UbrTimerDel(&trx->hb_timer);
+    UbrStopTrxTimer(&trx->close_timer, in_timer_callback);
+    UbrStopTrxTimer(&trx->hb_timer, in_timer_callback);
     // Wait for in-flight IO on a one-shot timer instead of sleeping on the
     // timer thread.
-    return UbrScheduleClearTimer(trx, UbrPassiveClearCallback, UbrDoPassiveClearWork);
+    return UbrScheduleClearTimer(trx, expect_ubr_id,
+                                 UbrPassiveClearCallback, UbrDoPassiveClearWork);
 }
 
-void* UBRing::UbrPassiveClearCallback(void* args) {
+void* UBRing::UbrPassiveClearCallback(void* args, uint64_t) {
     auto* ctl = (UbrCleanupCtl*)args;
     if (BAIDU_UNLIKELY(ctl == nullptr)) {
         LOG(ERROR) << "Trx passive clear callback failed, ctl is null.";
@@ -428,9 +493,16 @@ void* UBRing::UbrPassiveClearCallback(void* args) {
     return nullptr;
 }
 
-void* UBRing::UbrTrxHBCallback(void* args) {
+void* UBRing::UbrTrxHBCallback(void* args, uint64_t gen) {
     auto* trx = (UbrTrx*) args;
+    // UbrTrxCallbackCheck rejects a null trx (and cleared queues) before we
+    // dereference trx->ubr_id for the stale-generation check below.
     if (BAIDU_UNLIKELY(UbrTrxCallbackCheck(trx) != UBRING_OK)) {
+        return nullptr;
+    }
+    // Reject a stale fire whose trx slot was released and reused: it must not
+    // touch the slot's new occupant.
+    if (BAIDU_UNLIKELY(ATOMIC_LOAD(trx->ubr_id) != gen)) {
         return nullptr;
     }
 
@@ -460,20 +532,21 @@ void* UBRing::UbrTrxHBCallback(void* args) {
 
     int fd = (int)trx->local_shm.fd;
     LOG(INFO) << "Ubr heartbeat, start to clear trx resource. shm_fd=" << fd << ", shm_name=" << trx->local_shm.name;
-    UbrPassiveClearTrx(trx);
+    UbrPassiveClearTrx(trx, gen, true);
     LOG(INFO) << "Ubr heartbeat clear trx resource finish.";
     return nullptr;
 }
 
-RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
+RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx, uint64_t expect_ubr_id) {
     if (BAIDU_UNLIKELY(trx == nullptr)) {
         LOG(ERROR) << "Trx add close timer failed, trx is null.";
         return UBRING_ERR;
     }
-    return UbrScheduleClearTimer(trx, UbrAsynClearCallback, UbrDoAsynClearWork);
+    return UbrScheduleClearTimer(trx, expect_ubr_id,
+                                 UbrAsynClearCallback, UbrDoAsynClearWork);
 }
 
-void *UBRing::UbrAsynClearCallback(void *args)
+void *UBRing::UbrAsynClearCallback(void *args, uint64_t)
 {
     auto* ctl = (UbrCleanupCtl*) args;
     if (BAIDU_UNLIKELY(ctl == nullptr)) {
@@ -1164,7 +1237,7 @@ RETURN_CODE UBRing::WritevHasEnoughSpace(size_t buf_len)
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx)
+RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, bool in_timer_callback)
 {
     if (BAIDU_UNLIKELY(trx == nullptr)) {
         LOG(ERROR) << "Trx close failed, trx is null.";
@@ -1180,9 +1253,10 @@ RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx)
         local_tx_event_q->flag = UBR_STATE_CLOSING;
     }
 
-    // Non-blocking: may run inside the close callback itself.
-    UbrTimerDel(&trx->close_timer);
-    UbrTimerDel(&trx->hb_timer);
+    // Wait out a dispatched callback before the slot's trx is cleared; inside
+    // the callback itself only the non-blocking form is possible.
+    UbrStopTrxTimer(&trx->close_timer, in_timer_callback);
+    UbrStopTrxTimer(&trx->hb_timer, in_timer_callback);
 
     if (local_tx_event_q->flag == UBR_STATE_CLOSING) {
         local_tx_event_q->flag = UBR_STATE_CLOSED;
@@ -1192,14 +1266,15 @@ RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx)
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::ClearTrxResource(UbrTrx *trx)
+RETURN_CODE UBRing::ClearTrxResource(UbrTrx *trx, uint64_t expect_ubr_id,
+                                     bool in_timer_callback)
 {
-    RETURN_CODE rc = UbrClearResourceCheck(trx);
+    RETURN_CODE rc = UbrClearResourceCheck(trx, in_timer_callback);
     if (rc != UBRING_OK) {
         return rc;
     }
 
-    rc = UbrAddAsynClearTimer(trx);
+    rc = UbrAddAsynClearTimer(trx, expect_ubr_id);
     if (rc != UBRING_OK) {
         LOG(ERROR) << "Trx close, add " << trx->local_shm.name << " close clear timer failed.";
         return UBRING_ERR;

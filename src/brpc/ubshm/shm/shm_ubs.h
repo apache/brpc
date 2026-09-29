@@ -17,6 +17,7 @@
 
 #ifndef BRPC_SHM_UBS_H
 #define BRPC_SHM_UBS_H
+#include <stdint.h>
 namespace brpc {
 namespace ubring {
 DECLARE_int32(ub_flying_io_timeout_s);
@@ -40,7 +41,7 @@ RETURN_CODE UbsShmFini(void);
 RETURN_CODE UbsShmLocalMmap(SHM *shm, int prot);
 void UbsMemLoggerPrint(int level, const char *msg);
 
-void *UbsShmCallback(void* args);
+void *UbsShmCallback(void* args, uint64_t gen);
 RETURN_CODE UbsShmAddTimer(ShmList *shm_list);
 RETURN_CODE InitShmTimer(ShmList **shm_list);
 RETURN_CODE DestroyShmTimer(ShmList *shm_list);

@@ -48,8 +48,9 @@ enum UbrTimerState {
 struct UbrTimerTask {
     butil::atomic<UbrTimerId>* slot;
     butil::atomic<bthread_timer_t> id;
-    void* (*cb)(void*);
+    void* (*cb)(void*, uint64_t);
     void* arg;
+    uint64_t gen;                                // opaque, passed back to cb
     UbrTimerBackoffFn backoff;
     uint64_t interval_us;                        // timer thread only
     bool periodic;
@@ -77,7 +78,7 @@ void UbrTimerOnFire(void* p) {
 
     if (task->periodic) {
         if (!task->stopped.load()) {
-            task->cb(task->arg);
+            task->cb(task->arg, task->gen);
         }
         // Claim the next schedule's ref before re-reading `stopped' so a
         // racing delete can neither free the task nor orphan a re-arm.
@@ -119,7 +120,7 @@ void UbrTimerOnFire(void* p) {
     UbrTimerId expected = task;
     const bool owned = task->slot->compare_exchange_strong(expected, nullptr);
     if (owned) {
-        task->cb(task->arg);
+        task->cb(task->arg, task->gen);
     }
     ReleaseRef(task);                            // schedule
     if (owned) {
@@ -132,8 +133,9 @@ UbrTimerTask* TakeOutTask(butil::atomic<UbrTimerId>* slot) {
 }
 
 RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_us,
-                               uint64_t interval_us, void* (*cb)(void*),
-                               void* arg, UbrTimerBackoffFn backoff) {
+                               uint64_t interval_us, void* (*cb)(void*, uint64_t),
+                               void* arg, uint64_t gen,
+                               UbrTimerBackoffFn backoff) {
     if (BAIDU_UNLIKELY(slot == nullptr || cb == nullptr)) {
         LOG(ERROR) << "Ubr timer start invalid argument, slot=" << slot;
         return UBRING_ERR;
@@ -148,6 +150,7 @@ RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_u
     task->id.store(0);
     task->cb = cb;
     task->arg = arg;
+    task->gen = gen;
     task->backoff = backoff;
     task->interval_us = interval_us;
     task->periodic = (interval_us > 0);
@@ -196,9 +199,9 @@ RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_u
 }  // namespace
 
 RETURN_CODE UbrTimerStart(butil::atomic<UbrTimerId>* slot, uint64_t delay_us,
-                          uint64_t interval_us, void* (*cb)(void*),
-                          void* arg, UbrTimerBackoffFn backoff) {
-    return TimerStartInternal(slot, delay_us, interval_us, cb, arg, backoff);
+                          uint64_t interval_us, void* (*cb)(void*, uint64_t),
+                          void* arg, uint64_t gen, UbrTimerBackoffFn backoff) {
+    return TimerStartInternal(slot, delay_us, interval_us, cb, arg, gen, backoff);
 }
 
 int UbrTimerDel(butil::atomic<UbrTimerId>* slot) {

@@ -49,19 +49,25 @@ public:
 
     RETURN_CODE UbrAddTimer();
 
-    static void *UbrTrxCloseCallback(void *args);
+    static void *UbrTrxCloseCallback(void *args, uint64_t gen);
 
     RETURN_CODE UbrAddHBTimer();
 
-    static void *UbrTrxHBCallback(void *args);
+    static void *UbrTrxHBCallback(void *args, uint64_t gen);
 
-    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx);
+    // `in_timer_callback' is true only when called from UbrTrxCloseCallback or
+    // UbrTrxHBCallback, i.e. from a per-trx timer callback: the teardown then
+    // cannot wait for a dispatched sibling callback (that would join the
+    // running task), and does not need to, because bthread runs all timer
+    // callbacks on one global timer thread.
+    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx, uint64_t expect_ubr_id,
+                                          bool in_timer_callback);
 
-    static RETURN_CODE UbrAddAsynClearTimer(UbrTrx *trx);
+    static RETURN_CODE UbrAddAsynClearTimer(UbrTrx *trx, uint64_t expect_ubr_id);
 
-    static void *UbrAsynClearCallback(void *args);
+    static void *UbrAsynClearCallback(void *args, uint64_t gen);
 
-    static void *UbrPassiveClearCallback(void *args);
+    static void *UbrPassiveClearCallback(void *args, uint64_t gen);
 
     int UbrTrxSend(const void *buf, uint32_t buf_len);
 
@@ -214,8 +220,9 @@ private:
     void PreWriteAddr(uint8_t *addr, size_t len);
     RETURN_CODE WritevHasEnoughSpace(size_t buf_len);
     RETURN_CODE UbrServerTrxInit(SHM *local_shm, SHM *remote_shm);
-    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx);
-    static RETURN_CODE ClearTrxResource(UbrTrx *trx);
+    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx, bool in_timer_callback);
+    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t expect_ubr_id,
+                                        bool in_timer_callback);
 
     UbrTrx* _trx{nullptr};
 };

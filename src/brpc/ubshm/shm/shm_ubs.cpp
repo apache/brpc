@@ -411,7 +411,7 @@ static void DeleteShmToList(ShmList* shm_list)
     shm_list->size--;
 }
 
-void *UbsShmCallback(void* args)
+void *UbsShmCallback(void* args, uint64_t)
 {
     ShmList *shm_list = (ShmList*)args;
     if (BAIDU_UNLIKELY(shm_list == nullptr)) {
@@ -461,7 +461,7 @@ RETURN_CODE UbsShmAddTimer(ShmList *shm_list)
 {
     const uint64_t timer_interval_us = (uint64_t)FLAGS_ub_flying_io_timeout_s * SEC_TO_USEC;
     RETURN_CODE rc = UbrTimerStart(&g_shm_timer_id, 0, timer_interval_us,
-                                   UbsShmCallback, (void*)shm_list);
+                                   UbsShmCallback, (void*)shm_list, 0);
     if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Start shm timer failed.";
         return UBRING_ERR;
