@@ -93,6 +93,43 @@ TEST(MemcacheParserTest, PopStoreRejectsNegativeValueSize) {
     ASSERT_EQ(next_response, response.raw_buffer().to_string());
 }
 
+TEST(MemcacheParserTest, SaslAuthDoesNotReadHeaderAfterPop) {
+    // ParseMemcacheMessage fetched the 24-byte response header (a pointer into
+    // source's front block), popped those bytes with source->pop_front(), and
+    // then still dereferenced header->command / header->status on the SASL_AUTH
+    // path. Once the header sat alone in the front block, pop_front released it
+    // and the two reads became a use-after-free. Put the header in a heap block
+    // that is freed the moment its bytes are popped so the stale read is a
+    // definite UAF (ASAN heap-use-after-free on the unpatched tree); the fix
+    // reads the already byte-swapped local_header instead.
+    brpc::SocketId id;
+    brpc::SocketOptions options;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+
+    // PopPipelinedInfo() must succeed to reach the SASL_AUTH branch.
+    brpc::PipelinedInfo pi;
+    pi.count = 1;
+    socket->PushPipelinedInfo(pi);
+
+    brpc::policy::MemcacheResponseHeader* header =
+        (brpc::policy::MemcacheResponseHeader*)malloc(sizeof(*header));
+    ASSERT_TRUE(header != NULL);
+    memset(header, 0, sizeof(*header));
+    header->magic = brpc::policy::MC_MAGIC_RESPONSE;
+    header->command = brpc::policy::MC_BINARY_SASL_AUTH;
+    header->status = butil::HostToNet16(1);  // non-zero: auth failure
+    header->total_body_length = 0;           // no body: header is the whole front block
+
+    butil::IOBuf buf;
+    buf.append_user_data(header, sizeof(*header), [](void* p) { free(p); });
+
+    brpc::ParseResult r = brpc::policy::ParseMemcacheMessage(
+        &buf, socket.get(), false, nullptr);
+    ASSERT_EQ(brpc::PARSE_ERROR_NO_RESOURCE, r.error());
+}
+
 static pthread_once_t download_memcached_once = PTHREAD_ONCE_INIT;
 static pid_t g_mc_pid = -1;
 

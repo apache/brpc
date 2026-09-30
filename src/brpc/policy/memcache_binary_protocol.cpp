@@ -132,8 +132,11 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
         msg->meta.append(&local_header, sizeof(local_header));
         source->pop_front(sizeof(*header));
         source->cutn(&msg->meta, total_body_length);
-        if (header->command == MC_BINARY_SASL_AUTH) {
-            if (header->status != 0) {
+        // `header' points into source's front block; pop_front above may have
+        // released that block, so read the already byte-swapped local_header
+        // here instead of dereferencing the now-dangling `header'.
+        if (local_header.command == MC_BINARY_SASL_AUTH) {
+            if (local_header.status != 0) {
                 LOG(ERROR) << "Failed to authenticate the couchbase bucket.";
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE, 
                                       "Fail to authenticate with the couchbase bucket");
