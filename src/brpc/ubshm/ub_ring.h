@@ -45,23 +45,20 @@ public:
 
     RETURN_CODE UbrTrxClose();
 
-    RETURN_CODE UbrAddCloseTimer();
-
+    // Arms both per-trx timers. The only entry point for them: it holds the
+    // manager's arming exclusion, which UbrMgrFini relies on to know that no
+    // new timer can appear after it took the shutdown flag.
     RETURN_CODE UbrAddTimer();
 
     static void *UbrTrxCloseCallback(void *args, uint64_t gen);
 
-    RETURN_CODE UbrAddHBTimer();
-
     static void *UbrTrxHBCallback(void *args, uint64_t gen);
 
-    // `in_timer_callback' is true only when called from UbrTrxCloseCallback or
-    // UbrTrxHBCallback, i.e. from a per-trx timer callback: the teardown then
-    // cannot wait for a dispatched sibling callback (that would join the
-    // running task), and does not need to, because bthread runs all timer
-    // callbacks on one global timer thread.
-    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx, uint64_t expect_ubr_id,
-                                          bool in_timer_callback);
+    // Teardown entry point for a per-trx timer callback and for the faulty-shm
+    // event. `expect_ubr_id' is the generation the caller saw; the close is
+    // claimed atomically for that generation, so a slot released and reused in
+    // between is left alone.
+    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx, uint64_t expect_ubr_id);
 
     static RETURN_CODE UbrAddAsynClearTimer(UbrTrx *trx, uint64_t expect_ubr_id);
 
@@ -210,19 +207,23 @@ public:
     }
 
 private:
+    // Only UbrAddTimer may call these: arming outside its manager-held
+    // exclusion would break the UbrMgrFini invariant described above.
+    RETURN_CODE UbrAddCloseTimer();
+    RETURN_CODE UbrAddHBTimer();
+
     RETURN_CODE UbrTrxMapLocalShm(SHM *local_shm);
     RETURN_CODE UbrTrxMapRemoteShm(SHM *remote_shm);
     RETURN_CODE ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_name);
     RETURN_CODE ApplyAndMapRemoteShm(SHM *remote_trx_shm);
-    static RETURN_CODE UbrTrxCloseCheck(UbrTrx *trx);
+    static RETURN_CODE UbrTrxCloseCheck(UbrTrx *trx, uint64_t expect_ubr_id);
     void ReleaseFileLock(int lock_fd);
     ssize_t StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, size_t remain_buf_len);
     void PreWriteAddr(uint8_t *addr, size_t len);
     RETURN_CODE WritevHasEnoughSpace(size_t buf_len);
     RETURN_CODE UbrServerTrxInit(SHM *local_shm, SHM *remote_shm);
-    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx, bool in_timer_callback);
-    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t expect_ubr_id,
-                                        bool in_timer_callback);
+    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx);
+    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t expect_ubr_id);
 
     UbrTrx* _trx{nullptr};
 };

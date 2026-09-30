@@ -60,6 +60,8 @@ RETURN_CODE UBRingManager::UbrMgrDefault()
 {
     g_ubr_mgr.trx_num = 0;
     g_ubr_mgr.trx_cap = FLAGS_ubr_max_managed_num;
+    g_ubr_mgr.shutting_down = false;
+    g_ubr_mgr.active_pool_ops = 0;
     g_ubr_mgr.trx_mgr_unit_status = nullptr;
     g_ubr_mgr.trx_mgr = nullptr;
     g_ubr_mgr.trx_mgr_unit_id = nullptr;
@@ -91,7 +93,13 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
         return UBRING_ERR;
     }
 
-    memset(g_ubr_mgr.trx_mgr, 0, trx_mgr_size);
+    // UbrTrx holds butil::atomic members, so it is not trivially copyable and
+    // must not be memset: value-initialize every slot instead. A slot is
+    // re-initialized by AcquireUbrTrxFromMgr before it is handed out, and no
+    // code reads a slot that was never acquired.
+    for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
+        new (&g_ubr_mgr.trx_mgr[i]) UbrTrx();
+    }
     memset(g_ubr_mgr.trx_mgr_unit_status, UBR_MGR_UNIT_FREE, trx_mgr_status_size);
     memset(g_ubr_mgr.trx_mgr_unit_id, 0, trx_mgr_id_size);
     memset(g_ubr_mgr.trx_mgr_unit_ctl, 0, trx_mgr_ctl_size);
@@ -100,6 +108,14 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
 }
 
 void UBRingManager::UbrMgrFini() {
+    // Refuse new pool users and new acquisitions first, unconditionally: the
+    // partial-init path below (a failed allocation) must not let a callback
+    // walk arrays that the failure left null either.
+    {
+        BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+        g_ubr_mgr.shutting_down = true;
+    }
+
     // The pool arrays are only safe to walk once UbrMgrInit has allocated and
     // zeroed all four of them; its allocation-failure path calls this function
     // with some of them still null and the others uninitialized.
@@ -125,6 +141,25 @@ void UBRingManager::UbrMgrFini() {
                 }
             }
         }
+        // Wait for the callback-driven pool accesses that are already running
+        // (they read UbrTrx without owning a timer), then for the timers. Both
+        // waits must happen without g_ubr_trx_mgr_mtx: the close/heartbeat
+        // callbacks and the accesses themselves take that lock.
+        for (;;) {
+            {
+                BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+                if (g_ubr_mgr.active_pool_ops == 0) {
+                    break;
+                }
+            }
+            usleep(1000);
+        }
+        // No timer can be armed after the flag: arming and taking the flag are
+        // serialized by the manager lock (ArmTimersExclusive), and a cleanup
+        // control object can no longer be published either
+        // (TryPublishUnitCleanupCtl refuses once shutting down). So the timers
+        // armed before the flag are the complete set, and stopping them all
+        // leaves the pool quiescent.
         for (uint32_t i : used_slots) {
             UbrTimerDelAndWait(&g_ubr_mgr.trx_mgr[i].close_timer);
             UbrTimerDelAndWait(&g_ubr_mgr.trx_mgr[i].hb_timer);
@@ -196,6 +231,10 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
     }
 
     BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    if (BAIDU_UNLIKELY(g_ubr_mgr.shutting_down)) {
+        LOG(ERROR) << "Acquire trx failed, ubr manager is shutting down.";
+        return UBRING_ERR;
+    }
     if (g_ubr_mgr.trx_num >= g_ubr_mgr.trx_cap) {
         LOG(ERROR) << "Acquire trx failed, trx number is full.";
         return UBRING_ERR;
@@ -313,18 +352,89 @@ bool UBRingManager::IsUbrTrxSlotUsed(uint32_t idx, uint64_t expect_ubr_id) {
            g_ubr_mgr.trx_mgr_unit_id[idx] == expect_ubr_id;
 }
 
+bool UBRingManager::BeginPoolAccess() {
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    // Check every array the caller will walk, not just trx_mgr: UbrMgrInit can
+    // fail after allocating some of them, and that path calls UbrMgrFini with
+    // pool_ready == false.
+    if (BAIDU_UNLIKELY(g_ubr_mgr.shutting_down ||
+                 g_ubr_mgr.trx_mgr == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_status == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_id == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_ctl == nullptr)) {
+        return false;
+    }
+    ++g_ubr_mgr.active_pool_ops;
+    return true;
+}
+
+void UBRingManager::FinishPoolAccess() {
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    if (g_ubr_mgr.active_pool_ops > 0) {
+        --g_ubr_mgr.active_pool_ops;
+    }
+}
+
+bool UBRingManager::ArmTimersExclusive(const std::function<bool()>& arm) {
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    if (BAIDU_UNLIKELY(g_ubr_mgr.shutting_down)) {
+        return false;
+    }
+    return arm();
+}
+
+RETURN_CODE UBRingManager::TryClaimTrxClose(uint32_t idx, uint64_t expect_ubr_id) {
+    BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_status == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_id == nullptr ||
+                 idx >= g_ubr_mgr.trx_cap)) {
+        return UBRING_ERR;
+    }
+    // A caller that snapshotted the slot before a release/reuse must not claim
+    // the close of the slot's new occupant: its generation check and the claim
+    // happen together here, under the lock the acquire/release paths also take.
+    if (g_ubr_mgr.trx_mgr_unit_status[idx] != UBR_MGR_UNIT_USED ||
+        g_ubr_mgr.trx_mgr_unit_id[idx] != expect_ubr_id) {
+        return UBRING_ERR;
+    }
+    UbrTrx* trx = &g_ubr_mgr.trx_mgr[idx];
+    // Validate before claiming, so a rejected close leaves the counter intact
+    // and the slot is not stuck in "closing" forever.
+    if (BAIDU_UNLIKELY(trx->ubr_tx.local_tx_event_q.addr == nullptr)) {
+        LOG(ERROR) << "Trx close failed, local_tx_event_q addr is NULL, trx local name="
+                   << trx->local_shm.name;
+        return UBRING_ERR;
+    }
+    int expected = MAX_CLOSE_COUNT;
+    if (!ATOMIC_COMPARE_EXCHANGE_STRONG(trx->close_cnt, expected, MAX_CLOSE_COUNT - 1)) {
+        return UBRING_REENTRY;
+    }
+    return UBRING_OK;
+}
+
 bool UBRingManager::TryPublishUnitCleanupCtl(uint32_t idx,
                                              uint64_t expect_ubr_id,
                                              UbrCleanupCtl *ctl) {
     BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
-    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
+    if (BAIDU_UNLIKELY(g_ubr_mgr.shutting_down ||
+                 g_ubr_mgr.trx_mgr == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_status == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_id == nullptr ||
                  idx >= g_ubr_mgr.trx_cap ||
                  g_ubr_mgr.trx_mgr_unit_status[idx] != UBR_MGR_UNIT_USED ||
                  g_ubr_mgr.trx_mgr_unit_id[idx] != expect_ubr_id ||
                  g_ubr_mgr.trx_mgr_unit_ctl[idx] != nullptr)) {
-        return false;                        // released / reused / already anchored
+        return false;                        // shutting down / released / reused / already anchored
+    }
+    // Publish on the trx and anchor it in the pool slot inside one critical
+    // section: a force close that snapshots the slot (also under this lock)
+    // can then never observe the trx-side publication without its anchor, nor
+    // claim the no-ctl cleanup path for a cleanup that is being scheduled.
+    UbrCleanupCtl* expected = nullptr;
+    if (!g_ubr_mgr.trx_mgr[idx].cleanup_ctl.compare_exchange_strong(expected, ctl)) {
+        return false;                        // another schedule won
     }
     ctl->ref.fetch_add(1);                   // manager anchor reference
     g_ubr_mgr.trx_mgr_unit_ctl[idx] = ctl;
@@ -333,12 +443,18 @@ bool UBRingManager::TryPublishUnitCleanupCtl(uint32_t idx,
 
 bool UBRingManager::DetachUnitCleanupCtl(uint32_t idx, UbrCleanupCtl *ctl) {
     BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
-    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
+    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr == nullptr ||
+                 g_ubr_mgr.trx_mgr_unit_ctl == nullptr ||
                  idx >= g_ubr_mgr.trx_cap ||
                  g_ubr_mgr.trx_mgr_unit_ctl[idx] != ctl)) {
         return false;
     }
     g_ubr_mgr.trx_mgr_unit_ctl[idx] = nullptr;
+    // Clear the trx-side publication in the same critical section, and only
+    // while it still belongs to `ctl': a slot reused meanwhile may already
+    // carry the new occupant's control object.
+    UbrCleanupCtl* published = ctl;
+    g_ubr_mgr.trx_mgr[idx].cleanup_ctl.compare_exchange_strong(published, nullptr);
     ctl->ReleaseRef();                           // manager reference
     return true;
 }
@@ -419,27 +535,50 @@ int32_t UBRingManager::UbEventCallback(const char *shm_name)
         LOG(ERROR) << "Ub event callback failed, shm name is null.";
         return UBRING_ERR;
     }
-    if (BAIDU_UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
-        LOG(ERROR) << "Ub event callback failed, trx mgr is null.";
+    // This callback runs on an SDK thread with no timer or cleanup reference
+    // keeping the pool alive, so register the access first: it is refused once
+    // UbrMgrFini started, and UbrMgrFini waits for the accepted accesses before
+    // it frees the pool. The UbrTrx* below is therefore valid until
+    // FinishPoolAccess, even though the lookup lock is released in between.
+    if (!BeginPoolAccess()) {
+        LOG(WARNING) << "Ub event callback skipped, ubr manager is shutting down. shm_name="
+                     << shm_name;
         return UBRING_ERR;
     }
-    LOG(INFO) << "Ub event callback is processing. shm_name=" << shm_name;
 
-    for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
-        if (g_ubr_mgr.trx_mgr_unit_status[i] == UBR_MGR_UNIT_FREE) {
-            continue;
-        }
-
-        if (strcmp(g_ubr_mgr.trx_mgr[i].local_shm.name, shm_name) == 0 ||   // the failed link is this trx's local shm
-            strcmp(g_ubr_mgr.trx_mgr[i].remote_shm.name, shm_name) == 0) {  // the failed link is this trx's remote shm
-            ++g_ub_event_cnt;
-            int fd = (int)g_ubr_mgr.trx_mgr[i].local_shm.fd;
-            LOG(WARNING) << "Ub event callback, the fd of the faulty link is " << fd;
-            const uint64_t expect_ubr_id = ATOMIC_LOAD(g_ubr_mgr.trx_mgr[i].ubr_id);
-            return UBRing::UbrPassiveClearTrx(&g_ubr_mgr.trx_mgr[i], expect_ubr_id, false);
+    // Look the faulty link up under the manager lock: the pool walk reads the
+    // slot status and the shm names, both of which a concurrent acquire or
+    // release rewrites. The generation is snapshotted in the same critical
+    // section, and the close claim below re-validates it, so a slot released
+    // and reused after this lookup cannot be closed by mistake.
+    uint32_t idx = 0;
+    uint64_t expect_ubr_id = 0;
+    int fd = -1;
+    bool found = false;
+    {
+        BAIDU_SCOPED_LOCK(g_ubr_trx_mgr_mtx);
+        for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
+            if (g_ubr_mgr.trx_mgr_unit_status[i] == UBR_MGR_UNIT_FREE) {
+                continue;
+            }
+            if (strcmp(g_ubr_mgr.trx_mgr[i].local_shm.name, shm_name) == 0 ||   // the failed link is this trx's local shm
+                strcmp(g_ubr_mgr.trx_mgr[i].remote_shm.name, shm_name) == 0) {  // the failed link is this trx's remote shm
+                idx = i;
+                expect_ubr_id = ATOMIC_LOAD(g_ubr_mgr.trx_mgr[i].ubr_id);
+                fd = (int)g_ubr_mgr.trx_mgr[i].local_shm.fd;
+                found = true;
+                break;
+            }
         }
     }
-    return UBRING_ERR;
+    int32_t rc = UBRING_ERR;
+    if (found) {
+        ++g_ub_event_cnt;
+        LOG(WARNING) << "Ub event callback, the fd of the faulty link is " << fd;
+        rc = UBRing::UbrPassiveClearTrx(&g_ubr_mgr.trx_mgr[idx], expect_ubr_id);
+    }
+    FinishPoolAccess();
+    return rc;
 }
 }
 }

@@ -33,6 +33,11 @@ enum UbrTimerState {
     kDead = 2                                    // scheduling failed
 };
 
+// Granularity of the two join waits in UbrTimerDelAndWait. They only run on
+// teardown paths and only for the short window in which a timer is being
+// started or a callback is finishing.
+constexpr uint64_t kTimerPollIntervalUs = 100;
+
 }  // namespace
 
 // Reference rules: one "owner" ref for the handle slot, one "schedule" ref
@@ -45,6 +50,13 @@ enum UbrTimerState {
 // the callback so that the callback may free the object storing the slot.
 // All atomics are seq_cst so no interleaving can release a ref twice or
 // free the task while a callback or the starter still touches it.
+//
+// A periodic callback that deletes its own timer does NOT take the task out
+// of the slot: it only marks the task stopped, and the firing callback
+// retires the slot right before it returns (see UbrTimerOnFire). Keeping the
+// task anchored for the whole callback is what lets a concurrent
+// UbrTimerDelAndWait still find it and wait for the callback to finish,
+// instead of returning as if no callback were in flight.
 struct UbrTimerTask {
     butil::atomic<UbrTimerId>* slot;
     butil::atomic<bthread_timer_t> id;
@@ -63,6 +75,11 @@ struct UbrTimerTask {
 
 namespace {
 
+// The task whose callback is running on this thread, if any. It lets
+// UbrTimerDel recognize a delete issued by the callback's own dispatch and
+// leave the task anchored until the callback returns.
+thread_local UbrTimerTask* t_running_task = nullptr;
+
 void ReleaseRef(UbrTimerTask* task) {
     if (task->ref.fetch_sub(1) == 1) {
         if (task->join_pending.load()) {
@@ -78,17 +95,41 @@ void UbrTimerOnFire(void* p) {
 
     if (task->periodic) {
         if (!task->stopped.load()) {
+            // Publish the running task so an UbrTimerDel issued by this very
+            // callback leaves the slot anchored for a concurrent waiter.
+            UbrTimerTask* prev_running = t_running_task;
+            t_running_task = task;
             task->cb(task->arg, task->gen);
+            t_running_task = prev_running;
         }
         // Claim the next schedule's ref before re-reading `stopped' so a
         // racing delete can neither free the task nor orphan a re-arm.
         task->ref.fetch_add(1);
         if (task->stopped.load()) {
-            ReleaseRef(task);
+            // Retire the slot here, on the callback's own exit: a self-delete
+            // deliberately left the task anchored. A deleter that took the
+            // slot instead has already consumed the owner reference.
+            UbrTimerId anchored = task;
+            if (task->slot->compare_exchange_strong(anchored, nullptr)) {
+                ReleaseRef(task);                // owner
+            }
+            ReleaseRef(task);                    // claimed next schedule
         } else {
             uint64_t interval = task->interval_us;
             if (task->backoff != nullptr) {
-                interval = task->backoff(task->arg, interval);
+                const uint64_t next = task->backoff(task->arg, interval);
+                if (BAIDU_UNLIKELY(next == 0)) {
+                    // Re-arming for "now" would let this one timer monopolize
+                    // the process-wide timer thread. A back-off (or a flag it
+                    // reads) returning 0 is a bug, so keep the previous
+                    // interval instead of honouring it. Guarded here rather
+                    // than in each back-off function, because any of them can
+                    // make this mistake.
+                    LOG_EVERY_SECOND(ERROR) << "Ubr timer back-off returned 0, keeping interval_us="
+                                            << interval;
+                } else {
+                    interval = next;
+                }
                 task->interval_us = interval;
             }
             bthread_timer_t id = 0;
@@ -133,11 +174,19 @@ UbrTimerTask* TakeOutTask(butil::atomic<UbrTimerId>* slot) {
 }
 
 RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_us,
-                               uint64_t interval_us, void* (*cb)(void*, uint64_t),
+                               uint64_t interval_us, bool periodic,
+                               void* (*cb)(void*, uint64_t),
                                void* arg, uint64_t gen,
                                UbrTimerBackoffFn backoff) {
     if (BAIDU_UNLIKELY(slot == nullptr || cb == nullptr)) {
         LOG(ERROR) << "Ubr timer start invalid argument, slot=" << slot;
+        return UBRING_ERR;
+    }
+    if (BAIDU_UNLIKELY(periodic && interval_us == 0)) {
+        // Rejecting beats silently arming a one-shot: a caller that asks for a
+        // periodic timer and gets a single fire loses whatever the timer was
+        // watching for the rest of the connection's life.
+        LOG(ERROR) << "Ubr periodic timer start requires a positive interval.";
         return UBRING_ERR;
     }
 
@@ -153,7 +202,7 @@ RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_u
     task->gen = gen;
     task->backoff = backoff;
     task->interval_us = interval_us;
-    task->periodic = (interval_us > 0);
+    task->periodic = periodic;
     task->state.store(kStarting);
     task->stopped.store(false);
     task->ref.store(3);                          // owner + schedule + starter
@@ -199,14 +248,34 @@ RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_u
 }  // namespace
 
 RETURN_CODE UbrTimerStart(butil::atomic<UbrTimerId>* slot, uint64_t delay_us,
-                          uint64_t interval_us, void* (*cb)(void*, uint64_t),
-                          void* arg, uint64_t gen, UbrTimerBackoffFn backoff) {
-    return TimerStartInternal(slot, delay_us, interval_us, cb, arg, gen, backoff);
+                          void* (*cb)(void*, uint64_t), void* arg, uint64_t gen) {
+    return TimerStartInternal(slot, delay_us, 0, false, cb, arg, gen, nullptr);
+}
+
+RETURN_CODE UbrTimerStartPeriodic(butil::atomic<UbrTimerId>* slot,
+                                  uint64_t delay_us, uint64_t interval_us,
+                                  void* (*cb)(void*, uint64_t), void* arg,
+                                  uint64_t gen, UbrTimerBackoffFn backoff) {
+    return TimerStartInternal(slot, delay_us, interval_us, true, cb, arg, gen,
+                              backoff);
 }
 
 int UbrTimerDel(butil::atomic<UbrTimerId>* slot) {
     if (slot == nullptr) {
         return 1;
+    }
+    // A periodic callback deleting its own timer must not pull the task out of
+    // the slot: the anchored task is what lets a concurrent UbrTimerDelAndWait
+    // find the running callback and wait for it. Mark it stopped instead and
+    // let UbrTimerOnFire retire the slot when the callback returns. Deleting a
+    // sibling timer from inside a callback is unaffected: the slots differ, so
+    // the pointer comparison below fails and the normal path runs.
+    if (t_running_task != nullptr && slot->load() == t_running_task) {
+        t_running_task->stopped.store(true);
+        // 0 means "the timer is stopped", not "the handle slot is now free":
+        // the slot is retired by UbrTimerOnFire when this callback returns, and
+        // a concurrent UbrTimerDelAndWait may still be joining the task.
+        return 0;
     }
     // Take the ownership of the slot first: after this exchange every
     // dereference below is safe (the task cannot be freed while we hold
@@ -243,6 +312,15 @@ void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot) {
     if (slot == nullptr) {
         return;
     }
+    // Called by the callback of that very timer: joining it would wait for
+    // ourselves, so degrade to the non-blocking delete (UbrTimerDel marks the
+    // task stopped and lets UbrTimerOnFire retire the slot on callback exit).
+    // Callers therefore do not need to know whether they run on the timer
+    // thread.
+    if (t_running_task != nullptr && slot->load() == t_running_task) {
+        UbrTimerDel(slot);
+        return;
+    }
     UbrTimerTask* task = TakeOutTask(slot);
     if (task == nullptr) {
         return;
@@ -250,9 +328,13 @@ void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot) {
     task->join_pending.store(true);
     task->stopped.store(true);
     // A start still in flight cannot be cancelled yet; wait for the
-    // starter to schedule it or mark it dead.
+    // starter to schedule it or mark it dead, polling at
+    // kTimerPollIntervalUs. DelAndWait runs on teardown paths (force close,
+    // UbrMgrFini, connect failure) where a sub-millisecond delay is
+    // irrelevant, so polling keeps the facade free of a second wait primitive
+    // and works identically from bthreads and plain pthreads.
     while (task->state.load() == kStarting) {
-        bthread_usleep(1000);
+        bthread_usleep(kTimerPollIntervalUs);
     }
     if (task->state.load() == kScheduled) {
         bthread_timer_t id = task->id.load();
@@ -262,7 +344,7 @@ void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot) {
     }
     ReleaseRef(task);                            // owner reference
     while (!task->done.load()) {
-        bthread_usleep(1000);
+        bthread_usleep(kTimerPollIntervalUs);
     }
     task->join_pending.store(false);
     delete task;
