@@ -44,7 +44,10 @@ void UbsMemLoggerPrint(int level, const char *msg);
 void *UbsShmCallback(void* args, uint64_t gen);
 RETURN_CODE UbsShmAddTimer(ShmList *shm_list);
 RETURN_CODE InitShmTimer(ShmList **shm_list);
-RETURN_CODE DestroyShmTimer(ShmList *shm_list);
+// Takes the handle so it can be cleared after the list is freed: a caller that
+// keeps the pointer (g_shm_list) must not be left with a dangling one. Calling
+// it again on a cleared handle is a no-op.
+RETURN_CODE DestroyShmTimer(ShmList **shm_list);
 RETURN_CODE AddShmToList(ShmList *shm_list, SHM *shm);
 RETURN_CODE IsExistInShmList(ShmList *shm_list, const SHM *shm);
 }

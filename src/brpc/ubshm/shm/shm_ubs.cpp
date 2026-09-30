@@ -49,6 +49,10 @@ DEFINE_int32(ub_flying_io_timeout_s, 5,
 char g_region_name[MAX_REGION_NAME_DESC_LENGTH] = {0};
 butil::atomic<UbrTimerId> g_shm_timer_id(nullptr);
 ShmList *g_shm_list = nullptr;
+// Set by UbsShmFini, cleared by UbsShmInit: ShmMgrFini may run more than once,
+// and the SDK finalize plus the shm list teardown must happen exactly once per
+// init.
+static bool g_ubs_shm_finalized = false;
 static RETURN_CODE UbsShmInterfacesLoad(void);
 char hostname[MAX_HOST_NAME_DESC_LENGTH];
 
@@ -314,6 +318,9 @@ void UbsMemLoggerPrint(int level, const char *msg)
 
 RETURN_CODE UbsShmInit(void)
 {
+    // A new init makes UbsShmFini run its teardown again.
+    g_ubs_shm_finalized = false;
+
     // load libubsm_sdk.so and get function pointer
     RETURN_CODE ret_code = UbsShmInterfacesLoad();
     if (ret_code != UBRING_OK) {
@@ -377,8 +384,16 @@ RETURN_CODE UbsShmInit(void)
 
 RETURN_CODE UbsShmFini(void)
 {
+    // Idempotent: ShmMgrFini is allowed to run more than once (GlobalRelease
+    // plus an explicit caller), and finalizing the SDK or tearing the shm list
+    // down twice would touch freed memory.
+    if (g_ubs_shm_finalized) {
+        return UBRING_OK;
+    }
+    g_ubs_shm_finalized = true;
+
     // Stop the cleanup timer before finalizing the SDK it calls into.
-    if (BAIDU_UNLIKELY(DestroyShmTimer(g_shm_list) != UBRING_OK)) {
+    if (BAIDU_UNLIKELY(DestroyShmTimer(&g_shm_list) != UBRING_OK)) {
         LOG(ERROR) << "Ubs shm list finalize failed.";
         return UBRING_ERR;
     }
@@ -459,9 +474,26 @@ void *UbsShmCallback(void* args, uint64_t)
 
 RETURN_CODE UbsShmAddTimer(ShmList *shm_list)
 {
-    const uint64_t timer_interval_us = (uint64_t)FLAGS_ub_flying_io_timeout_s * SEC_TO_USEC;
-    RETURN_CODE rc = UbrTimerStart(&g_shm_timer_id, 0, timer_interval_us,
-                                   UbsShmCallback, (void*)shm_list, 0);
+    // This timer is periodic -- it drains one pending unmap per fire -- while
+    // the same flag is also the one-shot delay of the delayed-clear path, where
+    // 0 legitimately means "do not wait for in-flight IO". A periodic timer
+    // needs a positive period, so fall back to a drain period of one second
+    // instead of either refusing to start (which would break UBS shm init for a
+    // valid tuning of the other use) or degrading to a single drain.
+    uint64_t period_s = (uint64_t)FLAGS_ub_flying_io_timeout_s;
+    if (BAIDU_UNLIKELY(FLAGS_ub_flying_io_timeout_s <= 0)) {
+        LOG(WARNING) << "ub_flying_io_timeout_s=" << FLAGS_ub_flying_io_timeout_s
+                     << " disables the delayed-clear wait; using a 1s drain period "
+                     << "for the shm cleanup timer.";
+        period_s = 1;
+    }
+    const uint64_t timer_interval_us = period_s * SEC_TO_USEC;
+    // The generation argument is the caller's staleness guard; UbsShmCallback
+    // ignores it and never frees `shm_list', whose lifetime is settled by
+    // DestroyShmTimer waiting through UbrTimerDelAndWait before it tears the
+    // list down. 0 is therefore deliberate here, not a missing generation.
+    RETURN_CODE rc = UbrTimerStartPeriodic(&g_shm_timer_id, 0, timer_interval_us,
+                                           UbsShmCallback, (void*)shm_list, 0);
     if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Start shm timer failed.";
         return UBRING_ERR;
@@ -495,15 +527,23 @@ RETURN_CODE InitShmTimer(ShmList **shm_list)
     return UBRING_OK;
 }
 
-RETURN_CODE DestroyShmTimer(ShmList *shm_list)
+RETURN_CODE DestroyShmTimer(ShmList **shm_list)
 {
     // Wait out a possibly running UbsShmCallback before tearing shm_list down.
     UbrTimerDelAndWait(&g_shm_timer_id);
-    if (shm_list == nullptr) {
-        LOG(WARNING) << "Shm list is null.";
+    if (BAIDU_UNLIKELY(shm_list == nullptr)) {
+        LOG(ERROR) << "Shm list handle is null.";
         return UBRING_ERR;
     }
-    ShmListNode* current = shm_list->head;
+    if (*shm_list == nullptr) {
+        return UBRING_OK;                    // already destroyed, idempotent
+    }
+
+    // Own the pointer for the whole teardown, and clear the caller's handle
+    // (FREE_PTR does that for us) before returning: leaving it dangling lets a
+    // second ShmMgrFini/AddShmToList use freed memory.
+    ShmList* list = *shm_list;
+    ShmListNode* current = list->head;
     ShmListNode* next;
 
     while (current != nullptr) {
@@ -511,8 +551,9 @@ RETURN_CODE DestroyShmTimer(ShmList *shm_list)
         free(current);
         current = next;
     }
-    pthread_mutex_destroy(&shm_list->shm_lock);
-    FREE_PTR(shm_list);
+    pthread_mutex_destroy(&list->shm_lock);
+    FREE_PTR(*shm_list);
+    LOG(INFO) << "Ubs shm list destroyed.";
     return UBRING_OK;
 }
 
