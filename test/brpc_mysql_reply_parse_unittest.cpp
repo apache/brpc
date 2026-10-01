@@ -542,4 +542,41 @@ TEST(MysqlReplyParseTest, RejectZeroColumnCount) {
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena));
 }
 
+// A column definition truncated in its fixed tail (missing the filler byte
+// after origin_name, or missing the final 2 reserved bytes after decimal)
+// must be rejected instead of being accepted via an unchecked pop_front.
+TEST(MysqlReplyParseTest, RejectTruncatedColumnDefTail) {
+    // |drop_tail| bytes removed from a complete column definition.
+    for (size_t drop_tail = 1; drop_tail <= 3; ++drop_tail) {
+        std::string col = MakeColumnDef();
+        col.resize(col.size() - drop_tail);
+
+        std::string wire;
+        AppendPacket(&wire, 1, std::string(1, '\x01'));  // 1-column result set
+        AppendPacket(&wire, 2, col);
+
+        brpc::MysqlReply reply;
+        butil::Arena arena;
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena))
+            << "drop_tail " << drop_tail;
+    }
+}
+
+// An ERR packet whose sql_state is not preceded by the '#' marker must be
+// rejected instead of shifting the remaining bytes into the wrong fields.
+TEST(MysqlReplyParseTest, RejectErrPacketWithoutSqlStateMarker) {
+    std::string payload;
+    payload.push_back((char)0xFF);               // ERR marker
+    payload.append("\x1f\x04", 2);            // error code 1055, little-endian
+    payload.append("ABCDE", 5);                // 5 bytes where '#'+4 was expected
+    payload.append("boom", 4);                 // error message
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena));
+}
+
 }  // namespace

@@ -578,7 +578,10 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         _extended_capability = mysql_uint2korr(tmp);
     }
     MY_PARSE_CHECK(parse_fixed(payload, &_auth_plugin_length, 1));
-    payload.pop_front(10);
+    {
+        uint8_t reserved[10];  // reserved bytes
+        MY_PARSE_CHECK(parse_fixed(payload, reserved, sizeof(reserved)));
+    }
     {
         butil::IOBuf salt2;
         if (payload.cut_until(&salt2, delim) != 0) {
@@ -689,7 +692,10 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     MY_PARSE_CHECK(parse_column_string(payload, arena, &_origin_table, "origin_table"));
     MY_PARSE_CHECK(parse_column_string(payload, arena, &_name, "name"));
     MY_PARSE_CHECK(parse_column_string(payload, arena, &_origin_name, "origin_name"));
-    payload.pop_front(1);
+    {
+        uint8_t filler_length = 0;  // length of the fixed fields below
+        MY_PARSE_CHECK(parse_fixed(payload, &filler_length, 1));
+    }
     {
         uint8_t tmp[2];
         MY_PARSE_CHECK(parse_fixed(payload, tmp, sizeof(tmp)));
@@ -707,7 +713,10 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         _flag = (MysqlFieldFlag)mysql_uint2korr(tmp);
     }
     MY_PARSE_CHECK(parse_fixed(payload, &_decimal, 1));
-    payload.pop_front(2);
+    {
+        uint8_t filler[2];  // reserved
+        MY_PARSE_CHECK(parse_fixed(payload, filler, sizeof(filler)));
+    }
     set_parsed();
     return PARSE_OK;
 }
@@ -801,7 +810,15 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         MY_PARSE_CHECK(parse_fixed(payload, tmp, sizeof(tmp)));
         _errcode = mysql_uint2korr(tmp);
     }
-    payload.pop_front(1);  // '#'
+    {
+        uint8_t sharp = 0;
+        MY_PARSE_CHECK(parse_fixed(payload, &sharp, 1));  // '#'
+        if (sharp != '#') {
+            LOG(WARNING) << "MysqlReply::Error::Parse: expected '#' before sql_state, got "
+                       << sharp;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
+    }
     // 5 byte server status
     char* status = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
@@ -1529,7 +1546,11 @@ ParseError MysqlReply::PrepareOk::Header::Parse(butil::IOBuf& buf) {
         MY_PARSE_CHECK(parse_fixed(payload, tmp, sizeof(tmp)));
         _param_count = mysql_uint2korr(tmp);
     }
-    payload.pop_front(1);
+    {
+        uint8_t filler = 0;
+        MY_PARSE_CHECK(parse_fixed(payload, &filler, 1));
+        (void)filler;
+    }
     {
         uint8_t tmp[2];
         MY_PARSE_CHECK(parse_fixed(payload, tmp, sizeof(tmp)));
