@@ -26,6 +26,7 @@
 #include <gflags/gflags.h>                     // Users often need gflags
 #include <string>
 #include <memory>
+#include "butil/config.h"
 #include "butil/intrusive_ptr.hpp"             // butil::intrusive_ptr
 #include "bthread/errno.h"                     // Redefine errno
 #include "butil/endpoint.h"                    // butil::EndPoint
@@ -64,6 +65,11 @@ struct x509_st;
 }
 
 namespace brpc {
+#if BRPC_WITH_FLATBUFFERS
+namespace flatbuffers {
+class MethodDescriptor;
+}
+#endif
 class Span;
 class Server;
 class SharedLoadBalancer;
@@ -336,6 +342,12 @@ public:
     ConnectionType connection_type() const { return _connection_type; }
     // Get the called method. May-be nullptr for non-pb services.
     const google::protobuf::MethodDescriptor* method() const { return _method; }
+#if BRPC_WITH_FLATBUFFERS
+    // Borrowed descriptor. The caller must keep it alive until the RPC ends.
+    const flatbuffers::MethodDescriptor* flatbuffers_method() const {
+        return _flatbuffers_method;
+    }
+#endif
 
     // Get the controllers for accessing sub channels in combo channels.
     // Ordinary channel:
@@ -961,6 +973,9 @@ private:
     // Fields will be used when making requests
     Protocol::PackRequest _pack_request;
     const google::protobuf::MethodDescriptor* _method;
+#if BRPC_WITH_FLATBUFFERS
+    const flatbuffers::MethodDescriptor* _flatbuffers_method;
+#endif
     const Authenticator* _auth;
     butil::IOBuf _request_buf;
     IdlNames _idl_names;

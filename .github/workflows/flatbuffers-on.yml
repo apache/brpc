@@ -1,0 +1,86 @@
+name: FlatBuffers ON
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: FB ON (${{ matrix.os }}, ${{ matrix.system }}, ${{ matrix.compiler }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {os: ubuntu-22.04, system: cmake, compiler: gcc, cc: gcc, cxx: g++, cache: ccache}
+          - {os: ubuntu-22.04, system: cmake, compiler: clang, cc: clang, cxx: clang++, cache: ccache}
+          - {os: ubuntu-22.04, system: make, compiler: gcc, cc: gcc, cxx: g++, cache: ccache}
+          - {os: ubuntu-22.04, system: make, compiler: clang, cc: clang, cxx: clang++, cache: ccache}
+          - {os: ubuntu-22.04, system: bazel, compiler: gcc, cc: gcc, cxx: g++, cache: bazel}
+          - {os: macos-latest, system: cmake, compiler: apple-clang, cc: clang, cxx: clang++, cache: ccache}
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      FB_WORK: ${{ runner.temp }}/brpc-fb-${{ matrix.system }}-${{ matrix.compiler }}
+      BUILD_SYSTEM: ${{ matrix.system }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate the gate's report checks
+        run: python3 .github/scripts/test_flatbuffers_on.py
+
+      - name: Install focused Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build clang ccache pkg-config python3 curl ca-certificates git \
+            libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler \
+            libleveldb-dev libgoogle-perftools-dev zlib1g-dev
+
+      - name: Install focused macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja pkg-config openssl@3 gflags leveldb protobuf@29 abseil
+
+      - uses: ./.github/actions/setup-build-cache
+        with:
+          kind: ${{ matrix.cache }}
+          cache-key: fb-on-${{ matrix.system }}-${{ matrix.compiler }}
+
+      - name: Build and run the FB ON gates
+        shell: bash
+        run: |
+          args=(--build-system "$BUILD_SYSTEM" --work "$FB_WORK" --jobs 2)
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            for package in protobuf@29 abseil openssl@3 gflags leveldb; do
+              args+=(--dependency-prefix "$(brew --prefix "$package")")
+            done
+            args+=(--protoc "$(brew --prefix protobuf@29)/bin/protoc")
+          fi
+          python3 .github/scripts/flatbuffers-on.py "${args[@]}"
+
+      - name: Upload commands, logs and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatbuffers-on-${{ matrix.os }}-${{ matrix.system }}-${{ matrix.compiler }}
+          path: ${{ env.FB_WORK }}/evidence/
+          if-no-files-found: warn
+          retention-days: 14

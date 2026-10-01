@@ -83,6 +83,10 @@
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/baidu_master_service.h"
 #include "brpc/transport_factory.h"
+#if BRPC_WITH_FLATBUFFERS
+#include <map>
+#include "brpc/flatbuffers/service.h"
+#endif
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -113,6 +117,52 @@ const char* status_str(Server::Status s) {
     }
     return "UNKNOWN_STATUS";
 }
+
+#if BRPC_WITH_FLATBUFFERS
+struct Server::FlatBuffersServiceMap {
+    struct Method {
+        Method(flatbuffers::Service* service,
+               const flatbuffers::MethodDescriptor* descriptor)
+            : status(new MethodStatus)
+            , property{service, descriptor, status.get(), false} {}
+
+        std::unique_ptr<MethodStatus> status;
+        FlatBuffersMethodProperty property;
+        AdaptiveMaxConcurrency max_concurrency;
+    };
+    struct Service {
+        Service(flatbuffers::Service* svc,
+                const flatbuffers::ServiceDescriptor* desc)
+            : service(svc)
+            , descriptor(desc)
+            , ownership(SERVER_DOESNT_OWN_SERVICE) {}
+        ~Service() {
+            methods.clear();
+            if (ownership == SERVER_OWNS_SERVICE) {
+                delete service;
+            }
+        }
+
+        flatbuffers::Service* service;
+        const flatbuffers::ServiceDescriptor* descriptor;
+        ServiceOwnership ownership;
+        std::map<int32_t, std::unique_ptr<Method> > methods;
+    };
+    typedef std::map<uint32_t, std::unique_ptr<Service> > ServiceMap;
+    ServiceMap services;
+
+    Method* FindMethodByFullName(const butil::StringPiece& fullname) const {
+        for (const auto& service : services) {
+            for (const auto& method : service.second->methods) {
+                if (method.second->property.method->full_name() == fullname) {
+                    return method.second.get();
+                }
+            }
+        }
+        return nullptr;
+    }
+};
+#endif
 
 butil::static_atomic<int> g_running_server_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
@@ -361,6 +411,19 @@ void* Server::UpdateDerivedVars(void* arg) {
             it->second.status->Expose(mprefix);
         }
     }
+#if BRPC_WITH_FLATBUFFERS
+    if (server->_flatbuffers_services) {
+        for (const auto& service : server->_flatbuffers_services->services) {
+            for (const auto& method : service.second->methods) {
+                mprefix.resize(prefix.size());
+                mprefix.push_back('_');
+                bvar::to_underscored_name(
+                    &mprefix, method.second->property.method->full_name());
+                method.second->status->Expose(mprefix);
+            }
+        }
+    }
+#endif
     if (server->options().baidu_master_service) {
         server->options().baidu_master_service->Expose(prefix);
     }
@@ -1101,6 +1164,27 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
             it->second.max_concurrency.SetConcurrencyLimiter(cl);
         }
     }
+#if BRPC_WITH_FLATBUFFERS
+    if (_flatbuffers_services) {
+        for (const auto& service : _flatbuffers_services->services) {
+            for (const auto& entry : service.second->methods) {
+                auto& method = *entry.second;
+                const AdaptiveMaxConcurrency* amc = &method.max_concurrency;
+                if (amc->type() == AdaptiveMaxConcurrency::UNLIMITED()) {
+                    amc = &_options.method_max_concurrency;
+                }
+                ConcurrencyLimiter* cl = nullptr;
+                if (!CreateConcurrencyLimiter(*amc, &cl)) {
+                    LOG(ERROR) << "Fail to create ConcurrencyLimiter for "
+                               << method.property.method->full_name();
+                    return -1;
+                }
+                method.status->SetConcurrencyLimiter(cl);
+                method.max_concurrency.SetConcurrencyLimiter(cl);
+            }
+        }
+    }
+#endif
     if (0 != SetServiceMaxConcurrency(_options.nshead_service)) {
         return -1;
     }
@@ -1409,6 +1493,22 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
 
     // defined `option (idl_support) = true' or not.
     const bool is_idl_support = sd->file()->options().GetExtension(idl_support);
+#if BRPC_WITH_FLATBUFFERS
+    if (_flatbuffers_services) {
+        for (int i = 0; i < sd->method_count(); ++i) {
+            const auto* md = sd->method(i);
+            if (_flatbuffers_services->FindMethodByFullName(md->full_name()) ||
+                (is_idl_support && sd->name() != sd->full_name() &&
+                 _flatbuffers_services->FindMethodByFullName(
+                     butil::EnsureString(sd->name()) + "." +
+                     butil::EnsureString(md->name())))) {
+                LOG(ERROR) << "Protobuf method conflicts with FlatBuffers method: "
+                           << md->full_name();
+                return -1;
+            }
+        }
+    }
+#endif
 
     Tabbed* tabbed = dynamic_cast<Tabbed*>(service);
     for (int i = 0; i < sd->method_count(); ++i) {
@@ -1639,6 +1739,126 @@ int Server::AddService(google::protobuf::Service* service,
     return AddServiceInternal(service, false, options);
 }
 
+#if BRPC_WITH_FLATBUFFERS
+int Server::AddFlatBuffersService(flatbuffers::Service* service,
+                                  ServiceOwnership ownership) {
+    if (service == nullptr ||
+        (ownership != SERVER_OWNS_SERVICE &&
+         ownership != SERVER_DOESNT_OWN_SERVICE)) {
+        LOG(ERROR) << "Invalid FlatBuffers service or ownership";
+        return -1;
+    }
+    if (InitializeOnce() != 0 || status() != READY) {
+        LOG(ERROR) << "Can't add FlatBuffers service to Server[" << version()
+                   << "] which is " << status_str(status());
+        return -1;
+    }
+    const flatbuffers::ServiceDescriptor* sd = service->GetDescriptor();
+    if (sd == nullptr || sd->name().empty() || sd->full_name().empty() ||
+        sd->method_count() <= 0) {
+        LOG(ERROR) << "Invalid FlatBuffers service descriptor";
+        return -1;
+    }
+    if (_flatbuffers_services) {
+        for (const auto& entry : _flatbuffers_services->services) {
+            if (entry.second->service == service || entry.first == sd->index() ||
+                entry.second->descriptor->full_name() == sd->full_name()) {
+                LOG(ERROR) << "Duplicate FlatBuffers service or hash collision: "
+                           << sd->full_name();
+                return -1;
+            }
+        }
+    }
+
+    // Keep ownership with the caller until the entire record is published.
+    std::unique_ptr<FlatBuffersServiceMap::Service> record(
+        new FlatBuffersServiceMap::Service(service, sd));
+    std::unordered_set<std::string> method_names;
+    for (int i = 0; i < sd->method_count(); ++i) {
+        const flatbuffers::MethodDescriptor* md = sd->method(i);
+        if (md == nullptr || md->service() != sd || md->index() < 0 ||
+            md->name().empty() ||
+            md->full_name() != sd->full_name() + "." + md->name() ||
+            sd->FindMethodByIndex(md->index()) != md ||
+            !method_names.insert(md->name()).second ||
+            record->methods.count(md->index()) != 0) {
+            LOG(ERROR) << "Invalid FlatBuffers method in " << sd->full_name();
+            return -1;
+        }
+        if (_method_map.seek(md->full_name()) != nullptr) {
+            LOG(ERROR) << "FlatBuffers method conflicts with protobuf method: "
+                       << md->full_name();
+            return -1;
+        }
+        record->methods.emplace(md->index(),
+            std::unique_ptr<FlatBuffersServiceMap::Method>(
+                new FlatBuffersServiceMap::Method(service, md)));
+    }
+    if (!_flatbuffers_services) {
+        _flatbuffers_services.reset(new FlatBuffersServiceMap);
+    }
+    auto inserted = _flatbuffers_services->services.emplace(
+        sd->index(), std::move(record));
+    if (!inserted.second) {
+        return -1;
+    }
+    inserted.first->second->ownership = ownership;
+    return 0;
+}
+
+int Server::RemoveFlatBuffersService(flatbuffers::Service* service) {
+    if (service == nullptr) {
+        LOG(ERROR) << "Parameter[service] is NULL";
+        return -1;
+    }
+    if (InitializeOnce() != 0 || status() != READY) {
+        LOG(ERROR) << "Can't remove FlatBuffers service from Server[" << version()
+                   << "] which is " << status_str(status());
+        return -1;
+    }
+    if (_flatbuffers_services) {
+        for (auto it = _flatbuffers_services->services.begin();
+             it != _flatbuffers_services->services.end(); ++it) {
+            if (it->second->service == service) {
+                std::unique_ptr<FlatBuffersServiceMap::Service> removed(
+                    std::move(it->second));
+                _flatbuffers_services->services.erase(it);
+                return 0;
+            }
+        }
+    }
+    return -1;
+}
+
+size_t Server::GetFlatBuffersServiceCount() const {
+    return _flatbuffers_services ? _flatbuffers_services->services.size() : 0;
+}
+
+const Server::FlatBuffersMethodProperty*
+Server::FindFlatBuffersMethodPropertyByIndex(uint32_t service_index,
+                                            int32_t method_index) const {
+    if (!_flatbuffers_services || method_index < 0) {
+        return nullptr;
+    }
+    auto service = _flatbuffers_services->services.find(service_index);
+    if (service == _flatbuffers_services->services.end()) {
+        return nullptr;
+    }
+    // Wire IDs are sparse, not declaration-order positions.
+    const flatbuffers::MethodDescriptor* md =
+        service->second->descriptor->FindMethodByIndex(method_index);
+    if (md == nullptr) {
+        return nullptr;
+    }
+    auto method = service->second->methods.find(method_index);
+    if (method == service->second->methods.end() ||
+        method->second->property.method != md) {
+        return nullptr;
+    }
+    return &method->second->property;
+}
+#endif
+
 int Server::AddBuiltinService(google::protobuf::Service* service) {
     ServiceOptions options;
     options.ownership = SERVER_OWNS_SERVICE;
@@ -1758,6 +1978,11 @@ void Server::ClearServices() {
             << "] which is " << status_str(status());
         return;
     }
+#if BRPC_WITH_FLATBUFFERS
+    // Detach every FlatBuffers method before destroying owned services.
+    std::unique_ptr<FlatBuffersServiceMap> removed_flatbuffers_services;
+    removed_flatbuffers_services.swap(_flatbuffers_services);
+#endif
     for (ServiceMap::const_iterator it = _fullname_service_map.begin();
          it != _fullname_service_map.end(); ++it) {
         if (it->second.ownership == SERVER_OWNS_SERVICE) {
@@ -1804,6 +2029,9 @@ void Server::GetStat(ServerStatistics* stat) const {
         stat->connection_count += _internal_am->ConnectionCount();
     }
     stat->user_service_count = service_count();
+#if BRPC_WITH_FLATBUFFERS
+    stat->user_service_count += GetFlatBuffersServiceCount();
+#endif
     stat->builtin_service_count = builtin_service_count();
 }
 
@@ -1834,8 +2062,11 @@ void Server::GenerateVersionIfNeeded() {
     if (!_version.empty()) {
         return;
     }
-    int extra_count = !!_options.nshead_service + !!_options.rtmp_service +
+    size_t extra_count = !!_options.nshead_service + !!_options.rtmp_service +
         !!_options.thrift_service + !!_options.redis_service;
+#if BRPC_WITH_FLATBUFFERS
+    extra_count += GetFlatBuffersServiceCount();
+#endif
     _version.reserve((extra_count + service_count()) * 20);
     for (ServiceMap::const_iterator it = _fullname_service_map.begin();
          it != _fullname_service_map.end(); ++it) {
@@ -1846,6 +2077,16 @@ void Server::GenerateVersionIfNeeded() {
             _version.append(butil::class_name_str(*it->second.service));
         }
     }
+#if BRPC_WITH_FLATBUFFERS
+    if (_flatbuffers_services) {
+        for (const auto& service : _flatbuffers_services->services) {
+            if (!_version.empty()) {
+                _version.push_back('+');
+            }
+            _version.append(service.second->descriptor->full_name());
+        }
+    }
+#endif
     if (_options.nshead_service) {
         if (!_version.empty()) {
             _version.push_back('+');
@@ -2291,6 +2532,15 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_
 
         MethodProperty* mp = _method_map.seek(full_method_name);
         if (mp == nullptr) {
+#if BRPC_WITH_FLATBUFFERS
+            if (_flatbuffers_services) {
+                auto* method = _flatbuffers_services->FindMethodByFullName(
+                    full_method_name);
+                if (method) {
+                    return method->max_concurrency;
+                }
+            }
+#endif
             break;
         }
         return MaxConcurrencyOf(mp);
@@ -2303,7 +2553,16 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_
 }
 
 int Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) const {
-    return MaxConcurrencyOf(_method_map.seek(full_method_name));
+    const MethodProperty* mp = _method_map.seek(full_method_name);
+#if BRPC_WITH_FLATBUFFERS
+    if (mp == nullptr && _flatbuffers_services) {
+        auto* method = _flatbuffers_services->FindMethodByFullName(full_method_name);
+        if (method) {
+            return method->max_concurrency;
+        }
+    }
+#endif
+    return MaxConcurrencyOf(mp);
 }
 
 AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
@@ -2311,6 +2570,15 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_
     MethodProperty* mp = const_cast<MethodProperty*>(
         FindMethodPropertyByFullName(full_service_name, method_name));
     if (mp == nullptr) {
+#if BRPC_WITH_FLATBUFFERS
+        if (_flatbuffers_services) {
+            auto* method = _flatbuffers_services->FindMethodByFullName(
+                full_service_name.as_string() + "." + method_name.as_string());
+            if (method) {
+                return method->max_concurrency;
+            }
+        }
+#endif
         LOG(ERROR) << "Fail to find method=" << full_service_name
                    << '/' << method_name;
         _failed_to_set_max_concurrency_of_method = true;
@@ -2321,8 +2589,18 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_
 
 int Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                              const butil::StringPiece& method_name) const {
-    return MaxConcurrencyOf(FindMethodPropertyByFullName(
-                                full_service_name, method_name));
+    const MethodProperty* mp = FindMethodPropertyByFullName(
+        full_service_name, method_name);
+#if BRPC_WITH_FLATBUFFERS
+    if (mp == nullptr && _flatbuffers_services) {
+        auto* method = _flatbuffers_services->FindMethodByFullName(
+            full_service_name.as_string() + "." + method_name.as_string());
+        if (method) {
+            return method->max_concurrency;
+        }
+    }
+#endif
+    return MaxConcurrencyOf(mp);
 }
 
 AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(google::protobuf::Service* service,
@@ -2338,6 +2616,19 @@ int Server::MaxConcurrencyOf(google::protobuf::Service* service,
 bool& Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) {
     MethodProperty* mp = _method_map.seek(full_method_name);
     if (mp == nullptr) {
+#if BRPC_WITH_FLATBUFFERS
+        if (_flatbuffers_services) {
+            auto* method = _flatbuffers_services->FindMethodByFullName(
+                full_method_name);
+            if (method) {
+                if (status() != READY) {
+                    LOG(WARNING) << "IgnoreEovercrowdedOf requires a stopped Server";
+                    return g_default_ignore_eovercrowded;
+                }
+                return method->property.ignore_eovercrowded;
+            }
+        }
+#endif
         LOG(ERROR) << "Fail to find method=" << full_method_name;
         _failed_to_set_ignore_eovercrowded = true;
         return g_default_ignore_eovercrowded;
@@ -2362,6 +2653,15 @@ bool Server::IgnoreEovercrowdedOf(const butil::StringPiece& full_method_name) co
         return g_default_ignore_eovercrowded;
     }
     if (mp == nullptr || mp->status == nullptr) {
+#if BRPC_WITH_FLATBUFFERS
+        if (mp == nullptr && _flatbuffers_services) {
+            auto* method = _flatbuffers_services->FindMethodByFullName(
+                full_method_name);
+            if (method) {
+                return method->property.ignore_eovercrowded;
+            }
+        }
+#endif
         return false;
     }
     return mp->ignore_eovercrowded;

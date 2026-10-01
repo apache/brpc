@@ -281,7 +281,9 @@ protected:
                                    nullptr, ProcessRpcRequest,
                                    VerifyMyRequest, nullptr, nullptr,
                                    brpc::CONNECTION_TYPE_ALL, "baidu_std" };
-        ASSERT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+        // Keep the test protocol outside the IDs assigned to builtins.
+        const auto dummy_type = static_cast<brpc::ProtocolType>(brpc::ProtocolType_MAX + 1);
+        ASSERT_EQ(0, RegisterProtocol(dummy_type, dummy_protocol));
     }
 
     static void ProcessRpcRequest(brpc::InputMessageBase* msg_base) {

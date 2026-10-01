@@ -129,6 +129,11 @@ public:
     void set_method(const google::protobuf::MethodDescriptor* method) 
     { _cntl->_method = method; }
 
+#if BRPC_WITH_FLATBUFFERS
+    void set_flatbuffers_method(const flatbuffers::MethodDescriptor* method)
+    { _cntl->_flatbuffers_method = method; }
+#endif
+
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)
     { _cntl->_rpa.reset(s); }
 
