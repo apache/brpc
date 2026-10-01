@@ -607,4 +607,55 @@ TEST(Mcpack2pbParserTest, BinaryFieldHugeClaimedSizeDoesNotThrow) {
     EXPECT_FALSE(stream.good());
 }
 
+TEST(Mcpack2pbParserTest, Int32FieldTruncatedPayloadIsRejected) {
+    // The top-level head claims value_size=64 but the stream ends in the
+    // middle of the int32 field value. The truncated read must mark the
+    // stream bad (so the generated code fails the parse) and must not
+    // return an indeterminate value.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x40, 0x00, 0x00, 0x00,  // top object, value_size=64
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x14, 0x02,                          // fixed head: int32 field "a"
+        0x61, 0x00,
+        0x2a,                                // only 1 byte of the 4-byte value
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(64u, mcpack2pb::unbox(&stream));
+    // The generated code trusts the value size claimed by unbox().
+    mcpack2pb::ObjectIterator it(&stream, 64);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_INT32, it->value.type());
+    EXPECT_EQ(0, it->value.as_int32("a"));
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, FloatFieldTruncatedPayloadIsRejected) {
+    // Same truncation reached through a type-mismatch log path: as_int64()
+    // on a float field reads the 4-byte float payload, which must be
+    // zero-initialized on the short read (logging an indeterminate float is
+    // UB) and must mark the stream bad.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x40, 0x00, 0x00, 0x00,  // top object, value_size=64
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x44, 0x02,                          // fixed head: float field "a"
+        0x61, 0x00,
+        0x2a,                                // only 1 byte of the 4-byte value
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(64u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, 64);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_FLOAT, it->value.type());
+    EXPECT_EQ(0, it->value.as_int64("a"));
+    EXPECT_FALSE(stream.good());
+}
+
 }  // namespace

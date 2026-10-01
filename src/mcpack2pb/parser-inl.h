@@ -82,7 +82,10 @@ inline size_t InputStream::cut_packed_pod(T* packed_pod) {
 
 template <typename T>
 inline T InputStream::cut_packed_pod() {
-    T packed_pod;
+    // Zero-initialize so a short read never returns an indeterminate value
+    // (reading one is UB), and mark the stream bad so the truncated input
+    // fails the parse instead of being consumed as a garbage value.
+    T packed_pod = T();
     if (_size >= (int)sizeof(T)) {
         packed_pod = *(T*)_data;
         _data = (const char*)_data + sizeof(T);
@@ -90,7 +93,10 @@ inline T InputStream::cut_packed_pod() {
         _popped_bytes += sizeof(T);
         return packed_pod;
     }
-    cutn(&packed_pod, sizeof(T));
+    if (cutn(&packed_pod, sizeof(T)) != sizeof(T)) {
+        set_bad();
+        return T();
+    }
     return packed_pod;
 }
     
