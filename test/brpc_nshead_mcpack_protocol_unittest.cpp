@@ -24,6 +24,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
@@ -96,7 +97,12 @@ protected:
         EXPECT_EQ(0, brpc::Socket::Address(id, &_socket));
     }
 
-    virtual ~NsheadMcpackTest() {};
+    virtual ~NsheadMcpackTest() {
+        // The write end (_pipe_fds[1]) is owned by `_socket' and closed
+        // when it is released; close the unused read end here to avoid
+        // leaking fds across the per-case fixtures.
+        close(_pipe_fds[0]);
+    };
     virtual void SetUp() {};
     virtual void TearDown() {};
 
