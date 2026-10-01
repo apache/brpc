@@ -15,39 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_SHM_MGR_H
-#define BRPC_SHM_MGR_H
-
-#include <stdint.h>
-#include "brpc/ubshm/common/common.h"
-#include "brpc/ubshm/shm/shm_def.h"
+#ifndef BRPC_UBSHM_UBR_DATA_FORMAT_H
+#define BRPC_UBSHM_UBR_DATA_FORMAT_H
 
 namespace brpc {
 namespace ubring {
-void SetShmType(SHM_TYPE type);
 
-SHM_TYPE GetShmType();
+enum UbrDataFormat {
+    UBR_DATA_FORMAT_NONE = 0,
+    UBR_DATA_FORMAT_LEGACY_64 = 1,
+    UBR_DATA_FORMAT_IPC_V2 = 2,
+};
 
-RETURN_CODE ShmMgrInit(void);
+}  // namespace ubring
+}  // namespace brpc
 
-void ShmMgrFini(void);
-
-RETURN_CODE ShmLocalMalloc(SHM *shm);
-
-RETURN_CODE ShmLocalCalloc(SHM *shm);
-
-RETURN_CODE ShmLocalFree(SHM *shm);
-
-RETURN_CODE ShmRemoteMalloc(SHM *shm);
-
-RETURN_CODE ShmRemoteFree(SHM *shm);
-
-RETURN_CODE ShmLocalMmap(SHM *shm, int prot);
-
-RETURN_CODE ShmMunmap(SHM *shm);
-
-RETURN_CODE ShmFree(SHM *shm);
-}
-}
-
-#endif //BRPC_SHM_MGR_H
+#endif  // BRPC_UBSHM_UBR_DATA_FORMAT_H
