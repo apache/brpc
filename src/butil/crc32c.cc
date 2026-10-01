@@ -612,175 +612,159 @@ static bool is_zbc() {
 
 #if defined(__riscv_zvbc)
 // Hardware-accelerated CRC32C using RISC-V Zvbc vector carry-less multiplication.
-// Uses RVV vclmul/vclmulh to process 2 lanes per vector operation (VLEN=128).
-// With VLEN=128, each vector register holds 2 x 64-bit elements.
-// 4 lanes are processed using 2 vector register pairs per clmul step.
+// Adaptive VLEN: the fold keeps the exact 4-lane / 64-byte span of the scalar
+// clmul core (same constants) and carries the four lanes on `segs` e64m1
+// vector pairs (vl=4 on VLEN>=256, two vl=2 pairs on VLEN=128), so 128-bit
+// cores run the vector path at full width.  Every carry-less multiply goes
+// through the vector vclmul path: cores with Zvbc but without scalar Zbc
+// (e.g. SG2044) must never execute a scalar `clmul`.  Bit-exact with the
+// table/bitwise fallback.
+static inline uint64_t rv_vclmul1(uint64_t a, uint64_t b, bool hi) {
+  const size_t vl1 = 1;
+  vuint64m1_t va = __riscv_vmv_v_x_u64m1(a, vl1);
+  vuint64m1_t vb = __riscv_vmv_v_x_u64m1(b, vl1);
+  return __riscv_vmv_x_s_u64m1_u64(hi ? __riscv_vclmulh_vv_u64m1(va, vb, vl1)
+                                      : __riscv_vclmul_vv_u64m1(va, vb, vl1));
+}
 static uint32_t rv_crc32c_vclmul(uint32_t crc, const char* buf, size_t len) {
   crc ^= 0xFFFFFFFF;
 
   const uint8_t* p = reinterpret_cast<const uint8_t*>(buf);
   size_t n = len;
 
-  if (n < 64) {
+  size_t max_vl = __riscv_vsetvlmax_e64m1();
+  const size_t vl = max_vl >= 4 ? 4 : (max_vl >= 2 ? 2 : 0);
+  const uint64_t chunk = 64;
+
+  if (n < chunk || vl == 0) {
     return rv_crc32c_bitwise(crc, p, n) ^ 0xFFFFFFFF;
   }
 
-  // Align to 16-byte boundary
-  uintptr_t mis = (uintptr_t)p & 0xF;
+  // Align to 16-byte boundary (same bitwise walk as the scalar core).
+  uintptr_t mis = reinterpret_cast<uintptr_t>(p) & 0xF;
   if (mis) {
     size_t pre = 16 - mis;
     if (pre > n) pre = n;
     crc = rv_crc32c_bitwise(crc, p, pre);
     p += pre;
     n -= pre;
-    if (n < 64) {
+    if (n < chunk) {
       return rv_crc32c_bitwise(crc, p, n) ^ 0xFFFFFFFF;
     }
   }
 
-  // Set up RVV for 64-bit elements: vl = min(VLEN/64, 2) = 2 for VLEN=128
-  // If VLEN < 128, vl will be 1 and the vector path cannot be used; fall back.
-  size_t vl = __riscv_vsetvl_e64m1(2);
-  if (vl < 2) {
-    return rv_crc32c_bitwise(crc, p, n) ^ 0xFFFFFFFF;
+  // Four lanes, carried by `segs` e64m1 vector pairs: 1 pair (vl=4) or 2
+  // pairs (vl=2).  RVV types cannot live in arrays, so named variables.
+  const uint32_t segs = vl == 2 ? 2 : 1;
+  const size_t seg_bytes = vl * 16;
+
+  vuint64m1_t lo_a, hi_a, lo_b, hi_b;
+  {
+    vuint64m1x2_t sg = __riscv_vlseg2e64_v_u64m1x2(
+        reinterpret_cast<const uint64_t*>(p), vl);
+    lo_a = __riscv_vget_v_u64m1x2_u64m1(sg, 0);
+    hi_a = __riscv_vget_v_u64m1x2_u64m1(sg, 1);
+  }
+  if (segs == 2) {
+    vuint64m1x2_t sg = __riscv_vlseg2e64_v_u64m1x2(
+        reinterpret_cast<const uint64_t*>(p + seg_bytes), vl);
+    lo_b = __riscv_vget_v_u64m1x2_u64m1(sg, 0);
+    hi_b = __riscv_vget_v_u64m1x2_u64m1(sg, 1);
+  }
+  if (vl == 2) {
+    uint64_t l0[2], h0[2];
+    __riscv_vse64_v_u64m1(l0, lo_a, vl);
+    __riscv_vse64_v_u64m1(h0, hi_a, vl);
+    l0[0] ^= (uint64_t)crc;
+    lo_a = __riscv_vle64_v_u64m1(l0, vl);
+    hi_a = __riscv_vle64_v_u64m1(h0, vl);
+  } else {
+    uint64_t l0[4];
+    __riscv_vse64_v_u64m1(l0, lo_a, vl);
+    l0[0] ^= (uint64_t)crc;
+    lo_a = __riscv_vle64_v_u64m1(l0, vl);
+  }
+  p += chunk;
+  n -= chunk;
+
+  const uint64_t k1 = crc32c_fold_const[0];
+  const uint64_t k2 = crc32c_fold_const[1];
+
+  while (n >= chunk) {
+    vuint64m1x2_t sg = __riscv_vlseg2e64_v_u64m1x2(
+        reinterpret_cast<const uint64_t*>(p), vl);
+    vuint64m1_t dl = __riscv_vget_v_u64m1x2_u64m1(sg, 0);
+    vuint64m1_t dh = __riscv_vget_v_u64m1x2_u64m1(sg, 1);
+    vuint64m1_t lv = __riscv_vxor_vv_u64m1(
+        __riscv_vclmul_vx_u64m1(lo_a, k1, vl),
+        __riscv_vclmul_vx_u64m1(hi_a, k2, vl), vl);
+    vuint64m1_t hv = __riscv_vxor_vv_u64m1(
+        __riscv_vclmulh_vx_u64m1(lo_a, k1, vl),
+        __riscv_vclmulh_vx_u64m1(hi_a, k2, vl), vl);
+    lo_a = __riscv_vxor_vv_u64m1(lv, dl, vl);
+    hi_a = __riscv_vxor_vv_u64m1(hv, dh, vl);
+    if (segs == 2) {
+      vuint64m1x2_t sg2 = __riscv_vlseg2e64_v_u64m1x2(
+          reinterpret_cast<const uint64_t*>(p + seg_bytes), vl);
+      vuint64m1_t dl2 = __riscv_vget_v_u64m1x2_u64m1(sg2, 0);
+      vuint64m1_t dh2 = __riscv_vget_v_u64m1x2_u64m1(sg2, 1);
+      vuint64m1_t lv2 = __riscv_vxor_vv_u64m1(
+          __riscv_vclmul_vx_u64m1(lo_b, k1, vl),
+          __riscv_vclmul_vx_u64m1(hi_b, k2, vl), vl);
+      vuint64m1_t hv2 = __riscv_vxor_vv_u64m1(
+          __riscv_vclmulh_vx_u64m1(lo_b, k1, vl),
+          __riscv_vclmulh_vx_u64m1(hi_b, k2, vl), vl);
+      lo_b = __riscv_vxor_vv_u64m1(lv2, dl2, vl);
+      hi_b = __riscv_vxor_vv_u64m1(hv2, dh2, vl);
+    }
+    p += chunk;
+    n -= chunk;
   }
 
-  // Construct fold constant vectors: {k1, k2} and {k3, k4}
-  // Each element gets the appropriate constant for its position:
-  // element 0 (lo half) uses k1/k3, element 1 (hi half) uses k2/k4
-  uint64_t k12_arr[2] = { crc32c_fold_const[0], crc32c_fold_const[1] };
-  uint64_t k34_arr[2] = { crc32c_fold_const[2], crc32c_fold_const[3] };
-  vuint64m1_t k12_vec = __riscv_vle64_v_u64m1(k12_arr, vl);  // {k1, k2}
-  vuint64m1_t k34_vec = __riscv_vle64_v_u64m1(k34_arr, vl);  // {k3, k4}
-
-  // Load first 64 bytes into 4 vector registers.
-  // Each vector = one 128-bit lane: {lo_64, hi_64}
-  // Use memcpy to avoid strict-aliasing violations when loading uint8_t* as uint64_t*
-  uint64_t lane1_buf[2], lane2_buf[2], lane3_buf[2], lane4_buf[2];
-  memcpy(lane1_buf, p + 0,  16);
-  memcpy(lane2_buf, p + 16, 16);
-  memcpy(lane3_buf, p + 32, 16);
-  memcpy(lane4_buf, p + 48, 16);
-  vuint64m1_t lane1 = __riscv_vle64_v_u64m1(lane1_buf, vl);
-  vuint64m1_t lane2 = __riscv_vle64_v_u64m1(lane2_buf, vl);
-  vuint64m1_t lane3 = __riscv_vle64_v_u64m1(lane3_buf, vl);
-  vuint64m1_t lane4 = __riscv_vle64_v_u64m1(lane4_buf, vl);
-
-  // XOR CRC into element 0 of first lane
-  uint64_t tmp[2];
-  __riscv_vse64_v_u64m1(tmp, lane1, vl);
-  tmp[0] ^= (uint64_t)crc;
-  lane1 = __riscv_vle64_v_u64m1(tmp, vl);
-
-  p += 64;
-  n -= 64;
-
-  // Main loop: fold 64 bytes per iteration using vector carry-less multiply.
-  //
-  // For each 128-bit lane {lo, hi}, the fold computes:
-  //   new_lo = clmul(lo, k1) ^ clmul(hi, k2) ^ data_lo
-  //   new_hi = clmulh(lo, k1) ^ clmulh(hi, k2) ^ data_hi
-  //
-  // With k12_vec = {k1, k2} and element-wise vclmul:
-  //   vclmul(lane, k12_vec)  = {clmul(lo, k1), clmul(hi, k2)}   (lo halves of products)
-  //   vclmulh(lane, k12_vec) = {clmulh(lo, k1), clmulh(hi, k2)} (hi halves of products)
-  //
-  // The 128-bit XOR of (lo*k1) and (hi*k2) decomposes element-wise:
-  //   new_lo = clmul(lo,k1) ^ clmul(hi,k2) = vclmul[0] ^ vclmul[1]
-  //   new_hi = clmulh(lo,k1) ^ clmulh(hi,k2) = vclmulh[0] ^ vclmulh[1]
-  //
-  // So we need to XOR across elements. With VLEN=128 (2 elements), we use
-  // scalar extraction for the cross-element XOR since there's no vector
-  // permute instruction for just 2 elements that's more efficient.
-  while (n >= 64) {
-    uint64_t d1_buf[2], d2_buf[2], d3_buf[2], d4_buf[2];
-    memcpy(d1_buf, p + 0,  16);
-    memcpy(d2_buf, p + 16, 16);
-    memcpy(d3_buf, p + 32, 16);
-    memcpy(d4_buf, p + 48, 16);
-    vuint64m1_t d1 = __riscv_vle64_v_u64m1(d1_buf, vl);
-    vuint64m1_t d2 = __riscv_vle64_v_u64m1(d2_buf, vl);
-    vuint64m1_t d3 = __riscv_vle64_v_u64m1(d3_buf, vl);
-    vuint64m1_t d4 = __riscv_vle64_v_u64m1(d4_buf, vl);
-
-    // Fold each lane using vector clmul with {k1, k2}
-    uint64_t lo_r[2], hi_r[2], d_r[2];
-
-    // Lane 1
-    __riscv_vse64_v_u64m1(lo_r, __riscv_vclmul_vv_u64m1(lane1, k12_vec, vl), vl);
-    __riscv_vse64_v_u64m1(hi_r, __riscv_vclmulh_vv_u64m1(lane1, k12_vec, vl), vl);
-    __riscv_vse64_v_u64m1(d_r, d1, vl);
-    d_r[0] ^= lo_r[0] ^ lo_r[1];
-    d_r[1] ^= hi_r[0] ^ hi_r[1];
-    lane1 = __riscv_vle64_v_u64m1(d_r, vl);
-
-    // Lane 2
-    __riscv_vse64_v_u64m1(lo_r, __riscv_vclmul_vv_u64m1(lane2, k12_vec, vl), vl);
-    __riscv_vse64_v_u64m1(hi_r, __riscv_vclmulh_vv_u64m1(lane2, k12_vec, vl), vl);
-    __riscv_vse64_v_u64m1(d_r, d2, vl);
-    d_r[0] ^= lo_r[0] ^ lo_r[1];
-    d_r[1] ^= hi_r[0] ^ hi_r[1];
-    lane2 = __riscv_vle64_v_u64m1(d_r, vl);
-
-    // Lane 3
-    __riscv_vse64_v_u64m1(lo_r, __riscv_vclmul_vv_u64m1(lane3, k12_vec, vl), vl);
-    __riscv_vse64_v_u64m1(hi_r, __riscv_vclmulh_vv_u64m1(lane3, k12_vec, vl), vl);
-    __riscv_vse64_v_u64m1(d_r, d3, vl);
-    d_r[0] ^= lo_r[0] ^ lo_r[1];
-    d_r[1] ^= hi_r[0] ^ hi_r[1];
-    lane3 = __riscv_vle64_v_u64m1(d_r, vl);
-
-    // Lane 4
-    __riscv_vse64_v_u64m1(lo_r, __riscv_vclmul_vv_u64m1(lane4, k12_vec, vl), vl);
-    __riscv_vse64_v_u64m1(hi_r, __riscv_vclmulh_vv_u64m1(lane4, k12_vec, vl), vl);
-    __riscv_vse64_v_u64m1(d_r, d4, vl);
-    d_r[0] ^= lo_r[0] ^ lo_r[1];
-    d_r[1] ^= hi_r[0] ^ hi_r[1];
-    lane4 = __riscv_vle64_v_u64m1(d_r, vl);
-
-    p += 64;
-    n -= 64;
+  uint64_t loa[4], hia[4];
+  __riscv_vse64_v_u64m1(loa, lo_a, vl);
+  __riscv_vse64_v_u64m1(hia, hi_a, vl);
+  if (segs == 2) {
+    __riscv_vse64_v_u64m1(loa + 2, lo_b, vl);
+    __riscv_vse64_v_u64m1(hia + 2, hi_b, vl);
   }
 
-  // Reduce 4 lanes to 1 using {k3, k4}
-  // Same fold pattern: fold lane_a into lane_b
-  #define FOLD_INTO(dst, src) do { \
-    uint64_t _lo[2], _hi[2], _d[2]; \
-    __riscv_vse64_v_u64m1(_lo, __riscv_vclmul_vv_u64m1(src, k34_vec, vl), vl); \
-    __riscv_vse64_v_u64m1(_hi, __riscv_vclmulh_vv_u64m1(src, k34_vec, vl), vl); \
-    __riscv_vse64_v_u64m1(_d, dst, vl); \
-    _d[0] ^= _lo[0] ^ _lo[1]; \
-    _d[1] ^= _hi[0] ^ _hi[1]; \
-    dst = __riscv_vle64_v_u64m1(_d, vl); \
-  } while(0)
+  // Merge the four lanes with k3/k4 via single-element vector CLMUL.
+  const uint64_t k3 = crc32c_fold_const[2];
+  const uint64_t k4 = crc32c_fold_const[3];
+  uint64_t x0 = loa[0], x1 = hia[0];
+  for (uint32_t j = 1; j < 4; ++j) {
+    const size_t vl1 = 1;
+    vuint64m1_t vlo = __riscv_vmv_v_x_u64m1(x0, vl1);
+    vuint64m1_t vhi = __riscv_vmv_v_x_u64m1(x1, vl1);
+    vuint64m1_t vk0 = __riscv_vmv_v_x_u64m1(k3, vl1);
+    vuint64m1_t vk1 = __riscv_vmv_v_x_u64m1(k4, vl1);
+    vuint64m1_t l = __riscv_vxor_vv_u64m1(
+        __riscv_vclmul_vv_u64m1(vlo, vk0, vl1),
+        __riscv_vclmul_vv_u64m1(vhi, vk1, vl1), vl1);
+    vuint64m1_t h = __riscv_vxor_vv_u64m1(
+        __riscv_vclmulh_vv_u64m1(vlo, vk0, vl1),
+        __riscv_vclmulh_vv_u64m1(vhi, vk1, vl1), vl1);
+    x0 = __riscv_vmv_x_s_u64m1_u64(l) ^ loa[j];
+    x1 = __riscv_vmv_x_s_u64m1_u64(h) ^ hia[j];
+  }
 
-  FOLD_INTO(lane2, lane1);  // lane2 = fold(lane1) ^ lane2
-  FOLD_INTO(lane3, lane2);  // lane3 = fold(lane2) ^ lane3
-  FOLD_INTO(lane4, lane3);  // lane4 = fold(lane3) ^ lane4
-  #undef FOLD_INTO
-
-  // Extract final 128-bit state from vector register
-  uint64_t final_state[2];
-  __riscv_vse64_v_u64m1(final_state, lane4, vl);
-  uint64_t x0 = final_state[0];
-  uint64_t x1 = final_state[1];
-
-  // Barrett reduction: 128-bit -> 32-bit CRC (scalar)
-  uint64_t t4 = rv_clmul(x0, RV_CRC32C_CONST_1);
-  uint64_t t3 = rv_clmulh(x0, RV_CRC32C_CONST_1);
+  // Barrett reduction with single-element vector vclmul (no scalar Zbc).
+  uint64_t t4 = rv_vclmul1(x0, RV_CRC32C_CONST_1, false);
+  uint64_t t3 = rv_vclmul1(x0, RV_CRC32C_CONST_1, true);
   uint64_t t1 = x1 ^ t4;
   t4 = t1 & RV_CRC32_MASK32;
   t1 >>= 32;
-  uint64_t t0 = rv_clmul(t4, RV_CRC32C_CONST_0);
+  uint64_t t0 = rv_vclmul1(t4, RV_CRC32C_CONST_0, false);
   t3 = (t3 << 32) ^ t1 ^ t0;
 
   t4 = t3 & RV_CRC32_MASK32;
-  t4 = rv_clmul(t4, RV_CRC32C_CONST_QUO);
+  t4 = rv_vclmul1(t4, RV_CRC32C_CONST_QUO, false);
   t4 &= RV_CRC32_MASK32;
-  t4 = rv_clmul(t4, RV_CRC32C_CONST_POLY);
+  t4 = rv_vclmul1(t4, RV_CRC32C_CONST_POLY, false);
   t4 ^= t3;
 
-  uint32_t c = (uint32_t)((t4 >> 32) & RV_CRC32_MASK32);
+  uint32_t c = static_cast<uint32_t>((t4 >> 32) & RV_CRC32_MASK32);
   if (n) {
     c = rv_crc32c_bitwise(c, p, n);
   }
