@@ -330,4 +330,152 @@ TEST(MysqlReplyParseTest, AcceptUint64MaxAffectedRows) {
     ASSERT_EQ(std::numeric_limits<uint64_t>::max(), reply.ok().affect_row());
 }
 
+// Build a text result set whose header uses |count_wire| as the raw
+// length-encoded column count and carries |n_defs| column definitions,
+// with no rows.
+std::string MakeResultSetWithColumns(const std::string& count_wire, size_t n_defs) {
+    std::string wire;
+    AppendPacket(&wire, 1, count_wire);
+    for (size_t i = 0; i < n_defs; ++i) {
+        AppendPacket(&wire, 2, MakeColumnDef());
+    }
+    AppendPacket(&wire, 3, MakeEof());  // EOF after column defs
+    AppendPacket(&wire, 4, MakeEof());  // EOF after (empty) rows
+    return wire;
+}
+
+brpc::ParseError ParseWire(const std::string& wire,
+                           brpc::MysqlReply* reply,
+                           butil::Arena* arena,
+                           brpc::MysqlStmtType stmt_type = brpc::MYSQL_NORMAL_STATEMENT,
+                           bool is_auth = false) {
+    butil::IOBuf buf;
+    buf.append(wire);
+    bool more_results = false;
+    return reply->ConsumePartialIOBuf(buf, arena, is_auth, stmt_type, &more_results);
+}
+
+// A result set whose column count needs the multi-byte 0xFC form (252..65535
+// columns) is a result set, not a prepare-ok: the dispatcher must not match
+// the wire byte 0xFC against the synthetic MYSQL_RSP_PREPARE_OK value.
+TEST(MysqlReplyParseTest, AcceptMultiByteColumnCount) {
+    std::string count_wire;
+    count_wire.push_back((char)0xFC);  // 2-byte length-encoded prefix
+    count_wire.push_back((char)0x00);  // 256, little-endian
+    count_wire.push_back((char)0x01);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK, ParseWire(MakeResultSetWithColumns(count_wire, 256), &reply, &arena));
+    ASSERT_TRUE(reply.is_resultset());
+    ASSERT_EQ(256u, reply.column_count());
+}
+
+// Column count 251 needs the 0xFC multi-byte form on the wire (the single
+// byte 0xFB is the length-encoded NULL marker, so a compliant server never
+// emits it as a count); it must dispatch to the result-set branch even though
+// 0xFB/0xFC collide with synthetic MysqlRspType values.
+TEST(MysqlReplyParseTest, AcceptSingleByte251ColumnCount) {
+    std::string count_wire;
+    count_wire.push_back((char)0xFC);  // 2-byte length-encoded prefix
+    count_wire.push_back((char)0xFB);  // 251, little-endian
+    count_wire.push_back((char)0x00);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK, ParseWire(MakeResultSetWithColumns(count_wire, 251), &reply, &arena));
+    ASSERT_TRUE(reply.is_resultset());
+    ASSERT_EQ(251u, reply.column_count());
+}
+
+// A truncated multi-byte column count (0xFC with no value bytes) must be
+// rejected by the result-set header parser instead of being misclassified as
+// a prepare-ok and read with unchecked fixed-width cuts.
+TEST(MysqlReplyParseTest, RejectTruncatedMultiByteColumnCount) {
+    std::string wire;
+    AppendPacket(&wire, 1, std::string(1, '\xFC'));
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena));
+}
+
+// A long 0xFE-leading packet is a length-encoded column count (>= 2^24), not
+// an EOF; it must be rejected by the column-count cap instead of being
+// parsed as an EOF packet.
+TEST(MysqlReplyParseTest, RejectHugeColumnCountFePrefix) {
+    std::string count_wire;
+    count_wire.push_back((char)0xFE);  // 8-byte length-encoded prefix
+    count_wire.append(8, '\xff');     // claims 2^64 - 1 columns
+
+    std::string wire;
+    AppendPacket(&wire, 1, count_wire);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena));
+}
+
+// A short 0xFE-leading packet (< 9 payload bytes) is still an EOF reply.
+TEST(MysqlReplyParseTest, AcceptStandaloneEofReply) {
+    std::string wire;
+    AppendPacket(&wire, 0, MakeEof());
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK, ParseWire(wire, &reply, &arena));
+    ASSERT_TRUE(reply.is_eof());
+}
+
+// A row packet starting with a long 0xFE length-encoded value is a row, not
+// an EOF: within a result set, EOF is only a SHORT 0xFE-leading packet.
+TEST(MysqlReplyParseTest, RejectRowStartingWithFeLenenc) {
+    std::string field;
+    field.push_back((char)0xFE);      // 8-byte length-encoded prefix
+    field.append(8, '\xff');           // claims a huge value, 0 bytes present
+
+    std::string wire;
+    AppendPacket(&wire, 1, std::string(1, '\x01'));  // 1-column result set
+    AppendPacket(&wire, 2, MakeColumnDef());
+    AppendPacket(&wire, 3, MakeEof());               // EOF after column defs
+    AppendPacket(&wire, 4, field);                   // the row
+    AppendPacket(&wire, 5, MakeEof());               // real EOF after rows
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena));
+}
+
+// A well-formed prepare-ok reply (COM_STMT_PREPARE response) parses.
+TEST(MysqlReplyParseTest, AcceptPrepareOk) {
+    std::string payload;
+    payload.push_back('\x00');                 // OK-like marker
+    payload.append("\x01\x00\x00\x00", 4);  // statement id
+    payload.append("\x00\x00", 2);           // column count
+    payload.append("\x00\x00", 2);           // param count
+    payload.push_back('\x00');                 // filler
+    payload.append("\x00\x00", 2);           // warnings
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK,
+              ParseWire(wire, &reply, &arena, brpc::MYSQL_NEED_PREPARE));
+    ASSERT_TRUE(reply.is_prepare_ok());
+}
+
+// A truncated prepare-ok header must be rejected instead of reading
+// uninitialized stack bytes as statement id / column / param counts.
+TEST(MysqlReplyParseTest, RejectTruncatedPrepareOk) {
+    std::string wire;
+    AppendPacket(&wire, 0, std::string("\x00\x01\x00\x00", 4));
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+              ParseWire(wire, &reply, &arena, brpc::MYSQL_NEED_PREPARE));
+}
+
 }  // namespace
