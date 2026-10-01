@@ -189,12 +189,12 @@ inline void ArrayIterator::init(InputStream* stream, size_t size, size_t depth) 
     _expected_popped_bytes = _stream->popped_bytes() + sizeof(ItemsHead);
     _expected_popped_end = _stream->popped_bytes() + size;
     if (size < sizeof(ItemsHead)) {
-        CHECK(false) << "buffer(size=" << size << ") is not enough";
+        LOG(ERROR) << "buffer(size=" << size << ") is not enough";
         return set_bad();
     }
     ItemsHead items_head;
     if (_stream->cut_packed_pod(&items_head) != sizeof(ItemsHead)) {
-        CHECK(false) << "buffer(size=" << size << ") is not enough";
+        LOG(ERROR) << "buffer(size=" << size << ") is not enough";
         return set_bad();
     }
     _item_count = items_head.item_count;
@@ -218,25 +218,25 @@ inline void ISOArrayIterator::init(InputStream* stream, size_t size) {
     _item_count = 0;
     _left_item_count = 0;
     if (size < sizeof(IsoItemsHead)) {
-        CHECK(false) << "Not enough data";
+        LOG(ERROR) << "Not enough data";
         return set_bad();
     }
     IsoItemsHead items_head;
     if (_stream->cut_packed_pod(&items_head) != sizeof(IsoItemsHead)) {
-        CHECK(false) << "Not enough data";
+        LOG(ERROR) << "Not enough data";
         return set_bad();
     }
     _item_type = (PrimitiveFieldType)items_head.type;
     _item_size = get_primitive_type_size(_item_type);
     if (!_item_size) {
-        CHECK(false) << "type=" << type2str(_item_type)
+        LOG(ERROR) << "type=" << type2str(_item_type)
                    << " in primitive isoarray is not primitive";
         return set_bad();
     }
     const size_t items_full_size = size - sizeof(IsoItemsHead);
     _item_count = items_full_size / _item_size;
     if (_item_count * _item_size != items_full_size) {
-        CHECK(false) << "inconsistent item_count(" << _item_count
+        LOG(ERROR) << "inconsistent item_count(" << _item_count
                    << ") and value_size(" << items_full_size
                    << "), item_size=" << _item_size;
         return set_bad();
@@ -261,7 +261,7 @@ inline void ISOArrayIterator::operator++() {
     _buf_index = 0;
     if (_stream->cutn(_item_buf, _buf_count * _item_size) !=
         _buf_count * _item_size) {
-        CHECK(false) << "Not enough data";
+        LOG(ERROR) << "Not enough data";
         return set_bad();
     }
     _left_item_count -= _buf_count;
