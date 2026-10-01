@@ -73,12 +73,14 @@ static void RegisterMcpackHandlers() {
     static bool registered = []() {
         mcpack2pb::MessageHandler failing_handler = {
             FailingParse, nullptr, nullptr, nullptr};
+        // Note: `full_name()' returns absl::string_view in newer protobuf,
+        // wrap it into std::string explicitly.
         mcpack2pb::register_message_handler_or_die(
-            test::EchoResponse::descriptor()->full_name(), failing_handler);
+            std::string(test::EchoResponse::descriptor()->full_name()), failing_handler);
         mcpack2pb::MessageHandler working_handler = {
             SuccessfulParse, nullptr, nullptr, nullptr};
         mcpack2pb::register_message_handler_or_die(
-            test::EchoRequest::descriptor()->full_name(), working_handler);
+            std::string(test::EchoRequest::descriptor()->full_name()), working_handler);
         return true;
     }();
     (void)registered;
