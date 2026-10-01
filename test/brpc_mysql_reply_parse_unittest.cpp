@@ -478,4 +478,36 @@ TEST(MysqlReplyParseTest, RejectTruncatedPrepareOk) {
               ParseWire(wire, &reply, &arena, brpc::MYSQL_NEED_PREPARE));
 }
 
+// A handshake greeting that ends before the 4-byte thread id must be
+// rejected; previously the unchecked cutn left tmp partially uninitialized
+// and Auth::Parse continued successfully with garbage thread id.
+TEST(MysqlReplyParseTest, RejectTruncatedGreeting) {
+    std::string payload;
+    payload.push_back('\x0a');           // protocol version 10
+    payload.append("5.7.99-fake\x00", 11);  // NUL-terminated server version
+    payload.append("\x01\x02", 2);     // only 2 of the 4 thread-id bytes
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena, brpc::MYSQL_NORMAL_STATEMENT, /*is_auth=*/true));
+}
+
+// A handshake greeting whose server version is not NUL-terminated (the
+// delimiter was never reached) must be rejected.
+TEST(MysqlReplyParseTest, RejectUnterminatedGreetingVersion) {
+    std::string payload;
+    payload.push_back('\x0a');          // protocol version 10
+    payload.append("5.7.99-fake", 10);  // no NUL terminator
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena, brpc::MYSQL_NORMAL_STATEMENT, /*is_auth=*/true));
+}
+
 }  // namespace
