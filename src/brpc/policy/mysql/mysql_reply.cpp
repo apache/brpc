@@ -218,7 +218,12 @@ inline ParseError parse_column_string(butil::IOBuf& buf,
                                       butil::StringPiece* out,
                                       const char* field) {
     uint64_t len = 0;
-    if (!parse_encode_length(buf, &len) || len > buf.size()) {
+    if (!parse_encode_length(buf, &len)) {
+        LOG(WARNING) << "MysqlReply::Column::Parse: " << field
+                     << " length prefix is truncated or invalid";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    if (len > buf.size()) {
         LOG(WARNING) << "MysqlReply::Column::Parse: " << field << " length " << len
                      << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;

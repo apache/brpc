@@ -371,11 +371,11 @@ TEST(MysqlReplyParseTest, AcceptMultiByteColumnCount) {
     ASSERT_EQ(256u, reply.column_count());
 }
 
-// Column count 251 needs the 0xFC multi-byte form on the wire (the single
+// Column count 251 needs the multi-byte 0xFC form on the wire (the single
 // byte 0xFB is the length-encoded NULL marker, so a compliant server never
 // emits it as a count); it must dispatch to the result-set branch even though
 // 0xFB/0xFC collide with synthetic MysqlRspType values.
-TEST(MysqlReplyParseTest, AcceptSingleByte251ColumnCount) {
+TEST(MysqlReplyParseTest, AcceptMultiByte251ColumnCount) {
     std::string count_wire;
     count_wire.push_back((char)0xFC);  // 2-byte length-encoded prefix
     count_wire.push_back((char)0xFB);  // 251, little-endian
@@ -484,7 +484,7 @@ TEST(MysqlReplyParseTest, RejectTruncatedPrepareOk) {
 TEST(MysqlReplyParseTest, RejectTruncatedGreeting) {
     std::string payload;
     payload.push_back('\x0a');           // protocol version 10
-    payload.append("5.7.99-fake\x00", 11);  // NUL-terminated server version
+    payload.append("5.7.99-fake\x00", 12);  // NUL-terminated server version
     payload.append("\x01\x02", 2);     // only 2 of the 4 thread-id bytes
 
     std::string wire;
