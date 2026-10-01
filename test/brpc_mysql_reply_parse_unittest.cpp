@@ -164,4 +164,121 @@ TEST(MysqlReplyParseTest, AcceptWellFormedTextField) {
     ASSERT_EQ("hi", reply.next().field(0).string());
 }
 
+// A multi-byte (0xFC-prefixed) length-encoded integer whose value bytes are
+// all present must still decode correctly.
+TEST(MysqlReplyParseTest, AcceptMultiByteTextFieldLength) {
+    std::string field;
+    field.push_back((char)0xFC);    // 2-byte length-encoded prefix
+    field.push_back((char)0x04);    // length 4
+    field.push_back((char)0x00);
+    field.append("abcd");
+
+    butil::IOBuf buf;
+    buf.append(MakeTextResultSet(field, true));
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    bool more_results = false;
+    brpc::ParseError rc = reply.ConsumePartialIOBuf(
+        buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+    ASSERT_EQ(brpc::PARSE_OK, rc);
+    ASSERT_TRUE(reply.is_resultset());
+    ASSERT_EQ("abcd", reply.next().field(0).string());
+}
+
+// A column definition whose table-name length-encoded integer is truncated
+// (0xFE prefix promises 8 value bytes but only 2 follow) must be rejected.
+// Before the fix, the parser read uninitialized stack memory as the length.
+TEST(MysqlReplyParseTest, RejectTruncatedLenEncInColumnDef) {
+    // (prefix, number of value bytes actually appended)
+    const struct {
+        uint8_t prefix;
+        size_t value_bytes;
+    } cases[] = {
+        {0xFC, 0},  // needs 2, has 0
+        {0xFC, 1},  // needs 2, has 1
+        {0xFD, 1},  // needs 3, has 1
+        {0xFD, 2},  // needs 3, has 2
+        {0xFE, 2},  // needs 8, has 2
+        {0xFE, 7},  // needs 8, has 7
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        std::string col;
+        col.push_back(3);
+        col.append("def");           // catalog
+        col.push_back(2);
+        col.append("db");            // database
+        col.push_back((char)cases[i].prefix);
+        col.append(cases[i].value_bytes, '\xff');  // truncated table length
+
+        std::string wire;
+        AppendPacket(&wire, 1, std::string(1, '\x01'));  // 1-column result set
+        AppendPacket(&wire, 2, col);
+
+        butil::IOBuf buf;
+        buf.append(wire);
+
+        brpc::MysqlReply reply;
+        butil::Arena arena;
+        bool more_results = false;
+        brpc::ParseError rc = reply.ConsumePartialIOBuf(
+            buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc) << "case " << i;
+    }
+}
+
+// A row field whose length-encoded prefix promises value bytes that are not
+// in the packet must be rejected instead of reading uninitialized stack bytes.
+// NOTE: a 0xFE-prefixed row field cannot be tested here because a text row
+// whose first byte is 0xFE is indistinguishable from an EOF packet; that
+// prefix is covered by RejectTruncatedLenEncInColumnDef above.
+TEST(MysqlReplyParseTest, RejectTruncatedLenEncFieldLength) {
+    const struct {
+        uint8_t prefix;
+        size_t value_bytes;
+    } cases[] = {
+        {0xFC, 0},  // needs 2, has 0
+        {0xFD, 1},  // needs 3, has 1
+        {0xFD, 2},  // needs 3, has 2
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        std::string field;
+        field.push_back((char)cases[i].prefix);
+        field.append(cases[i].value_bytes, '\xff');
+
+        butil::IOBuf buf;
+        buf.append(MakeTextResultSet(field, false));
+
+        brpc::MysqlReply reply;
+        butil::Arena arena;
+        bool more_results = false;
+        brpc::ParseError rc = reply.ConsumePartialIOBuf(
+            buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc) << "case " << i;
+    }
+}
+
+// An OK packet whose affected-rows length-encoded integer is truncated must
+// be rejected (previously the uninitialized stack value was used directly).
+TEST(MysqlReplyParseTest, RejectTruncatedOkPacket) {
+    const std::string payloads[] = {
+        std::string("\x00\xFC", 2),          // 0x00 marker + 0xFC, no value bytes
+        std::string("\x00\xFE\xff\xff", 4),  // 0x00 marker + 0xFE, only 2 of 8 bytes
+    };
+    for (size_t i = 0; i < sizeof(payloads) / sizeof(payloads[0]); ++i) {
+        std::string wire;
+        AppendPacket(&wire, 0, payloads[i]);
+
+        butil::IOBuf buf;
+        buf.append(wire);
+
+        brpc::MysqlReply reply;
+        butil::Arena arena;
+        bool more_results = false;
+        brpc::ParseError rc = reply.ConsumePartialIOBuf(
+            buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc) << "case " << i;
+    }
+}
+
 }  // namespace
