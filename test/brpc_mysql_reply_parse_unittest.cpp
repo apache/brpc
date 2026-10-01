@@ -510,4 +510,36 @@ TEST(MysqlReplyParseTest, RejectUnterminatedGreetingVersion) {
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena, brpc::MYSQL_NORMAL_STATEMENT, /*is_auth=*/true));
 }
 
+// A bare 0xFB (the length-encoded NULL marker, never a legal column count)
+// must not be accepted as a zero-column result set even when followed by
+// well-formed EOF packets.
+TEST(MysqlReplyParseTest, RejectBareFbHeader) {
+    std::string wire;
+    AppendPacket(&wire, 1, std::string(1, '\xFB'));
+    AppendPacket(&wire, 2, MakeEof());
+    AppendPacket(&wire, 3, MakeEof());
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena));
+}
+
+// An explicitly encoded zero column count (0xFC 0x00 0x00) is not a legal
+// result-set header either; a result set always carries at least one column.
+TEST(MysqlReplyParseTest, RejectZeroColumnCount) {
+    std::string count_wire;
+    count_wire.push_back((char)0xFC);
+    count_wire.push_back((char)0x00);
+    count_wire.push_back((char)0x00);
+
+    std::string wire;
+    AppendPacket(&wire, 1, count_wire);
+    AppendPacket(&wire, 2, MakeEof());
+    AppendPacket(&wire, 3, MakeEof());
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena));
+}
+
 }  // namespace

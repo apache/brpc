@@ -343,13 +343,15 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.eof));
         MY_PARSE_CHECK(_data.eof->Parse(buf));
         *more_results = _data.eof->status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
-    } else if (type >= 0x01 && type <= 0xFE) {
+    } else if (type >= 0x01 && type <= 0xFE && type != 0xFB) {
         // Any other leading byte is the length-encoded column count of a
-        // result set, including the multi-byte prefixes 0xFB (251) and
-        // 0xFC (252..65535) and a long 0xFE-leading count. These bytes must
-        // not be matched against the synthetic MysqlRspType values: a fresh
-        // 0xFC is a result-set header, not a prepare-ok (resume of an
-        // already-classified reply is keyed on |_type| above instead).
+        // result set, including the multi-byte prefixes 0xFC (252..65535),
+        // 0xFD and a long 0xFE-leading count. These bytes must not be matched
+        // against the synthetic MysqlRspType values: a fresh 0xFC is a
+        // result-set header, not a prepare-ok (resume of an already-
+        // classified reply is keyed on |_type| above instead). A bare 0xFB
+        // is the length-encoded NULL marker and never a legal column count,
+        // so it falls through to the unknown-type rejection below.
         _type = MYSQL_RSP_RESULTSET;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.result_set));
         MY_PARSE_CHECK(_data.result_set->Parse(buf, arena, !(stmt_type == MYSQL_NORMAL_STATEMENT)));
@@ -635,6 +637,12 @@ ParseError MysqlReply::ResultSetHeader::Parse(butil::IOBuf& buf) {
     }
     if (!parse_encode_length(payload, &_column_count)) {
         LOG(ERROR) << "MysqlReply::ResultSetHeader::Parse: truncated column count";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    // A result set always carries at least one column; a zero (or NULL-
+    // marker) count means the packet is not a result-set header at all.
+    if (_column_count == 0) {
+        LOG(ERROR) << "illegal column count " << _column_count;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     // Guard against an absurd/malicious column count driving unbounded
