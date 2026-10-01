@@ -554,4 +554,57 @@ TEST(Mcpack2pbParserTest, FloatFieldReadAsIntegerIsRejected) {
     EXPECT_FALSE(stream.good());
 }
 
+TEST(Mcpack2pbParserTest, StringFieldHugeClaimedSizeDoesNotThrow) {
+    // The string field claims a ~4GB value_size while the
+    // buffer holds a single byte. as_string() must not eagerly resize to
+    // the claimed size (an uncaught std::bad_alloc/std::length_error would
+    // terminate the process) and must reject the input cleanly.
+    const unsigned char data[] = {
+        0x10, 0x00, 0xff, 0xff, 0xff, 0xff,  // top object, value_size=UINT32_MAX
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x50, 0x04, 0xe0, 0xff, 0xff, 0xff,  // string field "msg", size=~4GB
+        0x6d, 0x73, 0x67, 0x00,
+        0x61,                                // only 1 byte of the string
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(0xffffffffu, mcpack2pb::unbox(&stream));
+    // The generated code trusts the value size claimed by unbox().
+    mcpack2pb::ObjectIterator it(&stream, 0xffffffffu);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_STRING, it->value.type());
+    std::string value;
+    it->value.as_string(&value, "msg");
+    EXPECT_TRUE(value.empty());
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, BinaryFieldHugeClaimedSizeDoesNotThrow) {
+    // Same as above for a binary field claiming a ~4GB size: it must not be fed
+    // into an eager resize() before the data is proven to exist.
+    const unsigned char data[] = {
+        0x10, 0x00, 0xff, 0xff, 0xff, 0xff,  // top object, value_size=UINT32_MAX
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x60, 0x02, 0xe0, 0xff, 0xff, 0xff,  // binary field "a", size=~4GB
+        0x61, 0x00,
+        0x62,                                // only 1 byte of data
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(0xffffffffu, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, 0xffffffffu);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_BINARY, it->value.type());
+    std::string value;
+    it->value.as_binary(&value, "a");
+    EXPECT_TRUE(value.empty());
+    EXPECT_FALSE(stream.good());
+}
+
 }  // namespace

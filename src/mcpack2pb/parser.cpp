@@ -583,6 +583,33 @@ double UnparsedValue::as_double(const char* var) {
     return 0;
 }
 
+// Copy `size' bytes from `stream' into `out'. `size' is wire-controlled and
+// may far exceed the bytes actually present, so read in small chunks and
+// grow `out' only for bytes that really exist: an eager resize(size) could
+// throw an uncaught std::bad_alloc/std::length_error on attacker-crafted
+// sizes and terminate the process. Returns false and marks the stream bad
+// on a short read.
+static bool cut_bytes_to_string(InputStream* stream, std::string* out,
+                                size_t size, const char* var) {
+    out->clear();
+    char buf[8192];
+    size_t total = 0;
+    do {
+        const size_t left = size - total;
+        const size_t chunk = left < sizeof(buf) ? left : sizeof(buf);
+        const size_t n = stream->cutn(buf, chunk);
+        if (n != chunk) {
+            LOG(ERROR) << "Not enough data for " << var;
+            stream->set_bad();
+            out->clear();
+            return false;
+        }
+        out->append(buf, n);
+        total += n;
+    } while (total < size);
+    return true;
+}
+
 void UnparsedValue::as_string(std::string* out, const char* var) {
     if (_size < 1) {
         // A string field must contain at least the trailing '\0'.
@@ -593,10 +620,7 @@ void UnparsedValue::as_string(std::string* out, const char* var) {
         _stream->set_bad();
         return;
     }
-    out->resize(_size - 1);
-    if (_stream->cutn(&(*out)[0], _size - 1) != _size - 1) {
-        LOG(ERROR) << "Not enough data for " << var;
-        _stream->set_bad();
+    if (!cut_bytes_to_string(_stream, out, _size - 1, var)) {
         return;
     }
     _stream->popn(1);
@@ -609,12 +633,7 @@ std::string UnparsedValue::as_string(const char* var) {
 }
 
 void UnparsedValue::as_binary(std::string* out, const char* var) {
-    out->resize(_size);
-    if (_stream->cutn(&(*out)[0], _size) != _size) {
-        LOG(ERROR) << "Not enough data for " << var;
-        _stream->set_bad();
-        return;
-    }
+    cut_bytes_to_string(_stream, out, _size, var);
 }
 
 std::string UnparsedValue::as_binary(const char* var) {
