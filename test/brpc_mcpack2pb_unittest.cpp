@@ -334,4 +334,380 @@ TEST(Mcpack2pbParserTest, EmptyObjectStillParses) {
     EXPECT_TRUE(stream.good());
 }
 
+TEST(Mcpack2pbParserTest, UnboxTruncatedBufferIsRejected) {
+    // A body shorter than the 6-byte FieldLongHead must be rejected by
+    // unbox() instead of hitting a fatal CHECK (which aborts the process
+    // when -crash_on_fatal_log is on).
+    const unsigned char data[] = { 0xff, 0x01, 0x02 };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    EXPECT_EQ(0u, mcpack2pb::unbox(&stream));
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, UnboxNonObjectTypeIsRejected) {
+    // The top-level value must be an object; here it is an int8.
+    const unsigned char data[] = {
+        0x11, 0x00, 0x05, 0x00, 0x00, 0x00,  // FieldLongHead, type=int8
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    EXPECT_EQ(0u, mcpack2pb::unbox(&stream));
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, UnboxNamedTopLevelObjectIsRejected) {
+    // The wrapping object must be unnamed.
+    const unsigned char data[] = {
+        0x10, 0x03, 0x05, 0x00, 0x00, 0x00,  // FieldLongHead, name_size=3
+        0x61, 0x62, 0x00,                    // name "ab"
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    EXPECT_EQ(0u, mcpack2pb::unbox(&stream));
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, ObjectFieldBeyondBufferIsRejected) {
+    // An object field whose head claims value_size=100 while the buffer
+    // holds nothing must set the iterator bad instead of hitting a fatal
+    // CHECK.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x0c, 0x00, 0x00, 0x00,  // top object, value_size=12
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x10, 0x02, 0x64, 0x00, 0x00, 0x00,  // field "a", value_size=100
+        0x61, 0x00,
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(12u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, body.size() - stream.popped_bytes());
+    EXPECT_TRUE(it == NULL);
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, StringFieldTruncatedDataIsRejected) {
+    // The top-level head claims value_size=1000 but the stream holds far
+    // less, and the string field claims value_size=80 with a single byte of
+    // data. as_string() must fail cleanly (mark the stream bad) instead of
+    // hitting a fatal CHECK, and advancing the iterator afterwards must not
+    // abort either.
+    const unsigned char data[] = {
+        0x10, 0x00, 0xe8, 0x03, 0x00, 0x00,  // top object, value_size=1000
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x50, 0x04, 0x50, 0x00, 0x00, 0x00,  // string field "msg", size=80
+        0x6d, 0x73, 0x67, 0x00,
+        0x61,                                // only 1 byte of the string
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(1000u, mcpack2pb::unbox(&stream));
+    // The generated code trusts the value size claimed by unbox().
+    mcpack2pb::ObjectIterator it(&stream, 1000);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_STRING, it->value.type());
+    std::string value;
+    it->value.as_string(&value, "msg");
+    EXPECT_FALSE(stream.good());
+    // Advancing past the unconsumed truncated value must not abort.
+    ++it;
+    EXPECT_TRUE(it == NULL);
+}
+
+TEST(Mcpack2pbParserTest, ArrayPayloadSmallerThanHeaderIsRejected) {
+    // An array field whose declared value_size=2 is smaller than the 4-byte
+    // ItemsHead must set the iterator bad instead of hitting a fatal CHECK.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x0e, 0x00, 0x00, 0x00,  // top object, value_size=14
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x20, 0x02, 0x02, 0x00, 0x00, 0x00,  // array field "a", value_size=2
+        0x61, 0x00,
+        0x00, 0x00,
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(14u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, body.size() - stream.popped_bytes());
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_ARRAY, it->value.type());
+    mcpack2pb::ArrayIterator it2(it->value);
+    EXPECT_TRUE(it2 == NULL);
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, ArrayItemBeyondBufferIsRejected) {
+    // An array item whose head claims value_size=100 while nothing follows
+    // must set the iterator bad instead of hitting a fatal CHECK.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x16, 0x00, 0x00, 0x00,  // top object, value_size=22
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x20, 0x02, 0x0a, 0x00, 0x00, 0x00,  // array field "a", value_size=10
+        0x61, 0x00,
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x10, 0x00, 0x64, 0x00, 0x00, 0x00,  // item object, value_size=100
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(22u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, body.size() - stream.popped_bytes());
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_ARRAY, it->value.type());
+    mcpack2pb::ArrayIterator it2(it->value);
+    EXPECT_TRUE(it2 == NULL);
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, ISOArrayNonPrimitiveTypeIsRejected) {
+    // An isomorphic array whose element type byte is FIELD_OBJECT (not a
+    // primitive type) must set the iterator bad instead of hitting a fatal
+    // CHECK.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x0d, 0x00, 0x00, 0x00,  // top object, value_size=13
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x30, 0x02, 0x01, 0x00, 0x00, 0x00,  // isoarray field "a", size=1
+        0x61, 0x00,
+        0x10,                                // element type = FIELD_OBJECT
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(13u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, body.size() - stream.popped_bytes());
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_ISOARRAY, it->value.type());
+    mcpack2pb::ISOArrayIterator it2(it->value);
+    EXPECT_TRUE(it2 == NULL);
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, ISOArrayInconsistentItemSizeIsRejected) {
+    // An int32 isomorphic array whose payload (5 bytes) is not a multiple
+    // of the element size (4) must set the iterator bad instead of hitting
+    // a fatal CHECK.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x12, 0x00, 0x00, 0x00,  // top object, value_size=18
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x30, 0x02, 0x06, 0x00, 0x00, 0x00,  // isoarray field "a", size=6
+        0x61, 0x00,
+        0x14,                                // element type = int32
+        0x01, 0x02, 0x03, 0x04, 0x05,        // 5 bytes, not a multiple of 4
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(18u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, body.size() - stream.popped_bytes());
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_ISOARRAY, it->value.type());
+    mcpack2pb::ISOArrayIterator it2(it->value);
+    EXPECT_TRUE(it2 == NULL);
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, FloatFieldReadAsIntegerIsRejected) {
+    // Reading a float field as an integer is a type mismatch caused by
+    // input data: it must mark the stream bad and return 0 instead of
+    // hitting a fatal CHECK.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x0c, 0x00, 0x00, 0x00,  // top object, value_size=12
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x44, 0x02,                          // fixed head: float field "a"
+        0x61, 0x00,
+        0x00, 0x00, 0x80, 0x3f,              // 1.0f
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(12u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, body.size() - stream.popped_bytes());
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_FLOAT, it->value.type());
+    EXPECT_EQ("a", it->name.as_string());
+    EXPECT_EQ(0, it->value.as_int64("a"));
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, StringFieldHugeClaimedSizeDoesNotThrow) {
+    // The string field claims a ~4GB value_size while the
+    // buffer holds a single byte. as_string() must not eagerly resize to
+    // the claimed size (an uncaught std::bad_alloc/std::length_error would
+    // terminate the process) and must reject the input cleanly.
+    const unsigned char data[] = {
+        0x10, 0x00, 0xff, 0xff, 0xff, 0xff,  // top object, value_size=UINT32_MAX
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x50, 0x04, 0xe0, 0xff, 0xff, 0xff,  // string field "msg", size=~4GB
+        0x6d, 0x73, 0x67, 0x00,
+        0x61,                                // only 1 byte of the string
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(0xffffffffu, mcpack2pb::unbox(&stream));
+    // The generated code trusts the value size claimed by unbox().
+    mcpack2pb::ObjectIterator it(&stream, 0xffffffffu);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_STRING, it->value.type());
+    std::string value;
+    it->value.as_string(&value, "msg");
+    EXPECT_TRUE(value.empty());
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, BinaryFieldHugeClaimedSizeDoesNotThrow) {
+    // Same as above for a binary field claiming a ~4GB size: it must not be fed
+    // into an eager resize() before the data is proven to exist.
+    const unsigned char data[] = {
+        0x10, 0x00, 0xff, 0xff, 0xff, 0xff,  // top object, value_size=UINT32_MAX
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x60, 0x02, 0xe0, 0xff, 0xff, 0xff,  // binary field "a", size=~4GB
+        0x61, 0x00,
+        0x62,                                // only 1 byte of data
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(0xffffffffu, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, 0xffffffffu);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_BINARY, it->value.type());
+    std::string value;
+    it->value.as_binary(&value, "a");
+    EXPECT_TRUE(value.empty());
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, Int32FieldTruncatedPayloadIsRejected) {
+    // The top-level head claims value_size=64 but the stream ends in the
+    // middle of the int32 field value. The truncated read must mark the
+    // stream bad (so the generated code fails the parse) and must not
+    // return an indeterminate value.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x40, 0x00, 0x00, 0x00,  // top object, value_size=64
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x14, 0x02,                          // fixed head: int32 field "a"
+        0x61, 0x00,
+        0x2a,                                // only 1 byte of the 4-byte value
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(64u, mcpack2pb::unbox(&stream));
+    // The generated code trusts the value size claimed by unbox().
+    mcpack2pb::ObjectIterator it(&stream, 64);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_INT32, it->value.type());
+    EXPECT_EQ(0, it->value.as_int32("a"));
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, FloatFieldTruncatedPayloadIsRejected) {
+    // Same truncation reached through a type-mismatch log path: as_int64()
+    // on a float field reads the 4-byte float payload, which must be
+    // zero-initialized on the short read (logging an indeterminate float is
+    // UB) and must mark the stream bad.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x40, 0x00, 0x00, 0x00,  // top object, value_size=64
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x44, 0x02,                          // fixed head: float field "a"
+        0x61, 0x00,
+        0x2a,                                // only 1 byte of the 4-byte value
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(64u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, 64);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_FLOAT, it->value.type());
+    EXPECT_EQ(0, it->value.as_int64("a"));
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, StringFieldMissingTerminatorIsRejected) {
+    // The string content ("a") is fully present but the stream ends exactly
+    // before the required trailing '\0'. The terminator must be read and
+    // validated instead of being skipped with popn(1) (which returns 0 on
+    // an exhausted stream and leaves it good, accepting a truncated string).
+    const unsigned char data[] = {
+        0x10, 0x00, 0x14, 0x00, 0x00, 0x00,  // top object, value_size=20
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x50, 0x02, 0x02, 0x00, 0x00, 0x00,  // string field "a", size=2
+        0x61, 0x00,
+        0x61,                                // content "a", no terminator
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(20u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, 20);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_STRING, it->value.type());
+    std::string value;
+    it->value.as_string(&value, "a");
+    EXPECT_TRUE(value.empty());
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, StringFieldNonNulTerminatorIsRejected) {
+    // A string whose trailing byte is not '\0' is malformed and must be
+    // rejected as well.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x14, 0x00, 0x00, 0x00,  // top object, value_size=20
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x50, 0x02, 0x02, 0x00, 0x00, 0x00,  // string field "a", size=2
+        0x61, 0x00,
+        0x61, 0x62,                          // "a" with 'b' as terminator
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(20u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, 20);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_STRING, it->value.type());
+    std::string value;
+    it->value.as_string(&value, "a");
+    EXPECT_TRUE(value.empty());
+    EXPECT_FALSE(stream.good());
+}
+
 }  // namespace
