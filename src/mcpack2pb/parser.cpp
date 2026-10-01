@@ -584,29 +584,29 @@ double UnparsedValue::as_double(const char* var) {
 }
 
 // Copy `size' bytes from `stream' into `out'. `size' is wire-controlled and
-// may far exceed the bytes actually present, so read in small chunks and
-// grow `out' only for bytes that really exist: an eager resize(size) could
-// throw an uncaught std::bad_alloc/std::length_error on attacker-crafted
-// sizes and terminate the process. Returns false and marks the stream bad
-// on a short read.
+// may far exceed the bytes actually present, so grow `out' by at most one
+// chunk at a time and cut directly into it (single copy): an eager
+// resize(size) could throw an uncaught std::bad_alloc/std::length_error on
+// attacker-crafted sizes and terminate the process. Returns false and marks
+// the stream bad on a short read.
 static bool cut_bytes_to_string(InputStream* stream, std::string* out,
                                 size_t size, const char* var) {
     out->clear();
-    char buf[8192];
+    const size_t kChunkSize = 8192;
     size_t total = 0;
-    do {
+    while (total < size) {
         const size_t left = size - total;
-        const size_t chunk = left < sizeof(buf) ? left : sizeof(buf);
-        const size_t n = stream->cutn(buf, chunk);
+        const size_t chunk = left < kChunkSize ? left : kChunkSize;
+        out->resize(total + chunk);
+        const size_t n = stream->cutn(&(*out)[total], chunk);
         if (n != chunk) {
             LOG(ERROR) << "Not enough data for " << var;
             stream->set_bad();
             out->clear();
             return false;
         }
-        out->append(buf, n);
         total += n;
-    } while (total < size);
+    }
     return true;
 }
 
