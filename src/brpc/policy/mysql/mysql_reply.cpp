@@ -143,8 +143,10 @@ inline bool is_an_eof(const butil::IOBuf& buf) {
         return false;
     }
 }
-// parse header
-inline bool parse_header(butil::IOBuf& buf, MysqlHeader* value) {
+// parse header. When |payload| is not null, the packet's payload is cut
+// from |buf| into it so that subsequent field decoding cannot run past the
+// packet boundary into a coalesced next packet.
+inline bool parse_header(butil::IOBuf& buf, MysqlHeader* value, butil::IOBuf* payload) {
     if (!is_full_package(buf)) {
         return false;
     }
@@ -158,42 +160,55 @@ inline bool parse_header(butil::IOBuf& buf, MysqlHeader* value) {
         buf.cut1((char*)&tmp);
         value->seq = tmp;
     }
+    if (payload != nullptr) {
+        buf.cutn(payload, value->payload_size);
+    }
     return true;
 }
 // use this carefully, we depending on parse_header for checking IOBuf contain full package
-// Parse a MySQL length-encoded integer. Returns the decoded value, or -1
-// when the prefix byte or its 2/3/8 value bytes are not fully present in
-// |buf| (a truncated packet), or when the prefix is the invalid 0xFF marker.
-// Never reads uninitialized memory: every byte returned was cut from |buf|.
-inline int64_t parse_encode_length(butil::IOBuf& buf) {
+// Parse a MySQL length-encoded integer into |value|. Returns false when the
+// prefix byte or its 2/3/8 value bytes are not fully present in |buf| (a
+// truncated packet), or when the prefix is the invalid 0xFF marker; |value|
+// is set to 0 in that case. Never reads uninitialized memory: on success
+// every byte of the returned value was cut from |buf|.
+inline bool parse_encode_length(butil::IOBuf& buf, uint64_t* value) {
+    *value = 0;
     uint8_t f = 0;
     if (!buf.cut1((char*)&f)) {
-        return -1;
+        return false;
     }
     if (f <= 250) {
-        return f;
-    } else if (f == 251) {  // NULL
-        return 0;
-    } else if (f == 252) {
-        uint8_t tmp[2];
-        if (buf.cutn(tmp, sizeof(tmp)) != sizeof(tmp)) {
-            return -1;
-        }
-        return mysql_uint2korr(tmp);
-    } else if (f == 253) {
-        uint8_t tmp[3];
-        if (buf.cutn(tmp, sizeof(tmp)) != sizeof(tmp)) {
-            return -1;
-        }
-        return mysql_uint3korr(tmp);
-    } else if (f == 254) {
-        uint8_t tmp[8];
-        if (buf.cutn(tmp, sizeof(tmp)) != sizeof(tmp)) {
-            return -1;
-        }
-        return (int64_t)mysql_uint8korr(tmp);
+        *value = f;
+        return true;
     }
-    return -1;  // 0xFF is not a valid length-encoded prefix
+    if (f == 251) {  // NULL
+        return true;
+    }
+    size_t n = 0;
+    if (f == 252) {
+        n = 2;
+    } else if (f == 253) {
+        n = 3;
+    } else if (f == 254) {
+        n = 8;
+    } else {
+        return false;  // 0xFF is not a valid length-encoded prefix
+    }
+    uint8_t tmp[8];
+    if (buf.cutn(tmp, n) != n) {
+        return false;
+    }
+    switch (n) {
+        case 2:
+            *value = mysql_uint2korr(tmp);
+            return true;
+        case 3:
+            *value = mysql_uint3korr(tmp);
+            return true;
+        default:
+            *value = mysql_uint8korr(tmp);
+            return true;
+    }
 }
 
 // Parse one length-encoded string of a column definition into |out|. Both
@@ -204,8 +219,8 @@ inline ParseError parse_column_string(butil::IOBuf& buf,
                                       butil::Arena* arena,
                                       butil::StringPiece* out,
                                       const char* field) {
-    const int64_t len = parse_encode_length(buf);
-    if (len < 0 || (uint64_t)len > buf.size()) {
+    uint64_t len = 0;
+    if (!parse_encode_length(buf, &len) || len > buf.size()) {
         LOG(WARNING) << "MysqlReply::Column::Parse: " << field << " length " << len
                      << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -486,13 +501,14 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     }
     const std::string delim(1, 0x00);
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
-    buf.cut1((char*)&_protocol);
+    payload.cut1((char*)&_protocol);
     {
         butil::IOBuf version;
-        buf.cut_until(&version, delim);
+        payload.cut_until(&version, delim);
         char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, version.size(), d));
         version.copy_to(d);
@@ -500,12 +516,12 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     }
     {
         uint8_t tmp[4];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _thread_id = mysql_uint4korr(tmp);
     }
     {
         butil::IOBuf salt;
-        buf.cut_until(&salt, delim);
+        payload.cut_until(&salt, delim);
         char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, salt.size(), d));
         salt.copy_to(d);
@@ -513,42 +529,41 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     }
     {
         uint8_t tmp[2];
-        buf.cutn(&tmp, sizeof(tmp));
+        payload.cutn(&tmp, sizeof(tmp));
         _capability = mysql_uint2korr(tmp);
     }
-    buf.cut1((char*)&_collation);
+    payload.cut1((char*)&_collation);
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _status = mysql_uint2korr(tmp);
     }
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _extended_capability = mysql_uint2korr(tmp);
     }
-    buf.cut1((char*)&_auth_plugin_length);
-    buf.pop_front(10);
+    payload.cut1((char*)&_auth_plugin_length);
+    payload.pop_front(10);
     {
         butil::IOBuf salt2;
-        buf.cut_until(&salt2, delim);
+        payload.cut_until(&salt2, delim);
         char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, salt2.size(), d));
         salt2.copy_to(d);
         _salt2.set(d, salt2.size());
     }
     {
-        if (_auth_plugin_length > buf.size()) {
+        if (_auth_plugin_length > payload.size()) {
             LOG(ERROR) << "MysqlReply::Auth::Parse: auth_plugin length " << _auth_plugin_length
-                       << " exceeds remaining buffer size " << buf.size();
+                       << " exceeds remaining buffer size " << payload.size();
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
         char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, _auth_plugin_length, d));
-        buf.cutn(d, _auth_plugin_length);
+        payload.cutn(d, _auth_plugin_length);
         _auth_plugin.set(d, _auth_plugin_length);
     }
-    buf.clear();  // consume all buf
     set_parsed();
     return PARSE_OK;
 }
@@ -558,18 +573,19 @@ ParseError MysqlReply::AuthMoreData::Parse(butil::IOBuf& buf, butil::Arena* aren
         return PARSE_OK;
     }
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     _seq = (uint8_t)header.seq;
     // Drop the 0x01 AuthMoreData tag; expose only the bytes after it (a
     // single status byte 0x03/0x04, or the PEM-encoded RSA public key).
-    buf.pop_front(1);
-    const int64_t len = (int64_t)header.payload_size - 1;
+    payload.pop_front(1);
+    const int64_t len = (int64_t)payload.size();
     if (len > 0) {
         char* d = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, len, d));
-        buf.cutn(d, len);
+        payload.cutn(d, len);
         _data.set(d, len);
     } else {
         _data.set(nullptr, 0);
@@ -583,17 +599,14 @@ ParseError MysqlReply::ResultSetHeader::Parse(butil::IOBuf& buf) {
         return PARSE_OK;
     }
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
-    uint64_t old_size, new_size;
-    old_size = buf.size();
-    const int64_t column_count = parse_encode_length(buf);
-    if (column_count < 0) {
+    if (!parse_encode_length(payload, &_column_count)) {
         LOG(ERROR) << "MysqlReply::ResultSetHeader::Parse: truncated column count";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    _column_count = column_count;
     // Guard against an absurd/malicious column count driving unbounded
     // allocations downstream (per-column arrays and the row NULL-bitmap).
     // MySQL's hard limit is 4096 columns per table; 65535 is a generous cap
@@ -602,14 +615,11 @@ ParseError MysqlReply::ResultSetHeader::Parse(butil::IOBuf& buf) {
         LOG(ERROR) << "illegal column count " << _column_count;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    new_size = buf.size();
-    if (old_size - new_size < header.payload_size) {
-        const int64_t extra_msg = parse_encode_length(buf);
-        if (extra_msg < 0) {
+    if (!payload.empty()) {
+        if (!parse_encode_length(payload, &_extra_msg)) {
             LOG(ERROR) << "MysqlReply::ResultSetHeader::Parse: truncated extra message";
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
-        _extra_msg = extra_msg;
     } else {
         _extra_msg = 0;
     }
@@ -622,38 +632,39 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         return PARSE_OK;
     }
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
 
-    // Each length-encoded string must fit within the remaining buffer; an
+    // Each length-encoded string must fit within the remaining payload; an
     // oversized length would otherwise drive my_alloc_check/cutn/.set past the
     // packet (mirrors the hardened auth_plugin path above).
-    MY_PARSE_CHECK(parse_column_string(buf, arena, &_catalog, "catalog"));
-    MY_PARSE_CHECK(parse_column_string(buf, arena, &_database, "database"));
-    MY_PARSE_CHECK(parse_column_string(buf, arena, &_table, "table"));
-    MY_PARSE_CHECK(parse_column_string(buf, arena, &_origin_table, "origin_table"));
-    MY_PARSE_CHECK(parse_column_string(buf, arena, &_name, "name"));
-    MY_PARSE_CHECK(parse_column_string(buf, arena, &_origin_name, "origin_name"));
-    buf.pop_front(1);
+    MY_PARSE_CHECK(parse_column_string(payload, arena, &_catalog, "catalog"));
+    MY_PARSE_CHECK(parse_column_string(payload, arena, &_database, "database"));
+    MY_PARSE_CHECK(parse_column_string(payload, arena, &_table, "table"));
+    MY_PARSE_CHECK(parse_column_string(payload, arena, &_origin_table, "origin_table"));
+    MY_PARSE_CHECK(parse_column_string(payload, arena, &_name, "name"));
+    MY_PARSE_CHECK(parse_column_string(payload, arena, &_origin_name, "origin_name"));
+    payload.pop_front(1);
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _charset = mysql_uint2korr(tmp);
     }
     {
         uint8_t tmp[4];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _length = mysql_uint4korr(tmp);
     }
-    buf.cut1((char*)&_type);
+    payload.cut1((char*)&_type);
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _flag = (MysqlFieldFlag)mysql_uint2korr(tmp);
     }
-    buf.cut1((char*)&_decimal);
-    buf.pop_front(2);
+    payload.cut1((char*)&_decimal);
+    payload.pop_front(2);
     set_parsed();
     return PARSE_OK;
 }
@@ -663,43 +674,36 @@ ParseError MysqlReply::Ok::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         return PARSE_OK;
     }
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
+    payload.pop_front(1);
 
-    uint64_t old_size, new_size;
-    old_size = buf.size();
-    buf.pop_front(1);
-
-    int64_t v = parse_encode_length(buf);
-    if (v < 0) {
+    if (!parse_encode_length(payload, &_affect_row)) {
         LOG(WARNING) << "MysqlReply::Ok::Parse: truncated affected-rows value";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    _affect_row = v;
-    v = parse_encode_length(buf);
-    if (v < 0) {
+    if (!parse_encode_length(payload, &_index)) {
         LOG(WARNING) << "MysqlReply::Ok::Parse: truncated last-insert-id value";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    _index = v;
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _status = mysql_uint2korr(tmp);
     }
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _warning = mysql_uint2korr(tmp);
     }
 
-    new_size = buf.size();
-    if (old_size - new_size < header.payload_size) {
-        const int64_t len = header.payload_size - (old_size - new_size);
+    const int64_t len = (int64_t)payload.size();
+    if (len > 0) {
         char* msg = nullptr;
         MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
-        buf.cutn(msg, len);
+        payload.cutn(msg, len);
         _msg.set(msg, len);
     }
     set_parsed();
@@ -711,18 +715,19 @@ ParseError MysqlReply::Eof::Parse(butil::IOBuf& buf) {
         return PARSE_OK;
     }
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
-    buf.pop_front(1);
+    payload.pop_front(1);
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _warning = mysql_uint2korr(tmp);
     }
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _status = mysql_uint2korr(tmp);
     }
     set_parsed();
@@ -734,34 +739,35 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         return PARSE_OK;
     }
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
-    buf.pop_front(1);  // 0xFF
-    {
-        uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
-        _errcode = mysql_uint2korr(tmp);
-    }
-    buf.pop_front(1);  // '#'
-    // 5 byte server status
-    char* status = nullptr;
-    MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
-    buf.cutn(status, 5);
-    _status.set(status, 5);
     // error message, Null-Terminated string.
-    // payload layout consumed so far: 0xFF(1) + errcode(2) + '#'(1) +
-    // sql_state(5) = 9 bytes; guard against a malformed short packet to avoid
-    // an unsigned underflow producing a huge length.
+    // payload layout: 0xFF(1) + errcode(2) + '#'(1) + sql_state(5) = 9 bytes;
+    // guard against a malformed short packet to avoid reading past the
+    // packet boundary.
     if (header.payload_size < 9) {
         LOG(WARNING) << "MysqlReply::Error::Parse: truncated ERR packet, payload_size "
                    << header.payload_size << " < 9 (0xFF+errcode+'#'+sql_state)";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    uint64_t len = header.payload_size - 9;
+    payload.pop_front(1);  // 0xFF
+    {
+        uint8_t tmp[2];
+        payload.cutn(tmp, sizeof(tmp));
+        _errcode = mysql_uint2korr(tmp);
+    }
+    payload.pop_front(1);  // '#'
+    // 5 byte server status
+    char* status = nullptr;
+    MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
+    payload.cutn(status, 5);
+    _status.set(status, 5);
+    const uint64_t len = payload.size();
     char* msg = nullptr;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
-    buf.cutn(msg, len);
+    payload.cutn(msg, len);
     _msg.set(msg, len);
     set_parsed();
     return PARSE_OK;
@@ -777,16 +783,17 @@ ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
         return PARSE_OK;
     }
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     if (!binary) {  // mysql text protocol
         for (uint64_t i = 0; i < column_count; ++i) {
-            MY_PARSE_CHECK(fields[i].Parse(buf, columns + i, arena));
+            MY_PARSE_CHECK(fields[i].Parse(payload, columns + i, arena));
         }
     } else {  // mysql binary protocol
         uint8_t hdr = 0;
-        buf.cut1((char*)&hdr);
+        payload.cut1((char*)&hdr);
         if (hdr != 0x00) {
             LOG(WARNING) << "MysqlReply::Row::Parse: binary row packet header byte is "
                        << unsigned(hdr) << ", expected 0x00";
@@ -802,9 +809,9 @@ ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
         for (uint64_t i = 0; i < size; ++i) {
             null_mask[i] = 0;
         }
-        buf.cutn(null_mask, size);
+        payload.cutn(null_mask, size);
         for (uint64_t i = 0; i < column_count; ++i) {
-            MY_PARSE_CHECK(fields[i].Parse(buf, columns + i, i, column_count, null_mask, arena));
+            MY_PARSE_CHECK(fields[i].Parse(payload, columns + i, i, column_count, null_mask, arena));
         }
     }
     set_parsed();
@@ -822,8 +829,8 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
     // is unsigned flag set
     _unsigned = column->_flag & MYSQL_UNSIGNED_FLAG;
     // parse encode length
-    const int64_t len = parse_encode_length(buf);
-    if (len < 0) {
+    uint64_t len = 0;
+    if (!parse_encode_length(buf, &len)) {
         LOG(WARNING) << "MysqlReply::Field::Parse: truncated length-encoded field length";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -838,7 +845,7 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
     // allocation uninitialized while _data.str is published as len bytes,
     // exposing uninitialized arena memory and desyncing the packet stream.
     // The binary Field::Parse and Column::Parse paths already guard this.
-    if ((uint64_t)len > buf.size()) {
+    if (len > buf.size()) {
         LOG(WARNING) << "MysqlReply::Field::Parse: field length " << len
                    << " exceeds remaining buffer size " << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -1007,7 +1014,11 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
         case MYSQL_FIELD_TYPE_STRING:
         case MYSQL_FIELD_TYPE_GEOMETRY:
         case MYSQL_FIELD_TYPE_JSON: {
-            const int64_t len = parse_encode_length(buf);
+            uint64_t len = 0;
+            if (!parse_encode_length(buf, &len)) {
+                LOG(WARNING) << "MysqlReply::Field::Parse (binary): truncated string field length";
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
+            }
             // is it null?
             if (len == 0 && !(column->_flag & MYSQL_NOT_NULL_FLAG)) {
                 _is_nil = true;
@@ -1015,7 +1026,7 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
                 return PARSE_OK;
             }
             // field is not null
-            if (len < 0 || (uint64_t)len > buf.size()) {
+            if (len > buf.size()) {
                 LOG(WARNING) << "MysqlReply::Field::Parse (binary): string field length " << len
                            << " exceeds remaining buffer size " << buf.size();
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -1053,13 +1064,17 @@ ParseError MysqlReply::Field::ParseBinaryTime(butil::IOBuf& buf,
                                               butil::StringPiece& str,
                                               butil::Arena* arena) {
 
-    const int64_t len = parse_encode_length(buf);
+    uint64_t len = 0;
+    if (!parse_encode_length(buf, &len)) {
+        LOG(ERROR) << "invalid TIME packet length";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     // A length of 0, 8 or 12 are the only legal binary TIME encodings. Anything
     // else is a malformed packet -- reject it rather than reading past the value.
     // NOTE: len == 0 is NOT a NULL value (NULL is signalled by the row
     // NULL-bitmap, handled by the caller before we are reached); it is the zero
     // TIME value "00:00:00" with no field bytes on the wire.
-    if (len < 0 || (len != 0 && len != 8 && len != 12)) {
+    if (len != 0 && len != 8 && len != 12) {
         LOG(ERROR) << "invalid TIME packet length " << len;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -1178,14 +1193,18 @@ ParseError MysqlReply::Field::ParseBinaryDataTime(butil::IOBuf& buf,
                                                   const MysqlReply::Column* column,
                                                   butil::StringPiece& str,
                                                   butil::Arena* arena) {
-    const int64_t len = parse_encode_length(buf);
+    uint64_t len = 0;
+    if (!parse_encode_length(buf, &len)) {
+        LOG(ERROR) << "illegal date time length";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     // A length of 0, 4, 7 or 11 are the only legal binary DATE/DATETIME/
     // TIMESTAMP encodings. Reject anything else rather than over-reading.
     // NOTE: len == 0 is NOT a NULL value (NULL is signalled by the row
     // NULL-bitmap, handled by the caller before we are reached); it is the zero
     // value "0000-00-00 00:00:00" (or "0000-00-00" for DATE) with no field
     // bytes on the wire.
-    if (len < 0 || (len != 0 && len != 4 && len != 7 && len != 11)) {
+    if (len != 0 && len != 4 && len != 7 && len != 11) {
         LOG(ERROR) << "illegal date time length " << len;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -1446,30 +1465,31 @@ ParseError MysqlReply::PrepareOk::Header::Parse(butil::IOBuf& buf) {
     }
 
     MysqlHeader header;
-    if (!parse_header(buf, &header)) {
+    butil::IOBuf payload;
+    if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
 
-    buf.pop_front(1);
+    payload.pop_front(1);
     {
         uint8_t tmp[4];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _stmt_id = mysql_uint4korr(tmp);
     }
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _column_count = mysql_uint2korr(tmp);
     }
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _param_count = mysql_uint2korr(tmp);
     }
-    buf.pop_front(1);
+    payload.pop_front(1);
     {
         uint8_t tmp[2];
-        buf.cutn(tmp, sizeof(tmp));
+        payload.cutn(tmp, sizeof(tmp));
         _warning = mysql_uint2korr(tmp);
     }
 

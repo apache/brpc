@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -279,6 +280,54 @@ TEST(MysqlReplyParseTest, RejectTruncatedOkPacket) {
             buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
         ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc) << "case " << i;
     }
+}
+
+// A truncated length prefix must not borrow bytes from a coalesced next
+// packet: the parser only sees the current packet's payload, so even though
+// the following packet's bytes would complete the 0xFC value, the OK packet
+// is rejected instead of silently desyncing the stream.
+TEST(MysqlReplyParseTest, RejectLenEncCrossingPacketBoundary) {
+    std::string wire;
+    AppendPacket(&wire, 0, std::string("\x00\xFC", 2));  // OK marker + 0xFC prefix
+    AppendPacket(&wire, 1, std::string("\x02\x00", 2));  // coalesced next packet
+
+    butil::IOBuf buf;
+    buf.append(wire);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    bool more_results = false;
+    brpc::ParseError rc = reply.ConsumePartialIOBuf(
+        buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, rc);
+}
+
+// An affected-rows value of 2^64-1 (the largest encodable length-encoded
+// integer) must round-trip through the uint64_t storage, not be rejected as
+// a negative sentinel.
+TEST(MysqlReplyParseTest, AcceptUint64MaxAffectedRows) {
+    std::string payload;
+    payload.push_back('\x00');                    // OK marker
+    payload.push_back((char)0xFE);                // 8-byte length-encoded prefix
+    payload.append(8, '\xff');                   // affected rows = 2^64 - 1
+    payload.push_back('\x00');                    // last insert id = 0
+    payload.append("\x02\x00", 2);              // status flags
+    payload.append("\x00\x00", 2);              // warnings
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    butil::IOBuf buf;
+    buf.append(wire);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    bool more_results = false;
+    brpc::ParseError rc = reply.ConsumePartialIOBuf(
+        buf, &arena, false, brpc::MYSQL_NORMAL_STATEMENT, &more_results);
+    ASSERT_EQ(brpc::PARSE_OK, rc);
+    ASSERT_TRUE(reply.is_ok());
+    ASSERT_EQ(std::numeric_limits<uint64_t>::max(), reply.ok().affect_row());
 }
 
 }  // namespace
