@@ -658,4 +658,56 @@ TEST(Mcpack2pbParserTest, FloatFieldTruncatedPayloadIsRejected) {
     EXPECT_FALSE(stream.good());
 }
 
+TEST(Mcpack2pbParserTest, StringFieldMissingTerminatorIsRejected) {
+    // The string content ("a") is fully present but the stream ends exactly
+    // before the required trailing '\0'. The terminator must be read and
+    // validated instead of being skipped with popn(1) (which returns 0 on
+    // an exhausted stream and leaves it good, accepting a truncated string).
+    const unsigned char data[] = {
+        0x10, 0x00, 0x14, 0x00, 0x00, 0x00,  // top object, value_size=20
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x50, 0x02, 0x02, 0x00, 0x00, 0x00,  // string field "a", size=2
+        0x61, 0x00,
+        0x61,                                // content "a", no terminator
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(20u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, 20);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_STRING, it->value.type());
+    std::string value;
+    it->value.as_string(&value, "a");
+    EXPECT_TRUE(value.empty());
+    EXPECT_FALSE(stream.good());
+}
+
+TEST(Mcpack2pbParserTest, StringFieldNonNulTerminatorIsRejected) {
+    // A string whose trailing byte is not '\0' is malformed and must be
+    // rejected as well.
+    const unsigned char data[] = {
+        0x10, 0x00, 0x14, 0x00, 0x00, 0x00,  // top object, value_size=20
+        0x01, 0x00, 0x00, 0x00,              // item_count=1
+        0x50, 0x02, 0x02, 0x00, 0x00, 0x00,  // string field "a", size=2
+        0x61, 0x00,
+        0x61, 0x62,                          // "a" with 'b' as terminator
+    };
+    butil::IOBuf body;
+    body.append(data, sizeof(data));
+
+    butil::IOBufAsZeroCopyInputStream zc_stream(body);
+    mcpack2pb::InputStream stream(&zc_stream);
+    ASSERT_EQ(20u, mcpack2pb::unbox(&stream));
+    mcpack2pb::ObjectIterator it(&stream, 20);
+    ASSERT_TRUE(it != NULL);
+    ASSERT_EQ(mcpack2pb::FIELD_STRING, it->value.type());
+    std::string value;
+    it->value.as_string(&value, "a");
+    EXPECT_TRUE(value.empty());
+    EXPECT_FALSE(stream.good());
+}
+
 }  // namespace

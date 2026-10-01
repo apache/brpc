@@ -623,7 +623,16 @@ void UnparsedValue::as_string(std::string* out, const char* var) {
     if (!cut_bytes_to_string(_stream, out, _size - 1, var)) {
         return;
     }
-    _stream->popn(1);
+    // The string must end with a trailing '\0'. Read and validate it,
+    // otherwise a stream that ends exactly before the terminator accepts a
+    // truncated string with the stream still good.
+    char terminator = 0;
+    if (_stream->cutn(&terminator, 1) != 1 || terminator != '\0') {
+        LOG(ERROR) << "Invalid string terminator for " << var;
+        _stream->set_bad();
+        out->clear();
+        return;
+    }
 }
 
 std::string UnparsedValue::as_string(const char* var) {
