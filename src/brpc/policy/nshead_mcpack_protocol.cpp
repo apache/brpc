@@ -119,16 +119,19 @@ void ProcessNsheadMcpackResponse(InputMessageBase* msg_base) {
         span->set_start_parse_us(start_parse_us);
     }
     const int saved_error = cntl->ErrorCode();
-    google::protobuf::Message* res = cntl->response();
-    if (res == nullptr) {
-        // silently ignore response.
-        return;
-    }
-    const std::string msg_name = butil::EnsureString(res->GetDescriptor()->full_name());
-    mcpack2pb::MessageHandler handler = mcpack2pb::find_message_handler(msg_name);
-    if (!handler.parse_from_iobuf(res, msg->payload)) {
-        return cntl->CloseConnection("Fail to parse response message");
-    }
+    do {
+        google::protobuf::Message* res = cntl->response();
+        if (res == nullptr) {
+            // silently ignore response.
+            break;
+        }
+        const std::string msg_name = butil::EnsureString(res->GetDescriptor()->full_name());
+        mcpack2pb::MessageHandler handler = mcpack2pb::find_message_handler(msg_name);
+        if (!handler.parse_from_iobuf(res, msg->payload)) {
+            cntl->CloseConnection("Fail to parse response message");
+            break;
+        }
+    } while (0);
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
     msg.reset();  // optional, just release resource ASAP
