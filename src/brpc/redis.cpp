@@ -120,6 +120,11 @@ bool RedisRequest::AddCommandByComponents(const butil::StringPiece* components,
     }
 }
 
+bool RedisRequest::AddCommandByComponents(
+        const std::vector<butil::StringPiece>& components) {
+    return AddCommandByComponents(components.data(), components.size());
+}
+
 bool RedisRequest::AddCommandWithArgs(const char* fmt, ...) {
     if (_has_error) {
         return false;
