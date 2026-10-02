@@ -767,7 +767,9 @@ TEST(MysqlReplyParseTest, RejectTruncatedBinaryFixedValue) {
 TEST(MysqlReplyParseTest, RejectTruncatedBinaryStringField) {
     const std::string tails[] = {
         std::string("\xFC", 1),                    // prefix, 0 of 2 length bytes
-        std::string("\xFC\x05\x00ab", 5),         // length 5, only 2 bytes follow
+        std::string("\xFC\x05\x00"
+                    "ab",
+                    5),                             // length 5, only 2 bytes follow
     };
     for (size_t i = 0; i < sizeof(tails) / sizeof(tails[0]); ++i) {
         std::string row;
