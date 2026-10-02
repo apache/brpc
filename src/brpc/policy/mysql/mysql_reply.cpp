@@ -795,15 +795,11 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     if (!parse_header(buf, &header, &payload)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
-    // error message, Null-Terminated string.
-    // payload layout: 0xFF(1) + errcode(2) + '#'(1) + sql_state(5) = 9 bytes;
-    // guard against a malformed short packet to avoid reading past the
-    // packet boundary.
-    if (header.payload_size < 9) {
-        LOG(WARNING) << "MysqlReply::Error::Parse: truncated ERR packet, payload_size "
-                   << header.payload_size << " < 9 (0xFF+errcode+'#'+sql_state)";
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
-    }
+    // ERR payload: 0xFF(1) + error code(2), followed by either
+    //   - protocol-4.1 layout: '#'(1) + sql_state(5) + message, or
+    //   - pre-4.1 layout (initial-handshake errors sent before capabilities
+    //     are negotiated, e.g. "Too many connections"): the message directly.
+    // Disambiguate by peeking for the '#' marker, like MySQL clients do.
     payload.pop_front(1);  // 0xFF
     {
         uint8_t tmp[2];
@@ -811,24 +807,29 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         _errcode = mysql_uint2korr(tmp);
     }
     {
-        uint8_t sharp = 0;
-        MY_PARSE_CHECK(parse_fixed(payload, &sharp, 1));  // '#'
-        if (sharp != '#') {
-            LOG(WARNING) << "MysqlReply::Error::Parse: expected '#' before sql_state, got "
-                       << sharp;
-            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        // IOBuf::fetch may return a pointer into its own storage instead of
+        // filling the aux buffer, so always dereference the returned pointer.
+        uint8_t aux = 0;
+        const void* peek = payload.fetch(&aux, 1);
+        if (peek != nullptr && *(const uint8_t*)peek == '#') {
+            payload.pop_front(1);
+            // 5 byte sql state
+            char* status = nullptr;
+            MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
+            MY_PARSE_CHECK(parse_fixed(payload, status, 5));
+            _status.set(status, 5);
+        } else {
+            _status.set(nullptr, 0);
         }
     }
-    // 5 byte server status
-    char* status = nullptr;
-    MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
-    MY_PARSE_CHECK(parse_fixed(payload, status, 5));
-    _status.set(status, 5);
+    // error message, Null-Terminated string.
     const uint64_t len = payload.size();
-    char* msg = nullptr;
-    MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
-    payload.cutn(msg, len);
-    _msg.set(msg, len);
+    if (len > 0) {
+        char* msg = nullptr;
+        MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
+        payload.cutn(msg, len);
+        _msg.set(msg, len);
+    }
     set_parsed();
     return PARSE_OK;
 }

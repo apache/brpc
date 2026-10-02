@@ -562,14 +562,34 @@ TEST(MysqlReplyParseTest, RejectTruncatedColumnDefTail) {
     }
 }
 
-// An ERR packet whose sql_state is not preceded by the '#' marker must be
-// rejected instead of shifting the remaining bytes into the wrong fields.
-TEST(MysqlReplyParseTest, RejectErrPacketWithoutSqlStateMarker) {
+// An initial-handshake ERR packet (sent before CLIENT_PROTOCOL_41 is
+// negotiated, e.g. "Too many connections") carries no '#' and sql_state;
+// it must parse with the whole tail as the message instead of being
+// rejected as malformed.
+TEST(MysqlReplyParseTest, AcceptInitialHandshakeErr) {
+    std::string payload;
+    payload.push_back((char)0xFF);               // ERR marker
+    payload.append("\x10\x04", 2);            // error code 1040, little-endian
+    payload.append("Too many connections");    // message, no '#' + sql_state
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK, ParseWire(wire, &reply, &arena, brpc::MYSQL_NORMAL_STATEMENT, /*is_auth=*/true));
+    ASSERT_TRUE(reply.is_error());
+    ASSERT_EQ(1040u, reply.error().errcode());
+    ASSERT_EQ(butil::StringPiece("Too many connections"), reply.error().msg());
+}
+
+// A protocol-4.1 ERR packet whose '#' marker is present but whose sql_state
+// is truncated must still be rejected.
+TEST(MysqlReplyParseTest, RejectTruncatedSqlState) {
     std::string payload;
     payload.push_back((char)0xFF);               // ERR marker
     payload.append("\x1f\x04", 2);            // error code 1055, little-endian
-    payload.append("ABCDE", 5);                // 5 bytes where '#'+4 was expected
-    payload.append("boom", 4);                 // error message
+    payload.append("#AB", 3);                  // '#' but only 2 of 5 state bytes
 
     std::string wire;
     AppendPacket(&wire, 0, payload);
@@ -577,6 +597,28 @@ TEST(MysqlReplyParseTest, RejectErrPacketWithoutSqlStateMarker) {
     brpc::MysqlReply reply;
     butil::Arena arena;
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, ParseWire(wire, &reply, &arena));
+}
+
+// A well-formed protocol-4.1 ERR packet ('#' + 5-byte sql_state + message)
+// still parses with its sql_state populated.
+TEST(MysqlReplyParseTest, AcceptProtocol41Err) {
+    std::string payload;
+    payload.push_back((char)0xFF);               // ERR marker
+    payload.append("\x1f\x04", 2);            // error code 1055, little-endian
+    payload.push_back('#');
+    payload.append("42000", 5);                 // sql state
+    payload.append("boom", 4);                  // message
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK, ParseWire(wire, &reply, &arena));
+    ASSERT_TRUE(reply.is_error());
+    ASSERT_EQ(1055u, reply.error().errcode());
+    ASSERT_EQ(butil::StringPiece("42000"), reply.error().status());
+    ASSERT_EQ(butil::StringPiece("boom"), reply.error().msg());
 }
 
 }  // namespace
