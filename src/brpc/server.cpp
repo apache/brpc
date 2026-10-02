@@ -451,6 +451,8 @@ Server::Server(ProfilerLinker)
 Server::~Server() {
     Stop(0);
     Join();
+    // Stop()/Join() are no-ops when a Start() failed before RUNNING.
+    DestroyPreStartAllocations();
     ClearServices();
     FreeSSLContexts();
     delete _session_local_data_pool;
@@ -744,6 +746,8 @@ struct RevertServerStatus {
         if (s != nullptr) {
             s->Stop(0);
             s->Join();
+            // Stop()/Join() are no-ops when the start failed before RUNNING.
+            s->DestroyPreStartAllocations();
         }
     }
 };
@@ -1368,6 +1372,28 @@ int Server::Join() {
     g_running_server_count.fetch_sub(1, butil::memory_order_relaxed);
     _status = READY;
     return 0;
+}
+
+void Server::DestroyPreStartAllocations() {
+    if (_status == RUNNING || _status == STOPPING) {
+        // Handled by Join().
+        return;
+    }
+    if (_keytable_pool != nullptr) {
+        // Keep the TLS key valid until its pooled data has been destroyed.
+        // Deleting the key first would disable DestroyServerTLS().
+        CHECK_EQ(0, bthread_keytable_pool_destroy(_keytable_pool));
+        // Unlike Join(), no connection (thus no keytable user) can exist
+        // when the start failed before RUNNING, so the pool struct can be
+        // deleted as well.
+        delete _keytable_pool;
+        _keytable_pool = nullptr;
+    }
+    // Delete tls_key created in StartInternal().
+    if (_tl_options.tls_key != INVALID_BTHREAD_KEY) {
+        CHECK_EQ(0, bthread_key_delete(_tl_options.tls_key));
+        _tl_options.tls_key = INVALID_BTHREAD_KEY;
+    }
 }
 
 int Server::AddServiceInternal(google::protobuf::Service* service,

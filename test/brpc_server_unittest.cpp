@@ -220,6 +220,24 @@ private:
     const google::protobuf::ServiceDescriptor* _sd;
 };
 
+class CountingTLSDataFactory : public brpc::DataFactory {
+public:
+    CountingTLSDataFactory() : created(0), destroyed(0) {}
+
+    void* CreateData() const override {
+        created.fetch_add(1, butil::memory_order_relaxed);
+        return new int(0);
+    }
+
+    void DestroyData(void* data) const override {
+        delete static_cast<int*>(data);
+        destroyed.fetch_add(1, butil::memory_order_relaxed);
+    }
+
+    mutable butil::atomic<size_t> created;
+    mutable butil::atomic<size_t> destroyed;
+};
+
 class ServerTest : public ::testing::Test{
 protected:
     ServerTest() {};
@@ -305,6 +323,56 @@ TEST_F(ServerTest, sanity) {
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
+}
+
+TEST_F(ServerTest, failed_start_cleans_reserved_thread_local_data) {
+    CountingTLSDataFactory factory;
+    brpc::ServerOptions options;
+    options.thread_local_data_factory = &factory;
+    options.reserved_thread_local_data = 4;
+    brpc::Server listener;
+    ASSERT_EQ(0, listener.Start("127.0.0.1:0", nullptr));
+    brpc::Server server;
+
+    for (size_t attempt = 1; attempt <= 2; ++attempt) {
+        ASSERT_EQ(-1, server.Start(listener.listen_address(), &options));
+        EXPECT_TRUE(server._keytable_pool == nullptr);
+        EXPECT_EQ(INVALID_BTHREAD_KEY, server._tl_options.tls_key);
+        EXPECT_EQ(attempt * options.reserved_thread_local_data,
+                  factory.created.load(butil::memory_order_relaxed));
+        EXPECT_EQ(factory.created.load(butil::memory_order_relaxed),
+                  factory.destroyed.load(butil::memory_order_relaxed));
+    }
+
+    // A successful retry must create a fresh key and pool.
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+    EXPECT_TRUE(server._keytable_pool != nullptr);
+    EXPECT_NE(INVALID_BTHREAD_KEY, server._tl_options.tls_key);
+    EXPECT_EQ(3 * options.reserved_thread_local_data,
+              factory.created.load(butil::memory_order_relaxed));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+    EXPECT_EQ(INVALID_BTHREAD_KEY, server._tl_options.tls_key);
+    EXPECT_EQ(factory.created.load(butil::memory_order_relaxed),
+              factory.destroyed.load(butil::memory_order_relaxed));
+}
+
+TEST_F(ServerTest, failed_start_destruction_cleans_thread_local_data) {
+    CountingTLSDataFactory factory;
+    brpc::ServerOptions options;
+    options.thread_local_data_factory = &factory;
+    options.reserved_thread_local_data = 4;
+    brpc::Server listener;
+    ASSERT_EQ(0, listener.Start("127.0.0.1:0", nullptr));
+    {
+        brpc::Server server;
+        ASSERT_EQ(-1, server.Start(listener.listen_address(), &options));
+        // No successful Start(), Stop() or Join() before destruction.
+    }
+    EXPECT_EQ(options.reserved_thread_local_data,
+              factory.created.load(butil::memory_order_relaxed));
+    EXPECT_EQ(factory.created.load(butil::memory_order_relaxed),
+              factory.destroyed.load(butil::memory_order_relaxed));
 }
 
 TEST_F(ServerTest, invalid_protocol_in_enabled_protocols) {
