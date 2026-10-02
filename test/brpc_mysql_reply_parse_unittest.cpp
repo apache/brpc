@@ -39,8 +39,9 @@ void AppendPacket(std::string* out, uint8_t seq, const std::string& payload) {
     out->append(payload);
 }
 
-// A minimal text-protocol column definition for a single VAR_STRING column.
-std::string MakeColumnDef() {
+// A minimal text-protocol column definition, parametrized by field type,
+// flags and decimals for binary-protocol tests.
+std::string MakeColumnDef(uint8_t type, uint16_t flags = 0, uint8_t decimals = 0) {
     std::string p;
     for (int i = 0; i < 6; ++i) {   // catalog/database/table/origin_table/name/origin_name
         p.push_back(0x00);          // length-encoded empty string
@@ -49,12 +50,16 @@ std::string MakeColumnDef() {
     p.push_back(0x21);              // charset (2 bytes)
     p.push_back(0x00);
     p.append(4, '\x00');            // column length (4 bytes)
-    p.push_back((char)brpc::MYSQL_FIELD_TYPE_VAR_STRING);   // field type
-    p.push_back(0x00);              // flag (2 bytes): not-null and unsigned both off
-    p.push_back(0x00);
-    p.push_back(0x00);              // decimals
+    p.push_back((char)type);        // field type
+    p.push_back((char)(flags & 0xFF));  // flag (2 bytes)
+    p.push_back((char)(flags >> 8));
+    p.push_back((char)decimals);    // decimals
     p.append(2, '\x00');            // filler
     return p;
+}
+
+std::string MakeColumnDef() {
+    return MakeColumnDef(brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 }
 
 std::string MakeEof() {
@@ -341,6 +346,25 @@ std::string MakeResultSetWithColumns(const std::string& count_wire, size_t n_def
     }
     AppendPacket(&wire, 3, MakeEof());  // EOF after column defs
     AppendPacket(&wire, 4, MakeEof());  // EOF after (empty) rows
+    return wire;
+}
+
+// Build a binary-protocol (MYSQL_PREPARED_STATEMENT) result set with one
+// column of |col_def| and a single raw binary row |row| (0x00 marker + NULL
+// bitmap + field values). A trailing EOF packet is appended right after the
+// row, so any test whose row is truncated also proves that decoding cannot
+// borrow bytes from the coalesced next packet.
+std::string MakeBinaryResultSet(const std::string& col_def,
+                                 const std::string& row,
+                                 bool with_trailing_eof = true) {
+    std::string wire;
+    AppendPacket(&wire, 1, std::string(1, '\x01'));  // 1-column result set
+    AppendPacket(&wire, 2, col_def);
+    AppendPacket(&wire, 3, MakeEof());               // EOF after column defs
+    AppendPacket(&wire, 4, row);
+    if (with_trailing_eof) {
+        AppendPacket(&wire, 5, MakeEof());           // EOF after rows
+    }
     return wire;
 }
 
@@ -681,6 +705,110 @@ TEST(MysqlReplyParseTest, AcceptProtocol41Err) {
     ASSERT_EQ(1055u, reply.error().errcode());
     ASSERT_EQ(butil::StringPiece("42000"), reply.error().status());
     ASSERT_EQ(butil::StringPiece("boom"), reply.error().msg());
+}
+
+// A well-formed binary-protocol row parses and round-trips its fixed-width
+// value.
+TEST(MysqlReplyParseTest, AcceptBinaryRow) {
+    std::string row;
+    row.push_back('\x00');            // binary row marker
+    row.push_back('\x00');            // NULL bitmap (1 byte for 1 column): no NULLs
+    row.append(8, '\x2a');            // 8-byte unsigned LONGLONG value
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK,
+              ParseWire(MakeBinaryResultSet(
+                            MakeColumnDef(brpc::MYSQL_FIELD_TYPE_LONGLONG,
+                                          brpc::MYSQL_UNSIGNED_FLAG),
+                            row),
+                        &reply, &arena, brpc::MYSQL_PREPARED_STATEMENT));
+    ASSERT_TRUE(reply.is_resultset());
+    ASSERT_EQ(1u, reply.row_count());
+    ASSERT_EQ(0x2a2a2a2a2a2a2a2aULL, reply.next().field(0).bigint());
+}
+
+// A binary row truncated inside its NULL bitmap (or missing it entirely)
+// must be rejected, without borrowing the coalesced following EOF packet.
+TEST(MysqlReplyParseTest, RejectTruncatedBinaryNullBitmap) {
+    std::string row;
+    row.push_back('\x00');            // marker only, NULL bitmap missing
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+              ParseWire(MakeBinaryResultSet(
+                            MakeColumnDef(brpc::MYSQL_FIELD_TYPE_LONGLONG,
+                                          brpc::MYSQL_UNSIGNED_FLAG),
+                            row),
+                        &reply, &arena, brpc::MYSQL_PREPARED_STATEMENT));
+}
+
+// A binary row whose fixed-width numeric value ends early must be rejected;
+// the missing bytes cannot be taken from the coalesced EOF packet.
+TEST(MysqlReplyParseTest, RejectTruncatedBinaryFixedValue) {
+    std::string row;
+    row.push_back('\x00');            // binary row marker
+    row.push_back('\x00');            // NULL bitmap
+    row.append(4, '\x2a');            // only 4 of the 8 LONGLONG bytes
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+              ParseWire(MakeBinaryResultSet(
+                            MakeColumnDef(brpc::MYSQL_FIELD_TYPE_LONGLONG,
+                                          brpc::MYSQL_UNSIGNED_FLAG),
+                            row),
+                        &reply, &arena, brpc::MYSQL_PREPARED_STATEMENT));
+}
+
+// A binary string field whose length-encoded prefix or value is truncated
+// must be rejected.
+TEST(MysqlReplyParseTest, RejectTruncatedBinaryStringField) {
+    const std::string tails[] = {
+        std::string("\xFC", 1),                    // prefix, 0 of 2 length bytes
+        std::string("\xFC\x05\x00ab", 5),         // length 5, only 2 bytes follow
+    };
+    for (size_t i = 0; i < sizeof(tails) / sizeof(tails[0]); ++i) {
+        std::string row;
+        row.push_back('\x00');        // binary row marker
+        row.push_back('\x00');        // NULL bitmap
+        row.append(tails[i]);
+
+        brpc::MysqlReply reply;
+        butil::Arena arena;
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  ParseWire(MakeBinaryResultSet(MakeColumnDef(), row), &reply, &arena,
+                            brpc::MYSQL_PREPARED_STATEMENT))
+            << "case " << i;
+    }
+}
+
+// Binary TIME/DATETIME values whose length-encoded length promises more
+// bytes than the row carries must be rejected.
+TEST(MysqlReplyParseTest, RejectTruncatedBinaryTimeAndDatetime) {
+    const struct {
+        uint8_t type;
+        uint8_t len;
+        size_t value_bytes;
+    } cases[] = {
+        {brpc::MYSQL_FIELD_TYPE_TIME, 8, 3},       // TIME claims 8, has 3
+        {brpc::MYSQL_FIELD_TYPE_DATETIME, 4, 1},   // DATETIME claims 4, has 1
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        std::string row;
+        row.push_back('\x00');        // binary row marker
+        row.push_back('\x00');        // NULL bitmap
+        row.push_back((char)cases[i].len);
+        row.append(cases[i].value_bytes, '\x11');
+
+        brpc::MysqlReply reply;
+        butil::Arena arena;
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  ParseWire(MakeBinaryResultSet(MakeColumnDef(cases[i].type), row),
+                            &reply, &arena, brpc::MYSQL_PREPARED_STATEMENT))
+            << "case " << i;
+    }
 }
 
 }  // namespace
