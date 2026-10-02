@@ -33,8 +33,10 @@ The project's usual test dependencies still apply.
 
 Make accepts `--with-flatbuffers` on `config_brpc.sh`; its tests accept
 `FLATC=/path/to/flatc`. Bazel accepts `--define=BRPC_WITH_FLATBUFFERS=true`,
-with matching FlatBuffers 25.2.10 runtime and compiler dependencies. Bzlmod
-imports the same checksum-pinned archive as WORKSPACE: `runtime_cc` and `flatc`
+with matching FlatBuffers 25.2.10 runtime and compiler dependencies. The bRPC
+FlatBuffers runtime currently supports that exact version and rejects others at
+compile time because it depends on FlatBuffers builder internals. Bzlmod imports
+the same checksum-pinned archive as WORKSPACE: `runtime_cc` and `flatc`
 do not need FlatBuffers' external gRPC module, which would otherwise conflict
 with bRPC's pinned BoringSSL even when the feature is disabled.
 
@@ -58,6 +60,10 @@ call `Finish(root)`, and finally call `ReleaseMessage()`.
   owns an IOBuf block reference and survives builder reuse or destruction.
 * Message/builder moves leave the source reusable. Moving a shared-string builder
   discards its optional deduplication cache; existing offsets remain valid.
+* `Message::CopyFrom` and `MergeFrom` retain the same ref-counted IOBuf block;
+  they do not deep-copy payload or metadata. Mutable access through any alias
+  changes all Messages sharing that storage. Do not mutate one alias while any
+  alias is being read without external synchronization.
 * Importing an ordinary `::flatbuffers::FlatBufferBuilder` copies its payload and
   scratch while preserving unfinished table state. The original allocator frees
   the original storage, including owned custom allocators. No `free`/`delete[]`
@@ -78,11 +84,14 @@ call `Finish(root)`, and finally call `ReleaseMessage()`.
   continue with a null allocation result.
 
 `ParseFbFromIOBUF` checks sizes/framing and retains independent ownership. It
-shares a contiguous input when the payload address is 64-byte aligned; fragmented
-or insufficiently aligned input is copied into aligned storage. A builder's
-allocation is 64-byte aligned, but the final payload need only have the alignment
-required by its schema, so not every local message qualifies for receive-side
-zero-copy. Alignments above 64 bytes are not supported.
+is not a receive-side admission limit: when `msg_size` comes from an untrusted
+peer, the caller must bound it with its own max-message-size setting before
+parsing. Fragmented or insufficiently aligned input is copied into aligned
+storage, so this bound must be applied before allocation. A contiguous input is
+shared when the payload address is 64-byte aligned. A builder's allocation is
+64-byte aligned, but the final payload need only have the alignment required by
+its schema, so not every local message qualifies for receive-side zero-copy.
+Alignments above 64 bytes are not supported.
 
 **Framing is not schema verification.** Call `msg.Verify<YourRoot>()` before
 `GetRoot<YourRoot>()` or `GetMutableRoot<YourRoot>()` on received data. Optional

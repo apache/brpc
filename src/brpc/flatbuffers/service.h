@@ -19,6 +19,7 @@
 #define BRPC_FLATBUFFERS_SERVICE_H
 
 #include "butil/config.h"
+#include "butil/macros.h"
 
 #if BRPC_WITH_FLATBUFFERS
 #include <cstdint>
@@ -69,8 +70,6 @@ private:
 class ServiceDescriptor {
 public:
     ServiceDescriptor() : _index(0) {}
-    ServiceDescriptor(const ServiceDescriptor&) = delete;
-    ServiceDescriptor& operator=(const ServiceDescriptor&) = delete;
     int init(const BrpcDescriptorTable& table);
     const std::string& name() const { return _name; }
     const std::string& full_name() const { return _full_name; }
@@ -79,10 +78,12 @@ public:
     int method_count() const { return static_cast<int>(_methods.size()); }
     // Dense declaration-order lookup, for enumeration and generated stubs.
     const MethodDescriptor* method(int position) const;
-    // Sparse stable-ID lookup, for wire dispatch. Missing IDs return nullptr.
+    // Sparse stable-ID lookup, for wire dispatch. The fb_rpc transport uses
+    // this method to resolve stable wire IDs; missing IDs return nullptr.
     const MethodDescriptor* FindMethodByIndex(int id) const;
 
 private:
+    DISALLOW_COPY_AND_ASSIGN(ServiceDescriptor);
     std::string _name;
     std::string _full_name;
     uint32_t _index;
@@ -97,28 +98,33 @@ class RpcChannel {
 public:
     RpcChannel() = default;
     virtual ~RpcChannel() = default;
-    RpcChannel(const RpcChannel&) = delete;
-    RpcChannel& operator=(const RpcChannel&) = delete;
     virtual void FBCallMethod(const MethodDescriptor* method,
                               google::protobuf::RpcController* controller,
                               const Message* request, Message* response,
                               google::protobuf::Closure* done) = 0;
+
+private:
+    DISALLOW_COPY_AND_ASSIGN(RpcChannel);
 };
 
 class Service {
 public:
     Service() = default;
     virtual ~Service() = default;
-    Service(const Service&) = delete;
-    Service& operator=(const Service&) = delete;
     enum ChannelOwnership { STUB_OWNS_CHANNEL, STUB_DOESNT_OWN_CHANNEL };
     virtual const ServiceDescriptor* GetDescriptor() = 0;
-    // Implementations must validate the method and request, report errors on
-    // controller and run a non-null done exactly once, including failure paths.
+    // Public dispatch contract consumed by generated services and fb_rpc:
+    // generated dispatch validates the method and request schema, reports
+    // failures through controller, and runs a non-null done exactly once.
+    // Successful implementations may complete asynchronously; request,
+    // response and controller must remain alive until done is run.
     virtual void FBCallMethod(const MethodDescriptor* method,
                               google::protobuf::RpcController* controller,
                               const Message* request, Message* response,
                               google::protobuf::Closure* done) = 0;
+
+private:
+    DISALLOW_COPY_AND_ASSIGN(Service);
 };
 
 }  // namespace flatbuffers

@@ -20,21 +20,11 @@
 #if BRPC_WITH_FLATBUFFERS
 #include <cstring>
 #include <cerrno>
-#include <cstdlib>
 #include "butil/logging.h"
 
 namespace brpc {
 namespace flatbuffers {
 namespace {
-
-void CheckOrAbort(bool condition, const char* error) {
-    if (BAIDU_UNLIKELY(!condition)) {
-        // brpc's crash_on_fatal_log flag is false by default. A CHECK alone
-        // cannot enforce FlatBuffers' non-null allocator contract.
-        LOG(ERROR) << error;
-        std::abort();
-    }
-}
 
 uint8_t* AlignPayload(uint8_t* data) {
     const uintptr_t address = reinterpret_cast<uintptr_t>(data);
@@ -60,14 +50,14 @@ void SlabAllocator::swap(SlabAllocator& other) noexcept {
 }
 
 uint8_t* SlabAllocator::allocate(size_t size) {
-    CheckOrAbort(size > 0 && size < FLATBUFFERS_MAX_BUFFER_SIZE,
-                 "Invalid FlatBuffers allocation size");
-    CheckOrAbort(_data == nullptr, "Allocator already has a live buffer");
+    RELEASE_ASSERT_VERBOSE(size > 0 && size < FLATBUFFERS_MAX_BUFFER_SIZE,
+                           "Invalid FlatBuffers allocation size");
+    RELEASE_ASSERT_VERBOSE(_data == nullptr, "Allocator already has a live buffer");
     butil::SingleIOBuf storage;
     const uint32_t allocation_size = static_cast<uint32_t>(
         size + kDefaultMetaSize + kBufferAlignment - 1);
     uint8_t* raw = static_cast<uint8_t*>(storage.allocate(allocation_size));
-    CheckOrAbort(raw != nullptr, "Fail to allocate FlatBuffers storage");
+    RELEASE_ASSERT_VERBOSE(raw != nullptr, "Fail to allocate FlatBuffers storage");
     _data = AlignPayload(raw + kDefaultMetaSize);
     _capacity = size;
     _iobuf.swap(storage);
@@ -78,7 +68,7 @@ void SlabAllocator::deallocate(uint8_t* p, size_t /*size*/) {
     if (!p) {
         return;
     }
-    CheckOrAbort(p == _data, "Invalid FlatBuffers deallocation pointer");
+    RELEASE_ASSERT_VERBOSE(p == _data, "Invalid FlatBuffers deallocation pointer");
     _iobuf.reset();
     _data = nullptr;
     _capacity = 0;
@@ -87,11 +77,11 @@ void SlabAllocator::deallocate(uint8_t* p, size_t /*size*/) {
 uint8_t* SlabAllocator::reallocate_downward(
     uint8_t* old_p, size_t old_size, size_t new_size,
     size_t in_use_back, size_t in_use_front) {
-    CheckOrAbort(old_p != nullptr && old_p == _data && old_size == _capacity,
-                 "Invalid FlatBuffers reallocation buffer");
-    CheckOrAbort(new_size > old_size, "FlatBuffers reallocation must grow");
-    CheckOrAbort(in_use_back <= old_size && in_use_front <= old_size - in_use_back,
-                 "Invalid FlatBuffers scratch or payload size");
+    RELEASE_ASSERT_VERBOSE(old_p != nullptr && old_p == _data && old_size == _capacity,
+                           "Invalid FlatBuffers reallocation buffer");
+    RELEASE_ASSERT_VERBOSE(new_size > old_size, "FlatBuffers reallocation must grow");
+    RELEASE_ASSERT_VERBOSE(in_use_back <= old_size && in_use_front <= old_size - in_use_back,
+                           "Invalid FlatBuffers scratch or payload size");
     // Keep the old allocation alive until BOTH data and scratch are copied.
     SlabAllocator replacement;
     uint8_t* data = replacement.allocate(new_size);
@@ -124,8 +114,13 @@ void Message::Swap(Message& other) noexcept {
     std::swap(_msg_size, other._msg_size);
 }
 
-void Message::MergeFrom(const Message& /*other*/) {
-    CheckOrAbort(false, "FlatBuffers Message is move-only; use move assignment");
+void Message::MergeFrom(const Message& other) {
+    if (&other == this) {
+        return;
+    }
+    _iobuf = other._iobuf;
+    _meta_size = other._meta_size;
+    _msg_size = other._msg_size;
 }
 
 void Message::Clear() {
@@ -140,7 +135,7 @@ const uint8_t* Message::data() const {
 }
 
 bool Message::parse_msg_from_iobuf(const butil::IOBuf& buf, size_t msg_size,
-                                  size_t meta_size) {
+                                   size_t meta_size) {
     const size_t total = buf.size();
     // Subtraction avoids overflow, and the limits cover SingleIOBuf's uint32_t
     // sizes, including allocation overhead, before any narrowing conversion.
@@ -205,8 +200,8 @@ void* Message::reduce_meta_size_and_get_buf(uint32_t new_size) {
 MessageBuilder::MessageBuilder(size_t initial_size)
     : ::flatbuffers::FlatBufferBuilder(
           initial_size, &slab_allocator_, false, kBufferAlignment) {
-    CheckOrAbort(initial_size > 0 && initial_size < FLATBUFFERS_MAX_BUFFER_SIZE,
-                 "Invalid FlatBuffers initial size");
+    RELEASE_ASSERT_VERBOSE(initial_size > 0 && initial_size < FLATBUFFERS_MAX_BUFFER_SIZE,
+                           "Invalid FlatBuffers initial size");
 }
 
 MessageBuilder::MessageBuilder(MessageBuilder&& other) : MessageBuilder() {
@@ -243,8 +238,8 @@ void MessageBuilder::Swap(MessageBuilder& other) {
 MessageBuilder::MessageBuilder(::flatbuffers::FlatBufferBuilder&& src)
     : ::flatbuffers::FlatBufferBuilder(std::move(src)) {
     ClearStringPool();
-    CheckOrAbort(minalign_ <= kBufferAlignment,
-                 "Unsupported FlatBuffers alignment");
+    RELEASE_ASSERT_VERBOSE(minalign_ <= kBufferAlignment,
+                           "Unsupported FlatBuffers alignment");
     decltype(buf_) replacement(
         buf_.capacity() ? buf_.capacity() : 1024,
         &slab_allocator_, false, kBufferAlignment);
@@ -267,18 +262,18 @@ MessageBuilder& MessageBuilder::operator=(::flatbuffers::FlatBufferBuilder&& src
 }
 
 Message MessageBuilder::ReleaseMessage() {
-    CheckOrAbort(finished && buf_.size() > 0,
-                 "Finish the FlatBuffer before releasing a message");
+    RELEASE_ASSERT_VERBOSE(finished && buf_.size() > 0,
+                           "Finish the FlatBuffer before releasing a message");
     const uint32_t msg_size = static_cast<uint32_t>(buf_.size());
     const uint8_t* msg_data = buf_.data();
     const butil::SingleIOBuf& storage = slab_allocator_._iobuf;
     const uint8_t* raw = static_cast<const uint8_t*>(storage.get_begin());
-    CheckOrAbort(raw != nullptr, "Missing FlatBuffers storage");
-    CheckOrAbort(msg_data >= raw + kDefaultMetaSize,
-                 "Missing FlatBuffers metadata prefix");
+    RELEASE_ASSERT_VERBOSE(raw != nullptr, "Missing FlatBuffers storage");
+    RELEASE_ASSERT_VERBOSE(msg_data >= raw + kDefaultMetaSize,
+                           "Missing FlatBuffers metadata prefix");
     const size_t begin = msg_data - raw - kDefaultMetaSize;
-    CheckOrAbort(begin + kDefaultMetaSize + msg_size <= storage.get_length(),
-                 "FlatBuffers message exceeds storage");
+    RELEASE_ASSERT_VERBOSE(begin + kDefaultMetaSize + msg_size <= storage.get_length(),
+                           "FlatBuffers message exceeds storage");
     const butil::IOBuf::BlockRef& ref = storage.get_cur_ref();
     const butil::IOBuf::BlockRef sub_ref = {
         ref.offset + static_cast<uint32_t>(begin),

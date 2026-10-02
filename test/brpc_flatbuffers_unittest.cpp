@@ -136,6 +136,44 @@ TEST(FlatbuffersTest, MessageMoveAndSwap) {
     EXPECT_EQ(nullptr, empty.data());
 }
 
+TEST(FlatbuffersTest, MergeFromAndCopyFromShareStorage) {
+    Message source = MakeMessage(128, 7);
+    Message merged = MakeMessage(16, 1);
+    merged.MergeFrom(source);
+    ExpectPayload(merged, 128, 7);
+    EXPECT_EQ(source.data(), merged.data());
+    merged.MergeFrom(merged);
+    ExpectPayload(merged, 128, 7);
+
+    Message copied = MakeMessage(32, 2);
+    copied.CopyFrom(source);
+    ExpectPayload(copied, 128, 7);
+    EXPECT_EQ(source.data(), copied.data());
+
+    uint8_t* buffer = static_cast<uint8_t*>(copied.mutable_data());
+    uint8_t* table = buffer + ::flatbuffers::ReadScalar<::flatbuffers::uoffset_t>(buffer);
+    const ::flatbuffers::soffset_t vtable_offset =
+        ::flatbuffers::ReadScalar<::flatbuffers::soffset_t>(table);
+    uint8_t* vtable = table - vtable_offset;
+    const ::flatbuffers::voffset_t value_offset =
+        ::flatbuffers::ReadScalar<::flatbuffers::voffset_t>(
+            vtable + Payload::VT_VALUE);
+    ASSERT_NE(0, value_offset);
+    ::flatbuffers::WriteScalar<int64_t>(table + value_offset, 9);
+    ExpectPayload(source, 128, 9);
+    ExpectPayload(merged, 128, 9);
+    ExpectPayload(copied, 128, 9);
+
+    source.Clear();
+    ExpectPayload(merged, 128, 9);
+    ExpectPayload(copied, 128, 9);
+
+    Message empty;
+    merged.MergeFrom(empty);
+    EXPECT_EQ(nullptr, merged.data());
+    EXPECT_EQ(0u, merged.size());
+}
+
 TEST(FlatbuffersTest, BuilderMoveAndReuse) {
     MessageBuilder first(8);
     auto str = first.CreateString(std::string(8192, 'x'));
@@ -461,7 +499,6 @@ TEST_F(FlatbuffersDeathTest, RejectsUnsafeAllocatorInputsAndUnfinishedRelease) {
         a.reallocate_downward(p, 8, 16, 8, 1);
     }, "");
     EXPECT_DEATH({ MessageBuilder builder; builder.ReleaseMessage(); }, "Finish");
-    EXPECT_DEATH({ Message msg; Message other; msg.MergeFrom(other); }, "move-only");
 }
 
 TEST(FlatbuffersDescriptorTest, SparseStableIDsAndCanonicalNames) {

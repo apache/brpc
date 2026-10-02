@@ -25,6 +25,17 @@
 #include <cstdint>
 #include <utility>
 #include <flatbuffers/flatbuffers.h>
+
+#if !defined(FLATBUFFERS_VERSION_MAJOR) || \
+    !defined(FLATBUFFERS_VERSION_MINOR) || \
+    !defined(FLATBUFFERS_VERSION_REVISION) || \
+    FLATBUFFERS_VERSION_MAJOR != 25 || \
+    FLATBUFFERS_VERSION_MINOR != 2 || \
+    FLATBUFFERS_VERSION_REVISION != 10
+#error "bRPC FlatBuffers support requires FlatBuffers 25.2.10"
+#endif
+
+#include "butil/macros.h"
 #include "butil/single_iobuf.h"
 #include "brpc/nonreflectable_message.h"
 
@@ -43,8 +54,6 @@ class MessageBuilder;
 class SlabAllocator : public ::flatbuffers::Allocator {
 public:
     SlabAllocator() : _data(nullptr), _capacity(0) {}
-    SlabAllocator(const SlabAllocator&) = delete;
-    SlabAllocator& operator=(const SlabAllocator&) = delete;
     SlabAllocator(SlabAllocator&& other) noexcept : SlabAllocator() {
         swap(other);
     }
@@ -58,10 +67,11 @@ public:
     void swap(SlabAllocator& other) noexcept;
 
 private:
+    DISALLOW_COPY_AND_ASSIGN(SlabAllocator);
+friend class MessageBuilder;
     butil::SingleIOBuf _iobuf;
     uint8_t* _data;
     size_t _capacity;
-    friend class MessageBuilder;
 };
 
 // Construct the allocator before the FlatBufferBuilder base uses it, and
@@ -70,13 +80,14 @@ struct SlabAllocatorMember {
     SlabAllocator slab_allocator_;
 };
 
-// A move-only message. Parsing checks framing, not the schema: Verify<T>()
-// must succeed before reading data received from an untrusted peer.
+// A move-only message for application code. Protobuf CopyFrom/MergeFrom retain
+// the same ref-counted IOBuf instead of deep-copying it. Mutable access through
+// any alias changes every message sharing that storage and must not race readers.
+// Parsing checks framing, not the schema: Verify<T>() must succeed before
+// reading data received from an untrusted peer.
 class Message : public NonreflectableMessage<Message> {
 public:
     Message() : _meta_size(0), _msg_size(0) {}
-    Message(const Message&) = delete;
-    Message& operator=(const Message&) = delete;
     Message(Message&& other) noexcept : Message() { Swap(other); }
     Message& operator=(Message&& other) noexcept;
 
@@ -85,6 +96,7 @@ public:
     void Swap(Message& other) noexcept;
 
     const uint8_t* data() const;
+    // These mutable pointers may refer to storage shared by CopyFrom/MergeFrom.
     void* mutable_data() { return const_cast<uint8_t*>(data()); }
     void* mutable_buf_begin() {
         return const_cast<void*>(_iobuf.get_begin());
@@ -103,7 +115,8 @@ public:
         return verifier.VerifyBuffer<T>(nullptr);
     }
 
-    // These accessors require a schema-verified buffer.
+    // These accessors require a schema-verified buffer. GetMutableRoot may
+    // mutate all Message aliases that retain the same IOBuf block.
     template <typename T> const T* GetRoot() const {
         return data() ? ::flatbuffers::GetRoot<T>(data()) : nullptr;
     }
@@ -113,11 +126,15 @@ public:
 
     // Failure leaves the old message unchanged. A fragmented or unaligned
     // payload is copied into aligned storage; aligned contiguous input is shared.
+    // When msg_size comes from an untrusted peer, callers must bound it with
+    // their own max-message-size policy before parsing. This method does not
+    // verify the schema; call Verify<T>() before reading the root.
     bool parse_msg_from_iobuf(const butil::IOBuf& buf, size_t msg_size,
                               size_t meta_size);
     bool append_msg_to_iobuf(butil::IOBuf& buf) const;
 
 private:
+    DISALLOW_COPY_AND_ASSIGN(Message);
     Message(const butil::IOBuf::BlockRef& ref, uint32_t meta_size,
             uint32_t msg_size);
     butil::SingleIOBuf _iobuf;

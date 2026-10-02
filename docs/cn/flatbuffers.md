@@ -28,21 +28,21 @@ ctest --test-dir build -R '^brpc_flatbuffers_unittest$' --output-on-failure
 `FLATBUFFERS_FLATC_EXECUTABLE` 和 `BRPC_SYSTEM_GTEST_SOURCE_DIR`。
 项目原有测试依赖仍然适用。
 
-Make 可在 `config_brpc.sh` 中传入 `--with-flatbuffers`；测试可通过
-`FLATC=/path/to/flatc` 指定官方生成器。Bazel 可传入
-`--define=BRPC_WITH_FLATBUFFERS=true`，并使用匹配的 FlatBuffers 25.2.10
-运行时和编译器依赖。Bzlmod 导入与 WORKSPACE 相同的 checksum 固定归档：
-`runtime_cc` 和 `flatc` 不需要 FlatBuffers 的外部 gRPC 模块，否则即使该功能关闭，
-也可能与 bRPC 固定的 BoringSSL 版本冲突。
+Make 使用 `config_brpc.sh --with-flatbuffers`，测试时可通过
+`FLATC=/path/to/flatc` 指定生成器。Bazel 使用
+`--define=BRPC_WITH_FLATBUFFERS=true`。运行库固定支持 FlatBuffers 25.2.10，
+其他版本会在编译期被拒绝。
+
+Bzlmod 继续使用与 WORKSPACE 相同的 checksum 固定归档，而不使用
+`bazel_dep`，避免引入 FlatBuffers 的 gRPC、其他语言工具及冲突的 BoringSSL 依赖。
 
 公共头文件位于 `brpc/flatbuffers/`，命名空间为 `brpc::flatbuffers`。
 构造消息包含 `message.h`，使用服务描述符和接口包含 `service.h`。
 `butil/config.h` 中的 `BRPC_WITH_FLATBUFFERS` 始终为 0 或 1；应用应使用
 `#if` 判断，而不是 `#ifdef`。
 
-Flatc 2.0.x 会生成未全限定的 `flatbuffers::` 名称。业务 schema 应使用
-`brpc` 之外的 namespace（例如 `myapp.rpc`），避免被 `brpc::flatbuffers`
-遮蔽；不要依赖 include 顺序。Flatc 25.2.10 会生成全限定名称。
+旧版 flatc 2.0.x 可能生成未全限定名称；schema 不要使用 `brpc` 命名空间，
+也不要依赖 include 顺序。
 
 ## 消息构造和所有权
 
@@ -54,6 +54,9 @@ Flatc 2.0.x 会生成未全限定的 `flatbuffers::` 名称。业务 schema 应�
   block 引用，并且在 builder 复用或析构后仍然有效。
 * Message 和 builder 移动后，源对象仍可复用。移动带 shared string 的 builder 会丢弃
   其可选去重缓存；已经生成的 offset 仍有效。
+* `Message::CopyFrom` 和 `MergeFrom` 会保留同一个引用计数 IOBuf block，不会深拷贝 payload
+  或 metadata。任一 alias 的可变访问都会修改所有共享该存储的 Message；存在其他读者时，
+  不要在缺少外部同步的情况下修改。
 * 导入普通 `::flatbuffers::FlatBufferBuilder` 会复制其 payload 和 scratch，并保留
   未完成 table 的状态。原始 allocator 负责释放原有存储，包括其拥有的自定义 allocator。
   实现不会猜测该用 `free` 还是 `delete[]`，也不会假设 payload 前存在额外空间。
@@ -68,10 +71,11 @@ Flatc 2.0.x 会生成未全限定的 `flatbuffers::` 名称。业务 schema 应�
   中同样 fatal，不受 bRPC `crash_on_fatal_log` 设置影响。这些路径会显式 abort，
   而不是依赖 `CHECK`/`LOG(FATAL)`。上游 `vector_downward` 无法在 null allocation 后安全继续。
 
-`ParseFbFromIOBUF` 检查长度和 framing，并保留独立所有权。当 payload 地址 64 字节对齐时，
-它会共享连续输入；输入分片或对齐不足时会复制到对齐存储。builder 分配为 64 字节对齐，
-但最终 payload 只需满足 schema 要求的对齐，因此并非所有本地消息都适合接收侧零拷贝。
-不支持超过 64 字节的对齐要求。
+`ParseFbFromIOBUF` 检查长度和 framing，并保留独立所有权，但它不是接收侧准入上限。
+`msg_size` 来自不可信对端时，调用方必须先按自己的 max-message-size 策略限制长度，再调用
+解析接口；分片或未对齐输入会在 schema 验证前分配并复制。当 payload 地址 64 字节对齐时，
+解析会共享连续输入。builder 分配为 64 字节对齐，但最终 payload 只需满足 schema 要求的
+对齐，因此并非所有本地消息都适合接收侧零拷贝。不支持超过 64 字节的对齐要求。
 
 **Framing 不是 schema 验证。** 对不可信对端收到的数据，应先调用
 `msg.Verify<YourRoot>()`，再调用 `GetRoot<YourRoot>()` 或
