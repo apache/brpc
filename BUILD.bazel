@@ -20,6 +20,12 @@ licenses(["notice"])  # Apache v2
 
 exports_files(["LICENSE"])
 
+config_setting(
+    name = "brpc_with_flatbuffers",
+    define_values = {"BRPC_WITH_FLATBUFFERS": "true"},
+    visibility = ["//visibility:public"],
+)
+
 COPTS = [
     "-fno-omit-frame-pointer",
 ] + select({
@@ -45,6 +51,9 @@ DEFINES = [
  }) + select({
      "//bazel/config:brpc_with_thrift": ["ENABLE_THRIFT_FRAMED_PROTOCOL=1"],
      "//conditions:default": [],
+ }) + select({
+     ":brpc_with_flatbuffers": ["BRPC_WITH_FLATBUFFERS=1"],
+     "//conditions:default": ["BRPC_WITH_FLATBUFFERS=0"],
  }) + select({
      "//bazel/config:brpc_with_thrift_legacy_version": [],
      "//conditions:default": ["THRIFT_STDCXX=std"],
@@ -122,6 +131,14 @@ genrule(
 #endif
 #define BRPC_WITH_GLOG """ + select({
               "//bazel/config:brpc_with_glog": "1",
+              "//conditions:default": "0",
+          }) +
+          """
+#ifdef BRPC_WITH_FLATBUFFERS
+#undef BRPC_WITH_FLATBUFFERS
+#endif
+#define BRPC_WITH_FLATBUFFERS """ + select({
+              ":brpc_with_flatbuffers": "1",
               "//conditions:default": "0",
           }) +
           """
@@ -539,6 +556,8 @@ brpc_proto_library(
     visibility = ["//visibility:public"],
 )
 
+FLATBUFFERS_SRC_PATTERNS = ["src/brpc/flatbuffers/*.cpp"]
+
 URMA_SRC_PATTERNS = [
     "src/brpc/urma/*.cpp",
     "src/brpc/urma/**/*.cpp",
@@ -562,7 +581,7 @@ BRPC_BASE_SRCS = glob(
         "src/brpc/policy/thrift_protocol.cpp",
         "src/brpc/event_dispatcher_epoll.cpp",
         "src/brpc/event_dispatcher_kqueue.cpp",
-    ] + URMA_SRC_PATTERNS,
+    ] + URMA_SRC_PATTERNS + FLATBUFFERS_SRC_PATTERNS,
 )
 
 cc_library(
@@ -572,6 +591,9 @@ cc_library(
             "src/brpc/thrift*.cpp",
             "src/brpc/**/thrift*.cpp",
         ]),
+        "//conditions:default": [],
+    }) + select({
+        ":brpc_with_flatbuffers": glob(FLATBUFFERS_SRC_PATTERNS),
         "//conditions:default": [],
     }) + select({
         "//bazel/config:brpc_with_urma_use_real": URMA_SRCS,
@@ -611,6 +633,9 @@ cc_library(
         "//bazel/config:brpc_with_thrift": [
             "@org_apache_thrift//:thrift",
         ],
+        "//conditions:default": [],
+    }) + select({
+        ":brpc_with_flatbuffers": ["@com_github_google_flatbuffers//:runtime_cc"],
         "//conditions:default": [],
     }),
 )

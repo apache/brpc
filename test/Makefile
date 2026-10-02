@@ -181,6 +181,9 @@ TEST_BTHREAD_SOURCES = $(wildcard bthread_*unittest.cpp)
 TEST_BTHREAD_OBJS = $(addsuffix .o, $(basename $(TEST_BTHREAD_SOURCES))) 
 
 TEST_BRPC_SOURCES = $(wildcard brpc_*unittest.cpp)
+ifneq ($(WITH_FLATBUFFERS),1)
+TEST_BRPC_SOURCES := $(filter-out brpc_flatbuffers_unittest.cpp,$(TEST_BRPC_SOURCES))
+endif
 TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES))) 
 
 TEST_PROTO_SOURCES = $(wildcard *.proto)
@@ -194,7 +197,7 @@ all: $(TEST_BINS)
 .PHONY:clean
 clean:clean_bins
 	@echo "> Cleaning"
-	rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS) $(TEST_PROTO_SOURCES:.proto=.pb.h) $(TEST_PROTO_SOURCES:.proto=.pb.cc)
+	rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS) $(TEST_PROTO_SOURCES:.proto=.pb.h) $(TEST_PROTO_SOURCES:.proto=.pb.cc) flatbuffers_message_generated.h
 	$(MAKE) -C.. clean_debug
 
 .PHONY:clean_bins
@@ -233,6 +236,23 @@ ifeq ($(SYSTEM),Linux)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(GTEST_STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
+endif
+
+ifeq ($(WITH_FLATBUFFERS),1)
+FLATC ?= flatc
+
+flatbuffers_message_generated.h:flatbuffers_message.fbs
+	$(FLATC) --cpp -o . $<
+
+brpc_flatbuffers_unittest.o:flatbuffers_message_generated.h
+
+brpc_flatbuffers_unittest:brpc_flatbuffers_unittest.o | libbrpc.dbg.$(SOEXT)
+	@echo "> Linking $@"
+ifeq ($(SYSTEM),Linux)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Darwin)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(GTEST_STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
+endif
 endif
 
 brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o | libbrpc.dbg.$(SOEXT)

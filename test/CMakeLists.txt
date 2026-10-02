@@ -268,8 +268,35 @@ foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     add_test(NAME ${BTHREAD_UT_WE} COMMAND ${BTHREAD_UT_WE})
 endforeach()
 
+# FlatBuffers tests use the release library, independently of the debug suite.
+if(WITH_FLATBUFFERS)
+    find_program(FLATBUFFERS_FLATC_EXECUTABLE NAMES flatc)
+    if(NOT FLATBUFFERS_FLATC_EXECUTABLE)
+        message(FATAL_ERROR
+            "FlatBuffers tests require an installed flatc; set FLATBUFFERS_FLATC_EXECUTABLE.")
+    endif()
+    set(FLATBUFFERS_TEST_HEADER
+        "${CMAKE_CURRENT_BINARY_DIR}/flatbuffers_message_generated.h")
+    add_custom_command(
+        OUTPUT "${FLATBUFFERS_TEST_HEADER}"
+        COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" --cpp
+                -o "${CMAKE_CURRENT_BINARY_DIR}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/flatbuffers_message.fbs"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/flatbuffers_message.fbs"
+                "${FLATBUFFERS_FLATC_EXECUTABLE}"
+        COMMENT "Generating FlatBuffers test messages"
+        VERBATIM)
+    add_executable(brpc_flatbuffers_unittest
+        brpc_flatbuffers_unittest.cpp "${FLATBUFFERS_TEST_HEADER}")
+    target_link_libraries(brpc_flatbuffers_unittest PRIVATE
+        brpc-static brpc_test_config gtest_main ${DYNAMIC_LIB})
+    add_test(NAME brpc_flatbuffers_unittest COMMAND brpc_flatbuffers_unittest)
+endif()
+
 # brpc tests
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
+list(REMOVE_ITEM BRPC_UNITTESTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
