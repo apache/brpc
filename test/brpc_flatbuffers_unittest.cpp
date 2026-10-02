@@ -27,7 +27,7 @@
 #include <vector>
 #include "brpc/flatbuffers/message.h"
 #include "brpc/flatbuffers/service.h"
-#include "flatbuffers_message_generated.h"
+#include <flatbuffers_message_generated.h>
 
 #if !BRPC_WITH_GLOG
 namespace logging {

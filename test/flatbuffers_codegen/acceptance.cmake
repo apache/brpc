@@ -15,6 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+if(NOT DEFINED CXX_STANDARD)
+    set(CXX_STANDARD 14)
+endif()
 file(READ "${SCHEMA}" schema_text)
 file(MAKE_DIRECTORY "${WORK}")
 
@@ -32,6 +35,119 @@ function(expect_rejected name replacement)
         message(FATAL_ERROR "${name}: invalid schema emitted service files")
     endif()
     message(STATUS "Rejected ${name}: ${error}")
+endfunction()
+
+function(expect_schema_rejected name text diagnostic)
+    set(directory "${WORK}/${name}")
+    file(REMOVE_RECURSE "${directory}")
+    file(MAKE_DIRECTORY "${directory}")
+    file(WRITE "${directory}/echo.fbs" "${text}")
+    execute_process(COMMAND "${GENERATOR}" -o "${directory}" "${directory}/echo.fbs"
+        RESULT_VARIABLE result ERROR_VARIABLE error)
+    string(FIND "${error}" "${diagnostic}" diagnostic_position)
+    if("${result}" STREQUAL "0" OR diagnostic_position LESS 0)
+        message(FATAL_ERROR "${name}: schema was accepted or lacked diagnostic: ${error}")
+    endif()
+    if(EXISTS "${directory}/echo.brpc.fb.h" OR EXISTS "${directory}/echo.brpc.fb.cpp")
+        message(FATAL_ERROR "${name}: rejected schema emitted service files")
+    endif()
+    message(STATUS "Rejected ${name}: ${error}")
+endfunction()
+
+function(prepare_output_pair directory)
+    file(REMOVE_RECURSE "${directory}")
+    file(MAKE_DIRECTORY "${directory}")
+    file(WRITE "${directory}/echo.fbs" "${schema_text}")
+    file(WRITE "${directory}/echo.brpc.fb.h" "previous header\n")
+    file(WRITE "${directory}/echo.brpc.fb.cpp" "previous source\n")
+endfunction()
+
+function(expect_output_pair_restored name failure)
+    set(directory "${WORK}/${name}")
+    prepare_output_pair("${directory}")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+        "BRPC_FLATC_TEST_FAILURE=${failure}"
+        "${GENERATOR}" -o "${directory}" "${directory}/echo.fbs"
+        RESULT_VARIABLE result ERROR_VARIABLE error)
+    if("${result}" STREQUAL "0" OR error STREQUAL "")
+        message(FATAL_ERROR "${name}: injected failure was not reported")
+    endif()
+    file(READ "${directory}/echo.brpc.fb.h" current_header)
+    file(READ "${directory}/echo.brpc.fb.cpp" current_source)
+    if(NOT current_header STREQUAL "previous header\n" OR
+       NOT current_source STREQUAL "previous source\n")
+        message(FATAL_ERROR "${name}: previous output pair was not restored")
+    endif()
+    file(GLOB transaction_files "${directory}/echo.brpc.fb.*.tmp"
+                                "${directory}/echo.brpc.fb.*.bak")
+    if(transaction_files)
+        message(FATAL_ERROR "${name}: transaction files remained after rollback")
+    endif()
+    message(STATUS "Restored output pair after ${failure}: ${error}")
+endfunction()
+
+function(expect_output_pair_removed name failure remaining_backup)
+    set(directory "${WORK}/${name}")
+    prepare_output_pair("${directory}")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+        "BRPC_FLATC_TEST_FAILURE=${failure}"
+        "${GENERATOR}" -o "${directory}" "${directory}/echo.fbs"
+        RESULT_VARIABLE result ERROR_VARIABLE error)
+    if("${result}" STREQUAL "0" OR error STREQUAL "")
+        message(FATAL_ERROR "${name}: injected restore failure was not reported")
+    endif()
+    if(EXISTS "${directory}/echo.brpc.fb.h" OR EXISTS "${directory}/echo.brpc.fb.cpp")
+        message(FATAL_ERROR "${name}: partial final output remained")
+    endif()
+    if(NOT EXISTS "${directory}/echo.brpc.fb.${remaining_backup}.bak")
+        message(FATAL_ERROR "${name}: recoverable backup was not retained")
+    endif()
+    file(GLOB temporary_outputs "${directory}/echo.brpc.fb.*.tmp")
+    if(temporary_outputs)
+        message(FATAL_ERROR "${name}: temporary files remained")
+    endif()
+    message(STATUS "Removed final pair after ${failure}: ${error}")
+endfunction()
+
+function(expect_concurrent_output_pair)
+    set(directory "${WORK}/concurrent_output_pair")
+    set(output "${directory}/output")
+    file(REMOVE_RECURSE "${directory}")
+    file(MAKE_DIRECTORY "${directory}/first" "${directory}/second" "${output}")
+    set(first_schema
+        "namespace codegen.concurrent;\ntable Request {}\ntable Response {}\nrpc_service Echo { First(Request):Response (id: 1); }\n")
+    set(second_schema
+        "namespace codegen.concurrent;\ntable Request {}\ntable Response {}\nrpc_service Echo { Second(Request):Response (id: 2); }\n")
+    file(WRITE "${directory}/first/echo.fbs" "${first_schema}")
+    file(WRITE "${directory}/second/echo.fbs" "${second_schema}")
+    file(WRITE "${directory}/run.sh"
+        "#!/bin/sh\n\"${GENERATOR}\" -o \"${output}\" \"${directory}/first/echo.fbs\" &\nfirst=\$!\n\"${GENERATOR}\" -o \"${output}\" \"${directory}/second/echo.fbs\" &\nsecond=\$!\nwait \$first\nfirst_result=\$?\nwait \$second\nsecond_result=\$?\ntest \$first_result -eq 0 -a \$second_result -eq 0\n")
+    execute_process(COMMAND /bin/sh "${directory}/run.sh"
+        RESULT_VARIABLE result ERROR_VARIABLE error)
+    if(NOT "${result}" STREQUAL "0")
+        message(FATAL_ERROR "concurrent_output_pair: generation failed: ${error}")
+    endif()
+    execute_process(COMMAND "${FLATC}" --cpp -o "${output}"
+        "${directory}/first/echo.fbs" RESULT_VARIABLE result ERROR_VARIABLE error)
+    if(NOT "${result}" STREQUAL "0")
+        message(FATAL_ERROR "concurrent_output_pair: official flatc failed: ${error}")
+    endif()
+    set(includes "-I${output}")
+    foreach(include_dir IN LISTS INCLUDE_DIRS)
+        list(APPEND includes "-I${include_dir}")
+    endforeach()
+    execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+        -c "${output}/echo.brpc.fb.cpp" -o "${directory}/echo.o"
+        RESULT_VARIABLE result ERROR_VARIABLE error)
+    if(NOT "${result}" STREQUAL "0")
+        message(FATAL_ERROR "concurrent_output_pair: mixed generated files: ${error}")
+    endif()
+    file(GLOB transaction_files "${output}/echo.brpc.fb.*.tmp"
+                                "${output}/echo.brpc.fb.*.bak")
+    if(transaction_files)
+        message(FATAL_ERROR "concurrent_output_pair: transaction files remained")
+    endif()
+    message(STATUS "Serialized concurrent output publication")
 endfunction()
 
 function(expect_rejected_rpc_name name)
@@ -56,6 +172,10 @@ function(expect_rejected_rpc_name name)
 endfunction()
 
 function(expect_compiles name text)
+    set(standard "${CXX_STANDARD}")
+    if(ARGC GREATER 2)
+        set(standard "${ARGV2}")
+    endif()
     set(directory "${WORK}/${name}")
     file(MAKE_DIRECTORY "${directory}")
     file(WRITE "${directory}/echo.fbs" "${text}")
@@ -73,7 +193,7 @@ function(expect_compiles name text)
     foreach(include_dir IN LISTS INCLUDE_DIRS)
         list(APPEND includes "-I${include_dir}")
     endforeach()
-    execute_process(COMMAND "${CXX}" -std=c++14 ${includes}
+    execute_process(COMMAND "${CXX}" "-std=c++${standard}" ${includes}
         -c "${directory}/echo.brpc.fb.cpp" -o "${directory}/echo.o"
         RESULT_VARIABLE result ERROR_VARIABLE error)
     if(NOT "${result}" STREQUAL "0")
@@ -81,7 +201,7 @@ function(expect_compiles name text)
     endif()
     # The generated header must also compile without incidental prior includes.
     file(WRITE "${directory}/header.cpp" "#include \"echo.brpc.fb.h\"\n")
-    execute_process(COMMAND "${CXX}" -std=c++14 ${includes}
+    execute_process(COMMAND "${CXX}" "-std=c++${standard}" ${includes}
         -c "${directory}/header.cpp" -o "${directory}/header.o"
         RESULT_VARIABLE result ERROR_VARIABLE error)
     if(NOT "${result}" STREQUAL "0")
@@ -99,8 +219,106 @@ function(expect_compiles name text)
     message(STATUS "Compiled ${name}")
 endfunction()
 
+function(expect_distinct_headers name first_stem second_stem)
+    set(directory "${WORK}/header_guards_${name}")
+    set(includes)
+    foreach(include_dir IN LISTS INCLUDE_DIRS)
+        list(APPEND includes "-I${include_dir}")
+    endforeach()
+    foreach(side first second)
+        set(stem "${${side}_stem}")
+        set(output "${directory}/${side}")
+        file(MAKE_DIRECTORY "${output}")
+        string(REPLACE "namespace codegen.example;" "namespace guard_${name}.${side};"
+            text "${schema_text}")
+        if(side STREQUAL "first")
+            set(first_text "${text}")
+        endif()
+        file(WRITE "${output}/${stem}.fbs" "${text}")
+        execute_process(COMMAND "${FLATC}" --cpp -o "${output}" "${output}/${stem}.fbs"
+            RESULT_VARIABLE result ERROR_VARIABLE error)
+        if(NOT "${result}" STREQUAL "0")
+            message(FATAL_ERROR "${name}/${side}: official flatc failed: ${error}")
+        endif()
+        execute_process(COMMAND "${GENERATOR}" -o "${output}" "${output}/${stem}.fbs"
+            RESULT_VARIABLE result ERROR_VARIABLE error)
+        if(NOT "${result}" STREQUAL "0")
+            message(FATAL_ERROR "${name}/${side}: brpc_flatc failed: ${error}")
+        endif()
+        file(WRITE "${output}/single.cpp"
+            "#include \"${stem}.brpc.fb.h\"\n::guard_${name}::${side}::Echo* service = nullptr;\n")
+        execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+            -c "${output}/single.cpp" -o "${output}/single.o"
+            RESULT_VARIABLE result ERROR_VARIABLE error)
+        if(NOT "${result}" STREQUAL "0")
+            message(FATAL_ERROR "${name}/${side}: standalone header failed: ${error}")
+        endif()
+    endforeach()
+    foreach(reverse FALSE TRUE)
+        set(first "#include \"first/${first_stem}.brpc.fb.h\"\n")
+        set(second "#include \"second/${second_stem}.brpc.fb.h\"\n")
+        if(reverse)
+            set(headers "${second}${first}")
+        else()
+            set(headers "${first}${second}")
+        endif()
+        file(WRITE "${directory}/combined_${reverse}.cpp"
+            "${headers}::guard_${name}::first::Echo* first_echo = nullptr;\n::guard_${name}::second::Echo* second_echo = nullptr;\n")
+        execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+            -c "${directory}/combined_${reverse}.cpp"
+            -o "${directory}/combined_${reverse}.o"
+            RESULT_VARIABLE result ERROR_VARIABLE error)
+        if(NOT "${result}" STREQUAL "0")
+            message(FATAL_ERROR "${name}: combined headers (reverse=${reverse}) failed: ${error}")
+        endif()
+    endforeach()
+    # A checkout/output directory change must not alter generated identifiers.
+    set(relocated "${directory}/relocated")
+    file(MAKE_DIRECTORY "${relocated}")
+    file(WRITE "${relocated}/${first_stem}.fbs" "${first_text}")
+    execute_process(COMMAND "${GENERATOR}" -o . "${first_stem}.fbs"
+        WORKING_DIRECTORY "${relocated}"
+        RESULT_VARIABLE result ERROR_VARIABLE error)
+    if(NOT "${result}" STREQUAL "0")
+        message(FATAL_ERROR "${name}: relocated generation failed: ${error}")
+    endif()
+    foreach(suffix brpc.fb.h brpc.fb.cpp)
+        file(READ "${directory}/first/${first_stem}.${suffix}" original)
+        file(READ "${relocated}/${first_stem}.${suffix}" regenerated)
+        if(NOT "${original}" STREQUAL "${regenerated}")
+            message(FATAL_ERROR "${name}: ${suffix} depends on checkout/output paths")
+        endif()
+    endforeach()
+    message(STATUS "Distinct, relocatable header guards: ${name}")
+endfunction()
+
+expect_distinct_headers(punctuation foo-bar foo_bar)
+expect_distinct_headers(letter_case FooBar foobar)
+expect_distinct_headers(same_basename echo echo)
+
 expect_rejected_rpc_name(channel_)
 expect_rejected_rpc_name(owned_channel_)
+string(REPLACE "rpc_service Echo {" "rpc_service char8_t {"
+    char8_t_schema "${schema_text}")
+expect_schema_rejected(cpp20_char8_t "${char8_t_schema}"
+    "C++ keyword is not supported: char8_t")
+set(service_collision_schema
+    "namespace codegen.collision;\ntable Request {}\ntable Response {}\nrpc_service Echo { Call(Request):Response (id: 1); }\nrpc_service Echo_Stub { Call(Request):Response (id: 2); }\n")
+expect_schema_rejected(service_stub_collision "${service_collision_schema}"
+    "generated service class name collides: ::codegen::collision::Echo_Stub")
+set(stub_service_collision_schema
+    "namespace codegen.collision;\ntable Request {}\ntable Response {}\nrpc_service Echo_Stub { Call(Request):Response (id: 2); }\nrpc_service Echo { Call(Request):Response (id: 1); }\n")
+expect_schema_rejected(stub_service_collision "${stub_service_collision_schema}"
+    "generated service class name collides: ::codegen::collision::Echo_Stub")
+expect_output_pair_restored(stage_source_failure stage_source)
+expect_output_pair_restored(preserve_source_failure preserve_source)
+expect_output_pair_restored(publish_header_failure publish_header)
+expect_output_pair_restored(publish_source_failure publish_source)
+expect_output_pair_removed(restore_header_failure
+    "publish_source,restore_header" h)
+expect_output_pair_removed(restore_source_failure
+    "publish_source,restore_source" cpp)
+expect_concurrent_output_pair()
 expect_rejected(missing_id "")
 expect_rejected(duplicate_id "(id: 41)")
 expect_rejected(negative_id "(id: -1)")
@@ -108,6 +326,17 @@ expect_rejected(overflow_id "(id: 2147483648)")
 expect_rejected(string_id "(id: \"7\")")
 expect_rejected(streaming "(id: 7, streaming: \"server\")")
 expect_compiles(sparse_ids "${schema_text}")
+file(WRITE "${WORK}/cxx20_probe.cpp" "int main() { return 0; }\n")
+execute_process(COMMAND "${CXX}" -std=c++20 -fsyntax-only "${WORK}/cxx20_probe.cpp"
+    RESULT_VARIABLE cxx20_result ERROR_QUIET)
+if("${cxx20_result}" STREQUAL "0")
+    expect_compiles(cxx20 "${schema_text}" 20)
+else()
+    message(STATUS "Skipping C++20 compile smoke test: compiler lacks -std=c++20")
+endif()
+set(cross_namespace_schema
+    "namespace codegen.common;\ntable Request {}\ntable Response {}\nnamespace codegen.first;\nrpc_service Echo { Call(codegen.common.Request):codegen.common.Response (id: 1); }\nnamespace codegen.second;\nrpc_service Echo_Stub { Call(codegen.common.Request):codegen.common.Response (id: 2); }\n")
+expect_compiles(cross_namespace_names "${cross_namespace_schema}")
 
 set(shadow_names request response controller done method std BrpcFlatbuffersFail
     STUB_OWNS_CHANNEL STUB_DOESNT_OWN_CHANNEL ChannelOwnership)
@@ -209,7 +438,7 @@ int main() {
     foreach(include_dir IN LISTS INCLUDE_DIRS)
         list(APPEND includes "-I${include_dir}")
     endforeach()
-    execute_process(COMMAND "${CXX}" -std=c++14 ${includes}
+    execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
         "${directory}/runtime.cpp" "${directory}/echo.o" ${RUNTIME_LIBRARIES}
         -o "${directory}/runtime"
         RESULT_VARIABLE result ERROR_VARIABLE error)

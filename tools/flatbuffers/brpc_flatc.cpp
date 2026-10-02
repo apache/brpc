@@ -15,7 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <cerrno>
+#include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <exception>
 #include <fstream>
 #include <iostream>
@@ -25,6 +28,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <flatbuffers/idl.h>
 
 namespace {
@@ -80,11 +87,22 @@ std::string Qualified(const flatbuffers::Definition& definition) {
     return "::" + (ns.empty() ? "" : ns + "::") + definition.name;
 }
 
+std::string GuardComponent(const std::string& value) {
+    static const char digits[] = "0123456789ABCDEF";
+    std::string result;
+    for (unsigned char c : value) {
+        result += digits[c >> 4];
+        result += digits[c & 15];
+    }
+    return result;
+}
+
 bool IsCppIdentifier(const std::string& name) {
     static const std::set<std::string> keywords = {
         "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand",
-        "bitor", "bool", "break", "case", "catch", "char", "char16_t",
-        "char32_t", "class", "compl", "concept", "const", "const_cast",
+        "bitor", "bool", "break", "case", "catch", "char", "char8_t",
+        "char16_t", "char32_t", "class", "compl", "concept", "const",
+        "const_cast",
         "consteval", "constexpr", "constinit", "continue", "co_await",
         "co_return", "co_yield", "decltype", "default", "delete", "do",
         "double", "dynamic_cast", "else", "enum", "explicit", "export",
@@ -138,12 +156,23 @@ bool ParseId(const flatbuffers::Value& value, int32_t* id) {
 
 bool CollectServices(const flatbuffers::Parser& parser,
                      std::vector<Service>* services, std::string* error) {
+    std::set<std::string> generated_class_names;
     for (const auto* definition : parser.services_.vec) {
         // Included schemas are generated separately, just as with flatc --cpp.
         if (definition->generated) {
             continue;
         }
         if (!ValidateName(*definition, error)) {
+            return false;
+        }
+        const std::string service_name = Qualified(*definition);
+        const std::string stub_name = service_name + "_Stub";
+        if (!generated_class_names.insert(service_name).second) {
+            *error = "generated service class name collides: " + service_name;
+            return false;
+        }
+        if (!generated_class_names.insert(stub_name).second) {
+            *error = "generated service class name collides: " + stub_name;
             return false;
         }
         Service service = {definition, {}};
@@ -343,11 +372,192 @@ void GenerateSource(const Service& service, std::ostream& out) {
     CloseNamespace(definition, out);
 }
 
-bool WriteFile(const std::string& path, const std::string& contents) {
+bool TestFailureEnabled(const char* step) {
+#if defined(BRPC_FLATC_TESTING)
+    const char* value = std::getenv("BRPC_FLATC_TEST_FAILURE");
+    if (value) {
+        const std::string failures = "," + std::string(value) + ",";
+        return failures.find("," + std::string(step) + ",") !=
+               std::string::npos;
+    }
+#else
+    (void)step;
+#endif
+    return false;
+}
+
+bool WriteFile(const std::string& path, const std::string& contents,
+               const char* step) {
+    if (TestFailureEnabled(step)) {
+        errno = EIO;
+        return false;
+    }
     std::ofstream stream(path.c_str(), std::ios::binary | std::ios::trunc);
     stream << contents;
     stream.close();
     return !stream.fail();
+}
+
+bool RenameFile(const std::string& from, const std::string& to,
+                const char* step) {
+    if (TestFailureEnabled(step)) {
+        errno = EIO;
+        return false;
+    }
+    return std::rename(from.c_str(), to.c_str()) == 0;
+}
+
+class OutputDirectoryLock {
+public:
+    explicit OutputDirectoryLock(const std::string& directory)
+        : fd_(open(directory.c_str(), O_RDONLY)) {
+        if (fd_ < 0) {
+            return;
+        }
+        while (flock(fd_, LOCK_EX) != 0) {
+            if (errno != EINTR) {
+                close(fd_);
+                fd_ = -1;
+                return;
+            }
+        }
+    }
+
+    ~OutputDirectoryLock() {
+        if (fd_ >= 0) {
+            close(fd_);
+        }
+    }
+
+    bool acquired() const { return fd_ >= 0; }
+
+private:
+    OutputDirectoryLock(const OutputDirectoryLock&) = delete;
+    OutputDirectoryLock& operator=(const OutputDirectoryLock&) = delete;
+
+    int fd_;
+};
+
+bool RemoveFile(const std::string& path) {
+    return std::remove(path.c_str()) == 0 || errno == ENOENT;
+}
+
+bool IsRegularFileOrMissing(const std::string& path) {
+    struct stat file_status;
+    if (lstat(path.c_str(), &file_status) == 0) {
+        return S_ISREG(file_status.st_mode);
+    }
+    return errno == ENOENT;
+}
+
+bool MoveExistingFile(const std::string& path, const std::string& backup,
+                      const char* step, bool* moved) {
+    *moved = false;
+    if (RenameFile(path, backup, step)) {
+        *moved = true;
+        return true;
+    }
+    return errno == ENOENT;
+}
+
+bool RestoreFile(const std::string& path, const std::string& backup,
+                 const char* step, bool had_original) {
+    if (!RemoveFile(path)) {
+        return false;
+    }
+    return !had_original || RenameFile(backup, path, step);
+}
+
+bool RemoveOutputPair(const std::string& header_path,
+                      const std::string& source_path) {
+    const bool header_removed = RemoveFile(header_path);
+    const bool source_removed = RemoveFile(source_path);
+    return header_removed && source_removed;
+}
+
+bool PublishFiles(const std::string& output_dir,
+                  const std::string& header_path,
+                  const std::string& header_contents,
+                  const std::string& source_path,
+                  const std::string& source_contents,
+                  std::string* error) {
+    OutputDirectoryLock lock(output_dir);
+    if (!lock.acquired()) {
+        *error = "cannot lock output directory";
+        return false;
+    }
+    const std::string header_tmp = header_path + ".tmp";
+    const std::string source_tmp = source_path + ".tmp";
+    const std::string header_backup = header_path + ".bak";
+    const std::string source_backup = source_path + ".bak";
+    if (!RemoveFile(header_tmp) ||
+        !WriteFile(header_tmp, header_contents, "stage_header")) {
+        RemoveFile(header_tmp);
+        *error = "cannot stage header output";
+        return false;
+    }
+    if (!RemoveFile(source_tmp) ||
+        !WriteFile(source_tmp, source_contents, "stage_source")) {
+        RemoveFile(header_tmp);
+        RemoveFile(source_tmp);
+        *error = "cannot stage source output";
+        return false;
+    }
+    if (!IsRegularFileOrMissing(header_path) ||
+        !IsRegularFileOrMissing(source_path) ||
+        !RemoveFile(header_backup) || !RemoveFile(source_backup)) {
+        RemoveFile(header_tmp);
+        RemoveFile(source_tmp);
+        *error = "output or backup path is not replaceable";
+        return false;
+    }
+
+    bool had_header = false;
+    bool had_source = false;
+    if (!MoveExistingFile(header_path, header_backup,
+                          "preserve_header", &had_header)) {
+        RemoveFile(header_tmp);
+        RemoveFile(source_tmp);
+        *error = "cannot preserve previous header";
+        return false;
+    }
+    if (!MoveExistingFile(source_path, source_backup,
+                          "preserve_source", &had_source)) {
+        const bool restored = RestoreFile(
+            header_path, header_backup, "restore_header", had_header);
+        RemoveFile(header_tmp);
+        RemoveFile(source_tmp);
+        if (!restored) {
+            const bool cleared = RemoveOutputPair(header_path, source_path);
+            *error = cleared ? "cannot preserve source or restore header"
+                             : "cannot preserve source; manual cleanup required";
+        } else {
+            *error = "cannot preserve previous source";
+        }
+        return false;
+    }
+
+    if (!RenameFile(header_tmp, header_path, "publish_header") ||
+        !RenameFile(source_tmp, source_path, "publish_source")) {
+        const bool header_restored = RestoreFile(
+            header_path, header_backup, "restore_header", had_header);
+        const bool source_restored = RestoreFile(
+            source_path, source_backup, "restore_source", had_source);
+        RemoveFile(header_tmp);
+        RemoveFile(source_tmp);
+        if (!header_restored || !source_restored) {
+            const bool cleared = RemoveOutputPair(header_path, source_path);
+            *error = cleared ? "cannot publish or restore output files"
+                             : "cannot publish output files; manual cleanup required";
+        } else {
+            *error = "cannot publish output files";
+        }
+        return false;
+    }
+
+    RemoveFile(header_backup);
+    RemoveFile(source_backup);
+    return true;
 }
 
 void Usage(std::ostream& out) {
@@ -427,12 +637,11 @@ int Run(int argc, char** argv) {
         std::cerr << "brpc_flatc: " << error << '\n';
         return 1;
     }
-    std::string guard = "BRPC_FLATBUFFERS_GENERATED_";
-    for (char c : stem) {
-        guard += c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') :
-                 ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ? c : '_');
-    }
-    guard += "_H_";
+    // Coexisting service headers cannot define the same qualified service.
+    // Preserve filename bytes and that service identity, without tying output
+    // to checkout paths or folding punctuation and case into the same guard.
+    const std::string guard = "BRPC_FLATBUFFERS_GENERATED_" + GuardComponent(stem) +
+        "_" + GuardComponent(Qualified(*services.front().definition)) + "_H_";
     std::ostringstream header;
     header << kLicense << "#ifndef " << guard << "\n#define " << guard << "\n\n"
            << "#include <memory>\n"
@@ -466,9 +675,12 @@ int Run(int argc, char** argv) {
     if (output_dir.back() != '/') {
         output_dir += '/';
     }
-    if (!WriteFile(output_dir + stem + ".brpc.fb.h", header.str()) ||
-        !WriteFile(output_dir + stem + ".brpc.fb.cpp", source.str())) {
-        std::cerr << "brpc_flatc: cannot write output in " << output_dir << '\n';
+    if (!PublishFiles(output_dir,
+                      output_dir + stem + ".brpc.fb.h", header.str(),
+                      output_dir + stem + ".brpc.fb.cpp", source.str(),
+                      &error)) {
+        std::cerr << "brpc_flatc: cannot write output in " << output_dir
+                  << ": " << error << '\n';
         return 1;
     }
     return 0;

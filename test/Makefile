@@ -190,6 +190,7 @@ TEST_PROTO_SOURCES = $(wildcard *.proto)
 TEST_PROTO_OBJS = $(TEST_PROTO_SOURCES:.proto=.pb.o)
 
 TEST_BINS = test_butil test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURCES:.cpp=)
+FLATBUFFERS_TEST_GEN_DIR = ../output/test/flatbuffers-generated
 
 .PHONY:all
 all: $(TEST_BINS)
@@ -197,7 +198,7 @@ all: $(TEST_BINS)
 .PHONY:clean
 clean:clean_bins
 	@echo "> Cleaning"
-	rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS) $(TEST_PROTO_SOURCES:.proto=.pb.h) $(TEST_PROTO_SOURCES:.proto=.pb.cc) flatbuffers_message_generated.h
+	rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS) $(TEST_PROTO_SOURCES:.proto=.pb.h) $(TEST_PROTO_SOURCES:.proto=.pb.cc) flatbuffers_message_generated.h $(FLATBUFFERS_TEST_GEN_DIR)
 	$(MAKE) -C.. clean_debug
 
 .PHONY:clean_bins
@@ -240,11 +241,16 @@ endif
 
 ifeq ($(WITH_FLATBUFFERS),1)
 FLATC ?= flatc
+FLATBUFFERS_TEST_HEADER = $(FLATBUFFERS_TEST_GEN_DIR)/flatbuffers_message_generated.h
+FLATBUFFERS_TEST_HDRPATHS = -I$(FLATBUFFERS_TEST_GEN_DIR) $(HDRPATHS)
 
-flatbuffers_message_generated.h:flatbuffers_message.fbs
-	$(FLATC) --cpp -o . $<
+$(FLATBUFFERS_TEST_HEADER):flatbuffers_message.fbs
+	@mkdir -p $(FLATBUFFERS_TEST_GEN_DIR)
+	$(FLATC) --cpp -o $(FLATBUFFERS_TEST_GEN_DIR) $<
 
-brpc_flatbuffers_unittest.o:flatbuffers_message_generated.h
+brpc_flatbuffers_unittest.o:brpc_flatbuffers_unittest.cpp $(FLATBUFFERS_TEST_HEADER) | libbrpc.dbg.$(SOEXT)
+	@echo "> Compiling $@"
+	$(CXX) -c $(FLATBUFFERS_TEST_HDRPATHS) $(CXXFLAGS) $< -o $@
 
 brpc_flatbuffers_unittest:brpc_flatbuffers_unittest.o | libbrpc.dbg.$(SOEXT)
 	@echo "> Linking $@"

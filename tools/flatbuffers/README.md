@@ -74,8 +74,14 @@ This intentionally bounded generator supports unary table RPCs, multiple
 services/methods, namespaces, included request/response tables, and absent
 optional strings. Streaming and C++ keyword names in service/type/namespace
 positions are rejected rather than silently misgenerated. Method names that
-collide with generated service APIs are also rejected. Schema file basenames
-may contain ASCII letters, digits, underscores, dots, and hyphens.
+collide with generated service APIs are also rejected. Generated service and
+stub class names must be distinct within a namespace. Schema file basenames may
+contain ASCII letters, digits, underscores, dots, and hyphens. The header and
+source are staged under an output-directory lock before publication. A failure
+restores the previous pair when possible; if rollback also fails, the generator
+attempts to remove both final outputs and reports that manual cleanup is needed
+when the filesystem refuses. The standalone generator currently requires POSIX
+file-locking semantics, including on Linux and macOS.
 
 ## Descriptor and completion contracts
 
@@ -108,11 +114,15 @@ ctest --test-dir /tmp/brpc-codegen-build --output-on-failure
 ```
 
 The build compiles the generated service against the real bRPC headers. CTest
-rejects missing/duplicate/negative/overflow/string IDs and streaming RPCs, then
-compiles the service and self-contained header for sparse IDs, reordered
-methods, global/nested namespaces, zero/max IDs, and included table types. Test
-configuration headers and generated artifacts stay in the standalone build
-directory, not in the source tree.
+rejects missing/duplicate/negative/overflow/string IDs, streaming RPCs, C++20
+keywords, and colliding generated service/stub names. Test-only fault injection
+covers staging, backup, publication, and rollback failures; concurrent publishers
+must also leave a consistent pair. The suite then compiles the generated service
+and self-contained header for
+C++14-or-newer compatibility, sparse IDs, reordered methods, global/nested
+namespaces, zero/max IDs, and included table types. Test configuration headers
+and generated artifacts stay in the standalone build directory, not in the
+source tree.
 
 To enable additional behavior tests against an **already built**
 FlatBuffers-enabled bRPC library:
