@@ -328,12 +328,19 @@ public:
 
 public:
     MysqlReply();
+    // Legacy signature kept for binary compatibility with prebuilt clients;
+    // assumes the protocol-4.1 ERR layout (the command phase default).
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
+                                   butil::Arena* arena,
+                                   bool is_auth,
+                                   MysqlStmtType stmt_type,
+                                   bool* more_results);
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
                                    butil::Arena* arena,
                                    bool is_auth,
                                    MysqlStmtType stmt_type,
                                    bool* more_results,
-                                   bool protocol41 = true);
+                                   bool protocol41);
     void Swap(MysqlReply& other);
     void Print(std::ostream& os) const;
     // response type

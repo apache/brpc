@@ -198,10 +198,13 @@ public:
     // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse.
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing
     // failed.
+    // Legacy signature kept for binary compatibility with prebuilt clients;
+    // assumes the protocol-4.1 ERR layout.
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth, MysqlStmtType stmt_type);
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
                                    bool is_auth,
                                    MysqlStmtType stmt_type,
-                                   bool protocol41 = true);
+                                   bool protocol41);
 
     // Number of replies in this response.
     // (May have more than one reply due to pipeline)

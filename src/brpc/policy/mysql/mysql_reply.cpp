@@ -250,6 +250,14 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
                                            butil::Arena* arena,
                                            bool is_auth,
                                            MysqlStmtType stmt_type,
+                                           bool* more_results) {
+    return ConsumePartialIOBuf(buf, arena, is_auth, stmt_type, more_results, true);
+}
+
+ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
+                                           butil::Arena* arena,
+                                           bool is_auth,
+                                           MysqlStmtType stmt_type,
                                            bool* more_results,
                                            bool protocol41) {
     *more_results = false;

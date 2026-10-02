@@ -456,6 +456,12 @@ void MysqlResponse::Swap(MysqlResponse* other) {
 
 ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
                                               bool is_auth,
+                                              MysqlStmtType stmt_type) {
+    return ConsumePartialIOBuf(buf, is_auth, stmt_type, true);
+}
+
+ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
+                                              bool is_auth,
                                               MysqlStmtType stmt_type,
                                               bool protocol41) {
     bool more_results = true;
