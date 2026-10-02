@@ -348,11 +348,12 @@ brpc::ParseError ParseWire(const std::string& wire,
                            brpc::MysqlReply* reply,
                            butil::Arena* arena,
                            brpc::MysqlStmtType stmt_type = brpc::MYSQL_NORMAL_STATEMENT,
-                           bool is_auth = false) {
+                           bool is_auth = false,
+                           bool protocol41 = true) {
     butil::IOBuf buf;
     buf.append(wire);
     bool more_results = false;
-    return reply->ConsumePartialIOBuf(buf, arena, is_auth, stmt_type, &more_results);
+    return reply->ConsumePartialIOBuf(buf, arena, is_auth, stmt_type, &more_results, protocol41);
 }
 
 // A result set whose column count needs the multi-byte 0xFC form (252..65535
@@ -577,10 +578,71 @@ TEST(MysqlReplyParseTest, AcceptInitialHandshakeErr) {
 
     brpc::MysqlReply reply;
     butil::Arena arena;
-    ASSERT_EQ(brpc::PARSE_OK, ParseWire(wire, &reply, &arena, brpc::MYSQL_NORMAL_STATEMENT, /*is_auth=*/true));
+    ASSERT_EQ(brpc::PARSE_OK,
+              ParseWire(wire, &reply, &arena, brpc::MYSQL_NORMAL_STATEMENT,
+                        /*is_auth=*/true, /*protocol41=*/false));
     ASSERT_TRUE(reply.is_error());
     ASSERT_EQ(1040u, reply.error().errcode());
     ASSERT_EQ(butil::StringPiece("Too many connections"), reply.error().msg());
+}
+
+// A legacy (pre-4.1) ERR message that itself starts with '#' must be kept
+// intact; the first message byte cannot be used to sniff the layout.
+TEST(MysqlReplyParseTest, AcceptLegacyErrMessageStartingWithHash) {
+    std::string payload;
+    payload.push_back((char)0xFF);               // ERR marker
+    payload.append("\x60\x04", 2);            // error code 1120, little-endian
+    payload.append("#quota exceeded");          // message starting with '#'
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK,
+              ParseWire(wire, &reply, &arena, brpc::MYSQL_NORMAL_STATEMENT,
+                        /*is_auth=*/true, /*protocol41=*/false));
+    ASSERT_TRUE(reply.is_error());
+    ASSERT_EQ(1120u, reply.error().errcode());
+    ASSERT_EQ(butil::StringPiece("#quota exceeded"), reply.error().msg());
+    ASSERT_TRUE(reply.error().status().empty());
+
+    // The same short message must not be rejected as a truncated sql_state.
+    std::string short_payload;
+    short_payload.push_back((char)0xFF);
+    short_payload.append("\x50\x04", 2);
+    short_payload.append("#bad");
+    std::string short_wire;
+    AppendPacket(&short_wire, 0, short_payload);
+
+    brpc::MysqlReply short_reply;
+    butil::Arena short_arena;
+    ASSERT_EQ(brpc::PARSE_OK,
+              ParseWire(short_wire, &short_reply, &short_arena, brpc::MYSQL_NORMAL_STATEMENT,
+                        /*is_auth=*/true, /*protocol41=*/false));
+    ASSERT_EQ(butil::StringPiece("#bad"), short_reply.error().msg());
+}
+
+// A protocol-4.1 ERR whose message itself starts with '#': the marker and
+// sql_state still come from the wire layout, and the message keeps its '#'.
+TEST(MysqlReplyParseTest, AcceptProtocol41ErrMessageStartingWithHash) {
+    std::string payload;
+    payload.push_back((char)0xFF);               // ERR marker
+    payload.append("\x1f\x04", 2);            // error code 1055, little-endian
+    payload.push_back('#');
+    payload.append("42000", 5);                 // sql state
+    payload.append("#boom", 5);                 // message starting with '#'
+
+    std::string wire;
+    AppendPacket(&wire, 0, payload);
+
+    brpc::MysqlReply reply;
+    butil::Arena arena;
+    ASSERT_EQ(brpc::PARSE_OK, ParseWire(wire, &reply, &arena));
+    ASSERT_TRUE(reply.is_error());
+    ASSERT_EQ(1055u, reply.error().errcode());
+    ASSERT_EQ(butil::StringPiece("42000"), reply.error().status());
+    ASSERT_EQ(butil::StringPiece("#boom"), reply.error().msg());
 }
 
 // A protocol-4.1 ERR packet whose '#' marker is present but whose sql_state

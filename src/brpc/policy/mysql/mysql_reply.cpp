@@ -250,7 +250,8 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
                                            butil::Arena* arena,
                                            bool is_auth,
                                            MysqlStmtType stmt_type,
-                                           bool* more_results) {
+                                           bool* more_results,
+                                           bool protocol41) {
     *more_results = false;
     if (!is_full_package(buf)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
@@ -342,7 +343,7 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
     } else if (type == 0xFF) {
         _type = MYSQL_RSP_ERROR;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.error));
-        MY_PARSE_CHECK(_data.error->Parse(buf, arena));
+        MY_PARSE_CHECK(_data.error->Parse(buf, arena, protocol41));
     } else if (is_eof_packet) {
         _type = MYSQL_RSP_EOF;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.eof));
@@ -786,7 +787,7 @@ ParseError MysqlReply::Eof::Parse(butil::IOBuf& buf) {
     return PARSE_OK;
 }
 
-ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
+ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena, bool protocol41) {
     if (is_parsed()) {
         return PARSE_OK;
     }
@@ -796,31 +797,33 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     // ERR payload: 0xFF(1) + error code(2), followed by either
-    //   - protocol-4.1 layout: '#'(1) + sql_state(5) + message, or
-    //   - pre-4.1 layout (initial-handshake errors sent before capabilities
-    //     are negotiated, e.g. "Too many connections"): the message directly.
-    // Disambiguate by peeking for the '#' marker, like MySQL clients do.
+    //   - protocol-4.1 layout ('#'(1) + sql_state(5) + message), used in the
+    //     command phase and after the client's HandshakeResponse41, or
+    //   - pre-4.1 layout (the message directly), used by initial-handshake
+    //     errors sent before capabilities are negotiated, e.g. "Too many
+    //     connections". The layout is selected by the caller from the
+    //     connection phase -- the first message byte cannot distinguish the
+    //     two, since a legacy message may itself start with '#'.
     payload.pop_front(1);  // 0xFF
     {
         uint8_t tmp[2];
         MY_PARSE_CHECK(parse_fixed(payload, tmp, sizeof(tmp)));
         _errcode = mysql_uint2korr(tmp);
     }
-    {
-        // IOBuf::fetch may return a pointer into its own storage instead of
-        // filling the aux buffer, so always dereference the returned pointer.
-        uint8_t aux = 0;
-        const void* peek = payload.fetch(&aux, 1);
-        if (peek != nullptr && *(const uint8_t*)peek == '#') {
-            payload.pop_front(1);
-            // 5 byte sql state
-            char* status = nullptr;
-            MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
-            MY_PARSE_CHECK(parse_fixed(payload, status, 5));
-            _status.set(status, 5);
-        } else {
-            _status.set(nullptr, 0);
+    if (protocol41) {
+        uint8_t sharp = 0;
+        MY_PARSE_CHECK(parse_fixed(payload, &sharp, 1));
+        if (sharp != '#') {
+            LOG(WARNING) << "MysqlReply::Error::Parse: expected '#' before sql_state, got "
+                       << sharp;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
+        char* status = nullptr;
+        MY_ALLOC_CHECK(my_alloc_check(arena, 5, status));
+        MY_PARSE_CHECK(parse_fixed(payload, status, 5));
+        _status.set(status, 5);
+    } else {
+        _status.set(nullptr, 0);
     }
     // error message, Null-Terminated string.
     const uint64_t len = payload.size();

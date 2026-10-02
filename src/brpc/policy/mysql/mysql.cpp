@@ -456,14 +456,16 @@ void MysqlResponse::Swap(MysqlResponse* other) {
 
 ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
                                               bool is_auth,
-                                              MysqlStmtType stmt_type) {
+                                              MysqlStmtType stmt_type,
+                                              bool protocol41) {
     bool more_results = true;
     size_t oldsize = 0;
     while (more_results) {
         oldsize = buf.size();
         if (reply_size() == 0) {
             ParseError err =
-                _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, stmt_type, &more_results);
+                _first_reply.ConsumePartialIOBuf(
+                    buf, &_arena, is_auth, stmt_type, &more_results, protocol41);
             if (err != PARSE_OK) {
                 return err;
             }
@@ -484,7 +486,7 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
                 }
             }
             ParseError err = _other_replies[_nreply - 1]->ConsumePartialIOBuf(
-                buf, &_arena, is_auth, stmt_type, &more_results);
+                buf, &_arena, is_auth, stmt_type, &more_results, protocol41);
             if (err != PARSE_OK) {
                 return err;
             }

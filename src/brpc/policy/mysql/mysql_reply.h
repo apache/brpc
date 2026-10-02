@@ -195,7 +195,7 @@ public:
         butil::StringPiece msg() const;
 
     private:
-        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena, bool protocol41);
 
         DISALLOW_COPY_AND_ASSIGN(Error);
         friend class MysqlReply;
@@ -332,7 +332,8 @@ public:
                                    butil::Arena* arena,
                                    bool is_auth,
                                    MysqlStmtType stmt_type,
-                                   bool* more_results);
+                                   bool* more_results,
+                                   bool protocol41 = true);
     void Swap(MysqlReply& other);
     void Print(std::ostream& os) const;
     // response type
