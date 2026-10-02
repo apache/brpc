@@ -80,9 +80,11 @@ git_repository(
     commit = '564ee727a55523d4351a8fb3c94292b388ebb924',  # v26.06.0_CAM
 )
 
-# runtime_cc and flatc do not need FlatBuffers' gRPC module dependency, which
-# would otherwise conflict with brpc's BoringSSL version even when disabled.
-# Keep the archive and checksum in sync with WORKSPACE.
+# Do not use `bazel_dep(name = 'flatbuffers', version = '25.2.10')` here.
+# The BCR module pulls gRPC and JS/Go/Swift rule dependencies for FlatBuffers'
+# full upstream build. bRPC only needs runtime_cc and flatc, and gRPC would
+# otherwise introduce another BoringSSL version even when BRPC_WITH_FLATBUFFERS
+# is false. Keep this archive and checksum in sync with WORKSPACE.
 flatbuffers_http_archive = use_repo_rule(
     '@bazel_tools//tools/build_defs/repo:http.bzl',
     'http_archive',
