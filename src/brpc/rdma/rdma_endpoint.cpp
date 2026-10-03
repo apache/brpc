@@ -80,10 +80,11 @@ extern const size_t RESERVED_WR_NUM = 3;
 // The local recv block size, set during GlobalInitialize.
 uint32_t g_rdma_recv_block_size = 0;
 
-// Largest message sent inline, and the inline size asked for at QP
-// creation: 256 - 16 (ctrl) - 4 (inline header). A bigger inlined WQE no
-// longer fits the 256-byte BlueFlame buffer of current mlx5 NICs.
+// Inline size asked for at QP creation, and on Mellanox/NVIDIA NICs the
+// largest message sent inline: 256 - 16 (ctrl) - 4 (inline header). A bigger
+// inlined WQE no longer fits the 256-byte BlueFlame buffer of mlx5 NICs.
 static const uint32_t BF_MAX_INLINE_DATA = 256 - 16 - 4;
+static const uint32_t MELLANOX_VENDOR_ID = 0x02c9;
 static const uint8_t MAX_HOP_LIMIT = 16;
 static const uint8_t TIMEOUT = 14;
 static const uint8_t RETRY_CNT = 7;
@@ -1155,14 +1156,21 @@ static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size,
     attr.qp_type = IBV_QPT_RC;
     ibv_qp* qp = IbvCreateQp(GetRdmaPd(), &attr);
     if (qp == nullptr) {
+        // Some devices take less inline data (irdma: 101 bytes), try 64
+        attr.cap.max_inline_data = 64;
+        qp = IbvCreateQp(GetRdmaPd(), &attr);
+    }
+    if (qp == nullptr) {
         // The device may not support inline data, try again without it
         attr.cap.max_inline_data = 0;
         qp = IbvCreateQp(GetRdmaPd(), &attr);
     }
     if (qp != nullptr) {
         // ibv_create_qp writes the granted inline data size back into attr
-        *max_inline_data =
-            std::min(attr.cap.max_inline_data, BF_MAX_INLINE_DATA);
+        *max_inline_data = attr.cap.max_inline_data;
+        if (GetRdmaVendorId() == MELLANOX_VENDOR_ID) {
+            *max_inline_data = std::min(*max_inline_data, BF_MAX_INLINE_DATA);
+        }
     }
     return qp;
 }
