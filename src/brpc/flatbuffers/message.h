@@ -50,7 +50,8 @@ constexpr size_t kBufferAlignment = 64;
 class MessageBuilder;
 
 // FlatBufferBuilder cannot recover from a null allocation. Allocation failure
-// and sizes outside FlatBuffers' offset range are fatal, even in release builds.
+// and sizes outside FlatBuffers' offset range are fatal, even in release
+// builds.
 class SlabAllocator : public ::flatbuffers::Allocator {
 public:
     SlabAllocator() : _data(nullptr), _capacity(0) {}
@@ -62,8 +63,8 @@ public:
     uint8_t* allocate(size_t size) override;
     void deallocate(uint8_t* p, size_t size) override;
     uint8_t* reallocate_downward(uint8_t* old_p, size_t old_size,
-                                size_t new_size, size_t in_use_back,
-                                size_t in_use_front) override;
+                                 size_t new_size, size_t in_use_back,
+                                 size_t in_use_front) override;
     void swap(SlabAllocator& other) noexcept;
 
 private:
@@ -82,7 +83,8 @@ struct SlabAllocatorMember {
 
 // A move-only message for application code. Protobuf CopyFrom/MergeFrom retain
 // the same ref-counted IOBuf instead of deep-copying it. Mutable access through
-// any alias changes every message sharing that storage and must not race readers.
+// any alias changes every message sharing that storage and must not race
+// readers.
 // Parsing checks framing, not the schema: Verify<T>() must succeed before
 // reading data received from an untrusted peer.
 class Message : public NonreflectableMessage<Message> {
@@ -121,11 +123,13 @@ public:
         return data() ? ::flatbuffers::GetRoot<T>(data()) : nullptr;
     }
     template <typename T> T* GetMutableRoot() {
-        return data() ? ::flatbuffers::GetMutableRoot<T>(mutable_data()) : nullptr;
+        return data()
+            ? ::flatbuffers::GetMutableRoot<T>(mutable_data()) : nullptr;
     }
 
     // Failure leaves the old message unchanged. A fragmented or unaligned
-    // payload is copied into aligned storage; aligned contiguous input is shared.
+    // payload is copied into aligned storage; aligned contiguous input is
+    // shared.
     // When msg_size comes from an untrusted peer, callers must bound it with
     // their own max-message-size policy before parsing. This method does not
     // verify the schema; call Verify<T>() before reading the root.
@@ -135,26 +139,25 @@ public:
 
 private:
     DISALLOW_COPY_AND_ASSIGN(Message);
+friend class MessageBuilder;
     Message(const butil::IOBuf::BlockRef& ref, uint32_t meta_size,
             uint32_t msg_size);
     butil::SingleIOBuf _iobuf;
     uint32_t _meta_size;
     uint32_t _msg_size;
-    friend class MessageBuilder;
 };
 
 class MessageBuilder : private SlabAllocatorMember,
                        public ::flatbuffers::FlatBufferBuilder {
 public:
     explicit MessageBuilder(size_t initial_size = 1024);
-    MessageBuilder(const MessageBuilder&) = delete;
-    MessageBuilder& operator=(const MessageBuilder&) = delete;
     MessageBuilder(MessageBuilder&& other);
     MessageBuilder& operator=(MessageBuilder&& other);
 
-    // Importing a foreign builder copies its payload and scratch data, retaining
-    // build state. Its original allocator frees the source allocation correctly.
-    // In particular, no free()/delete[] guess or spare-prefix assumption is made.
+    // Importing a foreign builder copies its payload and scratch data,
+    // retaining build state. Its original allocator frees the source
+    // allocation correctly. No free()/delete[] guess or spare-prefix
+    // assumption is made.
     explicit MessageBuilder(::flatbuffers::FlatBufferBuilder&& src);
     MessageBuilder& operator=(::flatbuffers::FlatBufferBuilder&& src);
 
@@ -164,6 +167,7 @@ public:
     Message ReleaseMessage();
 
 private:
+    DISALLOW_COPY_AND_ASSIGN(MessageBuilder);
     void ClearStringPool();
     // The inherited release methods would retain a pointer to our member
     // allocator after this builder dies. Only ReleaseMessage is supported.

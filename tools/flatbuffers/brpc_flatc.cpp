@@ -102,9 +102,9 @@ bool IsCppIdentifier(const std::string& name) {
         "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand",
         "bitor", "bool", "break", "case", "catch", "char", "char8_t",
         "char16_t", "char32_t", "class", "compl", "concept", "const",
-        "const_cast",
-        "consteval", "constexpr", "constinit", "continue", "co_await",
-        "co_return", "co_yield", "decltype", "default", "delete", "do",
+        "const_cast", "consteval", "constexpr", "constinit", "continue",
+        "co_await", "co_return", "co_yield", "decltype", "default",
+        "delete", "do",
         "double", "dynamic_cast", "else", "enum", "explicit", "export",
         "extern", "false", "float", "for", "friend", "goto", "if",
         "inline", "int", "long", "mutable", "namespace", "new",
@@ -137,7 +137,8 @@ bool ValidateName(const flatbuffers::Definition& definition,
 }
 
 bool ParseId(const flatbuffers::Value& value, int32_t* id) {
-    if (value.constant.empty() || !flatbuffers::IsInteger(value.type.base_type)) {
+    if (value.constant.empty() ||
+        !flatbuffers::IsInteger(value.type.base_type)) {
         return false;
     }
     int64_t number = 0;
@@ -156,13 +157,47 @@ bool ParseId(const flatbuffers::Value& value, int32_t* id) {
 
 bool CollectServices(const flatbuffers::Parser& parser,
                      std::vector<Service>* services, std::string* error) {
-    std::set<std::string> generated_class_names;
+    std::set<std::string> generated_class_names = {
+        "::brpc", "::butil", "::flatbuffers", "::google", "::std"
+    };
+    // Reserve every namespace prefix, including those from imported schemas.
+    for (const auto* ns : parser.namespaces_) {
+        std::string prefix;
+        for (const auto& component : ns->components) {
+            prefix += "::" + component;
+            generated_class_names.insert(prefix);
+        }
+    }
+    for (const auto* definition : parser.services_.vec) {
+        if (definition->generated) {
+            const std::string service_name = Qualified(*definition);
+            generated_class_names.insert(service_name);
+            generated_class_names.insert(service_name + "_Stub");
+        }
+    }
+    for (const auto* definition : parser.structs_.vec) {
+        const std::string type_name = Qualified(*definition);
+        generated_class_names.insert(type_name);
+        if (!definition->fixed) {
+            generated_class_names.insert(type_name + "Builder");
+        }
+    }
+    for (const auto* definition : parser.enums_.vec) {
+        generated_class_names.insert(Qualified(*definition));
+    }
     for (const auto* definition : parser.services_.vec) {
         // Included schemas are generated separately, just as with flatc --cpp.
         if (definition->generated) {
             continue;
         }
         if (!ValidateName(*definition, error)) {
+            return false;
+        }
+        if (definition->name == "Stub" || definition->name == "descriptor" ||
+            definition->name == "GetDescriptor" ||
+            definition->name == "FBCallMethod") {
+            *error = "service name collides with generated API: " +
+                     definition->name;
             return false;
         }
         const std::string service_name = Qualified(*definition);
@@ -194,7 +229,8 @@ bool CollectServices(const flatbuffers::Parser& parser,
                 call->name == "FBCallMethod" || call->name == "Stub" ||
                 call->name == "channel" || call->name == "channel_" ||
                 call->name == "owned_channel_") {
-                *error = "method name collides with generated API: " + call->name;
+                *error = "method name collides with generated API: " +
+                         call->name;
                 return false;
             }
             const auto* attribute = call->attributes.Lookup("id");
@@ -253,8 +289,10 @@ void GenerateHeader(const Service& service, std::ostream& out) {
         << "class " << name << " : public ::brpc::flatbuffers::Service {\n"
         << "public:\n"
         << "    typedef " << name << "_Stub Stub;\n"
-        << "    static const ::brpc::flatbuffers::ServiceDescriptor* descriptor();\n"
-        << "    const ::brpc::flatbuffers::ServiceDescriptor* GetDescriptor() override;\n"
+        << "    static const ::brpc::flatbuffers::ServiceDescriptor* "
+           "descriptor();\n"
+        << "    const ::brpc::flatbuffers::ServiceDescriptor* "
+           "GetDescriptor() override;\n"
         << "    void FBCallMethod(\n"
         << "        const ::brpc::flatbuffers::MethodDescriptor* method,\n"
         << "        " << kArguments << ") override;\n";
@@ -267,16 +305,21 @@ void GenerateHeader(const Service& service, std::ostream& out) {
         << "public:\n"
         << "    explicit " << name << "_Stub(\n"
         << "        ::brpc::flatbuffers::RpcChannel* channel,\n"
-        << "        ::brpc::flatbuffers::Service::ChannelOwnership ownership =\n"
-        << "            ::brpc::flatbuffers::Service::STUB_DOESNT_OWN_CHANNEL);\n"
-        << "    ::brpc::flatbuffers::RpcChannel* channel() const { return channel_; }\n";
+        << "        ::brpc::flatbuffers::Service::ChannelOwnership "
+           "ownership =\n"
+        << "            ::brpc::flatbuffers::Service::"
+           "STUB_DOESNT_OWN_CHANNEL);\n"
+        << "    ::brpc::flatbuffers::RpcChannel* channel() const {\n"
+        << "        return channel_;\n"
+        << "    }\n";
     for (const auto* call : definition.calls.vec) {
         out << "    void " << call->name << "(\n"
             << "        " << kArguments << ") override;\n";
     }
     out << "\nprivate:\n"
         << "    ::brpc::flatbuffers::RpcChannel* channel_;\n"
-        << "    ::std::unique_ptr<::brpc::flatbuffers::RpcChannel> owned_channel_;\n"
+        << "    ::std::unique_ptr<::brpc::flatbuffers::RpcChannel> "
+           "owned_channel_;\n"
         << "};\n\n";
     CloseNamespace(definition, out);
 }
@@ -290,7 +333,8 @@ void GenerateSource(const Service& service, std::ostream& out) {
         << "    struct Holder {\n"
         << "        ::brpc::flatbuffers::ServiceDescriptor value;\n"
         << "        Holder() {\n"
-        << "            const ::brpc::flatbuffers::BrpcDescriptorTable table = {\n"
+        << "            const ::brpc::flatbuffers::BrpcDescriptorTable "
+           "table = {\n"
         << "                \"" << JoinNamespace(definition, ".") << "\", \""
         << name << "\",\n                \"";
     for (size_t i = 0; i < definition.calls.vec.size(); ++i) {
@@ -302,7 +346,8 @@ void GenerateSource(const Service& service, std::ostream& out) {
     }
     out << "}\n            };\n"
         << "            if (value.init(table) != 0) {\n"
-        << "                throw ::std::runtime_error(\"invalid generated service descriptor\");\n"
+        << "                throw ::std::runtime_error(\n"
+        << "                    \"invalid generated service descriptor\");\n"
         << "            }\n"
         << "        }\n"
         << "    };\n"
@@ -317,12 +362,15 @@ void GenerateSource(const Service& service, std::ostream& out) {
         << "        const ::brpc::flatbuffers::MethodDescriptor* method,\n"
         << "        " << kArguments << ") {\n"
         << "    if (!method || method->service() != descriptor() ||\n"
-        << "        descriptor()->FindMethodByIndex(method->index()) != method) {\n"
-        << "        ::BrpcFlatbuffersFail(controller, done, \"invalid service method\");\n"
+        << "        descriptor()->FindMethodByIndex(method->index()) != "
+           "method) {\n"
+        << "        ::BrpcFlatbuffersFail(controller, done,\n"
+        << "                              \"invalid service method\");\n"
         << "        return;\n"
         << "    }\n"
         << "    if (!request || !response) {\n"
-        << "        ::BrpcFlatbuffersFail(controller, done, \"null request or response\");\n"
+        << "        ::BrpcFlatbuffersFail(controller, done,\n"
+        << "                              \"null request or response\");\n"
         << "        return;\n"
         << "    }\n"
         << "    switch (method->index()) {\n";
@@ -335,11 +383,13 @@ void GenerateSource(const Service& service, std::ostream& out) {
             << call.request->name << " request\");\n"
             << "            return;\n"
             << "        }\n"
-            << "        this->" << call.name << "(controller, request, response, done);\n"
+            << "        this->" << call.name
+            << "(controller, request, response, done);\n"
             << "        return;\n";
     }
     out << "    default:\n"
-        << "        ::BrpcFlatbuffersFail(controller, done, \"unknown method id\");\n"
+        << "        ::BrpcFlatbuffersFail(controller, done,\n"
+        << "                              \"unknown method id\");\n"
         << "        return;\n"
         << "    }\n"
         << "}\n\n";
@@ -348,7 +398,8 @@ void GenerateSource(const Service& service, std::ostream& out) {
             << "        " << kArguments << ") {\n"
             << "    (void)request;\n"
             << "    (void)response;\n"
-            << "    ::BrpcFlatbuffersFail(controller, done, \"method not implemented: "
+            << "    ::BrpcFlatbuffersFail(controller, done,\n"
+            << "                          \"method not implemented: "
             << name << "." << call->name << "\");\n"
             << "}\n\n";
     }
@@ -356,16 +407,20 @@ void GenerateSource(const Service& service, std::ostream& out) {
         << "        ::brpc::flatbuffers::RpcChannel* channel,\n"
         << "        ::brpc::flatbuffers::Service::ChannelOwnership ownership)\n"
         << "    : channel_(channel),\n"
-        << "      owned_channel_(ownership == ::brpc::flatbuffers::Service::STUB_OWNS_CHANNEL\n"
-        << "                         ? channel : nullptr) {}\n\n";
+        << "      owned_channel_(\n"
+        << "          ownership == "
+           "::brpc::flatbuffers::Service::STUB_OWNS_CHANNEL\n"
+        << "              ? channel : nullptr) {}\n\n";
     for (size_t i = 0; i < definition.calls.vec.size(); ++i) {
         out << "void " << name << "_Stub::" << definition.calls.vec[i]->name
             << "(\n        " << kArguments << ") {\n"
             << "    if (!channel_) {\n"
-            << "        ::BrpcFlatbuffersFail(controller, done, \"null RPC channel\");\n"
+            << "        ::BrpcFlatbuffersFail(controller, done,\n"
+            << "                              \"null RPC channel\");\n"
             << "        return;\n"
             << "    }\n"
-            << "    channel_->FBCallMethod(descriptor()->method(" << i
+            << "    channel_->FBCallMethod(\n"
+            << "        descriptor()->method(" << i
             << "), controller, request, response, done);\n"
             << "}\n\n";
     }
@@ -529,8 +584,9 @@ bool PublishFiles(const std::string& output_dir,
         RemoveFile(source_tmp);
         if (!restored) {
             const bool cleared = RemoveOutputPair(header_path, source_path);
-            *error = cleared ? "cannot preserve source or restore header"
-                             : "cannot preserve source; manual cleanup required";
+            *error = cleared
+                ? "cannot preserve source or restore header"
+                : "cannot preserve source; manual cleanup required";
         } else {
             *error = "cannot preserve previous source";
         }
@@ -547,8 +603,9 @@ bool PublishFiles(const std::string& output_dir,
         RemoveFile(source_tmp);
         if (!header_restored || !source_restored) {
             const bool cleared = RemoveOutputPair(header_path, source_path);
-            *error = cleared ? "cannot publish or restore output files"
-                             : "cannot publish output files; manual cleanup required";
+            *error = cleared
+                ? "cannot publish or restore output files"
+                : "cannot publish output files; manual cleanup required";
         } else {
             *error = "cannot publish output files";
         }
@@ -561,8 +618,10 @@ bool PublishFiles(const std::string& output_dir,
 }
 
 void Usage(std::ostream& out) {
-    out << "Usage: brpc_flatc [-I include_dir]... [-o existing_output_dir] schema.fbs\n"
-        << "Run official flatc --cpp separately to produce schema_generated.h.\n";
+    out << "Usage: brpc_flatc [-I include_dir]... "
+           "[-o existing_output_dir] schema.fbs\n"
+        << "Run official flatc --cpp separately to produce "
+           "schema_generated.h.\n";
 }
 
 int Run(int argc, char** argv) {
@@ -600,10 +659,12 @@ int Run(int argc, char** argv) {
         return 1;
     }
     const size_t slash = input.find_last_of("/\\");
-    const std::string basename = input.substr(slash == std::string::npos ? 0 : slash + 1);
+    const std::string basename = input.substr(
+        slash == std::string::npos ? 0 : slash + 1);
     const std::string stem = basename.substr(0, basename.size() - 4);
     if (stem.empty() || stem.find_first_not_of(
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") !=
+            "abcdefghijklmnopqrstuvwxyz"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") !=
             std::string::npos) {
         std::cerr << "brpc_flatc: unsupported schema filename\n";
         return 1;
@@ -640,8 +701,9 @@ int Run(int argc, char** argv) {
     // Coexisting service headers cannot define the same qualified service.
     // Preserve filename bytes and that service identity, without tying output
     // to checkout paths or folding punctuation and case into the same guard.
-    const std::string guard = "BRPC_FLATBUFFERS_GENERATED_" + GuardComponent(stem) +
-        "_" + GuardComponent(Qualified(*services.front().definition)) + "_H_";
+    const std::string guard =
+        "BRPC_FLATBUFFERS_GENERATED_" + GuardComponent(stem) + "_" +
+        GuardComponent(Qualified(*services.front().definition)) + "_H_";
     std::ostringstream header;
     header << kLicense << "#ifndef " << guard << "\n#define " << guard << "\n\n"
            << "#include <memory>\n"
@@ -656,7 +718,8 @@ int Run(int argc, char** argv) {
     source << kLicense << "#include \"" << stem << ".brpc.fb.h\"\n\n"
            << "#include <stdexcept>\n\n"
            << "namespace {\n"
-           << "void BrpcFlatbuffersFail(::google::protobuf::RpcController* controller,\n"
+           << "void BrpcFlatbuffersFail("
+              "::google::protobuf::RpcController* controller,\n"
            << "                         ::google::protobuf::Closure* done,\n"
            << "                         const char* reason) {\n"
            << "    if (controller) {\n"

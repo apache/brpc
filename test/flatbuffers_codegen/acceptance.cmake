@@ -51,7 +51,19 @@ function(expect_schema_rejected name text diagnostic)
     if(EXISTS "${directory}/echo.brpc.fb.h" OR EXISTS "${directory}/echo.brpc.fb.cpp")
         message(FATAL_ERROR "${name}: rejected schema emitted service files")
     endif()
-    message(STATUS "Rejected ${name}: ${error}")
+    file(WRITE "${directory}/echo.brpc.fb.h" "previous header\n")
+    file(WRITE "${directory}/echo.brpc.fb.cpp" "previous source\n")
+    execute_process(COMMAND "${GENERATOR}" -o "${directory}"
+        "${directory}/echo.fbs" RESULT_VARIABLE result ERROR_VARIABLE error)
+    string(FIND "${error}" "${diagnostic}" diagnostic_position)
+    file(READ "${directory}/echo.brpc.fb.h" old_header)
+    file(READ "${directory}/echo.brpc.fb.cpp" old_source)
+    if("${result}" STREQUAL "0" OR diagnostic_position LESS 0 OR
+       NOT "${old_header}" STREQUAL "previous header\n" OR
+       NOT "${old_source}" STREQUAL "previous source\n")
+        message(FATAL_ERROR "${name}: rejection changed existing output files")
+    endif()
+    message(STATUS "Rejected ${name} without changing outputs: ${error}")
 endfunction()
 
 function(prepare_output_pair directory)
@@ -292,6 +304,40 @@ function(expect_distinct_headers name first_stem second_stem)
     message(STATUS "Distinct, relocatable header guards: ${name}")
 endfunction()
 
+foreach(name Stub descriptor GetDescriptor FBCallMethod)
+    string(CONCAT reserved_service_schema
+        "table Request {}\ntable Response {}\n"
+        "rpc_service ${name} { Call(Request):Response (id: 1); }\n")
+    expect_schema_rejected(service_member_${name} "${reserved_service_schema}"
+        "service name collides with generated API: ${name}")
+    expect_schema_rejected(nested_service_member_${name}
+        "namespace api;\n${reserved_service_schema}"
+        "service name collides with generated API: ${name}")
+endforeach()
+
+foreach(name Echo Echo_Stub)
+    foreach(depth "" ".nested")
+        string(CONCAT namespace_collision_schema
+            "namespace api.${name}${depth};\n"
+            "table Request {}\ntable Response {}\n"
+            "namespace api;\n"
+            "rpc_service Echo {\n"
+            "  Call(api.${name}${depth}.Request):"
+            "api.${name}${depth}.Response (id: 1);\n}\n")
+        expect_schema_rejected(namespace_collision_${name}${depth}
+            "${namespace_collision_schema}"
+            "generated service class name collides: ::api::${name}")
+    endforeach()
+endforeach()
+file(WRITE "${WORK}/namespace_types.fbs"
+    "namespace api.Echo; table Request {} table Response {}\n")
+expect_schema_rejected(imported_namespace_collision
+    "include \"../namespace_types.fbs\"; namespace api;
+     rpc_service Echo {
+       Call(api.Echo.Request):api.Echo.Response (id: 1);
+     }"
+    "generated service class name collides: ::api::Echo")
+
 expect_distinct_headers(punctuation foo-bar foo_bar)
 expect_distinct_headers(letter_case FooBar foobar)
 expect_distinct_headers(same_basename echo echo)
@@ -302,6 +348,13 @@ string(REPLACE "rpc_service Echo {" "rpc_service char8_t {"
     char8_t_schema "${schema_text}")
 expect_schema_rejected(cpp20_char8_t "${char8_t_schema}"
     "C++ keyword is not supported: char8_t")
+foreach(name brpc butil flatbuffers google std)
+    set(global_namespace_collision_schema
+        "table Request {}\ntable Response {}\nrpc_service ${name} { Call(Request):Response (id: 1); }\n")
+    expect_schema_rejected(global_namespace_${name}
+        "${global_namespace_collision_schema}"
+        "generated service class name collides: ::${name}")
+endforeach()
 set(service_collision_schema
     "namespace codegen.collision;\ntable Request {}\ntable Response {}\nrpc_service Echo { Call(Request):Response (id: 1); }\nrpc_service Echo_Stub { Call(Request):Response (id: 2); }\n")
 expect_schema_rejected(service_stub_collision "${service_collision_schema}"
@@ -310,6 +363,22 @@ set(stub_service_collision_schema
     "namespace codegen.collision;\ntable Request {}\ntable Response {}\nrpc_service Echo_Stub { Call(Request):Response (id: 2); }\nrpc_service Echo { Call(Request):Response (id: 1); }\n")
 expect_schema_rejected(stub_service_collision "${stub_service_collision_schema}"
     "generated service class name collides: ::codegen::collision::Echo_Stub")
+set(table_service_collision_schema
+    "namespace codegen.collision;\ntable Request {}\ntable Response {}\ntable Echo {}\nrpc_service Echo { Call(Request):Response (id: 1); }\n")
+expect_schema_rejected(table_service_collision "${table_service_collision_schema}"
+    "generated service class name collides: ::codegen::collision::Echo")
+set(table_stub_collision_schema
+    "namespace codegen.collision;\ntable Request {}\ntable Response {}\ntable Echo_Stub {}\nrpc_service Echo { Call(Request):Response (id: 1); }\n")
+expect_schema_rejected(table_stub_collision "${table_stub_collision_schema}"
+    "generated service class name collides: ::codegen::collision::Echo_Stub")
+set(table_builder_collision_schema
+    "namespace codegen.collision;\ntable Request {}\ntable Response {}\ntable Echo {}\nrpc_service EchoBuilder { Call(Request):Response (id: 1); }\n")
+expect_schema_rejected(table_builder_collision "${table_builder_collision_schema}"
+    "generated service class name collides: ::codegen::collision::EchoBuilder")
+set(enum_service_collision_schema
+    "namespace codegen.collision;\ntable Request {}\ntable Response {}\nenum Echo : byte { Value = 0 }\nrpc_service Echo { Call(Request):Response (id: 1); }\n")
+expect_schema_rejected(enum_service_collision "${enum_service_collision_schema}"
+    "generated service class name collides: ::codegen::collision::Echo")
 expect_output_pair_restored(stage_source_failure stage_source)
 expect_output_pair_restored(preserve_source_failure preserve_source)
 expect_output_pair_restored(publish_header_failure publish_header)
@@ -337,6 +406,28 @@ endif()
 set(cross_namespace_schema
     "namespace codegen.common;\ntable Request {}\ntable Response {}\nnamespace codegen.first;\nrpc_service Echo { Call(codegen.common.Request):codegen.common.Response (id: 1); }\nnamespace codegen.second;\nrpc_service Echo_Stub { Call(codegen.common.Request):codegen.common.Response (id: 2); }\n")
 expect_compiles(cross_namespace_names "${cross_namespace_schema}")
+set(cross_namespace_type_schema
+    "namespace codegen.common;\ntable Request {}\ntable Response {}\ntable Echo {}\nnamespace codegen.api;\nrpc_service Echo { Call(codegen.common.Request):codegen.common.Response (id: 1); }\n")
+expect_compiles(cross_namespace_type_names "${cross_namespace_type_schema}")
+expect_compiles(namespace_sibling [=[
+namespace api.other.Echo;
+table Request {}
+table Response {}
+namespace api;
+rpc_service Echo {
+  Call(api.other.Echo.Request):api.other.Echo.Response (id: 1);
+}
+]=])
+expect_compiles(service_member_near_names [=[
+namespace api;
+table Request {}
+table Response {}
+rpc_service channel { Call(Request):Response (id: 1); }
+rpc_service channel_ { Call(Request):Response (id: 1); }
+rpc_service owned_channel_ { Call(Request):Response (id: 1); }
+rpc_service StubService { Call(Request):Response (id: 1); }
+rpc_service ChannelOwnership { Call(Request):Response (id: 1); }
+]=])
 
 set(shadow_names request response controller done method std BrpcFlatbuffersFail
     STUB_OWNS_CHANNEL STUB_DOESNT_OWN_CHANNEL ChannelOwnership)
@@ -496,3 +587,26 @@ file(READ "${WORK}/included/echo.brpc.fb.h" included_header)
 if(included_header MATCHES "class Imported")
     message(FATAL_ERROR "Included service was emitted twice")
 endif()
+
+set(imported_collision_dir "${WORK}/imported_service_collision")
+file(REMOVE_RECURSE "${imported_collision_dir}")
+file(MAKE_DIRECTORY "${imported_collision_dir}")
+file(WRITE "${imported_collision_dir}/types.fbs"
+    "namespace shared; table Input {} table Output {}\n"
+    "rpc_service Imported { Ping(Input):Output (id: 3); }\n")
+file(WRITE "${imported_collision_dir}/echo.fbs"
+    "include \"types.fbs\"; namespace shared;\n"
+    "rpc_service Imported_Stub { Call(Input):Output (id: 7); }\n")
+execute_process(COMMAND "${GENERATOR}" -o "${imported_collision_dir}"
+    "${imported_collision_dir}/echo.fbs"
+    RESULT_VARIABLE result ERROR_VARIABLE error)
+if("${result}" STREQUAL "0" OR
+   NOT error MATCHES "generated service class name collides: ::shared::Imported_Stub")
+    message(FATAL_ERROR
+        "imported_service_collision: schema was accepted or lacked diagnostic: ${error}")
+endif()
+if(EXISTS "${imported_collision_dir}/echo.brpc.fb.h" OR
+   EXISTS "${imported_collision_dir}/echo.brpc.fb.cpp")
+    message(FATAL_ERROR "imported_service_collision: rejected schema emitted files")
+endif()
+message(STATUS "Rejected imported service collision: ${error}")
