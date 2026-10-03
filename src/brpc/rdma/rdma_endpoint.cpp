@@ -85,6 +85,20 @@ uint32_t g_rdma_recv_block_size = 0;
 // inlined WQE no longer fits the 256-byte BlueFlame buffer of mlx5 NICs.
 static const uint32_t BF_MAX_INLINE_DATA = 256 - 16 - 4;
 static const uint32_t MELLANOX_VENDOR_ID = 0x02c9;
+// The verbs API cannot report the inline data limit. Devices whose kernel
+// driver has a fixed limit try it first: Intel irdma 216, 101 or 48 depending
+// on the generation (101 on the E810, 48 on the X722;
+// drivers/infiniband/hw/irdma/ig3rdma_hw.h, user.h, i40iw_hw.h), Alibaba
+// erdma 96 (drivers/infiniband/hw/erdma/erdma_verbs.h). Other devices start
+// at BF_MAX_INLINE_DATA, and any refused size steps down by INLINE_DATA_STEP
+// until one is accepted. libfabric's verbs provider also probes the limit
+// (vrb_find_max_inline()).
+static const struct {
+    uint32_t vendor_id;
+    uint32_t max_inline;
+} KNOWN_INLINE_LIMITS[] = {
+    {0x8086, 216}, {0x8086, 101}, {0x8086, 48}, {0x1ded, 96}};
+static const uint32_t INLINE_DATA_STEP = 16;
 static const uint8_t MAX_HOP_LIMIT = 16;
 static const uint8_t TIMEOUT = 14;
 static const uint8_t RETRY_CNT = 7;
@@ -1142,8 +1156,28 @@ int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
     return 0;
 }
 
+// Inline size to request: on the first try, size capped at the vendor's first
+// known limit; after a refusal, the vendor's next smaller known limit, else
+// one step smaller.
+static uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size,
+                                    bool refused) {
+    for (const auto& known : KNOWN_INLINE_LIMITS) {
+        if (known.vendor_id == vendor_id &&
+            (!refused || known.max_inline < size)) {
+            return std::min(known.max_inline, size);
+        }
+    }
+    if (refused) {
+        size = size > INLINE_DATA_STEP ? size - INLINE_DATA_STEP : 0;
+    }
+    return size;
+}
+
 static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size,
                           uint32_t rq_size, uint32_t* max_inline_data) {
+    const uint32_t vendor_id = GetRdmaVendorId();
+    uint32_t inline_size =
+        InlineDataToRequest(vendor_id, BF_MAX_INLINE_DATA, false);
     ibv_qp_init_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.send_cq = send_cq;
@@ -1152,23 +1186,18 @@ static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size,
     attr.cap.max_recv_wr = rq_size;
     attr.cap.max_send_sge = GetRdmaMaxSge();
     attr.cap.max_recv_sge = 1;
-    attr.cap.max_inline_data = BF_MAX_INLINE_DATA;
+    attr.cap.max_inline_data = inline_size;
     attr.qp_type = IBV_QPT_RC;
     ibv_qp* qp = IbvCreateQp(GetRdmaPd(), &attr);
-    if (qp == nullptr) {
-        // Some devices take less inline data (irdma: 101 bytes), try 64
-        attr.cap.max_inline_data = 64;
-        qp = IbvCreateQp(GetRdmaPd(), &attr);
-    }
-    if (qp == nullptr) {
-        // The device may not support inline data, try again without it
-        attr.cap.max_inline_data = 0;
+    while (qp == nullptr && inline_size > 0) {
+        inline_size = InlineDataToRequest(vendor_id, inline_size, true);
+        attr.cap.max_inline_data = inline_size;
         qp = IbvCreateQp(GetRdmaPd(), &attr);
     }
     if (qp != nullptr) {
         // ibv_create_qp writes the granted inline data size back into attr
         *max_inline_data = attr.cap.max_inline_data;
-        if (GetRdmaVendorId() == MELLANOX_VENDOR_ID) {
+        if (vendor_id == MELLANOX_VENDOR_ID) {
             *max_inline_data = std::min(*max_inline_data, BF_MAX_INLINE_DATA);
         }
     }
