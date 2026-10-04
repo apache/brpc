@@ -968,7 +968,16 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         }
         return;
     }
-    
+
+    if (cntl == nullptr || !ControllerPrivateAccessor(cntl)
+            .does_response_match_request_socket(cid, msg->socket()->id())) {
+        LOG(WARNING) << "correlation_id=" << cid.value
+                     << " of the response from " << *msg->socket()
+                     << " does not match a request sent over it, drop it";
+        CHECK_EQ(0, bthread_id_unlock(cid));
+        return;
+    }
+
     ControllerPrivateAccessor accessor(cntl);
     if (remote_stream_id != INVALID_STREAM_ID) {
         accessor.set_remote_stream_settings(

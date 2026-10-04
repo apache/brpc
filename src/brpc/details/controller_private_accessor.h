@@ -58,6 +58,24 @@ public:
         return _cntl->_current_call.sending_sock.get();
     }
 
+    bool does_response_match_request_socket(
+            CallId cid, SocketId response_socket_id) const {
+        const Controller::Call* call = nullptr;
+        if (cid == _cntl->_correlation_id || cid == _cntl->current_id()) {
+            call = &_cntl->_current_call;
+        } else if (_cntl->_unfinished_call != nullptr &&
+                   cid == _cntl->get_id(_cntl->_unfinished_call->nretry)) {
+            call = _cntl->_unfinished_call;
+        } else {
+            return false;
+        }
+        // A regular client request always records the socket used to send it.
+        // Keep direct response injection available to internal tools and tests
+        // that do not issue a request through Controller::IssueRPC().
+        return call->sending_sock == nullptr ||
+               call->sending_sock->id() == response_socket_id;
+    }
+
     int64_t real_timeout_ms() {
         return _cntl->_real_timeout_ms;
     }

@@ -516,7 +516,16 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
             << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
-    
+
+    if (cntl == nullptr || !ControllerPrivateAccessor(cntl)
+            .does_response_match_request_socket(cid, msg->socket()->id())) {
+        LOG(WARNING) << "correlation_id=" << cid.value
+                     << " of the response from " << *msg->socket()
+                     << " does not match a request sent over it, drop it";
+        CHECK_EQ(0, bthread_id_unlock(cid));
+        return;
+    }
+
     ControllerPrivateAccessor accessor(cntl);
     if (auto span = accessor.span()) {
         span->set_base_real_us(msg->base_real_us());
