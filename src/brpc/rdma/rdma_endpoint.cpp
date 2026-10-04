@@ -1158,9 +1158,8 @@ int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
 
 // Inline size to request: on the first try, size capped at the vendor's first
 // known limit; after a refusal, the vendor's next smaller known limit, else
-// one step smaller.
-static uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size,
-                                    bool refused) {
+// one step smaller. Not static: exposed for UT.
+uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size, bool refused) {
     for (const auto& known : KNOWN_INLINE_LIMITS) {
         if (known.vendor_id == vendor_id &&
             (!refused || known.max_inline < size)) {
@@ -1173,11 +1172,38 @@ static uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size,
     return size;
 }
 
-static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size,
-                          uint32_t rq_size, uint32_t* max_inline_data) {
-    const uint32_t vendor_id = GetRdmaVendorId();
+// Creates a QP with attr, asking for BF_MAX_INLINE_DATA bytes of inline data,
+// or less if the device refuses that size, and sets *max_inline_data to the
+// largest message to post inline on it. Not static: exposed for UT.
+ibv_qp* CreateQpWithInlineData(ibv_pd* pd, ibv_qp_init_attr* attr,
+                               uint32_t vendor_id, uint32_t* max_inline_data) {
     uint32_t inline_size =
         InlineDataToRequest(vendor_id, BF_MAX_INLINE_DATA, false);
+    attr->cap.max_inline_data = inline_size;
+    ibv_qp* qp = IbvCreateQp(pd, attr);
+    // A refused inline size fails with EINVAL; any other failure is left to
+    // the caller, which reports its errno.
+    while (qp == nullptr && errno == EINVAL && inline_size > 0) {
+        uint32_t next = InlineDataToRequest(vendor_id, inline_size, true);
+        LOG_IF(INFO, FLAGS_rdma_trace_verbose)
+            << "ibv_create_qp refused " << inline_size
+            << " bytes of inline data, trying " << next;
+        inline_size = next;
+        attr->cap.max_inline_data = inline_size;
+        qp = IbvCreateQp(pd, attr);
+    }
+    if (qp != nullptr) {
+        // ibv_create_qp writes the granted inline data size back into attr
+        *max_inline_data = attr->cap.max_inline_data;
+        if (vendor_id == MELLANOX_VENDOR_ID) {
+            *max_inline_data = std::min(*max_inline_data, BF_MAX_INLINE_DATA);
+        }
+    }
+    return qp;
+}
+
+static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size,
+                          uint32_t rq_size, uint32_t* max_inline_data) {
     ibv_qp_init_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.send_cq = send_cq;
@@ -1186,22 +1212,9 @@ static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size,
     attr.cap.max_recv_wr = rq_size;
     attr.cap.max_send_sge = GetRdmaMaxSge();
     attr.cap.max_recv_sge = 1;
-    attr.cap.max_inline_data = inline_size;
     attr.qp_type = IBV_QPT_RC;
-    ibv_qp* qp = IbvCreateQp(GetRdmaPd(), &attr);
-    while (qp == nullptr && inline_size > 0) {
-        inline_size = InlineDataToRequest(vendor_id, inline_size, true);
-        attr.cap.max_inline_data = inline_size;
-        qp = IbvCreateQp(GetRdmaPd(), &attr);
-    }
-    if (qp != nullptr) {
-        // ibv_create_qp writes the granted inline data size back into attr
-        *max_inline_data = attr.cap.max_inline_data;
-        if (vendor_id == MELLANOX_VENDOR_ID) {
-            *max_inline_data = std::min(*max_inline_data, BF_MAX_INLINE_DATA);
-        }
-    }
-    return qp;
+    return CreateQpWithInlineData(GetRdmaPd(), &attr, GetRdmaVendorId(),
+                                  max_inline_data);
 }
 
 static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
