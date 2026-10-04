@@ -83,6 +83,8 @@ extern uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size,
 extern ibv_qp* CreateQpWithInlineData(ibv_pd* pd, ibv_qp_init_attr* attr,
                                       uint32_t vendor_id,
                                       uint32_t* max_inline_data);
+extern bool ShouldPostInline(bool in_pool, size_t len,
+                             uint32_t max_inline_data);
 } // namespace rdma
 } // namespace brpc
 
@@ -3253,6 +3255,23 @@ TEST(RdmaInlineDataTest, create_qp_with_inline_data) {
                      44, 28, 12, 0}),
               g_stub_requests);
     EXPECT_EQ(EINVAL, err);
+}
+
+// The send-path decision of CutFromIOBufList(), which itself needs an
+// initialized RDMA device.
+TEST(RdmaInlineDataTest, should_post_inline) {
+    const uint32_t granted = 236;
+    // A message from the block pool at the granted size is inlined, one byte
+    // more is not.
+    EXPECT_TRUE(rdma::ShouldPostInline(true, granted, granted));
+    EXPECT_FALSE(rdma::ShouldPostInline(true, granted + 1, granted));
+    EXPECT_TRUE(rdma::ShouldPostInline(true, 1, granted));
+    // A message in user registered memory, which may be device memory, is
+    // never inlined, however small.
+    EXPECT_FALSE(rdma::ShouldPostInline(false, 1, granted));
+    EXPECT_FALSE(rdma::ShouldPostInline(false, granted, granted));
+    // A QP granted no inline data inlines nothing.
+    EXPECT_FALSE(rdma::ShouldPostInline(true, 1, 0));
 }
 
 #endif  // if BRPC_WITH_RDMA

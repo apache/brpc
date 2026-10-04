@@ -849,6 +849,14 @@ private:
     }
 };
 
+// Whether to post a message of len bytes inline. Only a message from the block
+// pool (host memory) that fits the inline size the QP was granted is copied
+// into the WQE. User registered memory may be device memory, which the CPU
+// cannot copy from, so it is never inlined. Not static: exposed for UT.
+bool ShouldPostInline(bool in_pool, size_t len, uint32_t max_inline_data) {
+    return in_pool && len <= max_inline_data;
+}
+
 // Note this function is coupled with the implementation of IOBuf
 ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
     if (BAIDU_UNLIKELY(g_skip_rdma_init)) {
@@ -916,10 +924,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         }
 
         wr.num_sge = sge_index;
-        // A small message from the block pool (host memory) is copied into
-        // the WQE. User registered memory may be device memory, which the
-        // CPU cannot copy from, so it is never inlined.
-        if (in_pool && this_len <= _resource->max_inline_data) {
+        if (ShouldPostInline(in_pool, this_len, _resource->max_inline_data)) {
             wr.send_flags |= IBV_SEND_INLINE;
         }
 
