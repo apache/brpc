@@ -20,6 +20,7 @@
 #define BRPC_REDIS_H
 
 #include <unordered_map>
+#include <vector>
 
 #include "brpc/destroyable.h"
 #include "brpc/nonreflectable_message.h"
@@ -66,6 +67,8 @@ public:
     //   butil::StringPiece components[] = { "set", "key", "value" };
     //   request.AddCommandByComponents(components, arraysize(components));
     bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
+    // Convenient when the components are already held in a vector.
+    bool AddCommandByComponents(const std::vector<butil::StringPiece>& components);
 
     // Add a command with variadic args to this request.
     // The reason that adding so many overloads rather than using ... is that

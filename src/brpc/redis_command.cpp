@@ -17,6 +17,7 @@
 
 #include <cctype>
 #include <limits>
+#include <vector>
 
 #include "butil/logging.h"
 #include "brpc/log.h"
@@ -257,10 +258,27 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 if (_l < sizeof(_format)-2) {
                     memcpy(_format, c, _l);
                     _format[_l] = '\0';
-                    int plen = vsnprintf(_printed, sizeof(_printed), _format, _cpy);
-                    if (plen > 0) {
+                    va_list _retry;
+                    va_copy(_retry, _cpy);
+                    const int plen = vsnprintf(_printed, sizeof(_printed), _format, _cpy);
+                    if (plen < 0) {
+                        va_end(_retry);
+                        va_end(_cpy);
+                        return butil::Status(EINVAL, "Failed to format redis command");
+                    }
+                    if (static_cast<size_t>(plen) >= sizeof(_printed)) {
+                        std::vector<char> full(static_cast<size_t>(plen) + 1);
+                        const int written = vsnprintf(full.data(), full.size(), _format, _retry);
+                        if (written != plen) {
+                            va_end(_retry);
+                            va_end(_cpy);
+                            return butil::Status(EINVAL, "Failed to format redis command");
+                        }
+                        compbuf.append(full.data(), plen);
+                    } else if (plen > 0) {
                         compbuf.append(_printed, plen);
                     }
+                    va_end(_retry);
                     /* Update current position (note: outer blocks
                      * increment c twice so compensate here) */
                     c = _p - 1;

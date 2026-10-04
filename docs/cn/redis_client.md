@@ -128,7 +128,7 @@ bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
 
 > 注意，AddCommand和AddCommandV的fmt参数如果设置错误，有可能导致程序crash或者数据泄露，请谨慎设置。不应将受用户输入影响的内容作为fmt参数进行调用！
 
-AddCommandByComponents类似hiredis中的redisCommandArgv，用户通过数组指定命令中的每一个部分。这个方法对AddCommand和AddCommandV可能发生的转义问题免疫，且效率最高。如果你在使用AddCommand和AddCommandV时出现了“Unmatched quote”，“无效格式”等问题且无法定位，可以试下这个方法。
+AddCommandByComponents类似hiredis中的redisCommandArgv，用户可通过数组或`std::vector<butil::StringPiece>`指定命令中的每个部分。这个方法对AddCommand和AddCommandV可能发生的转义问题免疫。如果你在使用AddCommand和AddCommandV时出现“Unmatched quote”“无效格式”等问题且无法定位，可以试下这个方法。
 
 如果AddCommand\*失败，后续的AddCommand\*和CallMethod都会失败。一般来说不用判AddCommand*的结果，失败后自然会通过RPC失败体现出来。
 
