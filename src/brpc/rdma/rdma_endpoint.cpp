@@ -80,7 +80,25 @@ extern const size_t RESERVED_WR_NUM = 3;
 // The local recv block size, set during GlobalInitialize.
 uint32_t g_rdma_recv_block_size = 0;
 
-// static const uint32_t MAX_INLINE_DATA = 64;
+// Inline size asked for at QP creation, and on Mellanox/NVIDIA NICs the
+// largest message sent inline: 256 - 16 (ctrl) - 4 (inline header). A bigger
+// inlined WQE no longer fits the 256-byte BlueFlame buffer of mlx5 NICs.
+static const uint32_t BF_MAX_INLINE_DATA = 256 - 16 - 4;
+static const uint32_t MELLANOX_VENDOR_ID = 0x02c9;
+// The verbs API cannot report the inline data limit. Devices whose kernel
+// driver has a fixed limit try it first: Intel irdma 216, 101 or 48 depending
+// on the generation (101 on the E810, 48 on the X722;
+// drivers/infiniband/hw/irdma/ig3rdma_hw.h, user.h, i40iw_hw.h), Alibaba
+// erdma 96 (drivers/infiniband/hw/erdma/erdma_verbs.h). Other devices start
+// at BF_MAX_INLINE_DATA, and any refused size steps down by INLINE_DATA_STEP
+// until one is accepted. libfabric's verbs provider also probes the limit
+// (vrb_find_max_inline()).
+static const struct {
+    uint32_t vendor_id;
+    uint32_t max_inline;
+} KNOWN_INLINE_LIMITS[] = {
+    {0x8086, 216}, {0x8086, 101}, {0x8086, 48}, {0x1ded, 96}};
+static const uint32_t INLINE_DATA_STEP = 16;
 static const uint8_t MAX_HOP_LIMIT = 16;
 static const uint8_t TIMEOUT = 14;
 static const uint8_t RETRY_CNT = 7;
@@ -780,11 +798,12 @@ class RdmaIOBuf : public butil::IOBuf {
 friend class RdmaEndpoint;
 private:
     // Cut the current IOBuf to ibv_sge list and `to' for at most first max_sge
-    // blocks or first max_len bytes.
+    // blocks or first max_len bytes. `*in_pool' is cleared if any block is
+    // outside the block pool (user registered memory).
     // Return: the bytes included in the sglist, or -1 if failed
     ssize_t cut_into_sglist_and_iobuf(ibv_sge* sglist, size_t* sge_index,
                                       butil::IOBuf* to, size_t max_sge,
-                                      size_t max_len) {
+                                      size_t max_len, bool* in_pool) {
         size_t len = 0;
         while (*sge_index < max_sge) {
             if (len == max_len || _ref_num() == 0) {
@@ -795,6 +814,7 @@ private:
             const void* start = fetch1();
             uint32_t lkey = GetRegionId(start);
             if (lkey == 0) {  // get lkey for user registered memory
+                *in_pool = false;
                 uint64_t meta = get_first_data_meta();
                 if (meta <= UINT_MAX) {
                     lkey = (uint32_t)meta;
@@ -868,6 +888,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
 
         RdmaIOBuf* data = (RdmaIOBuf*)from[current];
         size_t sge_index = 0;
+        bool in_pool = true;
         while (sge_index < (uint32_t)max_sge &&
                 this_len < _remote_recv_block_size) {
             if (data->empty()) {
@@ -881,7 +902,8 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             }
 
             ssize_t len = data->cut_into_sglist_and_iobuf(
-                sglist, &sge_index, to, max_sge, _remote_recv_block_size - this_len);
+                sglist, &sge_index, to, max_sge, _remote_recv_block_size - this_len,
+                &in_pool);
             if (len < 0) {
                 return -1;
             }
@@ -894,6 +916,12 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         }
 
         wr.num_sge = sge_index;
+        // A small message from the block pool (host memory) is copied into
+        // the WQE. User registered memory may be device memory, which the
+        // CPU cannot copy from, so it is never inlined.
+        if (in_pool && this_len <= _resource->max_inline_data) {
+            wr.send_flags |= IBV_SEND_INLINE;
+        }
 
         uint32_t imm = _new_rq_wrs.exchange(0, butil::memory_order_relaxed);
         wr.imm_data = butil::HostToNet32(imm);
@@ -1128,7 +1156,28 @@ int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
     return 0;
 }
 
-static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size, uint32_t rq_size) {
+// Inline size to request: on the first try, size capped at the vendor's first
+// known limit; after a refusal, the vendor's next smaller known limit, else
+// one step smaller.
+static uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size,
+                                    bool refused) {
+    for (const auto& known : KNOWN_INLINE_LIMITS) {
+        if (known.vendor_id == vendor_id &&
+            (!refused || known.max_inline < size)) {
+            return std::min(known.max_inline, size);
+        }
+    }
+    if (refused) {
+        size = size > INLINE_DATA_STEP ? size - INLINE_DATA_STEP : 0;
+    }
+    return size;
+}
+
+static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size,
+                          uint32_t rq_size, uint32_t* max_inline_data) {
+    const uint32_t vendor_id = GetRdmaVendorId();
+    uint32_t inline_size =
+        InlineDataToRequest(vendor_id, BF_MAX_INLINE_DATA, false);
     ibv_qp_init_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.send_cq = send_cq;
@@ -1137,8 +1186,22 @@ static ibv_qp* AllocateQp(ibv_cq* send_cq, ibv_cq* recv_cq, uint32_t sq_size, ui
     attr.cap.max_recv_wr = rq_size;
     attr.cap.max_send_sge = GetRdmaMaxSge();
     attr.cap.max_recv_sge = 1;
+    attr.cap.max_inline_data = inline_size;
     attr.qp_type = IBV_QPT_RC;
-    return IbvCreateQp(GetRdmaPd(), &attr);
+    ibv_qp* qp = IbvCreateQp(GetRdmaPd(), &attr);
+    while (qp == nullptr && inline_size > 0) {
+        inline_size = InlineDataToRequest(vendor_id, inline_size, true);
+        attr.cap.max_inline_data = inline_size;
+        qp = IbvCreateQp(GetRdmaPd(), &attr);
+    }
+    if (qp != nullptr) {
+        // ibv_create_qp writes the granted inline data size back into attr
+        *max_inline_data = attr.cap.max_inline_data;
+        if (vendor_id == MELLANOX_VENDOR_ID) {
+            *max_inline_data = std::min(*max_inline_data, BF_MAX_INLINE_DATA);
+        }
+    }
+    return qp;
 }
 
 static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
@@ -1173,7 +1236,8 @@ static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
             return nullptr;
         }
 
-        resource->qp = AllocateQp(resource->send_cq, resource->recv_cq, sq_size, rq_size);
+        resource->qp = AllocateQp(resource->send_cq, resource->recv_cq, sq_size, rq_size,
+                                  &resource->max_inline_data);
         if (nullptr == resource->qp) {
             PLOG(WARNING) << "Fail to create QP";
             return nullptr;
@@ -1187,7 +1251,8 @@ static RdmaResource* AllocateQpCq(uint16_t sq_size, uint16_t rq_size) {
         }
         resource->qp = AllocateQp(resource->polling_cq,
                                   resource->polling_cq,
-                                  sq_size, rq_size);
+                                  sq_size, rq_size,
+                                  &resource->max_inline_data);
         if (nullptr == resource->qp) {
             PLOG(WARNING) << "Fail to create QP";
             return nullptr;

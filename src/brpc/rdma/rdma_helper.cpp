@@ -84,6 +84,7 @@ static uint8_t g_gid_index = 0;
 static ibv_gid g_gid;
 static uint16_t g_lid;
 static int g_max_sge = 0;
+static uint32_t g_vendor_id = 0;
 static uint8_t g_port_num = 1;
 
 static int g_comp_vector_index = 0;
@@ -550,6 +551,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     } else {
         g_max_sge = attr.max_sge;
     }
+    g_vendor_id = attr.vendor_id;
 
     // Initialize RDMA memory pool (block_pool)
     butil::SetDefaultBlockSize(GetRdmaBlockSize());
@@ -642,6 +644,10 @@ void DeregisterMemoryForRdma(void* buf) {
 
 int GetRdmaMaxSge() {
     return g_max_sge;
+}
+
+uint32_t GetRdmaVendorId() {
+    return g_vendor_id;
 }
 
 int GetRdmaCompVector() {
