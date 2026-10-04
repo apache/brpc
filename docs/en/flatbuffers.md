@@ -2,22 +2,21 @@
 
 [中文版](../cn/flatbuffers.md)
 
-bRPC provides optional IOBuf-backed FlatBuffers messages, builders, and service
-descriptors. The message-construction approach builds on
+bRPC supports IOBuf-backed FlatBuffers messages, builders, and service
+descriptors, disabled by default. Message construction is based on
 [apache/brpc#3196](https://github.com/apache/brpc/pull/3196).
 
-This component does not register an `fb_rpc` transport or add FlatBuffers
-integration to `brpc::Channel` and `brpc::Server`. Service-generation and
-in-process dispatch tests are not network RPC or performance benchmarks.
+This component does not include `fb_rpc` transport or change `brpc::Channel`
+or `brpc::Server`. Service generation and in-process dispatch tests do not
+exercise network RPC or measure performance.
 
 ## Build
 
-FlatBuffers support is disabled by default. The message runtime needs only
-FlatBuffers headers; it does not link a FlatBuffers library. Tests need a `flatc`
-matching those headers. Keep upstream's generated version assertions intact:
-regenerate the header rather than weakening the assertion.
+The runtime needs only FlatBuffers headers; tests also need a matching `flatc`.
+Regenerate incompatible headers rather than removing or weakening upstream
+version assertions.
 
-For example, with GoogleTest sources installed under `/usr/src/googletest`:
+With GoogleTest sources at `/usr/src/googletest`:
 
 ```sh
 cmake -S . -B build -DWITH_FLATBUFFERS=ON -DBUILD_UNIT_TESTS=ON \
@@ -27,83 +26,79 @@ cmake --build build --target brpc_flatbuffers_unittest -j6
 ctest --test-dir build -R '^brpc_flatbuffers_unittest$' --output-on-failure
 ```
 
-For other installations set `FLATBUFFERS_INCLUDE_DIR`,
+For nonstandard installations, set `FLATBUFFERS_INCLUDE_DIR`,
 `FLATBUFFERS_FLATC_EXECUTABLE`, and `BRPC_SYSTEM_GTEST_SOURCE_DIR` as needed.
-The project's usual test dependencies still apply.
+The usual bRPC test dependencies still apply.
 
-Make accepts `--with-flatbuffers` on `config_brpc.sh`; its tests accept
-`FLATC=/path/to/flatc`. Bazel accepts `--define=BRPC_WITH_FLATBUFFERS=true`,
-with matching FlatBuffers 25.2.10 runtime and compiler dependencies. The bRPC
-FlatBuffers runtime currently supports that exact version and rejects others at
-compile time because it depends on FlatBuffers builder internals. Bzlmod imports
-the same checksum-pinned archive as WORKSPACE: `runtime_cc` and `flatc`
-do not need FlatBuffers' external gRPC module, which would otherwise conflict
-with bRPC's pinned BoringSSL even when the feature is disabled.
+For Make, use `config_brpc.sh --with-flatbuffers` and set `FLATC=/path/to/flatc`
+when testing. For Bazel, use `--define=BRPC_WITH_FLATBUFFERS=true`.
 
-Public headers live in `brpc/flatbuffers/`, matching namespace
-`brpc::flatbuffers`. Include `message.h` for construction and `service.h` for
-service descriptors/interfaces. `BRPC_WITH_FLATBUFFERS` in `butil/config.h`
-is always 0 or 1; test it with `#if`, not `#ifdef`.
+The runtime depends on FlatBuffers builder internals and supports only 25.2.10;
+other versions fail at compile time. Bzlmod and WORKSPACE use the same
+checksum-pinned archive. Using this instead of `bazel_dep` avoids gRPC,
+other language tools, and conflicting BoringSSL dependencies.
 
-Flatc 2.0.x emits unqualified `flatbuffers::` names. Use a business schema
-namespace outside `brpc` (for example `myapp.rpc`) to avoid shadowing by
-`brpc::flatbuffers`; do not rely on include order. Flatc 25.2.10 emits fully
-qualified names instead.
+Public headers are in `brpc/flatbuffers/`, with namespace `brpc::flatbuffers`.
+Include `message.h` for message construction and `service.h` for service
+descriptors and interfaces. `BRPC_WITH_FLATBUFFERS` in `butil/config.h` is
+0 or 1; test it with `#if`.
+
+Older flatc 2.0.x may emit unqualified names. Keep business schemas outside
+the `brpc` namespace and do not rely on include order.
 
 ## Message construction and ownership
 
-Use upstream `flatc --cpp` to generate the schema's `*_generated.h`. Pass a
+Generate `*_generated.h` with upstream `flatc --cpp`. Pass a
 `brpc::flatbuffers::MessageBuilder` to the generated `Create...` functions,
-call `Finish(root)`, and finally call `ReleaseMessage()`.
+then call `Finish(root)` and `ReleaseMessage()`.
 
-* `ReleaseMessage()` does not copy payload bytes. The returned move-only Message
-  owns an IOBuf block reference and survives builder reuse or destruction.
-* Message/builder moves leave the source reusable. Moving a shared-string builder
-  discards its optional deduplication cache; existing offsets remain valid.
-* `Message::CopyFrom` and `MergeFrom` retain the same ref-counted IOBuf block;
-  they do not deep-copy payload or metadata. Mutable access through any alias
-  changes all Messages sharing that storage. Do not mutate one alias while any
-  alias is being read without external synchronization.
-* Importing an ordinary `::flatbuffers::FlatBufferBuilder` copies its payload and
-  scratch while preserving unfinished table state. The original allocator frees
-  the original storage, including owned custom allocators. No `free`/`delete[]`
-  guess or assumption about spare bytes before the payload is made.
-* Use MessageBuilder's own move, swap, and release operations. Do not transfer it
-  through a base-class cast or use inherited raw-buffer release operations: a raw
-  FlatBuffers detached buffer would retain the address of its member allocator.
-* 64 zero-initialized bytes precede a released payload. They may be shortened
-  with `reduce_meta_size_and_get_buf`; growing them is rejected without mutation.
-  Payload addresses and bytes are unchanged by shortening metadata.
-* Serialization accepts a const Message and retains its storage in the output
-  IOBuf. The buffer is shared, not copy-on-write: do not mutate payload/metadata
-  while another reader or serialized buffer is using it.
-* Allocation sizes are checked before narrowing to SingleIOBuf's uint32_t size.
-  Allocation failure is fatal, including release builds, independently of
-  bRPC's `crash_on_fatal_log` setting. These paths explicitly abort rather than
-  relying on `CHECK`/`LOG(FATAL)`. Upstream `vector_downward` cannot safely
-  continue with a null allocation result.
+* `ReleaseMessage()` returns a move-only Message without copying payload bytes.
+  Its IOBuf block reference survives builder reuse or destruction.
+* Moves leave the source Message or builder reusable. Moving a shared-string
+  builder clears its deduplication cache but preserves existing offsets.
+* `Message::CopyFrom` and `MergeFrom` share a ref-counted IOBuf block without
+  copying payload or metadata. Changes through one alias affect all others;
+  concurrent reads and writes require external synchronization.
+* Importing a regular `::flatbuffers::FlatBufferBuilder` copies payload and
+  scratch, preserving unfinished tables. The original allocator frees the old
+  storage and is destroyed if owned by the source builder. Import neither
+  guesses between `free` and `delete[]` nor requires a payload prefix.
+* Use only MessageBuilder's own move, swap, and release operations. Base-class
+  transfers and inherited raw-buffer releases can leave a detached buffer
+  pointing to the member allocator.
+* Released payloads have a 64-byte zeroed prefix. `reduce_meta_size_and_get_buf`
+  can shrink it without changing the payload address or bytes. Attempts to grow
+  it fail without changing the message.
+* Serializing a const Message shares its storage with the output IOBuf; it is
+  not copy-on-write. Do not modify payload or metadata while readers or
+  serialized buffers still use it.
+* Sizes are checked before conversion to SingleIOBuf's uint32_t length.
+  Allocation failure in SlabAllocator or a builder terminates the process even
+  in release builds, regardless of `crash_on_fatal_log`: FlatBuffers'
+  `vector_downward` cannot continue after a null allocation. Allocation failure
+  when copying during parsing returns false and leaves the Message unchanged.
 
-`ParseFbFromIOBUF` checks sizes/framing and retains independent ownership. It
-is not a receive-side admission limit: when `msg_size` comes from an untrusted
-peer, the caller must bound it with its own max-message-size setting before
-parsing. Fragmented or insufficiently aligned input is copied into aligned
-storage, so this bound must be applied before allocation. A contiguous input is
-shared when the payload address is 64-byte aligned. A builder's allocation is
-64-byte aligned, but the final payload need only have the alignment required by
-its schema, so not every local message qualifies for receive-side zero-copy.
-Alignments above 64 bytes are not supported.
+`ParseFbFromIOBUF` checks lengths and framing and retains a storage reference;
+it does not limit received message sizes. Bound untrusted `msg_size` with your
+max-message-size policy before parsing: fragmented or unaligned input is copied
+to new storage before schema validation.
 
-**Framing is not schema verification.** Call `msg.Verify<YourRoot>()` before
-`GetRoot<YourRoot>()` or `GetMutableRoot<YourRoot>()` on received data. Optional
-FlatBuffers strings/vectors can still be null in a valid message. Failed framing
-checks leave the prior message intact.
+Parsing shares contiguous input when its payload is 64-byte aligned. Builder
+allocations have this alignment, but finished payloads need only meet their
+schema's alignment, so local messages may still require a copy. Alignment
+requirements above 64 bytes are unsupported.
+
+**Framing is not schema verification.** Before reading untrusted data, call
+`msg.Verify<YourRoot>()` and use `GetRoot<YourRoot>()` or
+`GetMutableRoot<YourRoot>()` only if it succeeds. Optional strings/vectors can
+still be null in valid messages. Failed framing checks leave the Message intact.
 
 ## Service IDs and generation
 
-`BrpcDescriptorTable` contains a namespace, service name, whitespace-separated
-method names, and explicit method IDs. IDs must be unique nonnegative int32 values.
-An empty ID list assigns ordinal IDs to manually constructed descriptors;
-generated services require explicit IDs:
+`BrpcDescriptorTable` holds a namespace, service name, whitespace-separated
+method names, and unique nonnegative int32 IDs. Handwritten descriptors may
+use an empty ID list to assign IDs in declaration order; generated services
+require explicit IDs:
 
 ```fbs
 rpc_service BenchmarkService {
@@ -112,23 +107,25 @@ rpc_service BenchmarkService {
 }
 ```
 
-* `descriptor.method(position)` enumerates methods in declaration order.
-* `method.index()` is the stable wire ID, not its array position.
-* `descriptor.FindMethodByIndex(id)` looks up sparse wire IDs. A transport must
-  use this lookup rather than indexing a dense array with the wire ID.
-* Never recycle a removed method ID for a different method. Removing or reordering
-  declarations leaves surviving explicit IDs unchanged.
-* Namespace `a.b` and `a.b.` normalize to the same service name; empty namespace
-  means global scope. Method full names include their service. The service hash
-  uses the canonical full name and MurmurHash3 seed 1. Keep service names stable
-  when persisting or transmitting these IDs.
-* Descriptors cannot be reinitialized after success. They own methods with RAII;
-  generated accessors use function-local static initialization for thread safety.
+* `descriptor.method(position)` returns methods in declaration order.
+* `method.index()` is the stable wire ID, not an array index.
+* Look up sparse IDs with `descriptor.FindMethodByIndex(id)`, not by indexing
+  a dense array with a wire ID.
+* Do not reuse removed method IDs or change existing IDs when reordering
+  methods.
+* Namespaces `a.b` and `a.b.` normalize to the same service name; an empty
+  namespace means global scope. Method full names include the service name.
+  Service hashes use the normalized full name and MurmurHash3 seed 1. Keep
+  service names stable when persisting or transmitting IDs.
+* Descriptors own methods through RAII and cannot be reinitialized after
+  success.
+  Generated accessors use thread-safe function-local static initialization.
 
-The companion generator in `tools/flatbuffers/` uses the upstream parser to
-produce service bindings. It is independently built; only that optional tool
-needs `libflatbuffers`. See its [README](../../tools/flatbuffers/README.md) for
-commands and limitations. Generated dispatch verifies requests, rejects
-unknown/foreign methods, and runs non-null completion callbacks on failure,
-including unimplemented methods. Successful implementations own completion and
-must run their callback exactly once.
+The generator in `tools/flatbuffers/` uses the upstream parser and links
+`libflatbuffers` separately. See its [README](../../tools/flatbuffers/README.md)
+for commands and limitations.
+
+Generated dispatch validates requests and rejects unknown, foreign, or
+unimplemented methods. On failure it runs a non-null completion callback. After
+successful dispatch, the application owns completion and must run it exactly
+once.
