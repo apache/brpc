@@ -34,6 +34,7 @@
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/policy/baidu_rpc_meta.pb.h"
 #include "brpc/policy/most_common_message.h"
+#include "brpc/policy/public_pbrpc_protocol.h"
 #include "brpc/channel.h"
 #include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/parallel_channel.h"
@@ -2281,6 +2282,97 @@ public:
 };
 int MyShared::nctor = 0;
 int MyShared::ndtor = 0;
+
+TEST(ResponseSocketTest, baidu_response_requires_sending_socket) {
+    brpc::Controller cntl;
+    test::EchoResponse res;
+    cntl._response = &res;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                     cntl.call_id(), nullptr, 2));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    brpc::SocketId sending_id;
+    brpc::SocketId foreign_id;
+    ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sending_id));
+    ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &foreign_id));
+    ASSERT_EQ(0, brpc::Socket::Address(
+                     sending_id, &cntl._current_call.sending_sock));
+    brpc::SocketUniquePtr foreign_socket;
+    ASSERT_EQ(0, brpc::Socket::Address(foreign_id, &foreign_socket));
+
+    brpc::policy::RpcMeta meta;
+    meta.set_correlation_id(cntl.current_id().value);
+    meta.mutable_response()->set_error_code(0);
+    auto make_response = [&meta](brpc::Socket* socket) {
+        auto* msg = brpc::policy::MostCommonMessage::Get();
+        butil::IOBufAsZeroCopyOutputStream meta_stream(&msg->meta);
+        EXPECT_TRUE(meta.SerializeToZeroCopyStream(&meta_stream));
+        test::EchoResponse response;
+        response.set_message("matched");
+        butil::IOBufAsZeroCopyOutputStream payload_stream(&msg->payload);
+        EXPECT_TRUE(response.SerializeToZeroCopyStream(&payload_stream));
+        socket->ReAddress(&msg->_socket);
+        socket->PostponeEOF();
+        return msg;
+    };
+    brpc::policy::ProcessRpcResponse(make_response(foreign_socket.get()));
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+    brpc::policy::ProcessRpcResponse(
+        make_response(cntl._current_call.sending_sock.get()));
+    EXPECT_EQ("matched", res.message());
+    EXPECT_EQ(0, cntl.ErrorCode());
+}
+
+TEST(ResponseSocketTest, real_rpc_responses_match_sending_socket) {
+    class EchoService : public test::EchoService {
+        void Echo(google::protobuf::RpcController*,
+                  const test::EchoRequest* request,
+                  test::EchoResponse* response,
+                  google::protobuf::Closure* done) override {
+            brpc::ClosureGuard done_guard(done);
+            response->set_message("received " + request->message());
+        }
+    } service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions server_options;
+    server_options.nshead_service = new brpc::policy::PublicPbrpcServiceAdaptor;
+    ASSERT_EQ(0, server.Start(0, &server_options));
+
+    const char* protocols[] = {
+        "baidu_std", "hulu_pbrpc", "sofa_pbrpc", "public_pbrpc"};
+    const char* connections[] = {"single", "pooled", "short"};
+    for (const char* protocol : protocols) {
+        for (const char* connection : connections) {
+            // Public pbrpc uses the half-duplex nshead server adaptor.
+            if (strcmp(protocol, "public_pbrpc") == 0 &&
+                strcmp(connection, "single") == 0) {
+                continue;
+            }
+            SCOPED_TRACE(protocol);
+            SCOPED_TRACE(connection);
+            brpc::ChannelOptions options;
+            options.protocol = protocol;
+            options.connection_type = connection;
+            options.timeout_ms = 5000;
+            options.max_retry = 0;
+            brpc::Channel channel;
+            ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
+            test::EchoService_Stub stub(&channel);
+            for (int i = 0; i < 2; ++i) {
+                brpc::Controller cntl;
+                test::EchoRequest request;
+                test::EchoResponse response;
+                request.set_message("socket binding");
+                stub.Echo(&cntl, &request, &response, nullptr);
+                ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+                EXPECT_EQ("received socket binding", response.message());
+            }
+        }
+    }
+    server.Stop(0);
+    server.Join();
+}
 
 TEST_F(ChannelTest, intrusive_ptr_sanity) {
     MyShared::nctor = 0;
