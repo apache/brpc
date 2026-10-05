@@ -417,17 +417,33 @@ TEST_F(MultiDimensionTest, mlatencyrecorder) {
     const int64_t sampling_timeout_us = 5 * 1000000L;
     const int64_t deadline =
         butil::monotonic_time_us() + sampling_timeout_us;
-    while ((my_latencyrecorder->latency() == 0 ||
-            my_latencyrecorder->max_latency() == 0) &&
+    int64_t latency = 0;
+    int64_t max_latency = 0;
+    int64_t qps = 0;
+    // Keep each nonzero observation: the next sampler tick can clear
+    // these one-second windows before the other metrics are read.
+    while ((latency == 0 || max_latency == 0 || qps == 0) &&
            butil::monotonic_time_us() < deadline) {
+        if (latency == 0) {
+            latency = my_latencyrecorder->latency();
+        }
+        if (max_latency == 0) {
+            max_latency = my_latencyrecorder->max_latency();
+        }
+        if (qps == 0) {
+            qps = my_latencyrecorder->qps();
+        }
+        if (latency != 0 && max_latency != 0 && qps != 0) {
+            break;
+        }
         usleep(10000);
     }
 
-    EXPECT_EQ(4, my_latencyrecorder->latency());
-    EXPECT_EQ(7, my_latencyrecorder->max_latency());
+    EXPECT_EQ(4, latency);
+    EXPECT_EQ(7, max_latency);
     // QPS uses the actual sampling interval and randomized rounding.
     // Seven requests can yield fewer than seven requests per second.
-    EXPECT_GT(my_latencyrecorder->qps(), 0);
+    EXPECT_GT(qps, 0);
 }
 
 TEST_F(MultiDimensionTest, mstatus) {
