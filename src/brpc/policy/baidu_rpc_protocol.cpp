@@ -975,6 +975,13 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                      << " of the response from " << *msg->socket()
                      << " does not match a request sent over it, drop it";
         CHECK_EQ(0, bthread_id_unlock(cid));
+        if (remote_stream_id != INVALID_STREAM_ID) {
+            SendStreamRst(msg->socket(), remote_stream_id);
+            const auto& extra_stream_ids = meta.stream_settings().extra_stream_ids();
+            for (int i = 0; i < extra_stream_ids.size(); ++i) {
+                SendStreamRst(msg->socket(), extra_stream_ids[i]);
+            }
+        }
         return;
     }
 

@@ -21,6 +21,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <poll.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
@@ -28,6 +29,7 @@
 #include "butil/macros.h"
 #include "butil/logging.h"
 #include "butil/files/temp_file.h"
+#include "butil/fd_guard.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -35,6 +37,7 @@
 #include "brpc/policy/baidu_rpc_meta.pb.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/policy/public_pbrpc_protocol.h"
+#include "brpc/policy/streaming_rpc_protocol.h"
 #include "brpc/channel.h"
 #include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/parallel_channel.h"
@@ -2293,7 +2296,14 @@ TEST(ResponseSocketTest, baidu_response_requires_sending_socket) {
     brpc::SocketId sending_id;
     brpc::SocketId foreign_id;
     ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sending_id));
-    ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &foreign_id));
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    butil::fd_guard response_fd(fds[0]);
+    butil::fd_guard peer_fd(fds[1]);
+    brpc::SocketOptions foreign_options;
+    foreign_options.fd = response_fd;
+    ASSERT_EQ(0, brpc::Socket::Create(foreign_options, &foreign_id));
+    response_fd.release();
     ASSERT_EQ(0, brpc::Socket::Address(
                      sending_id, &cntl._current_call.sending_sock));
     brpc::SocketUniquePtr foreign_socket;
@@ -2314,9 +2324,45 @@ TEST(ResponseSocketTest, baidu_response_requires_sending_socket) {
         socket->PostponeEOF();
         return msg;
     };
+    const int64_t stream_ids[] = {123, 456, 789};
+    meta.mutable_stream_settings()->set_stream_id(stream_ids[0]);
+    meta.mutable_stream_settings()->add_extra_stream_ids(stream_ids[1]);
+    meta.mutable_stream_settings()->add_extra_stream_ids(stream_ids[2]);
     brpc::policy::ProcessRpcResponse(make_response(foreign_socket.get()));
     EXPECT_TRUE(res.message().empty());
     EXPECT_EQ(0, cntl.ErrorCode());
+    EXPECT_FALSE(cntl.has_remote_stream());
+
+    // All advertised streams must be reset on the response's arrival socket.
+    butil::IOBuf expected;
+    for (int64_t stream_id : stream_ids) {
+        brpc::StreamFrameMeta frame_meta;
+        frame_meta.set_stream_id(stream_id);
+        frame_meta.set_frame_type(brpc::FRAME_TYPE_RST);
+        brpc::policy::PackStreamMessage(&expected, frame_meta, nullptr);
+    }
+    butil::IOBuf received;
+    const int64_t deadline = butil::cpuwide_time_ms() + 5000;
+    while (received.size() < expected.size()) {
+        const int64_t remaining = deadline - butil::cpuwide_time_ms();
+        ASSERT_GT(remaining, 0);
+        pollfd pfd = {peer_fd, POLLIN, 0};
+        ASSERT_EQ(1, poll(&pfd, 1, remaining));
+        char buf[1024];
+        const ssize_t n = read(peer_fd, buf, sizeof(buf));
+        ASSERT_GT(n, 0);
+        received.append(buf, n);
+    }
+    EXPECT_EQ(expected, received);
+    meta.clear_stream_settings();
+
+    // A real request uses a versioned ID, not the timeout/cancel base ID.
+    meta.set_correlation_id(cntl.call_id().value);
+    brpc::policy::ProcessRpcResponse(
+        make_response(cntl._current_call.sending_sock.get()));
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+    meta.set_correlation_id(cntl.current_id().value);
     brpc::policy::ProcessRpcResponse(
         make_response(cntl._current_call.sending_sock.get()));
     EXPECT_EQ("matched", res.message());

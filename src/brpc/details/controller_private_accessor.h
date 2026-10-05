@@ -61,7 +61,9 @@ public:
     bool does_response_match_request_socket(
             CallId cid, SocketId response_socket_id) const {
         const Controller::Call* call = nullptr;
-        if (cid == _cntl->_correlation_id || cid == _cntl->current_id()) {
+        if (cid == _cntl->current_id() ||
+            (cid == _cntl->_correlation_id &&
+             _cntl->_current_call.sending_sock == nullptr)) {
             call = &_cntl->_current_call;
         } else if (_cntl->_unfinished_call != nullptr &&
                    cid == _cntl->get_id(_cntl->_unfinished_call->nretry)) {
