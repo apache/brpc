@@ -397,18 +397,8 @@ TEST_F(MultiDimensionTest, get_description) {
 }
 
 TEST_F(MultiDimensionTest, mlatencyrecorder) {
-    std::string old_bvar_dump_interval;
-    std::string old_mbvar_dump;
-    std::string old_bvar_latency_p1;
-    std::string old_bvar_latency_p2;
-    std::string old_bvar_latency_p3;
-
-    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_interval", &old_bvar_dump_interval);
-    GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump", &old_mbvar_dump);
-    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p1", &old_bvar_latency_p1);
-    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p2", &old_bvar_latency_p2);
-    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p3", &old_bvar_latency_p3);
-
+    // Restore flags even if a fatal assertion returns from the test.
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
     GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", "1");
     GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump", "true");
     GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", "60");
@@ -420,17 +410,40 @@ TEST_F(MultiDimensionTest, mlatencyrecorder) {
     bvar::LatencyRecorder* my_latencyrecorder = my_mlatencyrecorder.get_stats(labels_value);
     ASSERT_TRUE(my_latencyrecorder);
     *my_latencyrecorder << 1 << 2 << 3 << 4 << 5 << 6 << 7;
-    sleep(1);
-    ASSERT_EQ(4, my_latencyrecorder->latency());
-    ASSERT_EQ(7, my_latencyrecorder->max_latency());
-    ASSERT_LE(7, my_latencyrecorder->qps());
-    ASSERT_EQ(7, my_latencyrecorder->count());
+    EXPECT_EQ(7, my_latencyrecorder->count());
 
-    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", old_bvar_dump_interval.c_str());
-    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump", old_mbvar_dump.c_str());
-    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", old_bvar_latency_p1.c_str());
-    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p2", old_bvar_latency_p2.c_str());
-    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p3", old_bvar_latency_p3.c_str());
+    // Sampling runs once per second. Allow five seconds for scheduling
+    // delays on busy CI runners while keeping the wait bounded.
+    const int64_t sampling_timeout_us = 5 * 1000000L;
+    const int64_t deadline =
+        butil::monotonic_time_us() + sampling_timeout_us;
+    int64_t latency = 0;
+    int64_t max_latency = 0;
+    int64_t qps = 0;
+    // Keep each nonzero observation: the next sampler tick can clear
+    // these one-second windows before the other metrics are read.
+    while ((latency == 0 || max_latency == 0 || qps == 0) &&
+           butil::monotonic_time_us() < deadline) {
+        if (latency == 0) {
+            latency = my_latencyrecorder->latency();
+        }
+        if (max_latency == 0) {
+            max_latency = my_latencyrecorder->max_latency();
+        }
+        if (qps == 0) {
+            qps = my_latencyrecorder->qps();
+        }
+        if (latency != 0 && max_latency != 0 && qps != 0) {
+            break;
+        }
+        usleep(10000);
+    }
+
+    EXPECT_EQ(4, latency);
+    EXPECT_EQ(7, max_latency);
+    // QPS uses the actual sampling interval and randomized rounding.
+    // Seven requests can yield fewer than seven requests per second.
+    EXPECT_GT(qps, 0);
 }
 
 TEST_F(MultiDimensionTest, mstatus) {
