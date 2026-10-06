@@ -137,6 +137,11 @@ int ConsulNamingService::GetServers(const char* service_name,
     }
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < services.Size(); ++i) {
+        if (!services[i].IsObject()) {
+            LOG(ERROR) << "Service node is not a json object: "
+                       << RapidjsonValueToString(services[i]);
+            continue;
+        }
         auto itr_service = services[i].FindMember("Service");
         if (itr_service == services[i].MemberEnd()) {
             LOG(ERROR) << "No service info in node: "
@@ -145,6 +150,11 @@ int ConsulNamingService::GetServers(const char* service_name,
         }
 
         const BUTIL_RAPIDJSON_NAMESPACE::Value& service = itr_service->value;
+        if (!service.IsObject()) {
+            LOG(ERROR) << "Service info is not a json object: "
+                       << RapidjsonValueToString(service);
+            continue;
+        }
         auto itr_address = service.FindMember("Address");
         auto itr_port = service.FindMember("Port");
         if (itr_address == service.MemberEnd() ||
