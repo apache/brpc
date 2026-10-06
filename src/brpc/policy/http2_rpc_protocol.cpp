@@ -1683,6 +1683,22 @@ bool H2Context::FlushPendingData(int stream_id) {
     return out.empty() || WriteAck(_socket, &out) == 0;
 }
 
+H2UnsentRequest::H2UnsentRequest(Controller* c)
+    : _nref(1)
+    , _size(0)
+    , _stream_id(0)
+    , _cntl(c) {
+#ifndef NDEBUG
+    get_h2_bvars()->h2_unsent_request_count << 1;
+#endif
+}
+
+H2UnsentRequest::~H2UnsentRequest() {
+#ifndef NDEBUG
+    get_h2_bvars()->h2_unsent_request_count << -1;
+#endif
+}
+
 H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
     const HttpHeader& h = c->http_request();
     const CommonStrings* const common = get_common_strings();
