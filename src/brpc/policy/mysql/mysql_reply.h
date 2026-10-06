@@ -195,7 +195,7 @@ public:
         butil::StringPiece msg() const;
 
     private:
-        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena, bool protocol41);
 
         DISALLOW_COPY_AND_ASSIGN(Error);
         friend class MysqlReply;
@@ -328,11 +328,19 @@ public:
 
 public:
     MysqlReply();
+    // Legacy signature kept for binary compatibility with prebuilt clients;
+    // assumes the protocol-4.1 ERR layout (the command phase default).
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
                                    butil::Arena* arena,
                                    bool is_auth,
                                    MysqlStmtType stmt_type,
                                    bool* more_results);
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
+                                   butil::Arena* arena,
+                                   bool is_auth,
+                                   MysqlStmtType stmt_type,
+                                   bool* more_results,
+                                   bool protocol41);
     void Swap(MysqlReply& other);
     void Print(std::ostream& os) const;
     // response type

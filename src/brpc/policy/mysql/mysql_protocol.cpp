@@ -362,7 +362,17 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
     }
 
     MysqlStmtType stmt_type = static_cast<MysqlStmtType>(pi.count);
-    ParseError err = msg->response.ConsumePartialIOBuf(*source, pi.auth_flags != 0, stmt_type);
+    // ERR-packet layout: once the client has sent its HandshakeResponse41
+    // (which carries CLIENT_PROTOCOL_41), or in the command phase, errors
+    // include '#' + sql_state. Before that -- an ERR replacing the server
+    // greeting, e.g. "Too many connections" on a saturated server -- the
+    // message follows the error code directly (pre-4.1 layout). The
+    // per-connection AuthContext group is set as soon as the greeting has
+    // been processed, so an empty group means we are still waiting for it.
+    const bool protocol41 = !pi.auth_flags ||
+        (socket->auth_context() != nullptr && !socket->auth_context()->group().empty());
+    ParseError err =
+        msg->response.ConsumePartialIOBuf(*source, pi.auth_flags != 0, stmt_type, protocol41);
     if (FLAGS_mysql_verbose) {
         LOG(INFO) << "[MYSQL PARSE] " << msg->response;
     }
