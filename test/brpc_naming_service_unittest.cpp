@@ -427,6 +427,72 @@ public:
     butil::atomic<int64_t> touch_count;
 };
 
+class ConsulResponseService : public test::UserNamingService {
+public:
+    explicit ConsulResponseService(const std::string& response)
+        : _response(response) {}
+
+    void ListNames(google::protobuf::RpcController* cntl_base,
+                   const test::HttpRequest*,
+                   test::HttpResponse*,
+                   google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->http_response().SetHeader("X-Consul-Index", "1");
+        cntl->response_attachment().append(_response);
+    }
+
+private:
+    const std::string _response;
+};
+
+TEST(NamingServiceTest, consul_response_object_types) {
+    GFLAGS_NAMESPACE::FlagSaver flags_saver;
+    brpc::policy::FLAGS_consul_enable_degrade_to_file_naming_service = false;
+    brpc::policy::FLAGS_consul_service_discovery_url = "/v1/health/service/";
+    const char* invalid_entries[] = {
+        R"(null, true, false, 1, 1.5, "node", [])",
+        R"({"Service":null}, {"Service":true}, {"Service":false},
+            {"Service":1}, {"Service":1.5}, {"Service":"service"},
+            {"Service":[]})"
+    };
+    butil::EndPoint endpoint;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:8003", &endpoint));
+    const brpc::ServerNode expected_node(endpoint, "tag");
+
+    for (const char* entries : invalid_entries) {
+        for (bool with_valid_service : {false, true}) {
+            SCOPED_TRACE(entries);
+            SCOPED_TRACE(with_valid_service);
+            std::string response = std::string("[") + entries;
+            if (with_valid_service) {
+                response += R"(,{"Service":{"Address":"127.0.0.1",
+                              "Port":8003,"Tags":["tag"]}})";
+            }
+            response += "]";
+            ConsulResponseService svc(response);
+            brpc::Server server;
+            ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                                          "/v1/health/service/test => ListNames"));
+            ASSERT_EQ(0, server.Start(0, nullptr));
+            brpc::policy::FLAGS_consul_agent_addr = butil::string_printf(
+                "http://%s", butil::endpoint2str(server.listen_address()).c_str());
+
+            brpc::policy::ConsulNamingService cns;
+            // GetServers must clear stale results, including on invalid input.
+            std::vector<brpc::ServerNode> servers(1, expected_node);
+            ASSERT_EQ(with_valid_service ? 0 : -1,
+                      cns.GetServers("test", &servers));
+            if (with_valid_service) {
+                ASSERT_EQ(1u, servers.size());
+                EXPECT_EQ(expected_node, servers[0]);
+            } else {
+                EXPECT_TRUE(servers.empty());
+            }
+        }
+    }
+}
+
 TEST(NamingServiceTest, consul_with_backup_file) {
     GFLAGS_NAMESPACE::FlagSaver flags_saver;
     brpc::policy::FLAGS_consul_enable_degrade_to_file_naming_service = true;
