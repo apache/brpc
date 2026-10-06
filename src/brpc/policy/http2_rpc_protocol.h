@@ -165,20 +165,8 @@ private:
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
-    H2UnsentRequest(Controller* c)
-        : _nref(1)
-        , _size(0)
-        , _stream_id(0)
-        , _cntl(c) {
-#ifndef NDEBUG
-        get_h2_bvars()->h2_unsent_request_count << 1;
-#endif
-    }
-    ~H2UnsentRequest() {
-#ifndef NDEBUG
-        get_h2_bvars()->h2_unsent_request_count << -1;
-#endif
-    }
+    H2UnsentRequest(Controller* c);
+    ~H2UnsentRequest();
     H2UnsentRequest(const H2UnsentRequest&);
     void operator=(const H2UnsentRequest&);
     void Destroy();
