@@ -214,6 +214,67 @@ TEST(RecorderTest, perf) {
               << " threads";
 }
 
+class LatencyRecorderWithWindowSample : public bvar::LatencyRecorder {
+public:
+    explicit LatencyRecorderWithWindowSample(time_t window_size)
+        : bvar::LatencyRecorder(window_size) {}
+
+    bool get_latency_sample(bvar::detail::Sample<bvar::Stat>* sample) const {
+        return _latency_window.get_span(sample);
+    }
+};
+
+TEST(RecorderTest, latency_recorder_window_statistics) {
+    // Keep both batches across sampler ticks. A ten-second window is longer
+    // than the five-second wait budget, which allows for busy CI runners.
+    const time_t window_size = 10;
+    LatencyRecorderWithWindowSample recorder(window_size);
+    const int64_t sampling_timeout_us = 5 * 1000000L;
+    const int64_t deadline =
+        butil::monotonic_time_us() + sampling_timeout_us;
+    bvar::detail::Sample<bvar::Stat> sample;
+
+    // Deliberately sample a partial batch before recording the remaining
+    // values, rather than assuming all writes fall between sampler ticks.
+    recorder << 1 << 2 << 3;
+    while (butil::monotonic_time_us() < deadline) {
+        if (recorder.get_latency_sample(&sample) && sample.data.num >= 3) {
+            break;
+        }
+        usleep(10000);
+    }
+    ASSERT_EQ(3, sample.data.num) << "First batch was not sampled";
+    EXPECT_EQ(6, sample.data.sum);
+
+    recorder << 4 << 5 << 6 << 7;
+    EXPECT_EQ(7, recorder.count());
+    bool complete_sample = false;
+    int64_t max_latency = 0;
+    while (butil::monotonic_time_us() < deadline) {
+        if (!complete_sample && recorder.get_latency_sample(&sample) &&
+            sample.data.num >= 7) {
+            complete_sample = true;
+        }
+        if (max_latency < 7) {
+            max_latency = recorder.max_latency();
+        }
+        if (complete_sample && max_latency >= 7) {
+            break;
+        }
+        usleep(10000);
+    }
+
+    // Validate completeness before checking sum / count from the same saved
+    // snapshot. Rereading latency() could observe a different sampling span.
+    ASSERT_TRUE(complete_sample) << "Full batch was not sampled; count="
+                                 << sample.data.num;
+    ASSERT_EQ(7, sample.data.num);
+    EXPECT_EQ(28, sample.data.sum);
+    EXPECT_EQ(4, sample.data.get_average_int());
+    // The maximum has an independent sampler and is saved separately.
+    EXPECT_EQ(7, max_latency);
+}
+
 TEST(RecorderTest, latency_recorder_qps_accuracy) {
     bvar::LatencyRecorder lr1(2); // set windows size to 2s
     bvar::LatencyRecorder lr2(2);

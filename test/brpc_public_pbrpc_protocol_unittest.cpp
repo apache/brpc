@@ -250,6 +250,32 @@ TEST_F(PublicPbrpcTest, process_response_after_eof) {
     ASSERT_TRUE(_socket->Failed());
 }
 
+TEST_F(PublicPbrpcTest, process_response_requires_sending_socket) {
+    brpc::Controller cntl;
+    test::EchoResponse res;
+    cntl._response = &res;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                     cntl.call_id(), nullptr, 2));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    brpc::SocketId sending_id;
+    ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sending_id));
+    ASSERT_EQ(0, brpc::Socket::Address(
+                     sending_id, &cntl._current_call.sending_sock));
+
+    brpc::policy::PublicPbrpcResponse meta;
+    meta.add_responsebody()->set_id(cntl.current_id().value);
+    meta.mutable_responsehead()->set_code(0);
+    ProcessMessage(brpc::policy::ProcessPublicPbrpcResponse, MakeResponseMessage(&meta), false);
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+
+    brpc::policy::MostCommonMessage* msg = MakeResponseMessage(&meta);
+    cntl._current_call.sending_sock->ReAddress(&msg->_socket);
+    ProcessMessage(brpc::policy::ProcessPublicPbrpcResponse, msg, false);
+    EXPECT_EQ(EXP_RESPONSE, res.message());
+    EXPECT_EQ(0, cntl.ErrorCode());
+}
+
 TEST_F(PublicPbrpcTest, process_response_error_code) {
     const int ERROR_CODE = 12345;
     brpc::policy::PublicPbrpcResponse meta;
