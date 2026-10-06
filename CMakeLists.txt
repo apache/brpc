@@ -193,19 +193,6 @@ list(APPEND BRPC_COMMON_DEFINITIONS
     __STDC_CONSTANT_MACROS
 )
 
-# __STRICT_ANSI__ hides GNU extensions, but it conflicts with the __int128
-# specializations added in libstdc++ 16 (GCC 16), causing "redefinition of
-# numeric_limits<__int128>". Probe support at configure time and only define
-# it when it does not break compilation.
-include(CheckCXXSourceCompiles)
-set(CMAKE_REQUIRED_DEFINITIONS "-D__STRICT_ANSI__")
-check_cxx_source_compiles("#include <limits>\nint main() { return 0; }"
-    BRPC_STRICT_ANSI_COMPILES)
-unset(CMAKE_REQUIRED_DEFINITIONS)
-if(BRPC_STRICT_ANSI_COMPILES)
-    list(APPEND BRPC_COMMON_DEFINITIONS __STRICT_ANSI__)
-endif()
-
 if(WITH_ASAN)
     list(APPEND BRPC_COMMON_COMPILE_OPTIONS -fsanitize=address)
     list(APPEND BRPC_COMMON_LINK_OPTIONS -fsanitize=address)
