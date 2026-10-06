@@ -83,6 +83,7 @@ extern uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size,
 extern ibv_qp* CreateQpWithInlineData(ibv_pd* pd, ibv_qp_init_attr* attr,
                                       uint32_t vendor_id,
                                       uint32_t* max_inline_data);
+extern butil::atomic<uint32_t> g_inline_data_request;
 extern bool ShouldPostInline(bool in_pool, size_t len,
                              uint32_t max_inline_data);
 } // namespace rdma
@@ -3186,10 +3187,14 @@ static ibv_qp* StubCreateQp(ibv_pd*, ibv_qp_init_attr* attr) {
 }
 
 // Runs CreateQpWithInlineData() against the stub. Returns whether a QP was
-// created; *limit gets the inline limit, *err the errno left behind.
+// created; *limit gets the inline limit, *err the errno left behind. Unless
+// keep_cached, forgets the inline size cached by earlier QP creations first.
 static bool CreateWithStub(uint32_t vendor_id, int64_t device_limit,
                            int refuse_errno, uint32_t grant, uint32_t* limit,
-                           int* err) {
+                           int* err, bool keep_cached = false) {
+    if (!keep_cached) {
+        rdma::g_inline_data_request.store(UINT32_MAX);
+    }
     ibv_qp* (*saved)(ibv_pd*, ibv_qp_init_attr*) = rdma::IbvCreateQp;
     rdma::IbvCreateQp = StubCreateQp;
     g_stub_requests.clear();
@@ -3255,6 +3260,43 @@ TEST(RdmaInlineDataTest, create_qp_with_inline_data) {
                      44, 28, 12, 0}),
               g_stub_requests);
     EXPECT_EQ(EINVAL, err);
+}
+
+// Later QPs start at the inline size the last QP was created with.
+TEST(RdmaInlineDataTest, create_qp_reuses_inline_size) {
+    uint32_t limit = 0;
+    int err = 0;
+    typedef std::vector<uint32_t> Sizes;
+
+    // The first QP on an Intel device limited to 48 bytes steps down; the next
+    // asks for 48 straight away.
+    ASSERT_TRUE(CreateWithStub(INTEL, 48, EINVAL, 0, &limit, &err));
+    EXPECT_EQ(Sizes({216, 101, 48}), g_stub_requests);
+    ASSERT_TRUE(CreateWithStub(INTEL, 48, EINVAL, 0, &limit, &err, true));
+    EXPECT_EQ(Sizes({48}), g_stub_requests);
+    EXPECT_EQ(48u, limit);
+
+    // If the cached size is refused (a QP whose other attributes leave less
+    // room), the step-down continues from it, and the new size is kept.
+    ASSERT_TRUE(CreateWithStub(INTEL, 40, EINVAL, 0, &limit, &err, true));
+    EXPECT_EQ(Sizes({48, 32}), g_stub_requests);
+    EXPECT_EQ(32u, limit);
+    ASSERT_TRUE(CreateWithStub(INTEL, 40, EINVAL, 0, &limit, &err, true));
+    EXPECT_EQ(Sizes({32}), g_stub_requests);
+
+    // A failure other than EINVAL leaves the cached size as it was.
+    ASSERT_FALSE(CreateWithStub(INTEL, -1, ENOMEM, 0, &limit, &err, true));
+    EXPECT_EQ(Sizes({32}), g_stub_requests);
+    ASSERT_TRUE(CreateWithStub(INTEL, 40, EINVAL, 0, &limit, &err, true));
+    EXPECT_EQ(Sizes({32}), g_stub_requests);
+
+    // Mellanox: 236 is accepted and asked for again; the grant is still capped.
+    ASSERT_TRUE(CreateWithStub(MELLANOX, 1024, EINVAL, 316, &limit, &err));
+    ASSERT_TRUE(CreateWithStub(MELLANOX, 1024, EINVAL, 316, &limit, &err,
+                               true));
+    EXPECT_EQ(Sizes({236}), g_stub_requests);
+    EXPECT_EQ(236u, limit);
+    rdma::g_inline_data_request.store(UINT32_MAX);
 }
 
 // The send-path decision of CutFromIOBufList(), which itself needs an

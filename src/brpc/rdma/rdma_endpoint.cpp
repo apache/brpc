@@ -1177,13 +1177,23 @@ uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size, bool refused) {
     return size;
 }
 
-// Creates a QP with attr, asking for BF_MAX_INLINE_DATA bytes of inline data,
-// or less if the device refuses that size, and sets *max_inline_data to the
+// The inline size the last QP was created with (UINT32_MAX: none yet). All
+// QPs use the same device and attributes apart from their queue sizes, so
+// later QPs start here instead of repeating the step-down. Not static:
+// exposed for UT.
+butil::atomic<uint32_t> g_inline_data_request(UINT32_MAX);
+
+// Creates a QP with attr, asking for the inline size the last QP was created
+// with (at first BF_MAX_INLINE_DATA, capped by the vendor's known limit), or
+// less if the device refuses that size, and sets *max_inline_data to the
 // largest message to post inline on it. Not static: exposed for UT.
 ibv_qp* CreateQpWithInlineData(ibv_pd* pd, ibv_qp_init_attr* attr,
                                uint32_t vendor_id, uint32_t* max_inline_data) {
     uint32_t inline_size =
-        InlineDataToRequest(vendor_id, BF_MAX_INLINE_DATA, false);
+        g_inline_data_request.load(butil::memory_order_relaxed);
+    if (inline_size == UINT32_MAX) {
+        inline_size = InlineDataToRequest(vendor_id, BF_MAX_INLINE_DATA, false);
+    }
     attr->cap.max_inline_data = inline_size;
     ibv_qp* qp = IbvCreateQp(pd, attr);
     // A refused inline size fails with EINVAL; any other failure is left to
@@ -1198,6 +1208,7 @@ ibv_qp* CreateQpWithInlineData(ibv_pd* pd, ibv_qp_init_attr* attr,
         qp = IbvCreateQp(pd, attr);
     }
     if (qp != nullptr) {
+        g_inline_data_request.store(inline_size, butil::memory_order_relaxed);
         // ibv_create_qp writes the granted inline data size back into attr
         *max_inline_data = attr->cap.max_inline_data;
         if (vendor_id == MELLANOX_VENDOR_ID) {
