@@ -94,6 +94,10 @@ bool DefaultReplicaPolicy::Build(ServerId server,
             len = snprintf(host, sizeof(host), "%s-%lu-%s",
                            endpoint2str(ptr->remote_side()).c_str(), i, server.tag.c_str());
         }
+        if (len < 0 || static_cast<size_t>(len) >= sizeof(host)) {
+            LOG(ERROR) << "Invalid consistent hashing replica key length=" << len;
+            return false;
+        }
         ConsistentHashingLoadBalancer::Node node;
         node.hash = _hash_func(host, len);
         node.server_sock = server;
@@ -132,6 +136,10 @@ bool KetamaReplicaPolicy::Build(ServerId server,
         } else {
             len = snprintf(host, sizeof(host), "%s-%lu-%s",
                            endpoint2str(ptr->remote_side()).c_str(), i, server.tag.c_str());
+        }
+        if (len < 0 || static_cast<size_t>(len) >= sizeof(host)) {
+            LOG(ERROR) << "Invalid consistent hashing replica key length=" << len;
+            return false;
         }
         unsigned char digest[MD5_DIGEST_LENGTH];
         MD5HashSignature(host, len, digest);
