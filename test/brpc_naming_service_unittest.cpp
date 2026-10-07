@@ -33,6 +33,7 @@
 #include "brpc/policy/remote_file_naming_service.h"
 #include "brpc/policy/discovery_naming_service.h"
 #include "brpc/policy/nacos_naming_service.h"
+#include "brpc/policy/naming_service_json.h"
 #include "echo.pb.h"
 #include "brpc/server.h"
 
@@ -288,6 +289,37 @@ TEST(NamingServiceTest, remotefile) {
     }
 }
 
+// Build a JSON array nested `depth' levels deep, e.g. depth=2 -> "[[]]".
+static std::string MakeDeeplyNestedJson(int depth) {
+    return std::string(depth, '[') + std::string(depth, ']');
+}
+
+TEST(NamingServiceTest, naming_service_json_depth_limit) {
+    BUTIL_RAPIDJSON_NAMESPACE::Document doc;
+    // Well-formed replies are parsed.
+    EXPECT_TRUE(brpc::policy::ParseNamingServiceJson(
+        R"({"hosts":[{"ip":"127.0.0.1","port":8888}]})", &doc));
+    EXPECT_TRUE(doc.IsObject());
+    // Malformed replies are rejected.
+    EXPECT_FALSE(brpc::policy::ParseNamingServiceJson(
+        R"({"hosts":[)" + MakeDeeplyNestedJson(1), &doc));
+    // Brackets and braces inside strings don't count towards the depth.
+    EXPECT_TRUE(brpc::policy::ParseNamingServiceJson(
+        R"({"key":"a\\b\"c[[[{{"})", &doc));
+    // Replies at the depth limit are still accepted ...
+    EXPECT_TRUE(brpc::policy::ParseNamingServiceJson(
+        MakeDeeplyNestedJson(brpc::policy::kMaxNamingServiceJsonDepth), &doc));
+    // ... while deeper ones are rejected before parsing, so that neither the
+    // parser nor the DOM built/visited/destroyed recursively by rapidjson
+    // exhausts the stack.
+    EXPECT_FALSE(brpc::policy::ParseNamingServiceJson(
+        MakeDeeplyNestedJson(brpc::policy::kMaxNamingServiceJsonDepth + 1),
+        &doc));
+    // A deeply nested reply must be rejected without stack overflow.
+    EXPECT_FALSE(brpc::policy::ParseNamingServiceJson(
+        MakeDeeplyNestedJson(140000), &doc));
+}
+
 class ConsulNamingServiceImpl : public test::UserNamingService {
 public:
   ConsulNamingServiceImpl() : list_names_count(0), touch_count(0) {
@@ -491,6 +523,26 @@ TEST(NamingServiceTest, consul_response_object_types) {
             }
         }
     }
+}
+
+TEST(NamingServiceTest, consul_deeply_nested_reply) {
+    GFLAGS_NAMESPACE::FlagSaver flags_saver;
+    brpc::policy::FLAGS_consul_enable_degrade_to_file_naming_service = false;
+    brpc::policy::FLAGS_consul_service_discovery_url = "/v1/health/service/";
+    ConsulResponseService svc(MakeDeeplyNestedJson(140000));
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                                  "/v1/health/service/test => ListNames"));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    brpc::policy::FLAGS_consul_agent_addr = butil::string_printf(
+        "http://%s", butil::endpoint2str(server.listen_address()).c_str());
+
+    // The deeply nested reply must be rejected instead of crashing on
+    // unbounded recursion.
+    brpc::policy::ConsulNamingService cns;
+    std::vector<brpc::ServerNode> servers;
+    ASSERT_EQ(-1, cns.GetServers("test", &servers));
+    EXPECT_TRUE(servers.empty());
 }
 
 TEST(NamingServiceTest, consul_with_backup_file) {
@@ -814,6 +866,50 @@ TEST(NamingServiceTest, discovery_sanity) {
     }
 }
 
+class DeepReplyDiscoveryServiceImpl : public DiscoveryNamingServiceImpl {
+public:
+    void Fetchs(google::protobuf::RpcController* cntl_base,
+                const test::HttpRequest*,
+                test::HttpResponse*,
+                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(MakeDeeplyNestedJson(140000));
+    }
+};
+
+TEST(NamingServiceTest, discovery_deeply_nested_reply) {
+    GFLAGS_NAMESPACE::FlagSaver flags_saver;
+    ScopedDiscoveryChannelReset reset_discovery_channel;
+    brpc::Server server;
+    DeepReplyDiscoveryServiceImpl svc;
+    std::string rest_mapping =
+        "/discovery/nodes => Nodes, "
+        "/discovery/fetchs => Fetchs";
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                rest_mapping.c_str()));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+    brpc::policy::FLAGS_discovery_api_addr = butil::string_printf(
+        "http://%s/discovery/nodes", butil::endpoint2str(
+            server.listen_address()).c_str());
+
+    const std::string server_address =
+        butil::endpoint2str(server.listen_address()).c_str();
+    std::string nodes_result(s_nodes_result);
+    const size_t server_address_pos = nodes_result.find("127.0.0.1:8635");
+    ASSERT_NE(std::string::npos, server_address_pos);
+    nodes_result.replace(server_address_pos, strlen("127.0.0.1:8635"),
+                         server_address);
+    svc.SetNodesResult(nodes_result);
+
+    // The deeply nested reply must be rejected instead of crashing on
+    // unbounded recursion.
+    brpc::policy::DiscoveryNamingService dcns;
+    std::vector<brpc::ServerNode> servers;
+    ASSERT_EQ(-1, dcns.GetServers("admin.test", &servers));
+    EXPECT_TRUE(servers.empty());
+}
+
 class NacosNamingServiceImpl : public test::NacosNamingService {
 public:
     void Login(google::protobuf::RpcController* cntl_base,
@@ -948,6 +1044,42 @@ TEST(NamingServiceTest, nacos) {
         std::vector<brpc::ServerNode> nodes;
         ASSERT_NE(0, nns.GetServers(service_name, &nodes));
     }
+}
+
+class DeepReplyNacosNamingServiceImpl : public NacosNamingServiceImpl {
+public:
+    void List(google::protobuf::RpcController* cntl_base,
+              const test::HttpRequest*,
+              test::HttpResponse*,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(MakeDeeplyNestedJson(140000));
+    }
+};
+
+TEST(NamingServiceTest, nacos_deeply_nested_reply) {
+    GFLAGS_NAMESPACE::FlagSaver flags_saver;
+    brpc::Server server;
+    DeepReplyNacosNamingServiceImpl svc;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                                   "/nacos/v1/auth/login => Login, "
+                                   "/nacos/v1/ns/instance/list => List"));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+
+    brpc::policy::FLAGS_nacos_address = butil::string_printf(
+        "http://%s", butil::endpoint2str(server.listen_address()).c_str());
+    brpc::policy::FLAGS_nacos_username = "nacos";
+    brpc::policy::FLAGS_nacos_password = "nacos";
+
+    // The deeply nested reply must be rejected instead of crashing on
+    // unbounded recursion.
+    const char* service_name =
+        "serviceName=test&groupName=g1&namespaceId=n1&clusters=wx";
+    brpc::policy::NacosNamingService nns;
+    std::vector<brpc::ServerNode> nodes;
+    ASSERT_EQ(-1, nns.GetServers(service_name, &nodes));
+    EXPECT_TRUE(nodes.empty());
 }
 
 } //namespace

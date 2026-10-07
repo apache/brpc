@@ -23,6 +23,7 @@
 
 #include "brpc/http_status_code.h"
 #include "brpc/log.h"
+#include "brpc/policy/naming_service_json.h"
 #include "butil/iobuf.h"
 #include "butil/logging.h"
 #include "butil/third_party/rapidjson/document.h"
@@ -75,8 +76,7 @@ int NacosNamingService::RefreshAccessToken(const char *service_name) {
     }
 
     BUTIL_RAPIDJSON_NAMESPACE::Document doc;
-    if (doc.Parse(cntl.response_attachment().to_string().c_str())
-            .HasParseError()) {
+    if (!ParseNamingServiceJson(cntl.response_attachment().to_string(), &doc)) {
         LOG(ERROR) << "Failed to parse nacos auth response";
         return -1;
     }
@@ -133,8 +133,7 @@ int NacosNamingService::GetServerNodes(const char *service_name,
     }
 
     BUTIL_RAPIDJSON_NAMESPACE::Document doc;
-    if (doc.Parse(cntl.response_attachment().to_string().c_str())
-            .HasParseError()) {
+    if (!ParseNamingServiceJson(cntl.response_attachment().to_string(), &doc)) {
         LOG(ERROR) << "Failed to parse nacos response";
         return -1;
     }
