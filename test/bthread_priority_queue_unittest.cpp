@@ -22,6 +22,7 @@
 #include <set>
 #include <mutex>
 #include <sched.h>
+#include "butil/compiler_specific.h"
 #include "bthread/bthread.h"
 #include "bthread/task_group.h"
 
@@ -242,6 +243,78 @@ TEST_F(PriorityQueueTest, multiple_eds_concurrent_preempt) {
 
     ASSERT_EQ(TOTAL, g_priority_count.load());
     ASSERT_EQ(TOTAL, resume_count.load());
+    std::lock_guard<std::mutex> lk(g_tid_mutex);
+    ASSERT_EQ((size_t)TOTAL, g_executed_ids.size());
+}
+
+// Reuse the frames left by bthread_start_urgent instead of leaving the
+// scheduler's on-stack ReadyToRunArgs intact after the parent resumes.
+NOINLINE void reuse_stack_after_start_urgent() {
+    // Keep these stack writes observable in optimized builds.
+    volatile bthread_tag_t tags[256];
+    for (volatile bthread_tag_t& tag : tags) {
+        tag = BTHREAD_TAG_INVALID;
+    }
+}
+
+// A stolen priority parent can return from start_urgent and reuse its stack
+// while the child worker is still finishing priority_to_run. Do this on every
+// urgent start, then retire the parents before joining their children.
+TEST_F(PriorityQueueTest, parent_stack_reused_after_priority_preemption) {
+    const int NUM_EDS = 4;
+    const int TASKS_PER_ED = 500;
+    const int TOTAL = NUM_EDS * TASKS_PER_ED;
+    struct EDArg {
+        int ed_index;
+        std::vector<bthread_t> children;
+        int error_code;
+    };
+
+    auto ed_fn = [](void* arg) -> void* {
+        auto ea = static_cast<EDArg*>(arg);
+        bthread::TaskGroup::address_meta(bthread_self())->priority_index = ea->ed_index;
+        for (size_t i = 0; i < ea->children.size(); ++i) {
+            std::unique_ptr<TaskArg> ta(new TaskArg{
+                ea->ed_index * static_cast<int>(ea->children.size()) + static_cast<int>(i)});
+            ea->error_code = bthread_start_urgent(&ea->children[i], nullptr,
+                                                  priority_task_fn, ta.get());
+            if (ea->error_code != 0) {
+                ea->children[i] = 0;
+                break;
+            }
+            ta.release();
+            reuse_stack_after_start_urgent();
+        }
+        return nullptr;
+    };
+
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    attr.flags |= BTHREAD_GLOBAL_PRIORITY;
+    EDArg args[NUM_EDS];
+    bthread_t parents[NUM_EDS];
+    int started = 0;
+    for (int i = 0; i < NUM_EDS; ++i) {
+        args[i] = {i, std::vector<bthread_t>(TASKS_PER_ED), 0};
+        int rc = bthread_start_background(&parents[i], &attr, ed_fn, &args[i]);
+        EXPECT_EQ(0, rc);
+        if (rc != 0) {
+            break;
+        }
+        ++started;
+    }
+    // Join all started tasks before assertions can leave their arguments
+    // out of scope, including when a task could not be created.
+    for (int i = 0; i < started; ++i) {
+        EXPECT_EQ(0, bthread_join(parents[i], nullptr));
+        EXPECT_EQ(0, args[i].error_code);
+        for (auto child : args[i].children) {
+            if (child != 0) {
+                EXPECT_EQ(0, bthread_join(child, nullptr));
+            }
+        }
+    }
+
+    ASSERT_EQ(TOTAL, g_priority_count.load());
     std::lock_guard<std::mutex> lk(g_tid_mutex);
     ASSERT_EQ((size_t)TOTAL, g_executed_ids.size());
 }
