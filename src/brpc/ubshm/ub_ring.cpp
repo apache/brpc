@@ -196,6 +196,15 @@ static RETURN_CODE UbrScheduleClearTimer(UbrTrx *trx, uint64_t expect_ubr_id,
 }
 
 RETURN_CODE UBRing::UbrTrxClose() {
+    // _trx is still nullptr when the setup failed: UbrAllocateLocalShm and
+    // UbrAllocateServerShm reset it on their error paths while the endpoint
+    // keeps the non-null _ub_ring and calls UbrTrxClose from
+    // DeallocateResources. Reject before the generation load, which would
+    // dereference the null _trx.
+    if (BAIDU_UNLIKELY(_trx == nullptr)) {
+        LOG(ERROR) << "Trx close failed, client trx is null.";
+        return UBRING_ERR;
+    }
     const uint64_t expect_ubr_id = ATOMIC_LOAD(_trx->ubr_id);
     RETURN_CODE close_check_rc = UbrTrxCloseCheck(_trx, expect_ubr_id);
     if (BAIDU_UNLIKELY(close_check_rc != UBRING_OK)) {
@@ -346,6 +355,14 @@ RETURN_CODE UBRing::UbrAddCloseTimer() {
 }
 
 RETURN_CODE UBRing::UbrAddTimer() {
+    // The failure branch below reports _trx->local_shm.name, so a null _trx
+    // would crash before the guards in UbrAddCloseTimer/UbrAddHBTimer get to
+    // return their error. No current caller reaches this with a null _trx;
+    // reject it anyway for the same reason those two do.
+    if (BAIDU_UNLIKELY(_trx == nullptr)) {
+        LOG(ERROR) << "Trx add timer failed, trx is null.";
+        return UBRING_ERR;
+    }
     // Arm both timers with the manager lock held and only while the manager is
     // not shutting down: UbrMgrFini then knows that no per-trx timer can appear
     // after it took the shutdown flag, so waiting once for the timers it
