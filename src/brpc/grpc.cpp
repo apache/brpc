@@ -169,6 +169,11 @@ void PercentDecode(const std::string& str, std::string* str_out) {
     }
 }
 
+// The gRPC wire format defines TimeoutValue as "a positive integer as ASCII
+// string of at most 8 digits", so this is the largest value a conforming peer
+// can send. See doc/PROTOCOL-HTTP2.md in grpc/grpc.
+static const int64_t MAX_GRPC_TIMEOUT_VALUE = 99999999;
+
 int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout) {
     if (!grpc_timeout || grpc_timeout->empty()) {
         return -1;
@@ -184,6 +189,13 @@ int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout) {
     //      "123ASH" is not vaid since the digit number is 3, while the size is 6.
     //      "HHH" is not valid since the dight number is 0, while the size is 3.
     if ((size_t)(endptr - grpc_timeout->data()) != grpc_timeout->size() - 1) {
+        return -1;
+    }
+    // A value outside this range is not a valid timeout, and a large one makes
+    // the conversions below overflow int64_t, so treat it as no deadline like
+    // any other malformed value. strtol() saturates at LONG_MAX/LONG_MIN for
+    // input that does not fit, which is rejected here as well.
+    if (timeout_value < 0 || timeout_value > MAX_GRPC_TIMEOUT_VALUE) {
         return -1;
     }
     switch (*endptr) {
