@@ -87,6 +87,8 @@ struct RdmaResource {
     ibv_cq* send_cq{nullptr};
     ibv_cq* recv_cq{nullptr};
     ibv_comp_channel* comp_channel{nullptr};
+    // Largest message posted inline on `qp'.
+    uint32_t max_inline_data{0};
     RdmaResource() = default;
     ~RdmaResource();
     DISALLOW_COPY_AND_ASSIGN(RdmaResource);
