@@ -19,6 +19,7 @@
 #ifndef BRPC_POLICY_NAMING_SERVICE_JSON_H
 #define BRPC_POLICY_NAMING_SERVICE_JSON_H
 
+#include <string.h>
 #include <string>
 #include "butil/third_party/rapidjson/document.h"
 
@@ -62,7 +63,11 @@ inline int MaxJsonDepth(const std::string& text) {
                 }
             }
         } else if (c == '}' || c == ']') {
-            --depth;
+            // Don't go negative on malformed text with more closing than
+            // opening brackets.
+            if (depth > 0) {
+                --depth;
+            }
         }
     }
     return max_depth;
@@ -70,10 +75,14 @@ inline int MaxJsonDepth(const std::string& text) {
 
 // Parse a JSON reply of a naming service into `doc' iteratively. Returns
 // false if `text' is not valid JSON or is nested deeper than
-// kMaxNamingServiceJsonDepth, `doc' is left empty in the latter case.
+// kMaxNamingServiceJsonDepth; `doc' is untouched in the latter case.
 inline bool ParseNamingServiceJson(const std::string& text,
                                    BUTIL_RAPIDJSON_NAMESPACE::Document* doc) {
-    if (MaxJsonDepth(text) > kMaxNamingServiceJsonDepth) {
+    // A raw NUL is not valid JSON anywhere, and rapidjson takes it as
+    // end-of-input, so reject it to keep the scanned and parsed bytes
+    // consistent.
+    if (memchr(text.data(), '\0', text.size()) != nullptr ||
+        MaxJsonDepth(text) > kMaxNamingServiceJsonDepth) {
         return false;
     }
     doc->Parse<BUTIL_RAPIDJSON_NAMESPACE::kParseIterativeFlag>(text.c_str());

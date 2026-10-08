@@ -318,6 +318,14 @@ TEST(NamingServiceTest, naming_service_json_depth_limit) {
     // A deeply nested reply must be rejected without stack overflow.
     EXPECT_FALSE(brpc::policy::ParseNamingServiceJson(
         MakeDeeplyNestedJson(140000), &doc));
+    // A raw NUL is invalid JSON and must not let a suffix bypass parsing.
+    std::string with_nul(R"({"hosts":[{}]})");
+    with_nul += '\0';
+    with_nul += MakeDeeplyNestedJson(140000);
+    EXPECT_FALSE(brpc::policy::ParseNamingServiceJson(with_nul, &doc));
+    // Extra closing brackets must not underflow the depth counter.
+    EXPECT_FALSE(brpc::policy::ParseNamingServiceJson(
+        "]]]]]]" + MakeDeeplyNestedJson(1), &doc));
 }
 
 class ConsulNamingServiceImpl : public test::UserNamingService {
