@@ -15,21 +15,29 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_POLICY_RDMA_HANDSHAKE_PROTOCOL_H
-#define BRPC_POLICY_RDMA_HANDSHAKE_PROTOCOL_H
-
-// Compatibility facade. New code should include
-// transport_handshake_protocol.h and use ParseTransportHandshake.
 #include "brpc/policy/transport_handshake_protocol.h"
+
+#include "butil/logging.h"
+#include "brpc/adapter_transport.h"
+#include "brpc/socket.h"
 
 namespace brpc {
 namespace policy {
 
-ParseResult ParseRdmaHandshake(butil::IOBuf* source, Socket* socket,
-                               bool read_eof, const void* arg);
-void ProcessRdmaHandshake(InputMessageBase* msg);
+ParseResult ParseTransportHandshake(butil::IOBuf* source, Socket* socket,
+                                     bool /*read_eof*/, const void* /*arg*/) {
+    // URMA still uses its own Transport. Do not cast it to AdapterTransport
+    // when this globally registered parser is tried during protocol detection.
+    if (socket->socket_mode() == SOCKET_MODE_URMA) {
+        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+    }
+    return AdapterTransport::Get(socket)->ProcessUpgradeReadable(source);
+}
+
+void ProcessTransportHandshake(InputMessageBase* msg) {
+    DestroyingPtr<InputMessageBase> destroying_msg(msg);
+    CHECK(false) << "ProcessTransportHandshake should never be called";
+}
 
 }  // namespace policy
 }  // namespace brpc
-
-#endif  // BRPC_POLICY_RDMA_HANDSHAKE_PROTOCOL_H
