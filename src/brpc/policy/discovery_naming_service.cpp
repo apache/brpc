@@ -27,6 +27,7 @@
 #include "brpc/channel.h"
 #include "brpc/controller.h"
 #include "brpc/policy/discovery_naming_service.h"
+#include "brpc/policy/naming_service_json.h"
 
 namespace brpc {
 namespace policy {
@@ -72,7 +73,10 @@ static int ListDiscoveryNodes(const char* discovery_api_addr, std::string* serve
 
     const std::string response = cntl.response_attachment().to_string();
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    d.Parse(response.c_str());
+    if (!ParseNamingServiceJson(response, &d)) {
+        LOG(ERROR) << "Fail to parse response of discovery nodes as json";
+        return -1;
+    }
     if (!d.IsObject()) {
         LOG(ERROR) << "Fail to parse " << response << " as json object";
         return -1;
@@ -160,7 +164,10 @@ DiscoveryClient::~DiscoveryClient() {
 static int ParseCommonResult(const butil::IOBuf& buf, std::string* error_text) {
     const std::string s = buf.to_string();
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    d.Parse(s.c_str());
+    if (!ParseNamingServiceJson(s, &d)) {
+        LOG(ERROR) << "Fail to parse " << buf << " as json";
+        return -1;
+    }
     if (!d.IsObject()) {
         LOG(ERROR) << "Fail to parse " << buf << " as json object";
         return -1;
@@ -383,7 +390,10 @@ int DiscoveryNamingService::GetServers(const char* service_name,
 
     const std::string response = cntl.response_attachment().to_string();
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    d.Parse(response.c_str());
+    if (!ParseNamingServiceJson(response, &d)) {
+        LOG(ERROR) << "Fail to parse response of /discovery/fetchs as json";
+        return -1;
+    }
     if (!d.IsObject()) {
         LOG(ERROR) << "Fail to parse " << response << " as json object";
         return -1;

@@ -29,6 +29,7 @@
 #include "brpc/channel.h"
 #include "brpc/policy/file_naming_service.h"
 #include "brpc/policy/consul_naming_service.h"
+#include "brpc/policy/naming_service_json.h"
 
 
 namespace brpc {
@@ -129,7 +130,12 @@ int ConsulNamingService::GetServers(const char* service_name,
     std::set<ServerNode> presence;
 
     BUTIL_RAPIDJSON_NAMESPACE::Document services;
-    services.Parse(cntl.response_attachment().to_string().c_str());
+    if (!ParseNamingServiceJson(cntl.response_attachment().to_string(),
+                                &services)) {
+        LOG(ERROR) << "Failed to parse the consul's response for "
+                   << service_name << " as json";
+        return -1;
+    }
     if (!services.IsArray()) {
         LOG(ERROR) << "The consul's response for "
                    << service_name << " is not a json array";
