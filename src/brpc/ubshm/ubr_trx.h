@@ -170,6 +170,15 @@ typedef struct TagUbrTrx {
     butil::atomic<UbrTimerId> close_timer;
     butil::atomic<UbrTimerId> hb_timer;
     butil::atomic<UbrCleanupCtl*> cleanup_ctl;
+    // True once a force close claimed the cleanup of this acquisition while no
+    // delayed cleanup was published (see
+    // UBRingManager::ClaimTrxCleanupForced). The forced claim and the
+    // publication of a delayed cleanup are serialized by the manager lock, so
+    // a later publication sees the flag and refuses: only one of the two ever
+    // owns the cleanup. Reset by AcquireUbrTrxFromMgr together with the other
+    // per-acquisition fields; a stale true on a FREE slot is harmless because
+    // a publication is already refused while the slot is not USED.
+    butil::atomic<bool> cleanup_forced;
     // Last io ids seen by the close-check timer, used to reset its
     // back-off polling interval when the link has traffic.
     uint64_t close_chk_in_io_id;

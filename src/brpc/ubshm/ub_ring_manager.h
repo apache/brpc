@@ -31,6 +31,19 @@ typedef enum {
     UBR_MGR_UNIT_USED = 1
 } UbrMgrUnitStatus;
 
+// Result of UBRingManager::ClaimTrxCleanupForced.
+typedef enum {
+    // The slot is not (or no longer) used by the requested generation: the
+    // caller must not touch it and must not run the cleanup.
+    UBR_CLEANUP_CLAIM_NOT_OURS = 0,
+    // A delayed cleanup is published for that generation and was handed back
+    // in *out_ctl with a snapshot reference the caller must release.
+    UBR_CLEANUP_CLAIM_HAS_CTL = 1,
+    // No delayed cleanup existed; the forced claim took the cleanup ownership
+    // and later publications for that generation are refused.
+    UBR_CLEANUP_CLAIM_OWNED_NULL = 2
+} UbrCleanupClaim;
+
 typedef struct TagUbrMgr {
     uint32_t trx_num;
     uint32_t trx_cap;
@@ -95,9 +108,23 @@ public:
     static RETURN_CODE ReleaseUbrTrxFromMgr(UbrTrx *trx,
                                             uint64_t expect_ubr_id);
 
-    // Snapshot the cleanup control object of a pool slot. The caller
-    // receives a reference and must ReleaseRef it on every exit path.
-    static UbrCleanupCtl* SnapshotUnitCleanupCtl(uint32_t idx);
+    // Snapshot the delayed cleanup control object of a pool slot and, when
+    // there is none, claim the cleanup of `expect_ubr_id' for the force close
+    // that will run it. Both the snapshot and the claim happen under the
+    // manager lock, i.e. in the same critical section as
+    // TryPublishUnitCleanupCtl, so the two are totally ordered: either the
+    // publication ran first (UBR_CLEANUP_CLAIM_HAS_CTL, and the existing
+    // ctl->state arbitration decides who runs the cleanup) or the claim ran
+    // first (UBR_CLEANUP_CLAIM_OWNED_NULL, and every later publication for
+    // this generation is refused through trx->cleanup_forced). Splitting the
+    // two steps -- a snapshot, then an out-of-lock re-check that no ctl
+    // appeared -- leaves a window in which a concurrent SDK-fault callback
+    // publishes a new cleanup after an empty snapshot and both paths run the
+    // cleanup. `*out_ctl' is only written on UBR_CLEANUP_CLAIM_HAS_CTL, and
+    // carries a snapshot reference the caller must ReleaseRef.
+    static UbrCleanupClaim ClaimTrxCleanupForced(uint32_t idx,
+                                                 uint64_t expect_ubr_id,
+                                                 UbrCleanupCtl** out_ctl);
 
     // Under the manager lock, confirm the pool slot is still used by the
     // given generation (not released or reused meanwhile).
@@ -121,7 +148,8 @@ public:
     // other. On success the ctl gains the manager anchor reference (released
     // when the anchor is detached or the slot is retired); returns false --
     // leaving the slot and the reference counts untouched -- when the trx was
-    // released, reused, or a cleanup is already anchored.
+    // released, reused, a force close already claimed the cleanup, or a
+    // cleanup is already anchored.
     static bool TryPublishUnitCleanupCtl(uint32_t idx, uint64_t expect_ubr_id,
                                          UbrCleanupCtl *ctl);
 

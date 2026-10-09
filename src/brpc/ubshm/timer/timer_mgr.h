@@ -64,16 +64,27 @@ RETURN_CODE UbrTimerStartPeriodic(butil::atomic<UbrTimerId>* slot,
                                   UbrTimerBackoffFn backoff = nullptr);
 
 // Non-blocking delete, safe to call from inside the timer callback itself.
-// This function does not wait for an already running callback and does not
-// protect resources reachable from `arg` on its own.
+// This function does not wait for an already running user callback and does
+// not protect resources reachable from `arg` on its own.
 //
 // Returns 0 when this call wins the handle-slot competition.
-// - For a one-shot timer, the callback will not run.
+// - For a one-shot timer, the callback will not run. This call additionally
+//   waits out a wrapper that the timer thread already dispatched: such a
+//   wrapper may have been preempted between its dispatch and the moment it
+//   competes for the slot, and it still has to touch the slot once (to lose
+//   that competition) before it can return. When this call returns 0, the
+//   facade is therefore completely done with the storage `slot` points to,
+//   and the caller may free the object that stores the slot -- which is what
+//   the delayed-clear path does with UbrCleanupCtl. The wait only spins on a
+//   task-internal flag: the wrapper takes no lock and calls no user code
+//   while retiring the slot, so a caller holding any ubring lock can still
+//   wait, and no timer callback can be joined from its own dispatch.
 // - For a periodic timer, future rearming is stopped, but an already
-//   dispatched or running callback may still execute once more. Callers
-//   must not reclaim resources reachable from `arg` based on this return
-//   alone; use UbrTimerDelAndWait when teardown needs to wait for callbacks.
-//   A return of 0 therefore never means "the handle is free again".
+//   dispatched or running callback may still execute once more, and the task
+//   stays anchored in the slot until that callback returns. Callers must not
+//   reclaim resources reachable from `arg` based on this return alone; use
+//   UbrTimerDelAndWait when teardown needs to wait for callbacks. A return of
+//   0 therefore never means "the handle is free again".
 // A periodic callback that deletes its own timer falls into the periodic case
 // as well, but only marks it stopped: the handle slot stays anchored until the
 // callback returns, so a concurrent UbrTimerDelAndWait on the same slot really

@@ -24,6 +24,7 @@
 #include <gflags/gflags.h>
 #include "butil/scoped_lock.h"
 #include "brpc/ubshm/timer/timer_mgr.h"
+#include "brpc/ubshm/ub_cleanup_worker.h"
 #include "brpc/ubshm/common/common.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/ub_ring_manager.h"
@@ -49,6 +50,11 @@ DEFINE_int32(ub_flying_io_timeout_s, 5,
 char g_region_name[MAX_REGION_NAME_DESC_LENGTH] = {0};
 butil::atomic<UbrTimerId> g_shm_timer_id(nullptr);
 ShmList *g_shm_list = nullptr;
+// True while a drain step of g_shm_list is queued on (or running in) the
+// cleanup worker. It bounds the job backlog: the periodic timer only posts a
+// new step when the previous one finished, and the worker clears the flag at
+// the end of every step, successful or not.
+static butil::atomic<bool> g_shm_drain_pending(false);
 // Set by UbsShmFini, cleared by UbsShmInit: ShmMgrFini may run more than once,
 // and the SDK finalize plus the shm list teardown must happen exactly once per
 // init.
@@ -434,13 +440,38 @@ void *UbsShmCallback(void* args, uint64_t)
         return nullptr;
     }
 
-    // Drain one node per fire and keep the SDK calls outside the lock, so
-    // a slow daemon cannot stall the timer thread for the whole list.
+    // The timer thread runs every timer in the process, so it must not call
+    // into the SDK: post the drain to the cleanup worker. At most one step may
+    // be in flight, otherwise a slow SDK call would pile up jobs for the same
+    // list head.
+    if (g_shm_drain_pending.exchange(true)) {
+        return nullptr;
+    }
+    if (BAIDU_UNLIKELY(!UbrCleanupWorker::PostShmDrain(shm_list, UbsShmDrainNode))) {
+        // The worker could not be started: keep the pre-worker behaviour and
+        // drain here rather than leaving the nodes in the list forever.
+        LOG(ERROR) << "Cleanup worker unavailable, draining shm on the timer thread.";
+        UbsShmDrainNode(shm_list);
+    }
+    return nullptr;
+}
+
+void UbsShmDrainNode(ShmList *shm_list)
+{
+    if (BAIDU_UNLIKELY(shm_list == nullptr)) {
+        LOG(ERROR) << "Shm list is null.";
+        g_shm_drain_pending.store(false);
+        return;
+    }
+
+    // Drain one node per step and keep the SDK calls outside the lock, so a
+    // slow daemon cannot stall other users of the list.
     SHM shm;
     {
         BAIDU_SCOPED_LOCK(shm_list->shm_lock);
         if (shm_list->head == nullptr) {
-            return nullptr;
+            g_shm_drain_pending.store(false);
+            return;
         }
         shm = shm_list->head->shm;
     }
@@ -448,16 +479,18 @@ void *UbsShmCallback(void* args, uint64_t)
         LOG(ERROR) << "Ubs input shm param is invalid, addr is NULL.";
         BAIDU_SCOPED_LOCK(shm_list->shm_lock);
         DeleteShmToList(shm_list);
-        return nullptr;
+        g_shm_drain_pending.store(false);
+        return;
     }
 
     int ret = ubsmem_shmem_unmap(shm.addr, shm.len);
     if (ret != UBSM_OK) {
-        if (ret == UBSM_ERR_NET) {
-            return nullptr;              // retried on the next fire
+        if (ret != UBSM_ERR_NET) {
+            LOG(ERROR) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " failed, ret=" << ret;
         }
-        LOG(ERROR) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " failed, ret=" << ret;
-        return nullptr;                  // node stays at head, retried
+        // The node stays at the head: the next timer fire retries it.
+        g_shm_drain_pending.store(false);
+        return;
     }
 
     {
@@ -469,7 +502,7 @@ void *UbsShmCallback(void* args, uint64_t)
     if (ret != UBSM_OK) {
         LOG(ERROR) << "Ubs delete shm=" << shm.name << " failed, ret=" << ret;
     }
-    return nullptr;
+    g_shm_drain_pending.store(false);
 }
 
 RETURN_CODE UbsShmAddTimer(ShmList *shm_list)
@@ -529,8 +562,11 @@ RETURN_CODE InitShmTimer(ShmList **shm_list)
 
 RETURN_CODE DestroyShmTimer(ShmList **shm_list)
 {
-    // Wait out a possibly running UbsShmCallback before tearing shm_list down.
+    // Wait out a possibly running UbsShmCallback, then the cleanup jobs it
+    // posted: the worker may be inside the SDK calls of a node that is freed
+    // right below, and must not race ubsmem_finalize either.
     UbrTimerDelAndWait(&g_shm_timer_id);
+    UbrCleanupWorker::DrainAndWait();
     if (BAIDU_UNLIKELY(shm_list == nullptr)) {
         LOG(ERROR) << "Shm list handle is null.";
         return UBRING_ERR;

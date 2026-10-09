@@ -71,6 +71,14 @@ struct UbrTimerTask {
     butil::atomic<int> ref;
     butil::atomic<bool> join_pending;            // a DelAndWait is waiting
     butil::atomic<bool> done;                    // refs hit zero, joiner frees
+    // Set by whoever settles the handle slot: the one-shot wrapper (right
+    // after its slot CAS, before it runs the user callback), a deleter whose
+    // bthread_timer_del cancelled the task before dispatch, or the kDead
+    // path. Once true, no facade code -- including the dispatched wrapper --
+    // will ever touch `*slot` again, so the object storing the slot may be
+    // freed. The scheduled wrapper is kept alive by its own schedule
+    // reference while a deleter waits on this flag.
+    butil::atomic<bool> slot_retired;
 };
 
 namespace {
@@ -160,6 +168,13 @@ void UbrTimerOnFire(void* p) {
     // the slot is the single arbiter.
     UbrTimerId expected = task;
     const bool owned = task->slot->compare_exchange_strong(expected, nullptr);
+    // The slot storage is now retired: whatever the competition above
+    // decided, this wrapper will not dereference `slot' again. A one-shot
+    // UbrTimerDel that won the exchange (or that cancelled a task which had
+    // not been dispatched at all) is waiting for this store before it lets
+    // the caller free the storage, so it must happen before the potentially
+    // long user callback.
+    task->slot_retired.store(true);
     if (owned) {
         task->cb(task->arg, task->gen);
     }
@@ -208,6 +223,7 @@ RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_u
     task->ref.store(3);                          // owner + schedule + starter
     task->join_pending.store(false);
     task->done.store(false);
+    task->slot_retired.store(false);
 
     // Publish the real task before scheduling so a delete or a DelAndWait
     // racing the start always has an object to act on or wait for.
@@ -293,19 +309,41 @@ int UbrTimerDel(butil::atomic<UbrTimerId>* slot) {
         bthread_usleep(1000);
     }
     if (task->state.load() == kDead) {
+        // The wrapper never ran and never will: this call is the one that
+        // settles the slot storage.
+        task->slot_retired.store(true);
         ReleaseRef(task);                        // owner; schedule/starter are
         return 1;                                // settled by the kDead path
     }
     bthread_timer_t id = task->id.load();
     if (id != 0 && bthread_timer_del(id) == 0) {
+        // Cancelled before dispatch: the timer thread will never call the
+        // wrapper, so nothing else can retire the slot storage.
+        task->slot_retired.store(true);
         ReleaseRef(task);                        // schedule: cancelled before dispatch
-    }                                            // ==1: dispatched, OnFire (owned==false)
-                                                 // releases it
+    } else if (!task->periodic) {
+        // One-shot already dispatched: the wrapper may be between its dispatch
+        // (which made bthread_timer_del return 1) and its slot CAS, so it
+        // still has to touch the storage before it returns. Wait it out here,
+        // while this caller still owns the task through the owner reference,
+        // so that returning 0 really means "the storage is not used anymore".
+        // The wrapper retires the slot before calling any user code and takes
+        // no lock doing so, hence this wait cannot deadlock, and it is bounded
+        // by the OS scheduling of the timer thread. A periodic task needs no
+        // such wait: its slot storage is the pooled UbrTrx, which the callers
+        // of the non-blocking delete never free (only UbrMgrFini does, after
+        // UbrTimerDelAndWait), and its retire-slot load happens after the user
+        // callback -- which may take the very lock this caller holds.
+        while (!task->slot_retired.load()) {
+            bthread_usleep(kTimerPollIntervalUs);
+        }
+    }                                            // ==1 periodic: dispatched/running;
+                                                 // OnFire releases the schedule ref
     ReleaseRef(task);                            // owner
     return 0;       // This call won the slot competition. For a one-shot timer,
-                    // the callback will not run. For a periodic timer, future
-                    // rearming is stopped, but an already dispatched or running
-                    // callback may still complete.
+                    // the callback will not run and the slot storage is unused.
+                    // For a periodic timer, future rearming is stopped, but an
+                    // already dispatched or running callback may still complete.
 }
 
 void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot) {

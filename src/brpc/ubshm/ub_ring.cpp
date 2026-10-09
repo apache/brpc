@@ -23,6 +23,7 @@
 #include "bthread/bthread.h"
 #include "butil/logging.h"
 #include "brpc/ubshm/ub_ring.h"
+#include "brpc/ubshm/ub_cleanup_worker.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "brpc/ubshm/shm/shm_ipc.h"
 
@@ -159,26 +160,32 @@ static RETURN_CODE UbrScheduleClearTimer(UbrTrx *trx, uint64_t expect_ubr_id,
             expect_ubr_id);
     if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         // The timer was never scheduled: this path owns the manager,
-        // timer/callback and starter references. Roll the schedule back
-        // and run the cleanup inline so the trx does not end up with
-        // neither timers nor a queued cleanup. If force close claimed the
-        // ownership meanwhile, leave the manager anchor to it.
+        // timer/callback and starter references. Hand the cleanup to the
+        // worker -- the caller may be the timer thread -- so the trx does not
+        // end up with neither timers nor a queued cleanup, and run it inline
+        // only when the worker cannot be started.
         int state_expected = UBR_CLEANUP_PENDING;
         if (ATOMIC_COMPARE_EXCHANGE_STRONG(ctl->state, state_expected, UBR_CLEANUP_RUNNING)) {
-            // Gate on the slot still being used by this generation: force
-            // close may have claimed the cleanup and released the slot (which
-            // already freed the trx resources) after we were anchored.
-            if (UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ctl->ubr_id)) {
-                work(trx, ctl->ubr_id);
+            if (!UbrCleanupWorker::PostTrxCleanup(trx, ctl->ubr_id, work, ctl)) {
+                // Gate on the slot still being used by this generation: force
+                // close may have claimed the cleanup and released the slot
+                // (which already freed the trx resources) after we were
+                // anchored.
+                if (UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ctl->ubr_id)) {
+                    work(trx, ctl->ubr_id);
+                }
+                ATOMIC_STORE(ctl->state, UBR_CLEANUP_DONE);
+                ctl->ReleaseRef();           // timer/callback reference
             }
-            ATOMIC_STORE(ctl->state, UBR_CLEANUP_DONE);
-            // Detach only after DONE: while the inline cleanup runs, the
-            // anchor and cleanup_ctl must keep telling a concurrent force
-            // close that this cleanup is owned (RUNNING/DONE), otherwise it
-            // would fall into its no-ctl branch and clean the trx again.
-            UBRingManager::DetachUnitCleanupCtl(trx->trx_mgr_index, ctl);
+            // When the job was posted, the worker owns the timer/callback
+            // reference and settles state/anchor exactly like the timer-fired
+            // path; the manager anchor keeps the control object alive until
+            // the slot is acquired again or UbrMgrFini retires it.
+        } else {
+            // A force close already owns the cleanup. It could not take the
+            // reference through the never-armed timer, so release it here.
+            ctl->ReleaseRef();               // timer/callback reference
         }
-        ctl->ReleaseRef();                   // timer/callback reference
         ctl->ReleaseRef();                   // starter reference
         return UBRING_ERR;
     }
@@ -241,13 +248,16 @@ RETURN_CODE UBRing::UbrTrxClose() {
             // to an already running delayed-clear callback otherwise.
             UbrTimerDelAndWait(&_trx->close_timer);
             UbrTimerDelAndWait(&_trx->hb_timer);
-            UbrCleanupCtl* ctl = UBRingManager::SnapshotUnitCleanupCtl(_trx->trx_mgr_index);
-            if (ctl != nullptr && ctl->ubr_id != expect_ubr_id) {
-                ctl->ReleaseRef();               // snapshot reference
-                ctl = nullptr;                   // slot reused, not ours
-            }
+            // Snapshot the delayed cleanup and, when there is none, claim the
+            // cleanup for this force close in one critical section. Splitting
+            // the two would let a concurrent SDK-fault callback publish a new
+            // cleanup after our empty snapshot, leaving two paths running the
+            // cleanup of the same shared memory.
+            UbrCleanupCtl* ctl = nullptr;
+            const UbrCleanupClaim claim = UBRingManager::ClaimTrxCleanupForced(
+                    _trx->trx_mgr_index, expect_ubr_id, &ctl);
             bool cleanup_owned = false;
-            if (ctl != nullptr) {
+            if (claim == UBR_CLEANUP_CLAIM_HAS_CTL) {
                 int expected = UBR_CLEANUP_PENDING;
                 if (ATOMIC_COMPARE_EXCHANGE_STRONG(ctl->state, expected, UBR_CLEANUP_RUNNING)) {
                     cleanup_owned = true;
@@ -255,7 +265,7 @@ RETURN_CODE UBRing::UbrTrxClose() {
                         ctl->ReleaseRef();   // timer/callback reference
                     }
                 }
-            } else if (ATOMIC_LOAD(_trx->ubr_id) == expect_ubr_id) {
+            } else if (claim == UBR_CLEANUP_CLAIM_OWNED_NULL) {
                 cleanup_owned = true;
             }
             if (cleanup_owned) {
@@ -408,10 +418,16 @@ RETURN_CODE UBRing::UbrAddTimer() {
 // A slot cannot be released and reused underneath a callback that already
 // passed that check, and the guarantee is a synchronization one, not a timing
 // one. bthread dispatches all timer callbacks from a single global timer
-// thread, so two per-trx callbacks never run concurrently, and a cleanup that
-// runs from a one-shot timer callback (the delayed-clear path) is serialized
-// after every per-trx callback that was dispatched before it. Entering a close
-// claims the slot for the generation under g_ubr_trx_mgr_mtx
+// thread, so two per-trx callbacks never run concurrently, and the delayed
+// clear arbitration (the ctl->state compare-exchange in the clear callbacks)
+// is serialized after every per-trx callback that was dispatched before it.
+// The cleanup body itself no longer runs on the timer thread but on the
+// cleanup worker (UbrCleanupWorker): it is kept away from a released or reused
+// slot by the generation gate it re-applies under g_ubr_trx_mgr_mtx right
+// before running the work (IsUbrTrxSlotUsed), and by the scheduling paths that
+// wait for the per-trx callbacks through UbrStopTrxTimer -> UbrTimerDelAndWait
+// before they may clear the trx or hand its slot on. Entering a close claims
+// the slot for the generation under g_ubr_trx_mgr_mtx
 // (UBRingManager::TryClaimTrxClose), so a caller working from a stale snapshot
 // -- the faulty-shm event, which looks the slot up before the claim -- cannot
 // touch the next occupant. Teardown that happens on any other thread then waits
@@ -538,12 +554,19 @@ void* UBRing::UbrPassiveClearCallback(void* args, uint64_t) {
         ctl->ReleaseRef();
         return nullptr;
     }
+    // The ownership arbitration above is settled; hand the blocking work to
+    // the cleanup worker instead of running it on the timer thread, which
+    // serves every timer in the process. The job takes over the timer/callback
+    // reference.
     UbrTrx* trx = ctl->trx;
-    if (BAIDU_UNLIKELY(UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ctl->ubr_id))) {
-        UbrDoPassiveClearWork(trx, ctl->ubr_id);
+    if (!UbrCleanupWorker::PostTrxCleanup(trx, ctl->ubr_id,
+                                          UbrDoPassiveClearWork, ctl)) {
+        if (BAIDU_UNLIKELY(UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ctl->ubr_id))) {
+            UbrDoPassiveClearWork(trx, ctl->ubr_id);
+        }
+        ATOMIC_STORE(ctl->state, UBR_CLEANUP_DONE);
+        ctl->ReleaseRef();                   // timer/callback reference
     }
-    ATOMIC_STORE(ctl->state, UBR_CLEANUP_DONE);
-    ctl->ReleaseRef();                       // timer/callback reference
     return nullptr;
 }
 
@@ -615,12 +638,17 @@ void *UBRing::UbrAsynClearCallback(void *args, uint64_t)
         ctl->ReleaseRef();
         return nullptr;
     }
+    // Same offload as the passive path: the timer thread only arbitrates
+    // ownership, the worker does the SDK-backed cleanup.
     UbrTrx* trx = ctl->trx;
-    if (BAIDU_UNLIKELY(UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ctl->ubr_id))) {
-        UbrDoAsynClearWork(trx, ctl->ubr_id);
+    if (!UbrCleanupWorker::PostTrxCleanup(trx, ctl->ubr_id,
+                                          UbrDoAsynClearWork, ctl)) {
+        if (BAIDU_UNLIKELY(UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ctl->ubr_id))) {
+            UbrDoAsynClearWork(trx, ctl->ubr_id);
+        }
+        ATOMIC_STORE(ctl->state, UBR_CLEANUP_DONE);
+        ctl->ReleaseRef();                   // timer/callback reference
     }
-    ATOMIC_STORE(ctl->state, UBR_CLEANUP_DONE);
-    ctl->ReleaseRef();                       // timer/callback reference
     return nullptr;
 }
 
