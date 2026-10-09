@@ -1405,8 +1405,8 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
                                    << ", stream_id=" << _stream_id;
                         _rejected_error = H2_PROTOCOL_ERROR;
                     } else if (h.uri().SetH2Path(pair.value) != 0) {
-                        // Including path/query/fragment. The only way this
-                        // fails is too many query parameters.
+                        // Including path/query/fragment. Fails on a CR/LF
+                        // in the value or too many query parameters.
                         LOG(ERROR) << h.uri().status().error_cstr()
                                    << ", stream_id=" << _stream_id;
                         _rejected_error = H2_ENHANCE_YOUR_CALM;

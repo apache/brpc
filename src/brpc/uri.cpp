@@ -17,6 +17,7 @@
 
 
 #include <ctype.h>                         // isalnum
+#include <string.h>                        // strpbrk
 #include <unordered_set>
 #include <gflags/gflags.h>
 #include "brpc/log.h"
@@ -180,10 +181,26 @@ static const char g_url_parsing_fast_action_map_raw[] = {
 static const char* const g_url_parsing_fast_action_map =
     g_url_parsing_fast_action_map_raw + 128;
 
+// CR and LF are never valid in a URL and must not survive parsing: every
+// component is written verbatim into the serialized message later on, the
+// host/port into the "Host" header and the :authority pseudo-header, and
+// path/query/fragment into the HTTP/1 request line (PrintWithoutHost) and
+// the HTTP/2 :path (GenerateH2Path). Either byte there appends headers to
+// the request or starts a second one. Only the parsers below reject it; the
+// set_*() overwriters are documented as taking already-valid input.
+static bool has_crlf(const char* s) {
+    return strpbrk(s, "\r\n") != nullptr;
+}
+
 // This implementation is faster than http_parser_parse_url() and allows
 // ignoring of scheme("http://")
 int URI::SetHttpURL(const char* url) {
     Clear();
+
+    if (has_crlf(url)) {
+        _st.set_error(EINVAL, "Invalid CR/LF in url");
+        return -1;
+    }
     
     const char* p = url;
     // skip heading blanks
@@ -440,6 +457,11 @@ int URI::SetH2Path(const char* h2_path) {
     _query_was_modified = false;
     _initialized_query_map = false;
     _query_map.clear();
+
+    if (has_crlf(h2_path)) {
+        _st.set_error(EINVAL, "Invalid CR/LF in :path");
+        return -1;
+    }
 
     const char* p = h2_path;
     const char* start = p;
