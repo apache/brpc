@@ -392,6 +392,12 @@ bool ReadAMFUint32(uint32_t* val, AMFInputStream* stream) {
     if (!ReadAMFNumber(&d, stream)) {
         return false;
     }
+    // The number comes from the peer and may be NaN or out of [0, UINT32_MAX],
+    // for which the conversion below is undefined. The check is false for NaN.
+    if (!(d >= 0.0 && d <= 4294967295.0)) {
+        LOG(ERROR) << "Invalid AMF number=" << d << " for uint32";
+        return false;
+    }
     *val = (uint32_t)d;
     return true;
 }
