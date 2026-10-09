@@ -1383,10 +1383,12 @@ void Server::DestroyPreStartAllocations() {
         // Keep the TLS key valid until its pooled data has been destroyed.
         // Deleting the key first would disable DestroyServerTLS().
         CHECK_EQ(0, bthread_keytable_pool_destroy(_keytable_pool));
-        // Unlike Join(), no connection (thus no keytable user) can exist
-        // when the start failed before RUNNING, so the pool struct can be
-        // deleted as well.
-        delete _keytable_pool;
+        // Same as Join(): don't delete the pool struct. Bthreads created
+        // with attr.keytable_pool == _keytable_pool may outlive
+        // the failed start and still call return_keytable() on exit. A
+        // destroyed pool makes them delete their KeyTables directly, but the
+        // struct itself must stay valid. The leak is annotated in
+        // StartInternal() and only happens on failed starts.
         _keytable_pool = nullptr;
     }
     // Delete tls_key created in StartInternal().
