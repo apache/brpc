@@ -119,7 +119,7 @@ public:
 
     static void GlobalRelease();
 
-    bool use_gdr() { return _use_gdr; }
+    bool use_gdr() const { return _use_gdr; }
 
     // Reset the endpoint (for next use)
     void Reset();
