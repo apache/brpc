@@ -83,6 +83,9 @@ extern const size_t RESERVED_WR_NUM = 3;
 // The local recv block size, set during GlobalInitialize.
 uint32_t g_rdma_recv_block_size = 0;
 
+// The local recv block size for GDR, set during GlobalInitialize.
+uint32_t g_gdr_recv_block_size = 0;
+
 // Inline size asked for at QP creation, and on Mellanox/NVIDIA NICs the
 // largest message sent inline: 256 - 16 (ctrl) - 4 (inline header). A bigger
 // inlined WQE no longer fits the 256-byte BlueFlame buffer of mlx5 NICs.
@@ -103,8 +106,6 @@ static const struct {
     {0x8086, 216}, {0x8086, 101}, {0x8086, 48}, {0x1ded, 96}};
 static const uint32_t INLINE_DATA_STEP = 16;
 
-// The local recv block size for GDR, set during GlobalInitialize.
-uint32_t g_gdr_recv_block_size = 0;
 static const uint8_t MAX_HOP_LIMIT = 16;
 static const uint8_t TIMEOUT = 14;
 static const uint8_t RETRY_CNT = 7;
@@ -1957,14 +1958,17 @@ void RdmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece connector) con
 
 int RdmaEndpoint::GlobalGdrInitialize() {
 #if BRPC_WITH_GDR
-    g_gdr_recv_block_size = butil::gdr::GetGdrBlockSize() - IOBUF_BLOCK_HEADER_LEN;
-    if (g_gdr_recv_block_size <= 0) {
-        LOG(ERROR) << "Invalid gdr_block_size_kb=" << FLAGS_gdr_block_size_kb
-                   << ": effective block size is no larger than the "
+    // GetGdrBlockSize() returns 0 on an invalid FLAGS_gdr_block_size_kb;
+    // subtracting the header from it would underflow to a huge value.
+    const size_t gdr_block_size = butil::gdr::GetGdrBlockSize();
+    if (gdr_block_size <= IOBUF_BLOCK_HEADER_LEN) {
+        LOG(ERROR) << "Invalid gdr block size " << gdr_block_size
+                   << ": must be larger than the "
                    << IOBUF_BLOCK_HEADER_LEN << "-byte iobuf block header";
         errno = EINVAL;
         return -1;
     }
+    g_gdr_recv_block_size = gdr_block_size - IOBUF_BLOCK_HEADER_LEN;
     LOG(INFO) << "g_gdr_recv_block_size: " << g_gdr_recv_block_size;
 #endif // BRPC_WITH_GDR
     return 0;

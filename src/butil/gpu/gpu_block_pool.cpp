@@ -38,8 +38,23 @@ do {                                                                     \
     }                                                                      \
 } while (0);
 
+// Returns the GPU block size in bytes derived from FLAGS_gdr_block_size_kb.
+// Returns 0 if the flag is invalid (<= 0 KB, or a byte size no larger than
+// the 32-byte iobuf block header): BlockPoolAllocator divides region_size
+// by block_size (division by zero on 0), and a block no larger than the
+// iobuf block header would make the recv block size underflow. Callers
+// (GlobalGdrInitializeOrDieImpl / RdmaEndpoint::GlobalGdrInitialize) must
+// treat 0 as a fatal configuration error.
 size_t GetGdrBlockSize() {
-    return FLAGS_gdr_block_size_kb * 1024;
+    const int64_t block_size =
+        static_cast<int64_t>(FLAGS_gdr_block_size_kb) * 1024;
+    if (FLAGS_gdr_block_size_kb <= 0 || block_size <= 32 /* IOBUF_BLOCK_HEADER_LEN */) {
+        LOG(ERROR) << "Invalid gdr_block_size_kb=" << FLAGS_gdr_block_size_kb
+                   << " (must be a positive value whose byte size is larger"
+                   << " than the 32-byte iobuf block header)";
+        return 0;
+    }
+    return static_cast<size_t>(block_size);
 }
 
 bool verify_same_context() {

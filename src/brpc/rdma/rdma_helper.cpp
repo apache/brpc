@@ -597,16 +597,10 @@ static void GlobalGdrInitializeOrDieImpl() {
 #if BRPC_WITH_GDR
     g_gpu_index = FLAGS_gpu_index;
 
-    // Validate the effective GPU block size BEFORE constructing the pool:
-    // BlockPoolAllocator divides region_size by block_size (division by zero
-    // on 0), and a block no larger than the iobuf block header would make
-    // g_gdr_recv_block_size underflow below.
-    const int64_t gdr_block_size =
-        static_cast<int64_t>(FLAGS_gdr_block_size_kb) * 1024;
-    if (FLAGS_gdr_block_size_kb <= 0 || gdr_block_size <= 32 /* IOBUF_BLOCK_HEADER_LEN */) {
-        LOG(ERROR) << "Invalid gdr_block_size_kb=" << FLAGS_gdr_block_size_kb
-                   << " (must be a positive value whose byte size is larger"
-                   << " than the 32-byte iobuf block header)";
+    // GetGdrBlockSize() validates FLAGS_gdr_block_size_kb (> 0 KB and byte
+    // size larger than the 32-byte iobuf block header) and returns 0 on
+    // violation; BlockPoolAllocator must not be constructed with such a size.
+    if (butil::gdr::GetGdrBlockSize() == 0) {
         ExitWithError();
     }
 
@@ -615,8 +609,6 @@ static void GlobalGdrInitializeOrDieImpl() {
         ExitWithError();
     }
     if (RdmaEndpoint::GlobalGdrInitialize() < 0) {
-        LOG(ERROR) << "gdr_block_size_kb incorrect "
-                   << "(must be larger than 0)";
         ExitWithError();
     }
 
