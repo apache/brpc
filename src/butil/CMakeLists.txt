@@ -295,4 +295,57 @@ set_property(TARGET BUTIL_LIB PROPERTY BRPC_PLATFORM_LIBRARIES "${butil_platform
 set_property(TARGET BUTIL_LIB PROPERTY BRPC_BUNDLE_LIBRARIES "${butil_libraries}")
 set_property(TARGET BUTIL_LIB PROPERTY BRPC_PRIVATE_LIBS "${butil_private_libs}")
 
+if(BRPC_BUILD_COMPONENT_LIBS)
+    add_library(brpc::gflags UNKNOWN IMPORTED)
+    set_target_properties(brpc::gflags PROPERTIES
+        IMPORTED_LOCATION "${GFLAGS_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${GFLAGS_INCLUDE_PATH}")
+    if(WITH_BORINGSSL)
+        foreach(lib SSL CRYPTO)
+            string(TOLOWER ${lib} lib_lower)
+            add_library(brpc::boringssl_${lib_lower} UNKNOWN IMPORTED)
+            set_target_properties(brpc::boringssl_${lib_lower} PROPERTIES
+                IMPORTED_LOCATION "${BORINGSSL_${lib}_LIBRARY}"
+                INTERFACE_INCLUDE_DIRECTORIES "${BORINGSSL_INCLUDE_DIR}")
+        endforeach()
+    elseif(WITH_MESALINK)
+        add_library(brpc::mesalink UNKNOWN IMPORTED)
+        set_target_properties(brpc::mesalink PROPERTIES
+            IMPORTED_LOCATION "${MESALINK_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${MESALINK_INCLUDE_PATH}")
+    endif()
+    if(WITH_GLOG)
+        add_library(brpc::glog UNKNOWN IMPORTED)
+        set_target_properties(brpc::glog PROPERTIES
+            IMPORTED_LOCATION "${GLOG_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${GLOG_INCLUDE_PATH}")
+    endif()
+    brpc_add_component(butil BUTIL_LIB)
+    target_compile_definitions(butil PUBLIC ${BUTIL_DEFINITIONS})
+    target_link_libraries(butil PUBLIC brpc::gflags protobuf::libprotobuf
+        Threads::Threads ${CMAKE_DL_LIBS} ${protobuf_ABSL_USED_TARGETS})
+    if(WITH_BORINGSSL)
+        target_link_libraries(butil PUBLIC brpc::boringssl_ssl brpc::boringssl_crypto)
+    elseif(WITH_MESALINK)
+        target_link_libraries(butil PUBLIC brpc::mesalink OpenSSL::Crypto)
+    else()
+        target_link_libraries(butil PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    endif()
+    if(WITH_GLOG)
+        target_link_libraries(butil PUBLIC brpc::glog)
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_libraries(butil PUBLIC rt)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        # These optional hooks are supplied by bthread when it is also linked.
+        target_link_options(butil PUBLIC
+            "-Wl,-U,_bthread_getspecific"
+            "-Wl,-U,_bthread_setspecific"
+            "-Wl,-U,_bthread_key_create"
+            "-Wl,-U,_bthread_self"
+            "-Wl,-U,_bthread_timed_connect")
+        target_link_libraries(butil PUBLIC ${butil_platform_libraries})
+    endif()
+endif()
+
 brpc_install_module_headers()

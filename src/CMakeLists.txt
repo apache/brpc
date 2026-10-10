@@ -16,6 +16,9 @@
 # under the License.
 
 add_library(brpc_bundle_dependencies INTERFACE)
+if(BRPC_BUILD_COMPONENT_LIBS)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/bRPCComponents.cmake)
+endif()
 
 add_subdirectory(butil)
 add_subdirectory(bvar)
@@ -43,6 +46,10 @@ target_link_libraries(brpc_bundle_dependencies INTERFACE ${DYNAMIC_LIB})
 # Keep legacy debug tests and pkg-config generation supplied by the bundle.
 set(DYNAMIC_LIB ${DYNAMIC_LIB} PARENT_SCOPE)
 set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS}" PARENT_SCOPE)
+
+if(BRPC_BUILD_COMPONENT_LIBS)
+    brpc_configure_component_package(${CMAKE_CURRENT_SOURCE_DIR}/../cmake)
+endif()
 
 set(BRPC_SOURCE_OBJECTS)
 foreach(component BVAR BTHREAD JSON2PB MCPACK2PB BRPC)

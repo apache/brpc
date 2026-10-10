@@ -282,5 +282,62 @@ set_property(TARGET BRPC_LIB PROPERTY BRPC_BUNDLE_LIBRARIES brpc_runtime_depende
 set_property(TARGET BRPC_LIB PROPERTY BRPC_PRIVATE_LIBS "${brpc_private_libs}")
 add_dependencies(BRPC_LIB PROTO_LIB)
 
+if(BRPC_BUILD_COMPONENT_LIBS)
+    # Prefer the dependency's package metadata, including static-link dependencies
+    # and per-configuration locations. Retain support for system installations
+    # that do not provide a CMake package.
+    find_package(leveldb CONFIG QUIET)
+    if(TARGET leveldb::leveldb)
+        add_library(brpc::leveldb INTERFACE IMPORTED)
+        set_property(TARGET brpc::leveldb PROPERTY
+            INTERFACE_LINK_LIBRARIES leveldb::leveldb)
+    else()
+        add_library(brpc::leveldb UNKNOWN IMPORTED)
+        set_target_properties(brpc::leveldb PROPERTIES
+            IMPORTED_LOCATION "${LEVELDB_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${LEVELDB_INCLUDE_PATH}")
+    endif()
+
+    set(BRPC_COMPONENT_URMA_REAL OFF)
+    if(WITH_URMA AND NOT URMA_USE_MOCK_ENABLED)
+        set(BRPC_COMPONENT_URMA_REAL ON)
+    endif()
+    set(BRPC_COMPONENT_UB_NAME "")
+    if(WITH_UBRING AND UB_LIB)
+        get_filename_component(BRPC_COMPONENT_UB_NAME "${UB_LIB}" NAME_WE)
+        string(REGEX REPLACE "^lib|\\..*$" "" BRPC_COMPONENT_UB_NAME "${BRPC_COMPONENT_UB_NAME}")
+    endif()
+    foreach(dep THRIFT RDMA SNAPPY URMA UB)
+        if((dep STREQUAL "THRIFT" AND WITH_THRIFT) OR
+           (dep STREQUAL "RDMA" AND WITH_RDMA) OR
+           (dep STREQUAL "SNAPPY" AND WITH_SNAPPY) OR
+           (dep STREQUAL "URMA" AND BRPC_COMPONENT_URMA_REAL) OR
+           (dep STREQUAL "UB" AND BRPC_COMPONENT_UB_NAME))
+            string(TOLOWER ${dep} dep_lower)
+            add_library(brpc::${dep_lower} UNKNOWN IMPORTED)
+            set_target_properties(brpc::${dep_lower} PROPERTIES
+                IMPORTED_LOCATION "${${dep}_LIB}")
+            if(${dep}_INCLUDE_PATH)
+                set_property(TARGET brpc::${dep_lower} PROPERTY
+                    INTERFACE_INCLUDE_DIRECTORIES "${${dep}_INCLUDE_PATH}")
+            endif()
+        endif()
+    endforeach()
+    set(BRPC_COMPONENT_URMA_REAL ${BRPC_COMPONENT_URMA_REAL} PARENT_SCOPE)
+    set(BRPC_COMPONENT_UB_NAME "${BRPC_COMPONENT_UB_NAME}" PARENT_SCOPE)
+    brpc_add_component(brpc BRPC_LIB)
+    target_compile_definitions(brpc PUBLIC ${BRPC_DEFINITIONS})
+    target_sources(brpc PRIVATE $<TARGET_OBJECTS:PROTO_LIB>)
+    set_target_properties(brpc PROPERTIES OUTPUT_NAME brpc-only)
+    target_link_libraries(brpc PUBLIC brpc::bthread brpc::bvar brpc::butil
+        brpc::json2pb brpc::mcpack2pb ZLIB::ZLIB brpc::leveldb)
+    foreach(dep THRIFT RDMA SNAPPY URMA UB)
+        string(TOLOWER ${dep} dep_lower)
+        if(TARGET brpc::${dep_lower})
+            target_link_libraries(brpc PUBLIC brpc::${dep_lower})
+        endif()
+    endforeach()
+endif()
+
 brpc_install_module_headers()
 brpc_install_headers(${CMAKE_CURRENT_BINARY_DIR} ${PROTO_HDRS})

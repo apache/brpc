@@ -1,0 +1,192 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+@PACKAGE_INIT@
+set(brpc_FOUND TRUE)
+unset(brpc_NOT_FOUND_MESSAGE)
+
+# Build every library, but consumers need only their selected dependency closure.
+set(_brpc_components ${brpc_FIND_COMPONENTS})
+if(NOT _brpc_components)
+    set(_brpc_components butil bvar bthread json2pb mcpack2pb brpc)
+endif()
+if("brpc" IN_LIST _brpc_components)
+    list(APPEND _brpc_components bthread bvar json2pb mcpack2pb)
+endif()
+if("bthread" IN_LIST _brpc_components)
+    list(APPEND _brpc_components bvar)
+endif()
+list(APPEND _brpc_components butil)
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+find_dependency(Protobuf)
+if(Protobuf_VERSION VERSION_GREATER 4.21 OR
+   (@WITH_BTHREAD_TRACER@ AND "bthread" IN_LIST _brpc_components))
+    find_dependency(absl CONFIG)
+endif()
+if(@WITH_BORINGSSL@)
+    find_path(_brpc_boringssl_include NAMES openssl/base.h
+        HINTS ${BORINGSSL_ROOT_DIR}/include)
+    find_library(_brpc_boringssl_ssl_library NAMES ssl
+        HINTS ${BORINGSSL_ROOT_DIR}/lib)
+    find_library(_brpc_boringssl_crypto_library NAMES crypto
+        HINTS ${BORINGSSL_ROOT_DIR}/lib)
+    if(NOT _brpc_boringssl_include OR NOT _brpc_boringssl_ssl_library OR
+       NOT _brpc_boringssl_crypto_library)
+        set(brpc_FOUND FALSE)
+        set(brpc_NOT_FOUND_MESSAGE "brpc requires BoringSSL")
+        return()
+    endif()
+    foreach(_brpc_lib SSL CRYPTO)
+        string(TOLOWER ${_brpc_lib} _brpc_lib_lower)
+        if(NOT TARGET brpc::boringssl_${_brpc_lib_lower})
+            add_library(brpc::boringssl_${_brpc_lib_lower} UNKNOWN IMPORTED)
+            set_target_properties(brpc::boringssl_${_brpc_lib_lower} PROPERTIES
+                IMPORTED_LOCATION "${_brpc_boringssl_${_brpc_lib_lower}_library}"
+                INTERFACE_INCLUDE_DIRECTORIES "${_brpc_boringssl_include}")
+        endif()
+    endforeach()
+else()
+    find_dependency(OpenSSL)
+endif()
+
+if(NOT TARGET brpc::gflags)
+    find_package(gflags CONFIG QUIET)
+    if(TARGET gflags::gflags OR TARGET gflags)
+        add_library(brpc::gflags INTERFACE IMPORTED)
+        if(TARGET gflags::gflags)
+            set_property(TARGET brpc::gflags PROPERTY
+                INTERFACE_LINK_LIBRARIES gflags::gflags)
+        else()
+            set_property(TARGET brpc::gflags PROPERTY
+                INTERFACE_LINK_LIBRARIES gflags)
+        endif()
+    else()
+        # Older system packages may provide only headers and libraries.
+        find_path(GFLAGS_INCLUDE_PATH NAMES gflags/gflags.h)
+        find_library(GFLAGS_LIBRARY NAMES gflags libgflags)
+        if(NOT GFLAGS_INCLUDE_PATH OR NOT GFLAGS_LIBRARY)
+            set(brpc_FOUND FALSE)
+            set(brpc_NOT_FOUND_MESSAGE "brpc requires gflags")
+            return()
+        endif()
+        add_library(brpc::gflags UNKNOWN IMPORTED)
+        set_target_properties(brpc::gflags PROPERTIES
+            IMPORTED_LOCATION "${GFLAGS_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${GFLAGS_INCLUDE_PATH}")
+    endif()
+endif()
+
+if("brpc" IN_LIST _brpc_components)
+    find_dependency(ZLIB)
+    find_package(leveldb CONFIG QUIET)
+    if(NOT TARGET brpc::leveldb)
+        if(TARGET leveldb::leveldb)
+            add_library(brpc::leveldb INTERFACE IMPORTED)
+            set_property(TARGET brpc::leveldb PROPERTY
+                INTERFACE_LINK_LIBRARIES leveldb::leveldb)
+        else()
+            find_library(_brpc_leveldb_library NAMES leveldb)
+            find_path(_brpc_leveldb_include NAMES leveldb/db.h)
+            if(NOT _brpc_leveldb_library OR NOT _brpc_leveldb_include)
+                set(brpc_FOUND FALSE)
+                set(brpc_NOT_FOUND_MESSAGE "brpc requires LevelDB")
+                return()
+            endif()
+            add_library(brpc::leveldb UNKNOWN IMPORTED)
+            set_target_properties(brpc::leveldb PROPERTIES
+                IMPORTED_LOCATION "${_brpc_leveldb_library}"
+                INTERFACE_INCLUDE_DIRECTORIES "${_brpc_leveldb_include}")
+        endif()
+    endif()
+endif()
+
+foreach(_brpc_dep glog mesalink unwind unwind_x86_64 thrift rdma snappy urma ub)
+    if((_brpc_dep STREQUAL "glog" AND @WITH_GLOG@) OR
+       (_brpc_dep STREQUAL "mesalink" AND @WITH_MESALINK@) OR
+       (_brpc_dep MATCHES "^unwind" AND @WITH_BTHREAD_TRACER@ AND
+        "bthread" IN_LIST _brpc_components) OR
+       ("brpc" IN_LIST _brpc_components AND
+        ((_brpc_dep STREQUAL "thrift" AND @WITH_THRIFT@) OR
+         (_brpc_dep STREQUAL "rdma" AND @WITH_RDMA@) OR
+         (_brpc_dep STREQUAL "snappy" AND @WITH_SNAPPY@) OR
+         (_brpc_dep STREQUAL "urma" AND @BRPC_COMPONENT_URMA_REAL@) OR
+         (_brpc_dep STREQUAL "ub" AND NOT "@BRPC_COMPONENT_UB_NAME@" STREQUAL ""))))
+        set(_brpc_lib_name "${_brpc_dep}")
+        if(_brpc_dep STREQUAL "unwind_x86_64")
+            set(_brpc_lib_name unwind-x86_64)
+        elseif(_brpc_dep STREQUAL "rdma")
+            set(_brpc_lib_name ibverbs)
+        elseif(_brpc_dep STREQUAL "ub")
+            set(_brpc_lib_name "@BRPC_COMPONENT_UB_NAME@")
+        endif()
+        find_library(_brpc_${_brpc_dep}_library NAMES ${_brpc_lib_name})
+        if(NOT _brpc_${_brpc_dep}_library)
+            set(brpc_FOUND FALSE)
+            set(brpc_NOT_FOUND_MESSAGE "brpc requires ${_brpc_lib_name}")
+            return()
+        endif()
+        if(NOT TARGET brpc::${_brpc_dep})
+            add_library(brpc::${_brpc_dep} UNKNOWN IMPORTED)
+            set_target_properties(brpc::${_brpc_dep} PROPERTIES
+                IMPORTED_LOCATION "${_brpc_${_brpc_dep}_library}")
+            if(_brpc_dep STREQUAL "glog" OR _brpc_dep STREQUAL "mesalink" OR
+               _brpc_dep STREQUAL "rdma" OR _brpc_dep STREQUAL "urma" OR
+               _brpc_dep STREQUAL "thrift" OR _brpc_dep STREQUAL "snappy" OR
+               _brpc_dep MATCHES "^unwind")
+                if(_brpc_dep STREQUAL "glog")
+                    set(_brpc_header glog/logging.h)
+                elseif(_brpc_dep STREQUAL "mesalink")
+                    set(_brpc_header mesalink/openssl/ssl.h)
+                elseif(_brpc_dep STREQUAL "rdma")
+                    set(_brpc_header infiniband/verbs.h)
+                elseif(_brpc_dep STREQUAL "thrift")
+                    set(_brpc_header thrift/Thrift.h)
+                elseif(_brpc_dep STREQUAL "snappy")
+                    set(_brpc_header snappy.h)
+                elseif(_brpc_dep MATCHES "^unwind")
+                    set(_brpc_header libunwind.h)
+                else()
+                    set(_brpc_header urma_api.h)
+                endif()
+                find_path(_brpc_${_brpc_dep}_include NAMES ${_brpc_header})
+                if(NOT _brpc_${_brpc_dep}_include)
+                    set(brpc_FOUND FALSE)
+                    set(brpc_NOT_FOUND_MESSAGE "brpc requires ${_brpc_header}")
+                    return()
+                endif()
+                set_target_properties(brpc::${_brpc_dep} PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${_brpc_${_brpc_dep}_include}")
+            endif()
+        endif()
+    endif()
+endforeach()
+
+# Load in dependency order, and only expose the requested dependency closure.
+foreach(_brpc_component butil bvar bthread json2pb mcpack2pb brpc)
+    if(_brpc_component IN_LIST _brpc_components)
+        include("${CMAKE_CURRENT_LIST_DIR}/brpc-${_brpc_component}-targets.cmake")
+        set(brpc_${_brpc_component}_FOUND TRUE)
+    endif()
+endforeach()
+foreach(_brpc_component IN LISTS brpc_FIND_COMPONENTS)
+    if(NOT TARGET brpc::${_brpc_component})
+        set(brpc_${_brpc_component}_FOUND FALSE)
+    endif()
+endforeach()
+check_required_components(brpc)

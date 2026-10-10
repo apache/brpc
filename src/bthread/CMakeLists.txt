@@ -70,4 +70,27 @@ set_property(TARGET BTHREAD_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
 set_property(TARGET BTHREAD_LIB PROPERTY BRPC_BUNDLE_LIBRARIES bthread_runtime_dependencies)
 set_property(TARGET BTHREAD_LIB PROPERTY BRPC_PRIVATE_LIBS "${bthread_private_libs}")
 
+if(BRPC_BUILD_COMPONENT_LIBS)
+    if(WITH_BTHREAD_TRACER)
+        foreach(lib unwind unwind-x86_64)
+            string(REPLACE "-" "_" lib_var ${lib})
+            find_library(BRPC_${lib_var}_LIBRARY NAMES ${lib})
+            if(NOT BRPC_${lib_var}_LIBRARY)
+                message(FATAL_ERROR "Fail to find ${lib}")
+            endif()
+            add_library(brpc::${lib_var} UNKNOWN IMPORTED)
+            set_target_properties(brpc::${lib_var} PROPERTIES
+                IMPORTED_LOCATION "${BRPC_${lib_var}_LIBRARY}"
+                INTERFACE_INCLUDE_DIRECTORIES "${LIBUNWIND_INCLUDE_PATH}")
+        endforeach()
+    endif()
+    brpc_add_component(bthread BTHREAD_LIB)
+    target_compile_definitions(bthread PUBLIC ${BTHREAD_DEFINITIONS})
+    target_link_libraries(bthread PUBLIC brpc::bvar brpc::butil)
+    if(WITH_BTHREAD_TRACER)
+        target_link_libraries(bthread PUBLIC brpc::unwind brpc::unwind_x86_64
+            ${bthread_tracer_ABSL_USED_TARGETS})
+    endif()
+endif()
+
 brpc_install_module_headers()

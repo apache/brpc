@@ -21,4 +21,9 @@ add_library(BVAR_LIB OBJECT ${BVAR_SOURCES})
 target_link_libraries(BVAR_LIB PRIVATE butil_build_config)
 set_property(TARGET BVAR_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
 
+if(BRPC_BUILD_COMPONENT_LIBS)
+    brpc_add_component(bvar BVAR_LIB)
+    target_link_libraries(bvar PUBLIC brpc::butil)
+endif()
+
 brpc_install_module_headers()
