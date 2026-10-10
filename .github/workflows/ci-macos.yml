@@ -70,8 +70,19 @@ jobs:
 
       - name: compile with cmake
         run: |
-          mkdir build && cd build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DWITH_UBRING=ON -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@29) ..
-          make -j ${{env.proc_num}} && make clean
+          cmake -S . -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DWITH_UBRING=ON -DBRPC_BUILD_COMPONENT_LIBS=ON -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@29)
+          cmake --build build -j ${{env.proc_num}}
+
+      - name: Check installed component consumers
+        run: |
+          cmake --install build --prefix "${RUNNER_TEMP}/brpc-install"
+          cmake -S test/cmake_components -B build-consumers \
+            -Dbrpc_DIR="${RUNNER_TEMP}/brpc-install/lib/cmake/brpc" \
+            -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@29)
+          cmake --build build-consumers -j ${{env.proc_num}}
+          ctest --test-dir build-consumers --output-on-failure
 
       - name: Show ccache statistics
         if: always()

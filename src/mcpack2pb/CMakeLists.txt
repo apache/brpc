@@ -48,4 +48,9 @@ else()
     target_link_libraries(protoc-gen-mcpack PRIVATE brpc-static brpc_bundle_dependencies)
 endif()
 
+if(BRPC_BUILD_COMPONENT_LIBS)
+    brpc_add_component(mcpack2pb MCPACK2PB_LIB)
+    target_link_libraries(mcpack2pb PUBLIC brpc::butil protobuf::libprotobuf)
+endif()
+
 brpc_install_module_headers()

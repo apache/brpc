@@ -20,12 +20,7 @@ project(ubring_performance C CXX)
 
 option(LINK_SO "Whether examples are linked dynamically" OFF)
 
-execute_process(
-    COMMAND bash -c "find ${CMAKE_CURRENT_SOURCE_DIR}/../.. -type d -regex '.*output/include$' | head -n1 | xargs dirname | tr -d '\n'"
-    OUTPUT_VARIABLE OUTPUT_PATH
-)
-
-set(CMAKE_PREFIX_PATH ${OUTPUT_PATH})
+# Locate an installed bundle through the caller's CMAKE_PREFIX_PATH.
 
 include(FindThreads)
 include(FindProtobuf)

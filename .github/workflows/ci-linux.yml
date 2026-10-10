@@ -80,20 +80,24 @@ jobs:
             cc: gcc
             cxx: g++
             cmake-options: >-
+              -DBRPC_BUILD_COMPONENT_LIBS=ON
               -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON
               -DWITH_RDMA=ON -DWITH_UBRING=ON
+              -DWITH_URMA=ON -DURMA_USE_MOCK=ON -DDOWNLOAD_URMA_HEADERS=OFF
               -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON
               -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON
           - name: clang-default
             cc: clang
             cxx: clang++
-            cmake-options: ''
+            cmake-options: '-DBRPC_BUILD_COMPONENT_LIBS=ON -DBUILD_SHARED_LIBS=ON'
           - name: clang-all-options
             cc: clang
             cxx: clang++
             cmake-options: >-
+              -DBRPC_BUILD_COMPONENT_LIBS=ON -DBUILD_SHARED_LIBS=ON
               -DWITH_MESALINK=OFF -DWITH_GLOG=ON -DWITH_THRIFT=ON
               -DWITH_RDMA=ON -DWITH_UBRING=ON
+              -DWITH_URMA=ON -DURMA_USE_MOCK=ON -DDOWNLOAD_URMA_HEADERS=OFF
               -DWITH_DEBUG_BTHREAD_SCHE_SAFETY=ON -DWITH_DEBUG_LOCK=ON
               -DWITH_BTHREAD_TRACER=ON -DWITH_ASAN=ON
     steps:
@@ -103,6 +107,16 @@ jobs:
       with:
         kind: ccache
         cache-key: cmake-${{ matrix.name }}
+
+    - name: Prepare URMA headers
+      if: contains(matrix.cmake-options, '-DWITH_URMA=ON')
+      run: |
+        git init "${RUNNER_TEMP}/umdk"
+        git -C "${RUNNER_TEMP}/umdk" remote add origin https://github.com/openeuler-mirror/umdk.git
+        git -C "${RUNNER_TEMP}/umdk" fetch --filter=blob:none --depth=1 origin 564ee727a55523d4351a8fb3c94292b388ebb924
+        git -C "${RUNNER_TEMP}/umdk" sparse-checkout set src/urma/lib/urma/core/include src/urma/lib/urma/bond/include
+        git -C "${RUNNER_TEMP}/umdk" checkout --detach FETCH_HEAD
+        echo "URMA_ROOT=${RUNNER_TEMP}/umdk" >> "$GITHUB_ENV"
 
     - name: Build
       env:
@@ -114,6 +128,29 @@ jobs:
         cmake -S . -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
           "${cmake_options[@]}"
         cmake --build build -j ${{env.proc_num}}
+
+    - name: Check installed component consumers
+      if: matrix.name != 'gcc-default'
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+      run: |
+        cmake --install build --prefix "${RUNNER_TEMP}/brpc-install"
+        cmake -S test/cmake_components -B build-consumers \
+          -Dbrpc_DIR="${RUNNER_TEMP}/brpc-install/lib/cmake/brpc"
+        cmake --build build-consumers -j ${{env.proc_num}}
+        ctest --test-dir build-consumers --output-on-failure
+
+    - name: Check CMake examples with an explicit install prefix
+      if: matrix.name == 'gcc-default'
+      run: |
+        cmake --install build --prefix "${RUNNER_TEMP}/brpc-install"
+        cmake -S example/echo_c++ -B build-echo \
+          -DCMAKE_PREFIX_PATH="${RUNNER_TEMP}/brpc-install"
+        cmake --build build-echo -j ${{env.proc_num}}
+        cmake -S example/ubring_performance -B build-ubring-example \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DCMAKE_PREFIX_PATH="${RUNNER_TEMP}/brpc-install"
 
     - name: Show ccache statistics
       if: always()

@@ -21,4 +21,9 @@ add_library(JSON2PB_LIB OBJECT ${JSON2PB_SOURCES})
 target_link_libraries(JSON2PB_LIB PRIVATE butil_build_config)
 set_property(TARGET JSON2PB_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
 
+if(BRPC_BUILD_COMPONENT_LIBS)
+    brpc_add_component(json2pb JSON2PB_LIB)
+    target_link_libraries(json2pb PUBLIC brpc::butil protobuf::libprotobuf)
+endif()
+
 brpc_install_module_headers()
