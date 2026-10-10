@@ -19,6 +19,26 @@ concurrency:
 
 # https://github.com/actions/runner-images
 jobs:
+  flatbuffers-codegen:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++-11, clang++-14]
+    steps:
+    - uses: actions/checkout@v7.0.1
+    - name: Install codegen dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake g++-11 clang-14 \
+          libprotobuf-dev libprotoc-dev protobuf-compiler \
+          libgflags-dev libleveldb-dev libssl-dev zlib1g-dev
+    - name: Verify FlatBuffers generation and runtime
+      env:
+        CXX: ${{ matrix.cxx }}
+        JOBS: 2
+      run: bash tools/flatbuffers/verify.sh "$RUNNER_TEMP/flatbuffers-codegen"
+
   compile-with-make:
     name: compile-with-make (${{ matrix.name }})
     runs-on: ubuntu-22.04

@@ -34,6 +34,11 @@
 #include <unistd.h>
 #include <flatbuffers/idl.h>
 
+#if FLATBUFFERS_VERSION_MAJOR != 25 || FLATBUFFERS_VERSION_MINOR != 2 || \
+    FLATBUFFERS_VERSION_REVISION != 10
+#error "brpc_flatc requires FlatBuffers 25.2.10 headers and library"
+#endif
+
 namespace {
 
 const char kLicense[] = R"(// Licensed to the Apache Software Foundation (ASF) under one
@@ -119,14 +124,49 @@ bool IsCppIdentifier(const std::string& name) {
     return !name.empty() && keywords.count(name) == 0;
 }
 
+std::string FlatcName(const std::string& name) {
+    // flatc 25.2.10 escapes a different set than the C++20 rejection list.
+    static const std::set<std::string> extra = {
+        "atomic_cancel", "atomic_commit", "atomic_noexcept", "import",
+        "module", "synchronized"
+    };
+    const bool newer_keyword = name == "char8_t" || name == "consteval" ||
+                               name == "constinit";
+    return ((!IsCppIdentifier(name) && !newer_keyword) || extra.count(name))
+        ? name + "_" : name;
+}
+
+std::string FlatcNamespace(const flatbuffers::Definition& definition) {
+    const std::string ns = JoinNamespace(definition, "::");
+    return ns.empty() ? "::" : "::" + ns + "::";
+}
+
+bool IsReservedIdentifier(const std::string& name, bool global) {
+    return name.find("__") != std::string::npos ||
+           (!name.empty() && name[0] == '_' &&
+            (global || (name.size() > 1 && name[1] >= 'A' && name[1] <= 'Z')));
+}
+
 bool ValidateName(const flatbuffers::Definition& definition,
-                  std::string* error) {
+                  std::string* error, bool member = false) {
     if (!IsCppIdentifier(definition.name)) {
         *error = "C++ keyword is not supported: " + definition.name;
         return false;
     }
+    const bool global = !member && (!definition.defined_namespace ||
+        definition.defined_namespace->components.empty());
+    if (IsReservedIdentifier(definition.name, global)) {
+        *error = "reserved C++ identifier: " + definition.name;
+        return false;
+    }
     if (definition.defined_namespace) {
+        bool first = true;
         for (const auto& component : definition.defined_namespace->components) {
+            if (IsReservedIdentifier(component, first)) {
+                *error = "reserved C++ identifier in namespace: " + component;
+                return false;
+            }
+            first = false;
             if (!IsCppIdentifier(component)) {
                 *error = "C++ keyword namespace is not supported: " + component;
                 return false;
@@ -155,11 +195,52 @@ bool ParseId(const flatbuffers::Value& value, int32_t* id) {
     return true;
 }
 
+void CollectRootNames(const flatbuffers::Parser& parser,
+                      std::set<std::string>* names) {
+    if (!parser.root_struct_def_) {
+        return;
+    }
+    const auto& root = *parser.root_struct_def_;
+    const std::string ns = FlatcNamespace(root);
+    const std::string name = FlatcName(root.name);
+    names->insert(ns + "Get" + name);
+    names->insert(ns + "GetSizePrefixed" + name);
+    names->insert(ns + "Verify" + name + "Buffer");
+    names->insert(ns + "VerifySizePrefixed" + name + "Buffer");
+    names->insert(ns + "Finish" + name + "Buffer");
+    names->insert(ns + "FinishSizePrefixed" + name + "Buffer");
+    if (!parser.file_identifier_.empty()) {
+        names->insert(ns + name + "Identifier");
+        names->insert(ns + name + "BufferHasIdentifier");
+        names->insert(ns + "SizePrefixed" + name + "BufferHasIdentifier");
+    }
+    if (!parser.file_extension_.empty()) {
+        names->insert(ns + name + "Extension");
+    }
+}
+
 bool CollectServices(const flatbuffers::Parser& parser,
+                     const std::string& input, const char** include_paths,
                      std::vector<Service>* services, std::string* error) {
     std::set<std::string> generated_class_names = {
         "::brpc", "::butil", "::flatbuffers", "::google", "::std"
     };
+    CollectRootNames(parser, &generated_class_names);
+    // The parser resets root_type after each include; flatc emits those helpers
+    // when each imported schema is generated separately.
+    for (const auto& file : parser.GetIncludedFilesRecursive(input)) {
+        if (file == input) {
+            continue;
+        }
+        std::string schema;
+        flatbuffers::Parser included;
+        if (!flatbuffers::LoadFile(file.c_str(), false, &schema) ||
+            !included.Parse(schema.c_str(), include_paths, file.c_str())) {
+            *error = "cannot inspect imported root_type: " + file;
+            return false;
+        }
+        CollectRootNames(included, &generated_class_names);
+    }
     // Reserve every namespace prefix, including those from imported schemas.
     for (const auto* ns : parser.namespaces_) {
         std::string prefix;
@@ -176,14 +257,53 @@ bool CollectServices(const flatbuffers::Parser& parser,
         }
     }
     for (const auto* definition : parser.structs_.vec) {
-        const std::string type_name = Qualified(*definition);
+        const std::string ns = FlatcNamespace(*definition);
+        const std::string name = FlatcName(definition->name);
+        const std::string type_name = ns + name;
         generated_class_names.insert(type_name);
         if (!definition->fixed) {
             generated_class_names.insert(type_name + "Builder");
+            generated_class_names.insert(ns + "Create" + name);
+            for (const auto* field : definition->fields.vec) {
+                if (!field->deprecated &&
+                    (flatbuffers::IsString(field->value.type) ||
+                     flatbuffers::IsVector(field->value.type))) {
+                    generated_class_names.insert(
+                        ns + "Create" + name + "Direct");
+                    break;
+                }
+            }
         }
     }
+    // Match the default flatc --cpp API, including non-type declarations.
     for (const auto* definition : parser.enums_.vec) {
-        generated_class_names.insert(Qualified(*definition));
+        const std::string ns = FlatcNamespace(*definition);
+        const std::string name = FlatcName(definition->name);
+        const std::string enum_name = ns + name;
+        generated_class_names.insert(enum_name);
+        for (const auto* value : definition->Vals()) {
+            generated_class_names.insert(enum_name + "_" + FlatcName(value->name));
+        }
+        if (definition->attributes.Lookup("bit_flags")) {
+            generated_class_names.insert(enum_name + "_NONE");
+            generated_class_names.insert(enum_name + "_ANY");
+        } else {
+            generated_class_names.insert(enum_name + "_MIN");
+            generated_class_names.insert(enum_name + "_MAX");
+        }
+        generated_class_names.insert(ns + "EnumValues" + name);
+        generated_class_names.insert(ns + "EnumName" + name);
+        if (definition->Distance() / definition->size() < 5) {
+            generated_class_names.insert(ns + "EnumNames" + name);
+        }
+        if (definition->is_union) {
+            if (!definition->uses_multiple_type_instances) {
+                generated_class_names.insert(enum_name + "Traits");
+            }
+            generated_class_names.insert(ns + "Verify" + name);
+            generated_class_names.insert(
+                ns + "Verify" + name + "Vector");
+        }
     }
     for (const auto* definition : parser.services_.vec) {
         // Included schemas are generated separately, just as with flatc --cpp.
@@ -202,6 +322,10 @@ bool CollectServices(const flatbuffers::Parser& parser,
         }
         const std::string service_name = Qualified(*definition);
         const std::string stub_name = service_name + "_Stub";
+        if (IsReservedIdentifier(definition->name + "_Stub", false)) {
+            *error = "generated stub uses reserved C++ identifier: " + stub_name;
+            return false;
+        }
         if (!generated_class_names.insert(service_name).second) {
             *error = "generated service class name collides: " + service_name;
             return false;
@@ -218,7 +342,7 @@ bool CollectServices(const flatbuffers::Parser& parser,
             return false;
         }
         for (const auto* call : definition->calls.vec) {
-            if (!ValidateName(*call, error) ||
+            if (!ValidateName(*call, error, true) ||
                 !ValidateName(*call->request, error) ||
                 !ValidateName(*call->response, error)) {
                 return false;
@@ -324,6 +448,18 @@ void GenerateHeader(const Service& service, std::ostream& out) {
     CloseNamespace(definition, out);
 }
 
+void GenerateFailureHandler(std::ostream& out) {
+    // A local callable cannot be hidden by schema declarations or RPC names.
+    out << "    const auto fail = [controller, done](const char* reason) {\n"
+        << "        if (controller) {\n"
+        << "            controller->SetFailed(reason);\n"
+        << "        }\n"
+        << "        if (done) {\n"
+        << "            done->Run();\n"
+        << "        }\n"
+        << "    };\n";
+}
+
 void GenerateSource(const Service& service, std::ostream& out) {
     const auto& definition = *service.definition;
     const std::string& name = definition.name;
@@ -360,17 +496,16 @@ void GenerateSource(const Service& service, std::ostream& out) {
         << "}\n\n"
         << "void " << name << "::FBCallMethod(\n"
         << "        const ::brpc::flatbuffers::MethodDescriptor* method,\n"
-        << "        " << kArguments << ") {\n"
-        << "    if (!method || method->service() != descriptor() ||\n"
+        << "        " << kArguments << ") {\n";
+    GenerateFailureHandler(out);
+    out << "    if (!method || method->service() != descriptor() ||\n"
         << "        descriptor()->FindMethodByIndex(method->index()) != "
            "method) {\n"
-        << "        ::BrpcFlatbuffersFail(controller, done,\n"
-        << "                              \"invalid service method\");\n"
+        << "        fail(\"invalid service method\");\n"
         << "        return;\n"
         << "    }\n"
         << "    if (!request || !response) {\n"
-        << "        ::BrpcFlatbuffersFail(controller, done,\n"
-        << "                              \"null request or response\");\n"
+        << "        fail(\"null request or response\");\n"
         << "        return;\n"
         << "    }\n"
         << "    switch (method->index()) {\n";
@@ -379,7 +514,7 @@ void GenerateSource(const Service& service, std::ostream& out) {
         out << "    case " << service.ids[i] << ":\n"
             << "        if (!request->Verify<" << Qualified(*call.request)
             << ">()) {\n"
-            << "            ::BrpcFlatbuffersFail(controller, done, \"invalid "
+            << "            fail(\"invalid "
             << call.request->name << " request\");\n"
             << "            return;\n"
             << "        }\n"
@@ -388,8 +523,7 @@ void GenerateSource(const Service& service, std::ostream& out) {
             << "        return;\n";
     }
     out << "    default:\n"
-        << "        ::BrpcFlatbuffersFail(controller, done,\n"
-        << "                              \"unknown method id\");\n"
+        << "        fail(\"unknown method id\");\n"
         << "        return;\n"
         << "    }\n"
         << "}\n\n";
@@ -397,9 +531,9 @@ void GenerateSource(const Service& service, std::ostream& out) {
         out << "void " << name << "::" << call->name << "(\n"
             << "        " << kArguments << ") {\n"
             << "    (void)request;\n"
-            << "    (void)response;\n"
-            << "    ::BrpcFlatbuffersFail(controller, done,\n"
-            << "                          \"method not implemented: "
+            << "    (void)response;\n";
+        GenerateFailureHandler(out);
+        out << "    fail(\"method not implemented: "
             << name << "." << call->name << "\");\n"
             << "}\n\n";
     }
@@ -413,10 +547,10 @@ void GenerateSource(const Service& service, std::ostream& out) {
         << "              ? channel : nullptr) {}\n\n";
     for (size_t i = 0; i < definition.calls.vec.size(); ++i) {
         out << "void " << name << "_Stub::" << definition.calls.vec[i]->name
-            << "(\n        " << kArguments << ") {\n"
-            << "    if (!channel_) {\n"
-            << "        ::BrpcFlatbuffersFail(controller, done,\n"
-            << "                              \"null RPC channel\");\n"
+            << "(\n        " << kArguments << ") {\n";
+        GenerateFailureHandler(out);
+        out << "    if (!channel_) {\n"
+            << "        fail(\"null RPC channel\");\n"
             << "        return;\n"
             << "    }\n"
             << "    channel_->FBCallMethod(\n"
@@ -625,6 +759,14 @@ void Usage(std::ostream& out) {
 }
 
 int Run(int argc, char** argv) {
+    if (std::string(flatbuffers::FLATBUFFERS_VERSION()) != "25.2.10") {
+        std::cerr << "brpc_flatc: requires FlatBuffers 25.2.10 library\n";
+        return 1;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--version") {
+        std::cout << "brpc_flatc (FlatBuffers 25.2.10)\n";
+        return 0;
+    }
     std::string input;
     std::string output_dir = ".";
     std::vector<std::string> include_dirs;
@@ -694,7 +836,7 @@ int Run(int argc, char** argv) {
     }
     std::vector<Service> services;
     std::string error;
-    if (!CollectServices(parser, &services, &error)) {
+    if (!CollectServices(parser, input, include_paths.data(), &services, &error)) {
         std::cerr << "brpc_flatc: " << error << '\n';
         return 1;
     }
@@ -716,20 +858,7 @@ int Run(int argc, char** argv) {
            << "#endif\n\n";
     std::ostringstream source;
     source << kLicense << "#include \"" << stem << ".brpc.fb.h\"\n\n"
-           << "#include <stdexcept>\n\n"
-           << "namespace {\n"
-           << "void BrpcFlatbuffersFail("
-              "::google::protobuf::RpcController* controller,\n"
-           << "                         ::google::protobuf::Closure* done,\n"
-           << "                         const char* reason) {\n"
-           << "    if (controller) {\n"
-           << "        controller->SetFailed(reason);\n"
-           << "    }\n"
-           << "    if (done) {\n"
-           << "        done->Run();\n"
-           << "    }\n"
-           << "}\n"
-           << "}  // namespace\n\n";
+           << "#include <stdexcept>\n\n";
     for (const auto& service : services) {
         GenerateHeader(service, header);
         GenerateSource(service, source);

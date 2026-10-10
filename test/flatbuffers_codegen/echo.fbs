@@ -15,6 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Exercise helper-name collisions in the normal compile and runtime targets.
+table BrpcFlatbuffersFail {
+    marker:int;
+}
+
 namespace codegen.example;
 
 table Request {

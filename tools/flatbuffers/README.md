@@ -7,8 +7,10 @@ FlatBuffers fork. The official `flatc --cpp` remains responsible for table types
 
 ## Build and generate
 
-The tool needs a C++11 compiler, CMake, and official FlatBuffers development
-headers/library. To build only the generator:
+The tool needs a C++11 compiler, CMake, and official FlatBuffers **25.2.10**
+headers/library. Use the matching `flatc` with default `--cpp` generation;
+options that change C++ naming, such as `--scoped-enums`, are not modeled by
+this generator. To build only the generator:
 
 ```sh
 cmake -S tools/flatbuffers -B /tmp/brpc-codegen-build -DBUILD_TESTING=OFF
@@ -78,7 +80,10 @@ collide with generated service APIs are also rejected. Services cannot be named
 `Stub`, `descriptor`, `GetDescriptor`, or `FBCallMethod`, because these names
 are also members of the generated service class. Generated service and stub
 class names must be distinct from other services, schema types, table builder
-classes, and namespace prefixes, including those in imported schemas.
+classes, unscoped enum values, union traits, table creation functions, and
+namespace prefixes, including those in imported schemas. C++ reserved
+identifiers are rejected in the scopes where they are reserved. A service name
+ending in `_` is also rejected because its `_Stub` suffix would produce `__`.
 Global service names also cannot shadow
 namespaces introduced by the generated header (`brpc`, `butil`, `flatbuffers`,
 `google`, or `std`). Schema file basenames may contain ASCII letters, digits,
@@ -108,10 +113,34 @@ file-locking semantics, including on Linux and macOS.
   implementations remain possible. User methods and channel implementations
   must themselves honor the exactly-once completion contract.
 
+## Pre-submit verification
+
+Local runs and the Linux/macOS codegen CI jobs use the same entry point:
+
+```sh
+CXX=clang++ bash tools/flatbuffers/verify.sh /tmp/brpc-codegen-verify
+```
+
+Install CMake, a C++ compiler, protobuf, gflags, LevelDB, OpenSSL, and zlib first.
+Use `CMAKE_PREFIX_PATH` for non-system dependencies (on macOS, select the desired
+Homebrew protobuf prefix). The script builds checksum-pinned FlatBuffers 25.2.10,
+then bRPC and the standalone generator, and runs acceptance plus runtime tests.
+`FLATBUFFERS_PREFIX` may reuse an existing matching installation;
+`CODEGEN_RUNTIME=OFF` is compile-only verification, not the full CI check.
+
+For generator changes, add both rejected and accepted schemas, compile the
+actual output of both generators, and demonstrate that a new regression fails
+before the fix. Check generated symbol families and global/nested/imported
+scopes rather than only the reported spelling. Record compiler, dependency,
+SDK, flags, and source hashes; the script prints the core toolchain information.
+The same script does not make different runner/compiler versions equivalent.
+Ordinary FlatBuffers-OFF jobs are not codegen evidence.
+
 ## Independent acceptance tests
 
 No root build file needs modification. The default standalone build enables
-CTest and additionally needs official `flatc` and protobuf development headers:
+CTest and additionally needs matching official `flatc`, protobuf, and gflags
+development headers:
 
 ```sh
 cmake -S tools/flatbuffers -B /tmp/brpc-codegen-build -DBUILD_TESTING=ON

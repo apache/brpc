@@ -18,6 +18,8 @@
 if(NOT DEFINED CXX_STANDARD)
     set(CXX_STANDARD 14)
 endif()
+separate_arguments(compiler_flags NATIVE_COMMAND "${CXX_FLAGS}")
+message(STATUS "Codegen compiler: ${CXX}; flags: ${CXX_FLAGS}; C++${CXX_STANDARD}")
 file(READ "${SCHEMA}" schema_text)
 file(MAKE_DIRECTORY "${WORK}")
 
@@ -42,6 +44,11 @@ function(expect_schema_rejected name text diagnostic)
     file(REMOVE_RECURSE "${directory}")
     file(MAKE_DIRECTORY "${directory}")
     file(WRITE "${directory}/echo.fbs" "${text}")
+    execute_process(COMMAND "${FLATC}" --cpp -o "${directory}" "${directory}/echo.fbs"
+        RESULT_VARIABLE flatc_result ERROR_VARIABLE flatc_error)
+    if(NOT "${flatc_result}" STREQUAL "0")
+        message(FATAL_ERROR "${name}: not a valid official flatc input: ${flatc_error}")
+    endif()
     execute_process(COMMAND "${GENERATOR}" -o "${directory}" "${directory}/echo.fbs"
         RESULT_VARIABLE result ERROR_VARIABLE error)
     string(FIND "${error}" "${diagnostic}" diagnostic_position)
@@ -148,7 +155,7 @@ function(expect_concurrent_output_pair)
     foreach(include_dir IN LISTS INCLUDE_DIRS)
         list(APPEND includes "-I${include_dir}")
     endforeach()
-    execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+    execute_process(COMMAND "${CXX}" ${compiler_flags} "-std=c++${CXX_STANDARD}" ${includes}
         -c "${output}/echo.brpc.fb.cpp" -o "${directory}/echo.o"
         RESULT_VARIABLE result ERROR_VARIABLE error)
     if(NOT "${result}" STREQUAL "0")
@@ -202,10 +209,22 @@ function(expect_compiles name text)
         message(FATAL_ERROR "${name}: brpc_flatc failed: ${error}")
     endif()
     set(includes "-I${directory}")
+    set(diagnostics)
     foreach(include_dir IN LISTS INCLUDE_DIRS)
-        list(APPEND includes "-I${include_dir}")
+        if(ARGC GREATER 3)
+            list(FIND IMPLICIT_INCLUDE_DIRS "${include_dir}" implicit_index)
+            if(implicit_index GREATER_EQUAL 0)
+                continue()
+            endif()
+            list(APPEND includes -isystem "${include_dir}")
+        else()
+            list(APPEND includes "-I${include_dir}")
+        endif()
     endforeach()
-    execute_process(COMMAND "${CXX}" "-std=c++${standard}" ${includes}
+    if(ARGC GREATER 3)
+        set(diagnostics ${ARGV3})
+    endif()
+    execute_process(COMMAND "${CXX}" ${compiler_flags} ${diagnostics} "-std=c++${standard}" ${includes}
         -c "${directory}/echo.brpc.fb.cpp" -o "${directory}/echo.o"
         RESULT_VARIABLE result ERROR_VARIABLE error)
     if(NOT "${result}" STREQUAL "0")
@@ -213,7 +232,7 @@ function(expect_compiles name text)
     endif()
     # The generated header must also compile without incidental prior includes.
     file(WRITE "${directory}/header.cpp" "#include \"echo.brpc.fb.h\"\n")
-    execute_process(COMMAND "${CXX}" "-std=c++${standard}" ${includes}
+    execute_process(COMMAND "${CXX}" ${compiler_flags} ${diagnostics} "-std=c++${standard}" ${includes}
         -c "${directory}/header.cpp" -o "${directory}/header.o"
         RESULT_VARIABLE result ERROR_VARIABLE error)
     if(NOT "${result}" STREQUAL "0")
@@ -243,6 +262,8 @@ function(expect_distinct_headers name first_stem second_stem)
         file(MAKE_DIRECTORY "${output}")
         string(REPLACE "namespace codegen.example;" "namespace guard_${name}.${side};"
             text "${schema_text}")
+        # Isolate the fixture's global helper table as well as its services.
+        string(PREPEND text "namespace guard_${name}.${side};\n")
         if(side STREQUAL "first")
             set(first_text "${text}")
         endif()
@@ -259,7 +280,7 @@ function(expect_distinct_headers name first_stem second_stem)
         endif()
         file(WRITE "${output}/single.cpp"
             "#include \"${stem}.brpc.fb.h\"\n::guard_${name}::${side}::Echo* service = nullptr;\n")
-        execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+        execute_process(COMMAND "${CXX}" ${compiler_flags} "-std=c++${CXX_STANDARD}" ${includes}
             -c "${output}/single.cpp" -o "${output}/single.o"
             RESULT_VARIABLE result ERROR_VARIABLE error)
         if(NOT "${result}" STREQUAL "0")
@@ -276,7 +297,7 @@ function(expect_distinct_headers name first_stem second_stem)
         endif()
         file(WRITE "${directory}/combined_${reverse}.cpp"
             "${headers}::guard_${name}::first::Echo* first_echo = nullptr;\n::guard_${name}::second::Echo* second_echo = nullptr;\n")
-        execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+        execute_process(COMMAND "${CXX}" ${compiler_flags} "-std=c++${CXX_STANDARD}" ${includes}
             -c "${directory}/combined_${reverse}.cpp"
             -o "${directory}/combined_${reverse}.o"
             RESULT_VARIABLE result ERROR_VARIABLE error)
@@ -303,6 +324,150 @@ function(expect_distinct_headers name first_stem second_stem)
     endforeach()
     message(STATUS "Distinct, relocatable header guards: ${name}")
 endfunction()
+
+# Exercise the names emitted by official flatc, not only schema type names.
+foreach(scope "" "api.")
+    if(scope STREQUAL "")
+        set(namespace_decl "")
+        set(qualified "::")
+        set(scope_id global)
+    else()
+        set(namespace_decl "namespace api;\n")
+        set(qualified "::api::")
+        set(scope_id nested)
+    endif()
+    set(tables "table Request {}\ntable Response {}\n")
+    foreach(kind enum_value enum_min enum_any enum_values enum_names enum_name
+                 union_traits union_verify union_vector table_create table_direct)
+        if(kind MATCHES "^enum_")
+            set(definitions "enum Collision: byte { Echo_Stub = 0 }\n")
+            if(kind STREQUAL enum_value)
+                set(service Collision_Echo)
+                set(symbol Collision_Echo_Stub)
+            elseif(kind STREQUAL enum_min)
+                set(service Collision_MIN)
+                set(symbol Collision_MIN)
+            elseif(kind STREQUAL enum_any)
+                set(definitions "enum Collision: byte (bit_flags) { Flag = 0 }\n")
+                set(service Collision_ANY)
+                set(symbol Collision_ANY)
+            elseif(kind STREQUAL enum_values)
+                set(service EnumValuesCollision)
+                set(symbol EnumValuesCollision)
+            elseif(kind STREQUAL enum_names)
+                set(service EnumNamesCollision)
+                set(symbol EnumNamesCollision)
+            else()
+                set(service EnumNameCollision)
+                set(symbol EnumNameCollision)
+            endif()
+        elseif(kind MATCHES "^union_")
+            set(definitions "union Collision { Request }\n")
+            if(kind STREQUAL union_traits)
+                set(service CollisionTraits)
+            elseif(kind STREQUAL union_verify)
+                set(service VerifyCollision)
+            else()
+                set(service VerifyCollisionVector)
+            endif()
+            set(symbol "${service}")
+        elseif(kind STREQUAL table_create)
+            set(definitions "table Echo_Stub {}\n")
+            set(service CreateEcho)
+            set(symbol CreateEcho_Stub)
+        else()
+            set(definitions "table Echo { text:string; }\n")
+            set(service CreateEchoDirect)
+            set(symbol CreateEchoDirect)
+        endif()
+        expect_schema_rejected(${scope_id}_${kind}
+            "${namespace_decl}${tables}${definitions}rpc_service ${service} { Call(Request):Response (id: 1); }\n"
+            "generated service class name collides: ${qualified}${symbol}")
+    endforeach()
+endforeach()
+
+# Pair each root/helper declaration with actual flatc output and legal names.
+foreach(symbol GetRoot_Stub GetSizePrefixedRoot_Stub VerifyRoot_StubBuffer
+               VerifySizePrefixedRoot_StubBuffer FinishRoot_StubBuffer
+               FinishSizePrefixedRoot_StubBuffer Root_StubIdentifier
+               Root_StubBufferHasIdentifier SizePrefixedRoot_StubBufferHasIdentifier
+               Root_StubExtension)
+    expect_schema_rejected(root_helper_${symbol}
+        "table Request {} table Response {} table Root_Stub {} root_type Root_Stub; file_identifier \"TEST\"; file_extension \"bin\"; rpc_service ${symbol} { Call(Request):Response (id: 1); }"
+        "generated service class name collides: ::${symbol}")
+endforeach()
+file(WRITE "${WORK}/root_types.fbs"
+    "namespace data; table Request {} table Response {} table Root_Stub {} root_type Root_Stub; file_identifier \"TEST\"; file_extension \"bin\";")
+expect_schema_rejected(imported_root_helper
+    "include \"../root_types.fbs\"; namespace data; rpc_service GetRoot { Call(Request):Response (id: 1); }"
+    "generated service class name collides: ::data::GetRoot_Stub")
+expect_schema_rejected(escaped_table_builder
+    "table Request {} table Response {} table class {} rpc_service class_Builder { Call(Request):Response (id: 1); }"
+    "generated service class name collides: ::class_Builder")
+expect_compiles(unescaped_table_builder_available
+    "table Request {} table Response {} table class {} rpc_service classBuilder { Call(Request):Response (id: 1); }")
+expect_compiles(escaped_enum_value_available
+    "table Request {} table Response {} enum E:byte { module = 0 } rpc_service E_module { Call(Request):Response (id: 1); }")
+expect_compiles(sparse_enum_no_names_table
+    "table Request {} table Response {} enum E:int { A = 0, B = 10 } rpc_service EnumNamesE { Call(Request):Response (id: 1); }")
+expect_schema_rejected(dense_enum_names_table
+    "table Request {} table Response {} enum E:int { A = 0, B = 9 } rpc_service EnumNamesE { Call(Request):Response (id: 1); }"
+    "generated service class name collides: ::EnumNamesE")
+expect_compiles(deprecated_string_no_direct
+    "table Request {} table Response {} table Echo { text:string (deprecated); } rpc_service CreateEchoDirect { Call(Request):Response (id: 1); }")
+expect_compiles(union_alias_no_traits
+    "table Request {} table Response {} union E { A:Request, B:Request } rpc_service ETraits { Call(Request):Response (id: 1); }")
+expect_compiles(nonroot_helper_available
+    "table Request {} table Response {} table Root_Stub {} rpc_service GetRoot { Call(Request):Response (id: 1); }")
+
+foreach(name __Echo Echo__Name _Echo _echo Echo_ channel_ owned_channel_)
+    expect_schema_rejected(reserved_service_${name}
+        "table Request {} table Response {} rpc_service ${name} { Call(Request):Response (id: 1); }"
+        "reserved C++ identifier")
+endforeach()
+foreach(name __Call _Call Call__Name)
+    expect_schema_rejected(reserved_method_${name}
+        "table Request {} table Response {} rpc_service Echo { ${name}(Request):Response (id: 1); }"
+        "reserved C++ identifier")
+endforeach()
+foreach(name __api _Api _api _)
+    expect_schema_rejected(reserved_namespace_${name}
+        "namespace ${name}; table Request {} table Response {} rpc_service Echo { Call(Request):Response (id: 1); }"
+        "reserved C++ identifier")
+endforeach()
+expect_compiles(global_helper_table [=[
+table BrpcFlatbuffersFail { value:int; }
+table Request {} table Response {}
+rpc_service Echo { Call(Request):Response (id: 1); }
+]=])
+expect_compiles(global_helper_service [=[
+table Request {} table Response {}
+rpc_service BrpcFlatbuffersFail { Call(Request):Response (id: 1); }
+]=])
+expect_compiles(legal_underscore_names [=[
+namespace api._internal;
+table Request {} table Response {}
+rpc_service _echo { _call(Request):Response (id: 1); call_(Request):Response (id: 2); }
+]=])
+if(CXX_ID MATCHES "Clang")
+    # Integer-only tables avoid unrelated reserved locals in upstream flatc.
+    expect_compiles(strict_generated_identifiers
+        "namespace api; table Request { value:int; } table Response { value:int; } rpc_service Echo { Call(Request):Response (id: 1); }"
+        "${CXX_STANDARD}" "-Wreserved-identifier;-Werror=reserved-identifier")
+else()
+    message(STATUS "Reserved-name rejection tested; strict diagnostics require Clang")
+endif()
+expect_compiles(absent_direct_helper [=[
+namespace api;
+table Request {} table Response {} table Echo { value:int; }
+rpc_service CreateEchoDirect { Call(Request):Response (id: 1); }
+]=])
+expect_compiles(cross_namespace_flatc_symbols [=[
+namespace data;
+table Request {} table Response {} enum Collision:byte { Echo_Stub = 0 }
+namespace api;
+rpc_service Collision_Echo { Call(data.Request):data.Response (id: 1); }
+]=])
 
 foreach(name Stub descriptor GetDescriptor FBCallMethod)
     string(CONCAT reserved_service_schema
@@ -396,7 +561,7 @@ expect_rejected(string_id "(id: \"7\")")
 expect_rejected(streaming "(id: 7, streaming: \"server\")")
 expect_compiles(sparse_ids "${schema_text}")
 file(WRITE "${WORK}/cxx20_probe.cpp" "int main() { return 0; }\n")
-execute_process(COMMAND "${CXX}" -std=c++20 -fsyntax-only "${WORK}/cxx20_probe.cpp"
+execute_process(COMMAND "${CXX}" ${compiler_flags} -std=c++20 -fsyntax-only "${WORK}/cxx20_probe.cpp"
     RESULT_VARIABLE cxx20_result ERROR_QUIET)
 if("${cxx20_result}" STREQUAL "0")
     expect_compiles(cxx20 "${schema_text}" 20)
@@ -423,13 +588,13 @@ namespace api;
 table Request {}
 table Response {}
 rpc_service channel { Call(Request):Response (id: 1); }
-rpc_service channel_ { Call(Request):Response (id: 1); }
-rpc_service owned_channel_ { Call(Request):Response (id: 1); }
+rpc_service channel_handle { Call(Request):Response (id: 1); }
+rpc_service owned_channel_handle { Call(Request):Response (id: 1); }
 rpc_service StubService { Call(Request):Response (id: 1); }
 rpc_service ChannelOwnership { Call(Request):Response (id: 1); }
 ]=])
 
-set(shadow_names request response controller done method std BrpcFlatbuffersFail
+set(shadow_names request response controller done method std fail BrpcFlatbuffersFail
     STUB_OWNS_CHANNEL STUB_DOESNT_OWN_CHANNEL ChannelOwnership)
 set(shadow_schema "namespace codegen.names;\ntable Request { text:string; }\ntable Response { text:string; }\nrpc_service Names {\n")
 set(method_id 0)
@@ -529,7 +694,7 @@ int main() {
     foreach(include_dir IN LISTS INCLUDE_DIRS)
         list(APPEND includes "-I${include_dir}")
     endforeach()
-    execute_process(COMMAND "${CXX}" "-std=c++${CXX_STANDARD}" ${includes}
+    execute_process(COMMAND "${CXX}" ${compiler_flags} "-std=c++${CXX_STANDARD}" ${includes}
         "${directory}/runtime.cpp" "${directory}/echo.o" ${RUNTIME_LIBRARIES}
         -o "${directory}/runtime"
         RESULT_VARIABLE result ERROR_VARIABLE error)
