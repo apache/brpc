@@ -16,4 +16,9 @@
 # under the License.
 
 file(GLOB_RECURSE JSON2PB_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-set(JSON2PB_SOURCES ${JSON2PB_SOURCES} PARENT_SCOPE)
+
+add_library(JSON2PB_LIB OBJECT ${JSON2PB_SOURCES})
+target_link_libraries(JSON2PB_LIB PRIVATE butil_build_config)
+set_property(TARGET JSON2PB_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
+
+brpc_install_module_headers()

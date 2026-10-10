@@ -15,10 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
+if(BUILD_FUZZ_TESTS AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "Fuzzing is only supported with clang")
+endif()
+
 find_package(Gperftools)
 
 add_library(brpc_test_config INTERFACE)
-target_link_libraries(brpc_test_config INTERFACE brpc_common_config)
+target_link_libraries(brpc_test_config INTERFACE brpc_build_config)
 target_include_directories(brpc_test_config INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(brpc_test_config INTERFACE
     UNIT_TEST
@@ -30,25 +34,23 @@ if(GPERFTOOLS_INCLUDE_DIR)
 endif()
 
 include(CompileProto)
-set(TEST_PROTO_FILES addressbook1.proto
+set(TEST_PROTO_FILES addressbook.proto
+                     addressbook1.proto
                      addressbook_encode_decode.proto
                      addressbook_map.proto
-                     addressbook.proto
                      echo.proto
+                     grpc.proto
+                     health_check.proto
                      iobuf.proto
                      message.proto
                      repeated.proto
                      snappy_message.proto
                      v1.proto
                      v2.proto
-                     v3.proto
-                     grpc.proto
-                     health_check.proto)
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/test/hdrs)
+                     v3.proto)
 set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${CMAKE_SOURCE_DIR}/src)
-compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}/test
-                                    ${CMAKE_BINARY_DIR}/test/hdrs
-                                    ${CMAKE_SOURCE_DIR}/test
+compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_CURRENT_BINARY_DIR}
+                                    ${CMAKE_CURRENT_SOURCE_DIR}
                                     "${TEST_PROTO_FILES}")
 add_library(TEST_PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 target_link_libraries(TEST_PROTO_LIB PRIVATE brpc_test_config)
@@ -80,109 +82,109 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/jsonout DESTINATION ${CMAKE_CURRENT_BINARY
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/run_tests.sh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(TEST_BUTIL_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/recordio_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/popen_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/bounded_queue_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/abalist_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/aligned_memory_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/at_exit_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/atomicops_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/baidu_thread_local_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/baidu_time_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/base64_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/base64url_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/big_endian_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/bits_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/hash_tables_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/linked_list_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/mru_cache_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/small_map_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/stack_container_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/mpsc_queue_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/bounded_queue_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/butil_unittest_main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cacheline_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cancellation_flag_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/class_name_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/condition_variable_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/cpu_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/crash_logging_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/leak_tracker_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/stack_trace_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/environment_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/file_util_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/crc32c_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/dir_reader_posix_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/endpoint_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/environment_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/errno_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fd_guard_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/file_descriptor_shuffle_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/file_path_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/file_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_temp_dir_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/file_util_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/file_watcher_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/find_cstr_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/flat_map_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/guid_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/hash_tables_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/hash_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/iobuf_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/lazy_instance_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/aligned_memory_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/leak_tracker_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/linked_list_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/linked_ptr_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/lock_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/logging_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/mpsc_queue_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/mru_cache_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/non_thread_safe_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/nullable_string16_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/object_pool_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/observer_list_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/optional_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/platform_thread_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/popen_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/rand_util_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/recordio_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ref_counted_memory_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/ref_counted_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_ptr_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_vector_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/singleton_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/weak_ptr_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/observer_list_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/file_descriptor_shuffle_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/rand_util_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/safe_numerics_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/safe_sprintf_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scope_guard_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/scoped_clear_errno_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/scoped_generic_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_locale.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_lock_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_ptr_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_temp_dir_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_vector_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/security_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/seqlock_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sha1_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/simple_thread_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/singleton_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/small_map_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/stack_container_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/stack_trace_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/status_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/stl_util_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/nullable_string16_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/safe_sprintf_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/string16_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/stringprintf_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/string_number_conversions_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/string_piece_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_printf_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/string_split_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_splitter_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/string_tokenizer_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/string_util_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/stringize_macros_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/stringprintf_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/synchronous_event_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sys_string_conversions_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/utf_offset_string_conversions_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/utf_string_conversions_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/cancellation_flag_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/condition_variable_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/lock_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/waitable_event_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/type_traits_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/non_thread_safe_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/platform_thread_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/simple_thread_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/temp_file_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_switches.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/thread_checker_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/thread_collision_warner_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/thread_id_name_manager_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/thread_key_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/thread_local_storage_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/thread_local_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/abalist_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/watchdog_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/time_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/version_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/logging_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/cacheline_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/class_name_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/endpoint_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/type_traits_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/unique_ptr_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/errno_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/fd_guard_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/file_watcher_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/find_cstr_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_lock_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/status_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/string_printf_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/string_splitter_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/synchronous_event_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/temp_file_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/baidu_thread_local_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/thread_key_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/baidu_time_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/flat_map_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/crc32c_unittest.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/iobuf_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/object_pool_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_switches.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_locale.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/scope_guard_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/optional_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/seqlock_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/butil_unittest_main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/utf_offset_string_conversions_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/utf_string_conversions_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/version_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/waitable_event_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/watchdog_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/weak_ptr_unittest.cc
 	)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -202,6 +204,26 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     )
 endif()
 
+# Read module-owned sources from their targets, not parent-scope variables.
+get_target_property(BUTIL_SOURCES BUTIL_LIB SOURCES)
+# Source properties are directory-scoped; reuse production CRC32C settings.
+get_target_property(butil_crc32c_options BUTIL_LIB BRPC_CRC32C_COMPILE_OPTIONS)
+if(butil_crc32c_options)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/../src/butil/crc32c.cc
+        APPEND PROPERTY COMPILE_OPTIONS ${butil_crc32c_options})
+endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "riscv64" AND WITH_RISCV_ZVBC)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/../src/butil/third_party/modp_b64/modp_b64_rvv.cc
+        APPEND PROPERTY COMPILE_OPTIONS -march=rv64gcv_zbc_zvbc)
+endif()
+get_target_property(BVAR_SOURCES BVAR_LIB SOURCES)
+set(SOURCES)
+foreach(component BVAR BTHREAD JSON2PB MCPACK2PB BRPC)
+    get_target_property(component_sources ${component}_LIB SOURCES)
+    list(APPEND SOURCES ${component_sources})
+endforeach()
+
 add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
 add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB)
@@ -220,7 +242,7 @@ set_target_properties(brpc-shared-debug PROPERTIES
          LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/test)
 
 target_link_libraries(brpc-shared-debug PUBLIC brpc_test_config ${DYNAMIC_LIB})
-if(BRPC_WITH_GLOG)
+if(WITH_GLOG)
     target_link_libraries(brpc-shared-debug PUBLIC ${GLOG_LIB})
 endif()
 
@@ -292,7 +314,7 @@ if(BUILD_FUZZ_TESTS)
             LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/test)
 
     target_link_libraries(brpc-static-debug PUBLIC brpc_test_config ${DYNAMIC_LIB})
-    if(BRPC_WITH_GLOG)
+    if(WITH_GLOG)
         target_link_libraries(brpc-static-debug PUBLIC ${GLOG_LIB})
     endif()
 
