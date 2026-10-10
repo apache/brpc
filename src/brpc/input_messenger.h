@@ -40,6 +40,7 @@ class UBShmEndpoint;
 }
 class TcpTransport;
 class RdmaTransport;
+class AdapterTransport;
 struct InputMessageHandler {
     // The callback to cut a message from `source'.
     // Returned message will be passed to process_request or process_response
@@ -102,6 +103,7 @@ private:
 class InputMessenger : public SocketUser {
 friend class TcpTransport;
 friend class RdmaTransport;
+friend class AdapterTransport;
 friend class rdma::RdmaEndpoint;
 friend class urma::UrmaEndpoint;
 friend class ubring::UBShmEndpoint;
@@ -141,6 +143,8 @@ protected:
     // Load data from m->fd() into m->read_buf, cut off new messages and
     // call callbacks.
     static void OnNewMessages(Socket* m);
+    // Stop draining the TCP fd when a parser changes the transport state.
+    static void OnNewMessagesUntil(Socket* m, bool (*stop_reading)(Socket*));
     
 private:
 
