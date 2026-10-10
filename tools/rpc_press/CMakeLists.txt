@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-file(GLOB SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/tools/rpc_press/*.cpp")
+file(GLOB SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 add_executable(rpc_press ${SOURCES})
 target_link_libraries(rpc_press PRIVATE brpc-static ${DYNAMIC_LIB})
 install(TARGETS rpc_press RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

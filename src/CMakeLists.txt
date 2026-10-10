@@ -15,6 +15,28 @@
 # specific language governing permissions and limitations
 # under the License.
 
+add_subdirectory(butil)
+add_subdirectory(bvar)
+add_subdirectory(bthread)
+add_subdirectory(json2pb)
+add_subdirectory(mcpack2pb)
+add_subdirectory(brpc)
+
+set(SOURCES
+    ${BVAR_SOURCES}
+    ${BTHREAD_SOURCES}
+    ${JSON2PB_SOURCES}
+    ${MCPACK2PB_SOURCES}
+    ${BRPC_SOURCES}
+    ${THRIFT_SOURCES}
+    )
+
+# Preserve the existing test source inputs while moving module ownership.
+set(BUTIL_SOURCES ${BUTIL_SOURCES} PARENT_SCOPE)
+set(BVAR_SOURCES ${BVAR_SOURCES} PARENT_SCOPE)
+set(SOURCES ${SOURCES} PARENT_SCOPE)
+set(PROTOC_FLAGS ${PROTOC_FLAGS} PARENT_SCOPE)
+
 add_library(BUTIL_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_LIB OBJECT ${SOURCES})
 add_dependencies(SOURCES_LIB PROTO_LIB)

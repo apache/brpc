@@ -15,7 +15,5 @@
 # specific language governing permissions and limitations
 # under the License.
 
-file(GLOB SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-add_executable(rpc_replay ${SOURCES})
-target_link_libraries(rpc_replay PRIVATE brpc-static ${DYNAMIC_LIB})
-install(TARGETS rpc_replay RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+file(GLOB_RECURSE JSON2PB_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+set(JSON2PB_SOURCES ${JSON2PB_SOURCES} PARENT_SCOPE)
