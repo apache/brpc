@@ -134,6 +134,10 @@ target_link_libraries(my_application PRIVATE brpc::bthread)
 启用 URMA 后，下游即使使用 mock 模式也需要 UMDK 头文件，可通过 `URMA_ROOT`
 指定 UMDK 安装目录或源码目录。只有真实库模式才要求链接 `liburma`。
 
+`brpc::mcpack2pb` 提供公开生成头文件 `idl_options.pb.h`，并安装
+`idl_options.proto`；使用其 protobuf 扩展无需链接 RPC bundle。
+源 schema 归属 `src/mcpack2pb/`，公开 import 仍为
+`import "idl_options.proto";`。
 构建组件包仍需完整的 brpc 构建依赖。
 
 可用独立消费测试验证安装结果，测试包含 RPC client/server 链路：

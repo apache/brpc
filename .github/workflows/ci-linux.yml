@@ -129,12 +129,15 @@ jobs:
           "${cmake_options[@]}"
         cmake --build build -j ${{env.proc_num}}
 
-    - name: Check installed component consumers
+    - name: Check build-tree and installed component consumers
       if: matrix.name != 'gcc-default'
       env:
         CC: ${{ matrix.cc }}
         CXX: ${{ matrix.cxx }}
       run: |
+        cmake -S test/cmake_components -B build-tree-consumers -Dbrpc_DIR="$PWD/build"
+        cmake --build build-tree-consumers -j ${{env.proc_num}}
+        ctest --test-dir build-tree-consumers --output-on-failure
         cmake --install build --prefix "${RUNNER_TEMP}/brpc-install"
         cmake -S test/cmake_components -B build-consumers \
           -Dbrpc_DIR="${RUNNER_TEMP}/brpc-install/lib/cmake/brpc"

@@ -16,7 +16,9 @@
 // under the License.
 
 syntax = "proto2";
+import "idl_options.proto";
 package brpc_component_test;
+option (idl_support) = true;
 option cc_generic_services = true;
 
 message EchoRequest {

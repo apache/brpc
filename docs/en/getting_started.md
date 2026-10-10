@@ -143,6 +143,12 @@ The installed package discovers external dependencies on the consumer machine.
 With URMA enabled, consumers need UMDK headers even in mock mode; `URMA_ROOT`
 can point to the UMDK installation or source checkout. Only real-library mode
 requires `liburma`.
+`brpc::mcpack2pb` exposes the generated public header `idl_options.pb.h` and
+installs `idl_options.proto` alongside it. Consumers can include the header
+and import the schema without depending on the RPC bundle. Its generated
+descriptor and extension definitions are included in the mcpack2pb library.
+The source schema is owned by `src/mcpack2pb/`; the public import remains
+`import "idl_options.proto";`.
 Building the package still requires the full brpc build dependencies.
 For RPC applications, use the `brpc::brpc` target:
 

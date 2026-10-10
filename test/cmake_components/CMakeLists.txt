@@ -39,14 +39,35 @@ foreach(component butil bvar bthread json2pb mcpack2pb brpc)
     add_test(NAME consume_${component} COMMAND consume_${component})
 endforeach()
 
-add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/echo.pb.cc
-                          ${CMAKE_CURRENT_BINARY_DIR}/echo.pb.h
-    COMMAND protobuf::protoc --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
-        -I${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/echo.proto
-    DEPENDS echo.proto)
-target_sources(consume_brpc PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/echo.pb.cc
-    ${CMAKE_CURRENT_BINARY_DIR}/echo.pb.h)
-target_include_directories(consume_brpc PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+# Discover the installed/build-tree schema through the component's public
+# include directories; do not add producer paths to the consumer build.
+get_target_property(mcpack_include_dirs brpc::mcpack2pb INTERFACE_INCLUDE_DIRECTORIES)
+find_file(IDL_OPTIONS_PROTO NAMES idl_options.proto
+    PATHS ${mcpack_include_dirs} NO_DEFAULT_PATH)
+if(NOT IDL_OPTIONS_PROTO)
+    message(FATAL_ERROR "mcpack2pb did not expose idl_options.proto")
+endif()
+get_filename_component(idl_proto_dir ${IDL_OPTIONS_PROTO} DIRECTORY)
+set(proto_include_args -I${CMAKE_CURRENT_SOURCE_DIR} -I${idl_proto_dir})
+foreach(include_dir IN LISTS Protobuf_INCLUDE_DIRS)
+    list(APPEND proto_include_args -I${include_dir})
+endforeach()
+foreach(component brpc mcpack2pb)
+    if(component STREQUAL "brpc")
+        set(proto_name echo)
+    else()
+        set(proto_name mcpack)
+    endif()
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${proto_name}.pb.cc
+                              ${CMAKE_CURRENT_BINARY_DIR}/${proto_name}.pb.h
+        COMMAND protobuf::protoc --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
+            ${proto_include_args} ${CMAKE_CURRENT_SOURCE_DIR}/${proto_name}.proto
+        DEPENDS ${proto_name}.proto ${IDL_OPTIONS_PROTO})
+    target_sources(consume_${component} PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/${proto_name}.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/${proto_name}.pb.h)
+    target_include_directories(consume_${component} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+endforeach()
 # Mimic an application whose other dependencies also use these components.
 target_link_libraries(consume_brpc PRIVATE brpc::bvar brpc::bthread brpc::butil)
 set_tests_properties(consume_brpc PROPERTIES TIMEOUT 15)
