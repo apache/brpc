@@ -79,3 +79,19 @@ git_repository(
     remote = 'https://atomgit.com/openeuler/umdk.git',
     commit = '564ee727a55523d4351a8fb3c94292b388ebb924',  # v26.06.0_CAM
 )
+
+# Do not use `bazel_dep(name = 'flatbuffers', version = '25.2.10')` here.
+# The BCR module pulls gRPC and JS/Go/Swift rule dependencies for FlatBuffers'
+# full upstream build. bRPC only needs runtime_cc and flatc, and gRPC would
+# otherwise introduce another BoringSSL version even when BRPC_WITH_FLATBUFFERS
+# is false. Keep this archive and checksum in sync with WORKSPACE.
+flatbuffers_http_archive = use_repo_rule(
+    '@bazel_tools//tools/build_defs/repo:http.bzl',
+    'http_archive',
+)
+flatbuffers_http_archive(
+    name = 'com_github_google_flatbuffers',
+    sha256 = 'b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421',
+    strip_prefix = 'flatbuffers-25.2.10',
+    urls = ['https://github.com/google/flatbuffers/archive/refs/tags/v25.2.10.tar.gz'],
+)

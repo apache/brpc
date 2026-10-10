@@ -18,6 +18,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  flatbuffers-codegen:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        protobuf: [protobuf@21, protobuf@29]
+    steps:
+    - uses: actions/checkout@v7.0.1
+    - name: Install codegen dependencies
+      run: brew install cmake openssl gflags leveldb snappy ${{ matrix.protobuf }}
+    - name: Verify FlatBuffers generation and runtime
+      env:
+        CXX: clang++
+        JOBS: 2
+      run: |
+        export CMAKE_PREFIX_PATH="$(brew --prefix ${{ matrix.protobuf }});$(brew --prefix)"
+        export OPENSSL_ROOT_DIR="$(brew --prefix openssl)"
+        bash tools/flatbuffers/verify.sh "$RUNNER_TEMP/flatbuffers-codegen"
+
   compile-with-make-cmake-protobuf21:
     runs-on: macos-latest # https://github.com/actions/runner-images
 
