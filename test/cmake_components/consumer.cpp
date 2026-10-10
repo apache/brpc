@@ -41,6 +41,8 @@ static void* run(void* arg) {
 #include "json2pb/pb_to_json.h"
 #elif defined(TEST_mcpack2pb)
 #include <string>
+#include "idl_options.pb.h"
+#include "mcpack.pb.h"
 #include "butil/iobuf.h"
 #include "mcpack2pb/field_type.h"
 #include "mcpack2pb/serializer.h"
@@ -94,6 +96,13 @@ int main() {
            !json2pb::JsonToProtoMessage(json, &parsed) ||
            parsed.name() != message.name();
 #elif defined(TEST_mcpack2pb)
+    brpc_component_test::McpackMessage message;
+    const google::protobuf::Descriptor* descriptor = message.GetDescriptor();
+    if (!descriptor->file()->options().GetExtension(idl_support) ||
+        descriptor->FindFieldByName("text")->options().GetExtension(idl_name) !=
+            "payload") {
+        return 1;
+    }
     butil::IOBuf buf;
     butil::IOBufAsZeroCopyOutputStream stream(&buf);
     mcpack2pb::OutputStream output(&stream);

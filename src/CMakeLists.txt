@@ -58,6 +58,7 @@ endforeach()
 
 add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB>
                                ${BRPC_SOURCE_OBJECTS}
+                               $<TARGET_OBJECTS:IDL_OPTIONS_LIB>
                                $<TARGET_OBJECTS:PROTO_LIB>)
 target_link_libraries(brpc-static PUBLIC brpc_build_config)
 
@@ -66,6 +67,7 @@ SET_TARGET_PROPERTIES(brpc-static PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPU
 if(BUILD_SHARED_LIBS)
     add_library(brpc-shared SHARED $<TARGET_OBJECTS:BUTIL_LIB> 
                                    ${BRPC_SOURCE_OBJECTS}
+                                   $<TARGET_OBJECTS:IDL_OPTIONS_LIB>
                                    $<TARGET_OBJECTS:PROTO_LIB>)
     target_link_libraries(brpc-shared PUBLIC brpc_build_config)
     target_link_libraries(brpc-shared PRIVATE ${DYNAMIC_LIB})

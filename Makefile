@@ -234,7 +234,7 @@ OBJS=$(BUTIL_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS
 BVAR_DEBUG_OBJS=$(BUTIL_OBJS:.o=.dbg.o) $(BVAR_OBJS:.o=.dbg.o)
 DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 
-PROTOS=$(BRPC_PROTOS) src/idl_options.proto
+PROTOS=$(BRPC_PROTOS)
 
 .PHONY:all
 all:  protoc-gen-mcpack libbrpc.a libbrpc.$(SOEXT) output/include output/lib output/bin
@@ -245,7 +245,7 @@ debug: test/libbrpc.dbg.$(SOEXT) test/libbvar.dbg.a
 .PHONY:clean
 clean:
 	@echo "> Cleaning"
-	rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a libbrpc.$(SOEXT) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
+	rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a libbrpc.$(SOEXT) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc) src/idl_options.pb.h src/idl_options.pb.cc
 
 .PHONY:clean_debug
 clean_debug:
@@ -291,7 +291,7 @@ output/include:
 	@echo "> Copying to $@"
 	@for dir in `find src -type f -name "*.h" -exec dirname {} \\; | sed -e 's/^src\///g' -e '/^src$$/d' | sort | uniq`; do mkdir -p $@/$$dir && cp src/$$dir/*.h $@/$$dir/; done
 	@for dir in `find src -type f -name "*.hpp" -exec dirname {} \\; | sed -e 's/^src\///g' -e '/^src$$/d' | sort | uniq`; do mkdir -p $@/$$dir && cp src/$$dir/*.hpp $@/$$dir/; done
-	@cp src/idl_options.proto src/idl_options.pb.h $@
+	@cp src/mcpack2pb/idl_options.proto src/idl_options.pb.h $@
 
 .PHONY:output/lib
 output/lib:libbrpc.a libbrpc.$(SOEXT)
@@ -304,6 +304,10 @@ output/bin:protoc-gen-mcpack
 	@echo "> Copying to $@"
 	@mkdir -p $@
 	@cp $^ $@
+
+src/idl_options.pb.cc src/idl_options.pb.h:src/mcpack2pb/idl_options.proto
+	@echo "> Generating $@"
+	$(PROTOC) --cpp_out=./src --proto_path=./src/mcpack2pb --proto_path=$(PROTOBUF_HDR) $<
 
 %.pb.cc %.pb.h:%.proto
 	@echo "> Generating $@"

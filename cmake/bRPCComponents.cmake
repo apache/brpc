@@ -19,6 +19,11 @@
 function(brpc_add_component component object_target)
     add_library(${component} $<TARGET_OBJECTS:${object_target}>)
     add_library(brpc::${component} ALIAS ${component})
+    if(ARGN)
+        target_sources(${component} PRIVATE ${ARGN})
+        set_target_properties(${component} PROPERTIES PUBLIC_HEADER "${ARGN}")
+    endif()
+    # Generated headers must precede leftovers from in-source Make builds.
     get_filename_component(component_include_dir
         "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
     target_include_directories(${component} PUBLIC
@@ -39,7 +44,8 @@ function(brpc_add_component component object_target)
     install(TARGETS ${component} EXPORT brpc-${component}-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     install(EXPORT brpc-${component}-targets NAMESPACE brpc::
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/brpc)
     export(EXPORT brpc-${component}-targets NAMESPACE brpc::

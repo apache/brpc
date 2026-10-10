@@ -161,7 +161,8 @@ if(WITH_URMA)
 endif()
 list(APPEND BRPC_INCLUDE_DIRS ${LEVELDB_INCLUDE_PATH})
 add_library(brpc_build_config INTERFACE)
-target_link_libraries(brpc_build_config INTERFACE bthread_build_config)
+target_link_libraries(brpc_build_config INTERFACE
+    mcpack2pb_build_config bthread_build_config)
 target_include_directories(brpc_build_config BEFORE INTERFACE
     ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(brpc_build_config INTERFACE ${BRPC_DEFINITIONS})
@@ -240,8 +241,7 @@ set(PROTO_FILES brpc/builtin_service.proto
                 brpc/span.proto
                 brpc/streaming_rpc_meta.proto
                 brpc/trackme.proto
-                brpc/urma/urma_handshake.proto
-                idl_options.proto)
+                brpc/urma/urma_handshake.proto)
 compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_CURRENT_BINARY_DIR}
                                     ${CMAKE_CURRENT_SOURCE_DIR}/..
                                     "${PROTO_FILES}")
@@ -280,7 +280,7 @@ target_link_libraries(BRPC_LIB PRIVATE brpc_build_config)
 set_property(TARGET BRPC_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
 set_property(TARGET BRPC_LIB PROPERTY BRPC_BUNDLE_LIBRARIES brpc_runtime_dependencies)
 set_property(TARGET BRPC_LIB PROPERTY BRPC_PRIVATE_LIBS "${brpc_private_libs}")
-add_dependencies(BRPC_LIB PROTO_LIB)
+add_dependencies(BRPC_LIB PROTO_LIB IDL_OPTIONS_LIB)
 
 if(BRPC_BUILD_COMPONENT_LIBS)
     # Prefer the dependency's package metadata, including static-link dependencies
@@ -326,6 +326,9 @@ if(BRPC_BUILD_COMPONENT_LIBS)
     set(BRPC_COMPONENT_URMA_REAL ${BRPC_COMPONENT_URMA_REAL} PARENT_SCOPE)
     set(BRPC_COMPONENT_UB_NAME "${BRPC_COMPONENT_UB_NAME}" PARENT_SCOPE)
     brpc_add_component(brpc BRPC_LIB)
+    get_target_property(idl_options_include_dir IDL_OPTIONS_LIB BINARY_DIR)
+    target_include_directories(brpc BEFORE PUBLIC
+        $<BUILD_INTERFACE:${idl_options_include_dir}>)
     target_compile_definitions(brpc PUBLIC ${BRPC_DEFINITIONS})
     target_sources(brpc PRIVATE $<TARGET_OBJECTS:PROTO_LIB>)
     set_target_properties(brpc PROPERTIES OUTPUT_NAME brpc-only)

@@ -123,6 +123,10 @@ target_link_libraries(my_application PRIVATE brpc::bthread)
 `libbrpc-only.a/.so`（macOS 为 `.dylib`），并传递链接其他组件。原 bundle
 仍为 `libbrpc.a/.so`。不要在同一程序中同时链接 bundle 和独立组件，以免重复符号。
 
+`brpc::mcpack2pb` 提供公开生成头文件 `idl_options.pb.h`，并安装
+`idl_options.proto`；使用其 protobuf 扩展无需链接 RPC bundle。
+源 schema 归属 `src/mcpack2pb/`，公开 import 仍为
+`import "idl_options.proto";`。
 构建组件包仍需完整的 brpc 构建依赖。
 
 可用独立消费测试验证安装结果，测试包含 RPC client/server 链路：

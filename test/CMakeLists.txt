@@ -48,11 +48,12 @@ set(TEST_PROTO_FILES addressbook.proto
                      v1.proto
                      v2.proto
                      v3.proto)
-set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${CMAKE_SOURCE_DIR}/src)
+set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${CMAKE_CURRENT_SOURCE_DIR}/../src/mcpack2pb)
 compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_CURRENT_BINARY_DIR}
                                     ${CMAKE_CURRENT_SOURCE_DIR}
                                     "${TEST_PROTO_FILES}")
 add_library(TEST_PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
+add_dependencies(TEST_PROTO_LIB IDL_OPTIONS_LIB)
 target_link_libraries(TEST_PROTO_LIB PRIVATE brpc_test_config)
 
 set(BRPC_SYSTEM_GTEST_SOURCE_DIR "" CACHE PATH "System googletest source directory.")
@@ -226,7 +227,7 @@ endforeach()
 
 add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
-add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB)
+add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB IDL_OPTIONS_LIB)
 target_link_libraries(BUTIL_DEBUG_LIB PRIVATE brpc_test_config)
 target_link_libraries(SOURCES_DEBUG_LIB PRIVATE brpc_test_config)
 
@@ -236,6 +237,7 @@ set_property(TARGET ${SOURCES_DEBUG_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 
 add_library(brpc-shared-debug SHARED $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
                                      $<TARGET_OBJECTS:SOURCES_DEBUG_LIB>
+                                     $<TARGET_OBJECTS:IDL_OPTIONS_LIB>
                                      $<TARGET_OBJECTS:PROTO_LIB>)
 # change the debug lib output dir to be different from the release output
 set_target_properties(brpc-shared-debug PROPERTIES
@@ -308,6 +310,7 @@ endforeach()
 if(BUILD_FUZZ_TESTS)
     add_library(brpc-static-debug STATIC $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
                                         $<TARGET_OBJECTS:SOURCES_DEBUG_LIB>
+                                        $<TARGET_OBJECTS:IDL_OPTIONS_LIB>
                                         $<TARGET_OBJECTS:PROTO_LIB>)
     # change the debug lib output dir to be different from the release output
     set_target_properties(brpc-static-debug PROPERTIES

@@ -19,14 +19,7 @@ syntax = "proto2";
 import "idl_options.proto";
 package brpc_component_test;
 option (idl_support) = true;
-option cc_generic_services = true;
 
-message EchoRequest {
-    required string text = 1;
-}
-message EchoResponse {
-    required string text = 1;
-}
-service EchoService {
-    rpc Echo(EchoRequest) returns (EchoResponse);
+message McpackMessage {
+    optional string text = 1 [(idl_name) = "payload"];
 }
