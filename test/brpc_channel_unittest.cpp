@@ -3740,4 +3740,97 @@ TEST_F(RateLimitedBackupPolicyTest, OnRPCEndDrivesRatioDownAndReAllows) {
     ASSERT_TRUE(p->DoBackup(nullptr));
 }
 
+// Issue #1408: SelectiveChannel::AddChannel must take over (or not take over)
+// the sub channel consistently w.r.t. option.ownership, even on failure, so
+// that callers don't leak or double-free.
+class CountingSubChannel : public brpc::Channel {
+public:
+    static int s_alive;
+    CountingSubChannel() { ++s_alive; }
+    ~CountingSubChannel() override { --s_alive; }
+};
+int CountingSubChannel::s_alive = 0;
+
+TEST_F(ChannelTest, selective_channel_add_failure_ownership) {
+    // nullptr sub channel is rejected without touching ownership.
+    {
+        brpc::SelectiveChannel channel;
+        ASSERT_EQ(0, channel.Init("rr", nullptr));
+        EXPECT_EQ(-1, channel.AddChannel(nullptr, nullptr));
+    }
+    ASSERT_EQ(0, CountingSubChannel::s_alive);
+
+    // Plan 1: a duplicate AddChannel never reassigns ownership; the FIRST
+    // successful registration is the single source of truth.
+    // First reg = OWNS, duplicate with DOESNT_OWN must NOT downgrade: schan
+    // still owns and deletes the channel on removal; caller must NOT delete.
+    {
+        brpc::SelectiveChannel channel;
+        ASSERT_EQ(0, channel.Init("rr", nullptr));
+        brpc::SelectiveChannel::ChannelHandle h;
+        CountingSubChannel* c = new CountingSubChannel();
+        ASSERT_EQ(0, c->Init("127.0.0.1:1", nullptr));
+        ASSERT_EQ(1, CountingSubChannel::s_alive);
+        {
+            brpc::SelectiveChannel::SubChannelOptions opt;
+            opt.ownership = brpc::OWNS_CHANNEL;
+            ASSERT_EQ(0, channel.AddChannel(c, opt, &h));
+        }
+        {
+            brpc::SelectiveChannel::SubChannelOptions opt;
+            opt.ownership = brpc::DOESNT_OWN_CHANNEL;
+            EXPECT_EQ(-1, channel.AddChannel(c, opt, nullptr));
+        }
+        // Ownership unchanged (still OWNS): schan deletes c.
+        channel.RemoveAndDestroyChannel(h);
+        EXPECT_EQ(0, CountingSubChannel::s_alive);
+    }
+    ASSERT_EQ(0, CountingSubChannel::s_alive);
+
+    // First reg = DOESNT_OWN, duplicate with OWNS must NOT upgrade: the caller
+    // still owns the channel and must delete it; schan does not.
+    {
+        brpc::SelectiveChannel channel;
+        ASSERT_EQ(0, channel.Init("rr", nullptr));
+        brpc::SelectiveChannel::ChannelHandle h;
+        CountingSubChannel* d = new CountingSubChannel();
+        ASSERT_EQ(0, d->Init("127.0.0.1:1", nullptr));
+        ASSERT_EQ(1, CountingSubChannel::s_alive);
+        {
+            brpc::SelectiveChannel::SubChannelOptions opt;
+            opt.ownership = brpc::DOESNT_OWN_CHANNEL;
+            ASSERT_EQ(0, channel.AddChannel(d, opt, &h));
+        }
+        {
+            brpc::SelectiveChannel::SubChannelOptions opt;
+            opt.ownership = brpc::OWNS_CHANNEL;
+            EXPECT_EQ(-1, channel.AddChannel(d, opt, nullptr));
+        }
+        channel.RemoveAndDestroyChannel(h);
+        // Ownership unchanged (still DOESNT_OWN): schan does not delete d.
+        EXPECT_EQ(1, CountingSubChannel::s_alive);
+        delete d;
+        EXPECT_EQ(0, CountingSubChannel::s_alive);
+    }
+    ASSERT_EQ(0, CountingSubChannel::s_alive);
+
+    // OWNS_CHANNEL on success: schan takes over and deletes on removal.
+    {
+        brpc::SelectiveChannel channel;
+        ASSERT_EQ(0, channel.Init("rr", nullptr));
+        brpc::SelectiveChannel::ChannelHandle h;
+        CountingSubChannel* e = new CountingSubChannel();
+        ASSERT_EQ(0, e->Init("127.0.0.1:1", nullptr));
+        ASSERT_EQ(1, CountingSubChannel::s_alive);
+        {
+            brpc::SelectiveChannel::SubChannelOptions opt;
+            opt.ownership = brpc::OWNS_CHANNEL;
+            ASSERT_EQ(0, channel.AddChannel(e, opt, &h));
+        }
+        channel.RemoveAndDestroyChannel(h);
+        EXPECT_EQ(0, CountingSubChannel::s_alive);
+    }
+    ASSERT_EQ(0, CountingSubChannel::s_alive);
+}
+
 } //namespace

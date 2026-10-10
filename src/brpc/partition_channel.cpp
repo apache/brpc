@@ -313,7 +313,9 @@ public:
                 if (_schan->AddChannel(pchan, &pchan->handle) != 0) {
                     LOG(ERROR) << "Fail to add SubPartitionChannel=#"
                                << part.num_partition_kinds;
-                    delete pchan;
+                    // pchan is added with the default OWNS_CHANNEL: on failure
+                    // schan recycles the sub channel and deletes pchan, so do
+                    // not delete it here (that would double-free).
                     continue;
                 }
                 _part_chan_map[part.num_partition_kinds] = pchan;
