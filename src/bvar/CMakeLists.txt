@@ -16,4 +16,9 @@
 # under the License.
 
 file(GLOB_RECURSE BVAR_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-set(BVAR_SOURCES ${BVAR_SOURCES} PARENT_SCOPE)
+
+add_library(BVAR_LIB OBJECT ${BVAR_SOURCES})
+target_link_libraries(BVAR_LIB PRIVATE butil_build_config)
+set_property(TARGET BVAR_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
+
+brpc_install_module_headers()
