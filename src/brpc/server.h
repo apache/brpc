@@ -652,6 +652,12 @@ friend class BadMethodService;
 friend class ServerPrivateAccessor;
 friend class PrometheusMetricsService;
 friend class Controller;
+friend struct RevertServerStatus;
+
+    // Destroy the keytable pool and tls key allocated in StartInternal()
+    // when the start failed before RUNNING: Stop()/Join() are no-ops then,
+    // and a retry would overwrite _keytable_pool and leak the previous one.
+    void DestroyPreStartAllocations();
 
     int AddServiceInternal(google::protobuf::Service* service,
                            bool is_builtin_service,
