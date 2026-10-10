@@ -185,6 +185,10 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     }
     BAIDU_SCOPED_LOCK(_mutex);
     if (_chan_map.find(sub_channel) != _chan_map.end()) {
+        // Duplicate: no new registration is created. Ownership is decided by
+        // the first successful registration, so ignore this call's ownership,
+        // don't delete (still referenced by the live registration) and don't
+        // reassign (a failing call should have no side effect).
         LOG(ERROR) << "Duplicated sub_channel=" << sub_channel;
         return -1;
     }
@@ -197,6 +201,12 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     options.health_check_interval_s = FLAGS_channel_check_interval;
 
     if (Socket::Create(options, &sock_id) != 0) {
+        // sub_chan is not attached to any Socket, recycle it directly.
+        // sub_channel is deleted only when OWNS_CHANNEL, consistent with the
+        // ownership contract.
+        if (sub_chan->ownership == OWNS_CHANNEL) {
+            delete sub_chan->chan;
+        }
         delete sub_chan;
         LOG(ERROR) << "Fail to create fake socket for sub channel";
         return -1;
@@ -205,11 +215,23 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     int rc = Socket::AddressFailedAsWell(sock_id, &ptr);
     if (rc < 0) {
         LOG(ERROR) << "Fail to address SocketId=" << sock_id;
+        // The fake Socket was created (holding the HC-related reference) but
+        // cannot be addressed. Recycle it so that sub_chan, and sub_channel
+        // when OWNS_CHANNEL, are deleted in SubChannel::BeforeRecycle.
+        SocketUniquePtr fail_ptr;
+        if (Socket::AddressFailedAsWell(sock_id, &fail_ptr) >= 0) {
+            fail_ptr->SetFailed();
+            fail_ptr->ReleaseHCRelatedReference();
+        }
         return -1;
     }
     if (rc > 0 && !ptr->HCEnabled()) {
         LOG(ERROR) << "Health check of SocketId="
                    << sock_id << " is disabled";
+        // sub_chan will be deleted when the socket is recycled.
+        ptr->SetFailed();
+        // Cancel health checking.
+        ptr->ReleaseHCRelatedReference();
         return -1;
     }
     if (!AddServer(ServerId(sock_id, subopt.tag))) {
