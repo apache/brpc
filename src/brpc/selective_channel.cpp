@@ -201,9 +201,9 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     options.health_check_interval_s = FLAGS_channel_check_interval;
 
     if (Socket::Create(options, &sock_id) != 0) {
-        // Socket recycles itself on failure, already running
-        // SubChannel::BeforeRecycle (deletes chan iff OWNS, then sub_chan).
-        // Do NOT delete sub_chan/chan here: that double-frees.
+        // On every creation-failure path Socket recycles synchronously and runs
+        // SubChannel::BeforeRecycle, which deletes chan iff OWNS_CHANNEL and
+        // then deletes sub_chan. Do NOT delete here: that double-frees.
         LOG(ERROR) << "Fail to create fake socket for sub channel";
         return -1;
     }
