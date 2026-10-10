@@ -40,7 +40,7 @@ target_link_libraries(http_server PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOL
 target_link_libraries(http_client PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 target_link_libraries(benchmark_http PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 
-file(COPY ${PROJECT_SOURCE_DIR}/key.pem
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/key.pem
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${PROJECT_SOURCE_DIR}/cert.pem
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cert.pem
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

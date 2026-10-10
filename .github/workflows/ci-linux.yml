@@ -75,7 +75,7 @@ jobs:
           - name: gcc-default
             cc: gcc
             cxx: g++
-            cmake-options: ''
+            cmake-options: '-DBRPC_BUILD_COMPONENT_LIBS=ON'
           - name: gcc-all-options
             cc: gcc
             cxx: g++
@@ -87,7 +87,7 @@ jobs:
           - name: clang-default
             cc: clang
             cxx: clang++
-            cmake-options: ''
+            cmake-options: '-DBRPC_BUILD_COMPONENT_LIBS=ON -DBUILD_SHARED_LIBS=ON'
           - name: clang-all-options
             cc: clang
             cxx: clang++
@@ -114,6 +114,18 @@ jobs:
         cmake -S . -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
           "${cmake_options[@]}"
         cmake --build build -j ${{env.proc_num}}
+
+    - name: Check installed component consumers
+      if: matrix.name == 'gcc-default' || matrix.name == 'clang-default'
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+      run: |
+        cmake --install build --prefix "${RUNNER_TEMP}/brpc-install"
+        cmake -S test/cmake_components -B build-consumers \
+          -Dbrpc_DIR="${RUNNER_TEMP}/brpc-install/lib/cmake/brpc"
+        cmake --build build-consumers -j ${{env.proc_num}}
+        ctest --test-dir build-consumers --output-on-failure
 
     - name: Show ccache statistics
       if: always()

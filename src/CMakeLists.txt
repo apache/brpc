@@ -15,86 +15,69 @@
 # specific language governing permissions and limitations
 # under the License.
 
-add_library(BUTIL_LIB OBJECT ${BUTIL_SOURCES})
-add_library(SOURCES_LIB OBJECT ${SOURCES})
-add_dependencies(SOURCES_LIB PROTO_LIB)
-target_link_libraries(BUTIL_LIB PRIVATE brpc_common_config)
-target_link_libraries(SOURCES_LIB PRIVATE brpc_common_config)
+add_library(brpc_bundle_dependencies INTERFACE)
+if(BRPC_BUILD_COMPONENT_LIBS)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/bRPCComponents.cmake)
+endif()
 
-# shared library needs POSITION_INDEPENDENT_CODE
-set_property(TARGET ${SOURCES_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
-set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
+add_subdirectory(butil)
+add_subdirectory(bvar)
+add_subdirectory(bthread)
+add_subdirectory(json2pb)
+add_subdirectory(mcpack2pb)
+add_subdirectory(brpc)
+
+# Modules report their bundle dependencies after applying their own options.
+set(DYNAMIC_LIB)
+set(component_private_libs)
+foreach(component BUTIL BVAR BTHREAD JSON2PB MCPACK2PB BRPC)
+    get_target_property(component_libraries ${component}_LIB BRPC_BUNDLE_LIBRARIES)
+    if(component_libraries)
+        list(APPEND DYNAMIC_LIB ${component_libraries})
+    endif()
+    get_target_property(component_pkgconfig ${component}_LIB BRPC_PRIVATE_LIBS)
+    if(component_pkgconfig)
+        list(APPEND component_private_libs "${component_pkgconfig}")
+    endif()
+endforeach()
+string(JOIN " " BRPC_PRIVATE_LIBS ${component_private_libs})
+
+target_link_libraries(brpc_bundle_dependencies INTERFACE ${DYNAMIC_LIB})
+# Keep legacy debug tests and pkg-config generation supplied by the bundle.
+set(DYNAMIC_LIB ${DYNAMIC_LIB} PARENT_SCOPE)
+set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS}" PARENT_SCOPE)
+
+if(BRPC_BUILD_COMPONENT_LIBS)
+    brpc_configure_component_package(${CMAKE_CURRENT_SOURCE_DIR}/../cmake)
+endif()
+
+set(BRPC_SOURCE_OBJECTS)
+foreach(component BVAR BTHREAD JSON2PB MCPACK2PB BRPC)
+    list(APPEND BRPC_SOURCE_OBJECTS $<TARGET_OBJECTS:${component}_LIB>)
+endforeach()
 
 add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB>
-                               $<TARGET_OBJECTS:SOURCES_LIB>
+                               ${BRPC_SOURCE_OBJECTS}
+                               $<TARGET_OBJECTS:IDL_OPTIONS_LIB>
                                $<TARGET_OBJECTS:PROTO_LIB>)
-target_link_libraries(brpc-static PUBLIC brpc_common_config)
-
-function(check_thrift_version target_arg)
-    #use thrift command to get version
-    execute_process(
-        COMMAND thrift --version
-        OUTPUT_VARIABLE THRIFT_VERSION_OUTPUT
-        ERROR_QUIET
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-    string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" THRIFT_VERSION ${THRIFT_VERSION_OUTPUT})
-    string(REGEX REPLACE "\\." ";" THRIFT_VERSION_LIST ${THRIFT_VERSION})
-
-    list(GET THRIFT_VERSION_LIST 0 THRIFT_MAJOR_VERSION)
-    list(GET THRIFT_VERSION_LIST 1 THRIFT_MINOR_VERSION)
-
-    if (THRIFT_MAJOR_VERSION EQUAL 0 AND THRIFT_MINOR_VERSION LESS 11)
-        message(STATUS "Thrift version is less than 0.11.0")
-        target_compile_definitions(${target_arg} PRIVATE _THRIFT_VERSION_LOWER_THAN_0_11_0_)
-    else()
-        message(STATUS "Thrift version is equal to or greater than 0.11.0")
-    endif()
-endfunction()
-
-
-if(WITH_THRIFT)
-   target_link_libraries(brpc-static PRIVATE ${THRIFT_LIB})
-   check_thrift_version(brpc-static)
-endif()
+target_link_libraries(brpc-static PUBLIC brpc_build_config)
 
 SET_TARGET_PROPERTIES(brpc-static PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
 
-# for protoc-gen-mcpack
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/output/bin)
-    
-set(protoc_gen_mcpack_SOURCES
-    ${PROJECT_SOURCE_DIR}/src/mcpack2pb/generator.cpp
- )
-    
-add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
-target_link_libraries(protoc-gen-mcpack PRIVATE brpc_common_config)
-
 if(BUILD_SHARED_LIBS)
     add_library(brpc-shared SHARED $<TARGET_OBJECTS:BUTIL_LIB> 
-                                   $<TARGET_OBJECTS:SOURCES_LIB>
+                                   ${BRPC_SOURCE_OBJECTS}
+                                   $<TARGET_OBJECTS:IDL_OPTIONS_LIB>
                                    $<TARGET_OBJECTS:PROTO_LIB>)
-    target_link_libraries(brpc-shared PUBLIC brpc_common_config)
+    target_link_libraries(brpc-shared PUBLIC brpc_build_config)
     target_link_libraries(brpc-shared PRIVATE ${DYNAMIC_LIB})
-    if(WITH_GLOG)
-        target_link_libraries(brpc-shared PRIVATE ${GLOG_LIB})
-    endif()
-    if(WITH_THRIFT)
-        target_link_libraries(brpc-shared PRIVATE ${THRIFT_LIB})
-        check_thrift_version(brpc-shared)
-    endif()
     SET_TARGET_PROPERTIES(brpc-shared PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
-
-    target_link_libraries(protoc-gen-mcpack PRIVATE brpc-shared ${DYNAMIC_LIB})
 
     install(TARGETS brpc-shared
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             )
-else()
-    target_link_libraries(protoc-gen-mcpack PRIVATE brpc-static ${DYNAMIC_LIB})
 endif()
 
 

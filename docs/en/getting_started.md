@@ -92,6 +92,75 @@ To use brpc with glog, cmake with `-DWITH_GLOG=ON`.
 
 To enable [thrift support](../en/thrift.md), install thrift first and cmake with `-DWITH_THRIFT=ON`.
 
+**Standalone component libraries**
+
+`BRPC_BUILD_COMPONENT_LIBS` is disabled by default. Enable it to build and
+install all six component libraries alongside the unchanged brpc bundle:
+
+```shell
+cmake -B build -DBRPC_BUILD_COMPONENT_LIBS=ON
+cmake --build build -j6
+cmake --install build --prefix /path/to/install
+```
+
+The components are `butil`, `bvar`, `bthread`, `json2pb`, `mcpack2pb`, and `brpc`.
+They are static libraries by default, or shared libraries with
+`BUILD_SHARED_LIBS=ON`. The bundle and components reuse the same compiled
+production objects. All components are built; there is no component selection
+option. Existing bundle library names and linkage are unchanged.
+Each module's `src/<module>/CMakeLists.txt` owns its source list and production
+object target, and defines its standalone library when the option is enabled.
+`src/CMakeLists.txt` aggregates those objects into the legacy bundle.
+
+Headers are installed directly from each module's source and build directories
+by `cmake --install`; the build no longer copies headers to `output/include`.
+CMake component consumers inherit build-tree or installed include paths from
+their linked targets. For consumers that need the legacy `output/include`
+layout, use `cmake --install build --prefix build/output` after building.
+
+Consumers can select installed CMake targets without manually listing their
+transitive dependencies:
+
+```cmake
+find_package(brpc CONFIG REQUIRED COMPONENTS bthread)
+target_link_libraries(my_application PRIVATE brpc::bthread)
+```
+
+Set `CMAKE_PREFIX_PATH` to the installation prefix. Importing `bthread` also
+imports `bvar` and `butil`, but does not link the brpc bundle, LevelDB, or Thrift.
+The installed package discovers external dependencies on the consumer machine.
+`brpc::mcpack2pb` exposes the generated public header `idl_options.pb.h` and
+installs `idl_options.proto` alongside it. Consumers can include the header
+and import the schema without depending on the RPC bundle. Its generated
+descriptor and extension definitions are included in the mcpack2pb library.
+The source schema is owned by `src/mcpack2pb/`; the public import remains
+`import "idl_options.proto";`.
+Building the package still requires the full brpc build dependencies.
+For RPC applications, use the `brpc::brpc` target:
+
+```cmake
+find_package(brpc CONFIG REQUIRED COMPONENTS brpc)
+target_link_libraries(my_application PRIVATE brpc::brpc)
+```
+
+This target produces `libbrpc-only.a` or `libbrpc-only.so` (`.dylib` on macOS).
+It contains only RPC and protocol objects, and links the other components as
+dependencies. It can be used together with targets such as `brpc::bthread` or
+`brpc::bvar` without embedding their objects again. The legacy bundle remains
+`libbrpc.a` or `libbrpc.so` (`.dylib` on macOS).
+
+Do not link the bundle and standalone components into the same application:
+they contain overlapping symbols and global state.
+
+To check installed component consumption, configure the standalone smoke tests:
+
+```shell
+cmake -S test/cmake_components -B build-consumers \
+    -DCMAKE_PREFIX_PATH=/path/to/install
+cmake --build build-consumers -j6
+ctest --test-dir build-consumers --output-on-failure
+```
+
 **Run example with cmake**
 
 ```shell
@@ -133,6 +202,54 @@ $ ./bootstrap-vcpkg.bat # for powershell
 $ ./bootstrap-vcpkg.sh # for bash
 $ ./vcpkg install brpc
 ```
+
+#### Consume components from an independent vcpkg project
+
+This requires a component-enabled port; the existing bundle-only registry port
+does not provide these targets. Use an
+[overlay port](https://learn.microsoft.com/en-us/vcpkg/concepts/overlay-ports)
+that builds the modified brpc revision with `BRPC_BUILD_COMPONENT_LIBS=ON` and
+calls `vcpkg_cmake_config_fixup(PACKAGE_NAME brpc CONFIG_PATH lib/cmake/brpc)`.
+The `components` feature below is defined by that overlay, not by the existing
+registry port. Keep the demo and overlay outside the brpc repository.
+
+Create `vcpkg.json`, `CMakeLists.txt`, and `main.cpp` in a new directory:
+
+```json
+{ "name": "my-brpc-demo", "version-string": "0.1.0",
+  "dependencies": [{ "name": "brpc", "features": ["components"] }] }
+```
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(my_brpc_demo LANGUAGES CXX)
+find_package(brpc CONFIG REQUIRED COMPONENTS butil)
+add_executable(my_brpc_demo main.cpp)
+target_link_libraries(my_brpc_demo PRIVATE brpc::butil)
+```
+
+```cpp
+#include <butil/iobuf.h>
+
+int main() {
+    butil::IOBuf buffer;
+    return buffer.append("vcpkg") != 0 || buffer.to_string() != "vcpkg";
+}
+```
+
+```shell
+cmake -S . -B build \
+    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+    -DVCPKG_OVERLAY_PORTS=/path/to/component-overlay
+cmake --build build
+./build/my_brpc_demo
+```
+
+Set `VCPKG_ROOT` to the vcpkg checkout and choose the target triplet when needed
+(for example, `-DVCPKG_TARGET_TRIPLET=arm64-osx`). Do not add brpc source paths,
+producer build paths, or manually list external libraries. RPC consumers should
+link `brpc::brpc` and validate a complete client/server exchange on an ephemeral
+port. Verify Debug and Release configurations separately.
 
 ## Fedora/CentOS
 

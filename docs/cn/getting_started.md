@@ -93,6 +93,51 @@ mkdir build && cd build && cmake .. && cmake --build . -j6
 ```shell
 cmake -B build && cmake --build build -j6
 ```
+
+可通过 `BRPC_BUILD_COMPONENT_LIBS` 在原有 bundle 库之外编译、安装全部独立组件：
+
+```shell
+cmake -B build -DBRPC_BUILD_COMPONENT_LIBS=ON
+cmake --build build -j6
+cmake --install build --prefix /path/to/install
+```
+
+组件包括 `butil`、`bvar`、`bthread`、`json2pb`、`mcpack2pb` 和 `brpc`。
+默认生成静态库，设置 `BUILD_SHARED_LIBS=ON` 可生成共享库。所有组件与 bundle
+复用同一组 production objects，无需配置组件列表。各模块的 CMakeLists.txt
+负责源码、target 和头文件安装，src/CMakeLists.txt 负责聚合 bundle。
+
+头文件通过 `cmake --install` 直接从所属模块的源码和构建目录安装，不再在构建时
+复制到 `output/include`。需要旧目录布局时，构建后执行
+`cmake --install build --prefix build/output`。库名及安装后的 include 名称保持不变。
+
+下游 CMake 项目通过 target 获得 include 路径和传递依赖：
+
+```cmake
+find_package(brpc CONFIG REQUIRED COMPONENTS bthread)
+target_link_libraries(my_application PRIVATE brpc::bthread)
+```
+
+设置 `CMAKE_PREFIX_PATH` 为安装前缀。`bthread` 会传递链接 `bvar` 和 `butil`，
+不会引入 RPC bundle、LevelDB 或 Thrift。完整 RPC 使用 `brpc::brpc`，其输出为
+`libbrpc-only.a/.so`（macOS 为 `.dylib`），并传递链接其他组件。原 bundle
+仍为 `libbrpc.a/.so`。不要在同一程序中同时链接 bundle 和独立组件，以免重复符号。
+
+`brpc::mcpack2pb` 提供公开生成头文件 `idl_options.pb.h`，并安装
+`idl_options.proto`；使用其 protobuf 扩展无需链接 RPC bundle。
+源 schema 归属 `src/mcpack2pb/`，公开 import 仍为
+`import "idl_options.proto";`。
+构建组件包仍需完整的 brpc 构建依赖。
+
+可用独立消费测试验证安装结果，测试包含 RPC client/server 链路：
+
+```shell
+cmake -S test/cmake_components -B build-consumers \
+    -DCMAKE_PREFIX_PATH=/path/to/install
+cmake --build build-consumers -j6
+ctest --test-dir build-consumers --output-on-failure
+```
+
 要帮助VSCode或Emacs(LSP)去正确地理解代码，添加`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`选项去生成`compile_commands.json`。
 
 要修改编译器为clang，请修改环境变量`CC`和`CXX`为`clang`和`clang++`。
@@ -205,6 +250,53 @@ $ ./bootstrap-vcpkg.bat # 使用 powershell
 $ ./bootstrap-vcpkg.sh # 使用 bash
 $ ./vcpkg install brpc
 ```
+
+#### 在独立的 vcpkg 项目中使用组件
+
+需要支持组件构建的 port；现有 registry 中仅提供 bundle 的 port 不会导出这些 target。
+使用仓库外的
+[overlay port](https://learn.microsoft.com/en-us/vcpkg/concepts/overlay-ports)，
+使其编译包含本次改造的 brpc revision，并设置 `BRPC_BUILD_COMPONENT_LIBS=ON`，
+安装后调用 `vcpkg_cmake_config_fixup(PACKAGE_NAME brpc CONFIG_PATH lib/cmake/brpc)`。
+下例的 `components` feature 由该 overlay 定义，并非现有 registry port 的 feature。
+demo 和 overlay 均应放在 brpc 仓库之外。
+
+在新目录创建 `vcpkg.json`、`CMakeLists.txt` 和 `main.cpp`：
+
+```json
+{ "name": "my-brpc-demo", "version-string": "0.1.0",
+  "dependencies": [{ "name": "brpc", "features": ["components"] }] }
+```
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(my_brpc_demo LANGUAGES CXX)
+find_package(brpc CONFIG REQUIRED COMPONENTS butil)
+add_executable(my_brpc_demo main.cpp)
+target_link_libraries(my_brpc_demo PRIVATE brpc::butil)
+```
+
+```cpp
+#include <butil/iobuf.h>
+
+int main() {
+    butil::IOBuf buffer;
+    return buffer.append("vcpkg") != 0 || buffer.to_string() != "vcpkg";
+}
+```
+
+```shell
+cmake -S . -B build \
+    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+    -DVCPKG_OVERLAY_PORTS=/path/to/component-overlay
+cmake --build build
+./build/my_brpc_demo
+```
+
+将 `VCPKG_ROOT` 设置为 vcpkg checkout，按平台选择 target triplet
+（例如 `-DVCPKG_TARGET_TRIPLET=arm64-osx`）。不要添加 brpc 源码目录、
+producer 构建路径或手动列出外部依赖库。RPC 场景链接 `brpc::brpc`，以随机端口
+验证完整 client/server 请求链路。Debug 和 Release 配置应分别验证。
 
 ## 自己构建依赖的Linux
 
