@@ -15,5 +15,59 @@
 # specific language governing permissions and limitations
 # under the License.
 
+set(WITH_DEBUG_LOCK_VAL "0")
+if(WITH_DEBUG_LOCK)
+    set(WITH_DEBUG_LOCK_VAL "1")
+endif()
+
+set(WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL "0")
+if(WITH_DEBUG_BTHREAD_SCHE_SAFETY)
+    set(WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL "1")
+endif()
+
+set(BTHREAD_DEFINITIONS
+    BRPC_DEBUG_LOCK=${WITH_DEBUG_LOCK_VAL}
+    BRPC_DEBUG_BTHREAD_SCHE_SAFETY=${WITH_DEBUG_BTHREAD_SCHE_SAFETY_VAL}
+    BTHREAD_USE_FAST_PTHREAD_MUTEX)
+set(BTHREAD_INCLUDE_DIRS)
+if (WITH_BTHREAD_TRACER)
+    if (NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux")  OR NOT (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64"))
+        message(FATAL_ERROR "bthread tracer is only supported on Linux x86_64 platform")
+    endif()
+    find_path(LIBUNWIND_INCLUDE_PATH NAMES libunwind.h)
+    find_library(LIBUNWIND_LIB NAMES unwind)
+    find_library(LIBUNWIND_X86_64_LIB NAMES unwind-x86_64)
+    if (NOT LIBUNWIND_INCLUDE_PATH OR NOT LIBUNWIND_LIB OR NOT LIBUNWIND_X86_64_LIB)
+        message(FATAL_ERROR "Fail to find libunwind, which is needed by bthread tracer")
+    endif()
+    find_package(absl REQUIRED CONFIG)
+    set(bthread_tracer_ABSL_USED_TARGETS absl::base absl::stacktrace absl::symbolize)
+    list(APPEND BTHREAD_DEFINITIONS BRPC_BTHREAD_TRACER)
+    list(APPEND BTHREAD_INCLUDE_DIRS ${LIBUNWIND_INCLUDE_PATH})
+endif ()
+
+add_library(bthread_build_config INTERFACE)
+target_link_libraries(bthread_build_config INTERFACE butil_build_config)
+target_compile_definitions(bthread_build_config INTERFACE ${BTHREAD_DEFINITIONS})
+target_include_directories(bthread_build_config INTERFACE ${BTHREAD_INCLUDE_DIRS})
+
 file(GLOB_RECURSE BTHREAD_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-set(BTHREAD_SOURCES ${BTHREAD_SOURCES} PARENT_SCOPE)
+
+set(bthread_libraries)
+set(bthread_private_libs "")
+if(WITH_BTHREAD_TRACER)
+    list(APPEND bthread_libraries ${LIBUNWIND_LIB} ${LIBUNWIND_X86_64_LIB}
+        ${bthread_tracer_ABSL_USED_TARGETS})
+    set(bthread_private_libs "-lunwind -lunwind-x86_64 -labsl_stacktrace -labsl_symbolize -labsl_debugging_internal -labsl_demangle_internal -labsl_malloc_internal -labsl_raw_logging_internal -labsl_spinlock_wait -labsl_base")
+endif()
+
+add_library(bthread_runtime_dependencies INTERFACE)
+target_link_libraries(bthread_runtime_dependencies INTERFACE ${bthread_libraries})
+
+add_library(BTHREAD_LIB OBJECT ${BTHREAD_SOURCES})
+target_link_libraries(BTHREAD_LIB PRIVATE bthread_build_config)
+set_property(TARGET BTHREAD_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
+set_property(TARGET BTHREAD_LIB PROPERTY BRPC_BUNDLE_LIBRARIES bthread_runtime_dependencies)
+set_property(TARGET BTHREAD_LIB PROPERTY BRPC_PRIVATE_LIBS "${bthread_private_libs}")
+
+brpc_install_module_headers()
