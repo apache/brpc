@@ -23,6 +23,7 @@
 // on internal structures, use opaque pointers instead.
 
 #include <ostream>                          // std::ostream
+#include "butil/config.h"
 #include "bthread/errno.h"                  // Redefine errno
 #include "butil/intrusive_ptr.hpp"          // butil::intrusive_ptr
 #include "butil/ptr_container.h"
@@ -38,6 +39,9 @@
 #include "brpc/naming_service_filter.h"
 #include "brpc/health_check_option.h"
 #include "brpc/socket_mode.h"
+#if BRPC_WITH_FLATBUFFERS
+#include "brpc/flatbuffers/service.h"
+#endif
 
 namespace brpc {
 
@@ -176,7 +180,11 @@ private:
 //   channel.Init("bns://rdev.matrix.all", "rr", nullptr/*default options*/);
 //   MyService_Stub stub(&channel);
 //   stub.MyMethod(&controller, &request, &response, nullptr);
-class Channel : public ChannelBase {
+class Channel : public ChannelBase
+#if BRPC_WITH_FLATBUFFERS
+              , public flatbuffers::RpcChannel
+#endif
+{
 friend class Controller;
 friend class SelectiveChannel;
 public:
@@ -228,6 +236,15 @@ public:
                     google::protobuf::Message* response,
                     google::protobuf::Closure* done);
 
+#if BRPC_WITH_FLATBUFFERS
+    // The descriptor is borrowed and must remain valid until the RPC finishes.
+    void FBCallMethod(const flatbuffers::MethodDescriptor* method,
+                      google::protobuf::RpcController* controller,
+                      const flatbuffers::Message* request,
+                      flatbuffers::Message* response,
+                      google::protobuf::Closure* done) override;
+#endif
+
     // Get current options.
     const ChannelOptions& options() const { return _options; }
 
@@ -237,6 +254,13 @@ public:
     int Weight();
 
     int CheckHealth();
+
+private:
+    void CallMethodInternal(const google::protobuf::MethodDescriptor* method,
+                            google::protobuf::RpcController* controller,
+                            const google::protobuf::Message* request,
+                            google::protobuf::Message* response,
+                            google::protobuf::Closure* done, bool is_fb);
 
 protected:
     bool SingleServer() const { return _lb.get() == nullptr; }

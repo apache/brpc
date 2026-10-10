@@ -229,11 +229,66 @@ root_runfiles(
     ],
 )
 
+FLATBUFFERS_COMPATIBILITY = select({
+    "//:brpc_with_flatbuffers": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+genrule(
+    name = "flatbuffers_test_messages",
+    srcs = ["flatbuffers_message.fbs"],
+    outs = ["flatbuffers_message_generated.h"],
+    cmd = select({
+        "//:brpc_with_flatbuffers": "$(location @com_github_google_flatbuffers//:flatc) --cpp -o $(@D) $(location flatbuffers_message.fbs)",
+        "//conditions:default": "exit 1",
+    }),
+    target_compatible_with = FLATBUFFERS_COMPATIBILITY,
+    tools = select({
+        "//:brpc_with_flatbuffers": ["@com_github_google_flatbuffers//:flatc"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_test(
+    name = "brpc_flatbuffers_unittest",
+    srcs = [
+        "brpc_flatbuffers_unittest.cpp",
+        ":flatbuffers_test_messages",
+    ],
+    copts = COPTS,
+    includes = ["."],
+    target_compatible_with = FLATBUFFERS_COMPATIBILITY,
+    deps = [
+        "//:brpc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "brpc_flatbuffers_protocol_unittest",
+    srcs = [
+        "brpc_flatbuffers_protocol_unittest.cpp",
+        ":flatbuffers_test_messages",
+    ],
+    copts = COPTS,
+    includes = ["."],
+    tags = ["exclusive"],
+    target_compatible_with = FLATBUFFERS_COMPATIBILITY,
+    deps = [
+        "//:brpc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 generate_unittests(
     name = "brpc_unittests",
-    srcs = glob([
-        "brpc_*_unittest.cpp",
-    ]),
+    srcs = glob(
+        ["brpc_*_unittest.cpp"],
+        exclude = [
+            "brpc_flatbuffers_unittest.cpp",
+            "brpc_flatbuffers_protocol_unittest.cpp",
+        ],
+    ),
     deps = [
         ":gperftools_helper",
         "//:brpc",
