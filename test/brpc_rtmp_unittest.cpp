@@ -19,6 +19,7 @@
 
 // Date: Fri May 20 15:52:22 CST 2016
 
+#include <limits>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -732,6 +733,44 @@ TEST(RtmpTest, amf) {
     ASSERT_EQ("foo", info3.code());
     ASSERT_EQ("bar", info3.level());
     ASSERT_EQ("heheda", info3.description());
+}
+
+TEST(RtmpTest, amf_rejects_out_of_range_uint32) {
+    // Each value below encodes legally in an AMF0 number but has no uint32
+    // representation; the cast in ReadAMFUint32 was undefined for them.
+    const double bad_values[] = { -1.0, 4294967296.0, 1e30, -1e30,
+                                  std::numeric_limits<double>::infinity(),
+                                  std::numeric_limits<double>::quiet_NaN() };
+    for (size_t i = 0; i < arraysize(bad_values); ++i) {
+        std::string buf;
+        {
+            google::protobuf::io::StringOutputStream zc_stream(&buf);
+            brpc::AMFOutputStream ostream(&zc_stream);
+            brpc::WriteAMFNumber(bad_values[i], &ostream);
+            ASSERT_TRUE(ostream.good());
+        }
+        google::protobuf::io::ArrayInputStream zc_stream(buf.data(), buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        uint32_t val = 0;
+        EXPECT_FALSE(brpc::ReadAMFUint32(&val, &istream)) << "i=" << i;
+    }
+
+    const double good_values[] = { 0.0, 42.5, 4294967295.0 };
+    const uint32_t expected_values[] = { 0, 42, 4294967295u };
+    for (size_t i = 0; i < arraysize(good_values); ++i) {
+        std::string buf;
+        {
+            google::protobuf::io::StringOutputStream zc_stream(&buf);
+            brpc::AMFOutputStream ostream(&zc_stream);
+            brpc::WriteAMFNumber(good_values[i], &ostream);
+            ASSERT_TRUE(ostream.good());
+        }
+        google::protobuf::io::ArrayInputStream zc_stream(buf.data(), buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        uint32_t val = 0;
+        ASSERT_TRUE(brpc::ReadAMFUint32(&val, &istream)) << "i=" << i;
+        ASSERT_EQ(expected_values[i], val);
+    }
 }
 
 TEST(RtmpTest, amf_rejects_oversized_string_before_growing_output) {
