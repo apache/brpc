@@ -72,123 +72,123 @@ else()
     message(FATAL_ERROR "Googletest is not available")
 endif()
 
-file(COPY ${PROJECT_SOURCE_DIR}/test/cert1.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${PROJECT_SOURCE_DIR}/test/cert2.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${PROJECT_SOURCE_DIR}/test/cert1.crt DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${PROJECT_SOURCE_DIR}/test/cert2.crt DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${PROJECT_SOURCE_DIR}/test/jsonout DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${PROJECT_SOURCE_DIR}/test/run_tests.sh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cert1.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cert2.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cert1.crt DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cert2.crt DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/jsonout DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/run_tests.sh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(TEST_BUTIL_SOURCES
-    ${PROJECT_SOURCE_DIR}/test/recordio_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/popen_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/bounded_queue_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/at_exit_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/atomicops_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/base64_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/base64url_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/big_endian_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/bits_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/hash_tables_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/linked_list_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/mru_cache_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/small_map_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/stack_container_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/mpsc_queue_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/cpu_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/crash_logging_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/leak_tracker_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/stack_trace_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/environment_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/file_util_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/dir_reader_posix_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/file_path_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/file_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/scoped_temp_dir_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/guid_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/hash_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/lazy_instance_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/aligned_memory_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/linked_ptr_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/ref_counted_memory_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/ref_counted_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/scoped_ptr_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/scoped_vector_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/singleton_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/weak_ptr_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/observer_list_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/file_descriptor_shuffle_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/rand_util_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/safe_numerics_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/scoped_clear_errno_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/scoped_generic_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/security_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/sha1_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/stl_util_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/nullable_string16_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/safe_sprintf_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/string16_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/stringprintf_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/string_number_conversions_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/string_piece_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/string_split_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/string_tokenizer_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/string_util_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/stringize_macros_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/sys_string_conversions_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/utf_offset_string_conversions_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/utf_string_conversions_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/cancellation_flag_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/condition_variable_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/lock_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/waitable_event_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/type_traits_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/non_thread_safe_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/platform_thread_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/simple_thread_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/thread_checker_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/thread_collision_warner_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/thread_id_name_manager_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/thread_local_storage_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/thread_local_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/abalist_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/watchdog_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/time_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/version_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/logging_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/cacheline_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/class_name_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/endpoint_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/unique_ptr_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/errno_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/fd_guard_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/file_watcher_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/find_cstr_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/scoped_lock_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/status_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/string_printf_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/string_splitter_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/synchronous_event_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/temp_file_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/baidu_thread_local_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/thread_key_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/baidu_time_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/flat_map_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/crc32c_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/iobuf_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/object_pool_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/test_switches.cc
-    ${PROJECT_SOURCE_DIR}/test/scoped_locale.cc
-    ${PROJECT_SOURCE_DIR}/test/scope_guard_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/optional_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/seqlock_unittest.cpp
-    ${PROJECT_SOURCE_DIR}/test/butil_unittest_main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/recordio_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/popen_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bounded_queue_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/at_exit_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/atomicops_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/base64_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/base64url_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/big_endian_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/bits_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/hash_tables_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/linked_list_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/mru_cache_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/small_map_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/stack_container_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/mpsc_queue_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpu_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/crash_logging_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/leak_tracker_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/stack_trace_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/environment_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/file_util_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/dir_reader_posix_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/file_path_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/file_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_temp_dir_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/guid_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/hash_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/lazy_instance_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/aligned_memory_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/linked_ptr_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ref_counted_memory_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/ref_counted_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_ptr_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_vector_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/singleton_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/weak_ptr_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/observer_list_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/file_descriptor_shuffle_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/rand_util_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/safe_numerics_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_clear_errno_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_generic_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/security_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/sha1_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/stl_util_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/nullable_string16_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/safe_sprintf_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/string16_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/stringprintf_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_number_conversions_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_piece_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_split_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_tokenizer_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_util_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/stringize_macros_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/sys_string_conversions_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/utf_offset_string_conversions_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/utf_string_conversions_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/cancellation_flag_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/condition_variable_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/lock_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/waitable_event_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/type_traits_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/non_thread_safe_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/platform_thread_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/simple_thread_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/thread_checker_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/thread_collision_warner_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/thread_id_name_manager_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/thread_local_storage_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/thread_local_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/abalist_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/watchdog_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/time_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/version_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/logging_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/cacheline_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/class_name_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/endpoint_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unique_ptr_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/errno_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fd_guard_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/file_watcher_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/find_cstr_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_lock_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/status_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_printf_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/string_splitter_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/synchronous_event_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/temp_file_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/baidu_thread_local_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/thread_key_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/baidu_time_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/flat_map_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/crc32c_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/iobuf_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/object_pool_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_switches.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scoped_locale.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/scope_guard_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/optional_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/seqlock_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/butil_unittest_main.cpp
 	)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 SET(TEST_BUTIL_SOURCES ${TEST_BUTIL_SOURCES}
-    ${PROJECT_SOURCE_DIR}/test/proc_maps_linux_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/test_file_util_linux.cc)
+    ${CMAKE_CURRENT_SOURCE_DIR}/proc_maps_linux_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_file_util_linux.cc)
 endif()
 
 # bthread_* functions are used in logging.cc, and they need to be marked as
@@ -241,7 +241,9 @@ add_test(NAME test_butil COMMAND test_butil)
 
 # test_bvar
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
-list(REMOVE_ITEM BVAR_SOURCES ${PROJECT_SOURCE_DIR}/src/bvar/default_variables.cpp)
+get_filename_component(bvar_default_variables
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/bvar/default_variables.cpp" ABSOLUTE)
+list(REMOVE_ITEM BVAR_SOURCES ${bvar_default_variables})
 
 add_library(BVAR_DEBUG_LIB OBJECT ${BVAR_SOURCES})
 target_link_libraries(BVAR_DEBUG_LIB PRIVATE brpc_test_config)

@@ -29,7 +29,7 @@ endfunction()
 
 macro(brpc_example_find_common_deps out_libs)
     execute_process(
-        COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
+        COMMAND bash -c "find ${CMAKE_CURRENT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
         OUTPUT_VARIABLE OUTPUT_PATH
     )
 

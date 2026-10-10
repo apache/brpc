@@ -37,5 +37,5 @@ brpc_example_configure_target(server)
 target_link_libraries(client PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 target_link_libraries(server PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 
-file(COPY ${PROJECT_SOURCE_DIR}/server_list
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/server_list
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
