@@ -914,6 +914,15 @@ static void StartProfiling(ProfilingType type,
         }
 #endif
     }
+    // `view' and `base' are written into the page below and into the url of
+    // the request that page issues to *_non_responsive, which applies this
+    // same check before handing them to pprof.
+    if (view != nullptr && !ValidProfilePath(*view)) {
+        return cntl->SetFailed(EINVAL, "Invalid query `view'");
+    }
+    if (base_name != nullptr && !ValidProfilePath(*base_name)) {
+        return cntl->SetFailed(EINVAL, "Invalid query `base'");
+    }
 
     ProfilingClient profiling_client;
     size_t nwaiters = 0;

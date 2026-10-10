@@ -606,7 +606,8 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
         } else {
             start_tm = ParseDateTime(*time_str);
             if (start_tm < 0) {
-                os << "Invalid " << TIME_STR << "=`" << time_str << '\''
+                os << "Invalid " << TIME_STR << "=`"
+                   << (use_html ? WebEscape(*time_str) : *time_str) << '\''
                    << (use_html ? "</body></html>" : "");
                 os.move_to(cntl->response_attachment());
                 return;
