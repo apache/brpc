@@ -15,59 +15,104 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// bthread based timer facade for the ubring module. Callbacks run on the
+// process-wide bthread timer thread and must return quickly.
+
 #ifndef BRPC_TIMER_MGR_H
 #define BRPC_TIMER_MGR_H
-#include <pthread.h>
-#include <time.h>
+
+#include <stdint.h>
 #include "brpc/ubshm/common/common.h"
 
-#if defined(OS_LINUX)
-#include <sys/epoll.h>
-#include <sys/timerfd.h>
-#elif defined(OS_MACOSX)
-#include <sys/types.h>
-#include <sys/event.h>
-#include <sys/time.h>
-#endif
-
-#define MAX_TIMER 1024
-#define TIMER_EPOLL_WAIT_TIMEOUT 1000
-
-#if defined(OS_MACOSX)
-struct itimerspec
-{
-    struct timespec it_interval;
-    struct timespec it_value;
-};
-#endif
 namespace brpc {
 namespace ubring {
-typedef enum {
-    TIMER_CONTEXT_NOT_USING,
-    TIMER_CONTEXT_EPOLL_WAITING,
-    TIMER_CONTEXT_CALLBACK_ONGOING
-} TimerFdCtxStatus;
 
-typedef struct {
-    void *(*cb)(void*);
-    void *args;
-    uint32_t fd;
-    TimerFdCtxStatus status;
-    uint32_t periodical;
-    pthread_spinlock_t spin_lock;
-} TimerFdCtx;
+// Opaque timer handle. nullptr means "not started" (or already deleted /
+// fired for one-shot timers).
+typedef struct UbrTimerTask* UbrTimerId;
 
-RETURN_CODE TimerInit(void);
-void TimerModuleDestroy(void);
-void *UnifiedCallback(void *args);
-void *TimerEpoll(void *args);
-int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args);
-uint32_t GetActiveTimerNum(void);
-void CloseTimerFd(int fd);
+// Maps the current re-arm interval of a periodic timer to the next one.
+// Runs on the timer thread only.
+typedef uint64_t (*UbrTimerBackoffFn)(void* arg, uint64_t cur_interval_us);
 
-void DeleteTimerSafe(uint32_t fd);
-void DeleteTimer(uint32_t fd);
-RETURN_CODE TimerFdCtxValidate(uint32_t fd);
-}
-}
+// Schedule a one-shot `cb(arg, gen)' to run after `delay_us'. The handle slot
+// is released before the callback runs, so the callback may free the object
+// that stores the slot; the task object itself is released automatically.
+// `slot' must point to a real butil::atomic<UbrTimerId> object, so start and
+// delete can race on one RMW without reinterpreting plain storage as an
+// atomic. `gen' is an opaque value carried by the task and passed back on the
+// fire, so a callback armed for an object that was later released and reused
+// can detect that it is stale. It is required: passing a wrong value silently
+// disables the generation guard, so callers must pass the generation of the
+// object `arg' points to.
+RETURN_CODE UbrTimerStart(butil::atomic<UbrTimerId>* slot, uint64_t delay_us,
+                          void* (*cb)(void*, uint64_t), void* arg, uint64_t gen);
+
+// Schedule `cb(arg, gen)' after `delay_us' and re-arm it every `interval_us'
+// until it is deleted. `interval_us' must be positive: a periodic timer without
+// a period is a misconfiguration and is rejected here, instead of silently
+// degrading to a one-shot (which is what the interval-based API used to do).
+// Unlike a one-shot timer, a periodic one retires its handle slot only after
+// the callback returned, so the callback must NOT free the object that stores
+// the slot. `backoff' maps the interval the timer is currently using to the
+// next one; returning 0 is ignored (the previous interval is kept) so a broken
+// back-off cannot turn the global timer thread into a spin loop.
+RETURN_CODE UbrTimerStartPeriodic(butil::atomic<UbrTimerId>* slot,
+                                  uint64_t delay_us, uint64_t interval_us,
+                                  void* (*cb)(void*, uint64_t), void* arg,
+                                  uint64_t gen,
+                                  UbrTimerBackoffFn backoff = nullptr);
+
+// Non-blocking delete, safe to call from inside the timer callback itself.
+// This function does not wait for an already running user callback and does
+// not protect resources reachable from `arg` on its own.
+//
+// Returns 0 when this call wins the handle-slot competition.
+// - For a one-shot timer, the callback will not run. This call additionally
+//   waits out a wrapper that the timer thread already dispatched: such a
+//   wrapper may have been preempted between its dispatch and the moment it
+//   competes for the slot, and it still has to touch the slot once (to lose
+//   that competition) before it can return. When this call returns 0, the
+//   facade is therefore completely done with the storage `slot` points to,
+//   and the caller may free the object that stores the slot -- which is what
+//   the delayed-clear path does with UbrCleanupCtl. The wait only spins on a
+//   task-internal flag: the wrapper takes no lock and calls no user code
+//   while retiring the slot, so a caller holding any ubring lock can still
+//   wait, and no timer callback can be joined from its own dispatch.
+// - For a periodic timer, future rearming is stopped, but an already
+//   dispatched or running callback may still execute once more, and the task
+//   stays anchored in the slot until that callback returns. Callers must not
+//   reclaim resources reachable from `arg` based on this return alone; use
+//   UbrTimerDelAndWait when teardown needs to wait for callbacks. A return of
+//   0 therefore never means "the handle is free again".
+// A periodic callback that deletes its own timer falls into the periodic case
+// as well, but only marks it stopped: the handle slot stays anchored until the
+// callback returns, so a concurrent UbrTimerDelAndWait on the same slot really
+// does wait for that callback.
+//
+// Returns 1 when this caller did not acquire timer ownership. The callback,
+// another deleter, or the scheduling path is responsible for settling the
+// timer resources, so this caller must not reclaim them.
+int UbrTimerDel(butil::atomic<UbrTimerId>* slot);
+
+// Delete and wait until a possibly running callback finished, so the
+// caller can free resources reachable from `arg'. Safe to call from inside the
+// callback's own dispatch: it then degrades to the non-blocking UbrTimerDel
+// instead of joining itself, so callers never have to know which thread they
+// run on.
+//
+// A one-shot callback that is already running holds the ownership of `arg' by
+// itself (mirroring bthread_timer_del returning 1) and cannot be waited for
+// through the slot. Callers of one-shot timers must therefore keep `arg' alive
+// by their own reference (this is a hard requirement, not a convenience: the
+// delayed-clear path relies on UbrCleanupCtl's reference count for exactly
+// this reason). A periodic callback -- including one that deleted its own
+// timer -- always can be waited for, because its task stays anchored until it
+// returns. The wait polls with bthread_usleep, which degrades to ::usleep on
+// plain pthread callers (e.g. process-exit paths).
+void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot);
+
+}  // namespace ubring
+}  // namespace brpc
+
 #endif //BRPC_TIMER_MGR_H
