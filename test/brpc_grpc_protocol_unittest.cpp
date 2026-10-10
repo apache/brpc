@@ -25,6 +25,11 @@
 #include "butil/time.h"
 #include "grpc.pb.h"
 
+namespace brpc {
+// Defined in src/brpc/grpc.cpp
+int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout);
+}
+
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
@@ -161,6 +166,21 @@ TEST_F(GrpcTest, percent_decode) {
     std::string s2_expected_out(s2_expected_out_buf, sizeof(s2_expected_out_buf) - 1);
     brpc::PercentDecode(s2, &out);
     EXPECT_TRUE(out == s2_expected_out) << s2_expected_out << " vs " << out;
+}
+
+TEST(GrpcTimeoutParse, reject_overlong_timeout) {
+    // In-range values (<= 8 digits, as the gRPC spec allows) keep working.
+    std::string s;
+    s = "2H";        EXPECT_EQ(7200000000LL, brpc::ConvertGrpcTimeoutToUS(&s));
+    s = "99999999S"; EXPECT_EQ(99999999000000LL, brpc::ConvertGrpcTimeoutToUS(&s));
+    s = "+1S";       EXPECT_EQ(1000000LL, brpc::ConvertGrpcTimeoutToUS(&s));
+
+    // A value with more than 8 digits is rejected. Before the fix the digit
+    // count was unbounded and `timeout_value * <unit>` overflowed int64 (UB),
+    // producing a bogus deadline instead of -1.
+    s = "100000000S";          EXPECT_EQ(-1, brpc::ConvertGrpcTimeoutToUS(&s));
+    s = "999999999999999999H"; EXPECT_EQ(-1, brpc::ConvertGrpcTimeoutToUS(&s));
+    s = "-5S";                 EXPECT_EQ(-1, brpc::ConvertGrpcTimeoutToUS(&s));
 }
 
 TEST_F(GrpcTest, sanity) {

@@ -186,6 +186,14 @@ int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout) {
     if ((size_t)(endptr - grpc_timeout->data()) != grpc_timeout->size() - 1) {
         return -1;
     }
+    // The gRPC-over-HTTP2 spec restricts TimeoutValue to a positive integer of
+    // at most 8 digits. A peer that sends more digits (or a negative/overflowed
+    // value that strtol clamped to LONG_MIN/MAX) would otherwise make the
+    // `timeout_value * <unit>` below overflow int64, which is undefined and
+    // feeds a bogus deadline into gettimeofday_us() on the request path.
+    if (timeout_value < 0 || timeout_value > 99999999) {
+        return -1;
+    }
     switch (*endptr) {
         case 'H':
             return timeout_value * 3600 * 1000000;
