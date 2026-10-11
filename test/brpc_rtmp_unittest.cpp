@@ -860,6 +860,49 @@ TEST(RtmpTest, amf_rejects_oversized_strict_array_count) {
     EXPECT_EQ(0u, arr.size());
 }
 
+TEST(RtmpTest, amf_rejects_stray_object_end_marker) {
+    // A stray object-end marker (0x09) in a value position used to hit
+    // CHECK(false): the process aborted with -crash_on_fatal_log, and the
+    // object/array readers then continued as if the input were valid.
+    {
+        // As the value of a field in a generic object.
+        std::string req_buf;
+        AppendAMFObjectHeader(&req_buf);
+        AppendAMFShortStringBody(&req_buf, "a");
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+        AppendAMFObjectEnd(&req_buf);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::AMFObject obj;
+        EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+    }
+    {
+        // As an item of a strict array.
+        std::string req_buf;
+        AppendAMFStrictArrayHeader(&req_buf, 1);
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::AMFArray arr;
+        EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
+    }
+    {
+        // As the value of a field mapped to a protobuf message.
+        std::string req_buf;
+        AppendAMFObjectHeader(&req_buf);
+        AppendAMFShortStringBody(&req_buf, "code");
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+        AppendAMFObjectEnd(&req_buf);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::RtmpInfo info;
+        EXPECT_FALSE(brpc::ReadAMFObject(&info, &istream));
+    }
+}
+
 TEST(RtmpTest, amf_rejects_deep_nested_arrays) {
     ScopedAMFMaxDepth scoped_depth(4);
 
