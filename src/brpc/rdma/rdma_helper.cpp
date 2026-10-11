@@ -595,6 +595,16 @@ static void GlobalRdmaInitializeOrDieImpl() {
 
 static void GlobalGdrInitializeOrDieImpl() {
 #if BRPC_WITH_GDR
+    // GPUDirect RDMA requires all received data to be written into the GPU
+    // memory buffer specified at post-receive time. When MLX5_SCATTER_TO_CQE
+    // is enabled, small messages are inlined directly into host memory, which
+    // breaks this requirement and causes operations to fail. Force it to 0
+    // regardless of the user-provided value.
+    if (setenv("MLX5_SCATTER_TO_CQE", "0", 1) != 0) {
+        PLOG(ERROR) << "Fail to set MLX5_SCATTER_TO_CQE to 0";
+        ExitWithError();
+    }
+
     g_gpu_index = FLAGS_gpu_index;
 
     // GetGdrBlockSize() validates FLAGS_gdr_block_size_kb (> 0 KB and byte
