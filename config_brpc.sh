@@ -54,12 +54,13 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-urma,with-urma-mock,without-urma-mock,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,with-cpu-frequency,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-urma,with-urma-mock,without-urma-mock,with-gdr,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,with-cpu-frequency,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
 WITH_RDMA=0
 WITH_URMA=0
 URMA_MOCK_MODE=auto
+WITH_GDR=0
 WITH_MESALINK=0
 WITH_BTHREAD_TRACER=0
 WITH_ASAN=0
@@ -95,6 +96,7 @@ while true; do
         --with-urma) WITH_URMA=1; shift 1 ;;
         --with-urma-mock) URMA_MOCK_MODE=on; shift 1 ;;
         --without-urma-mock) URMA_MOCK_MODE=off; shift 1 ;;
+        --with-gdr) WITH_GDR=1; shift 1 ;;
         --with-mesalink) WITH_MESALINK=1; shift 1 ;;
         --with-bthread-tracer) WITH_BTHREAD_TRACER=1; shift 1 ;;
         --with-debug-bthread-sche-safety ) BRPC_DEBUG_BTHREAD_SCHE_SAFETY=1; shift 1 ;;
@@ -579,6 +581,46 @@ if [ $WITH_URMA != 0 ]; then
     fi
 fi
 
+if [ $WITH_GDR != 0 ]; then
+    # GDR is a special mode of RDMA and requires RDMA to be enabled as well.
+    if [ $WITH_RDMA -eq 0 ]; then
+        print_info "WITH_GDR implies WITH_RDMA, enabling RDMA"
+        WITH_RDMA=1
+        RDMA_LIB=$(find_dir_of_lib_or_die ibverbs)
+        RDMA_HDR=$(find_dir_of_header_or_die infiniband/verbs.h)
+        append_to_output_libs "$RDMA_LIB"
+        append_to_output_headers "$RDMA_HDR"
+        CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_RDMA"
+        append_to_output "DYNAMIC_LINKINGS+=-libverbs"
+        append_to_output "WITH_RDMA=1"
+    fi
+
+    # Locate the CUDA toolkit. Honor $CUDA_HOME when set, otherwise fall back to
+    # the well-known /usr/local/cuda installation path.
+    if [ -z "${CUDA_HOME}" ]; then
+        CUDA_HOME="/usr/local/cuda"
+    fi
+    if [ ! -d "${CUDA_HOME}" ]; then
+        echo "Fail to find CUDA toolkit at CUDA_HOME=${CUDA_HOME}." >&2
+        echo "Please install CUDA or set CUDA_HOME to point at your toolkit." >&2
+        exit 1
+    fi
+    CUDA_LIB="${CUDA_HOME}/lib64"
+    CUDA_HDR="${CUDA_HOME}/include"
+    if [ ! -f "${CUDA_HDR}/cuda_runtime.h" ]; then
+        echo "Fail to find cuda_runtime.h under ${CUDA_HDR}." >&2
+        echo "Please check CUDA_HOME=${CUDA_HOME}." >&2
+        exit 1
+    fi
+    append_to_output_libs "$CUDA_LIB"
+    append_to_output_headers "$CUDA_HDR"
+
+    CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_GDR"
+
+    append_to_output "DYNAMIC_LINKINGS+=-lcuda -lcudart"
+    append_to_output "WITH_GDR=1"
+fi
+
 if [ $WITH_MESALINK != 0 ]; then
     CPPFLAGS="${CPPFLAGS} -DUSE_MESALINK"
 fi
@@ -716,6 +758,7 @@ if [ $WITH_GLOG -ne 0 ]; then print_info "With glog: yes"; fi
 if [ $WITH_THRIFT -ne 0 ]; then print_info "With thrift: yes"; fi
 if [ $WITH_RDMA -ne 0 ]; then print_info "With RDMA: yes"; fi
 if [ $WITH_URMA -ne 0 ]; then print_info "With URMA: yes"; fi
+if [ $WITH_GDR -ne 0 ]; then print_info "With GDR: yes"; fi
 if [ $WITH_MESALINK -ne 0 ]; then print_info "With MesaLink: yes"; fi
 if [ $WITH_BTHREAD_TRACER -ne 0 ]; then print_info "With bthread tracer: yes"; fi
 if [ $WITH_ASAN -ne 0 ]; then print_info "With ASAN: yes"; fi
