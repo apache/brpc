@@ -52,6 +52,7 @@ typedef HANDLE MutexHandle;
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #define MAX_PATH PATH_MAX
 typedef FILE* FileHandle;
@@ -169,6 +170,17 @@ DEFINE_int32(max_async_log_queue_size, 100000, "Max async log size. "
 DEFINE_int32(sleep_to_flush_async_log_s, 0,
              "If the value > 0, sleep before atexit to flush async log");
 
+DEFINE_int32(log_rotate_size_mb, 0,
+             "Rotate the log file once it is about to grow beyond this size "
+             "in megabytes. 0 means never rotate. Only takes effect when "
+             "logging to a file.");
+BUTIL_VALIDATE_GFLAG(log_rotate_size_mb, butil::NonNegativeInteger);
+
+DEFINE_int32(log_rotate_max_backups, 10,
+             "Max number of rotated log files kept besides the current one. "
+             "Files beyond the limit are removed by the next rotation.");
+BUTIL_VALIDATE_GFLAG(log_rotate_max_backups, butil::PositiveInteger);
+
 namespace {
 
 LoggingDestination logging_destination = LOG_DEFAULT;
@@ -188,6 +200,21 @@ PathString* log_file_name = nullptr;
 
 // this file is lazily opened and the handle may be nullptr
 FileHandle log_file = nullptr;
+
+// Number of bytes in the file referenced by `log_file'. Guarded by
+// LoggingLock just like `log_file' itself.
+int64_t log_file_size = 0;
+
+// Size of the log file when rotation last failed, -1 when the last attempt
+// succeeded. The size that triggered a failed rotation does not change by
+// itself, so an unconditional retry would close, reopen and rename the file
+// for every single log. Rotation is retried once per --log_rotate_size_mb of
+// new data instead. Guarded by LoggingLock.
+int64_t failed_rotation_size = -1;
+
+// Whether the failure above was already printed, so that a directory that
+// can not be written to does not flood stderr. Guarded by LoggingLock.
+bool rotation_failure_reported = false;
 
 // Should we pop up fatal debug messages in a dialog?
 bool show_error_dialogs = false;
@@ -399,12 +426,18 @@ bool InitializeLogFileHandle() {
             }
         }
         SetFilePointer(log_file, 0, 0, FILE_END);
+        LARGE_INTEGER file_size;
+        log_file_size = GetFileSizeEx(log_file, &file_size) ?
+            static_cast<int64_t>(file_size.QuadPart) : 0;
 #elif defined(OS_POSIX)
         log_file = fopen(log_file_name->c_str(), "a");
         if (log_file == nullptr) {
             fprintf(stderr, "Fail to fopen %s: %s", log_file_name->c_str(), berror());
             return false;
         }
+        struct stat st;
+        log_file_size = (0 == fstat(fileno(log_file), &st)) ?
+            static_cast<int64_t>(st.st_size) : 0;
 #endif
     }
 
@@ -425,6 +458,157 @@ void CloseLogFileUnlocked() {
 
     CloseFile(log_file);
     log_file = nullptr;
+    log_file_size = 0;
+}
+
+// ---------------------------- Log rotation ----------------------------
+// Rotation is size based and disabled by default. Once the current log file
+// is about to grow beyond --log_rotate_size_mb, it is renamed to
+// "<log_file_name>.1" and a fresh file is opened under the original name.
+// Existing backups are shifted down (".1" -> ".2" -> ...) beforehand and the
+// ones beyond --log_rotate_max_backups are removed, so that ".1" is always
+// the most recent backup. Every rotation also removes the backups left over
+// from a previously larger --log_rotate_max_backups, so that lowering the
+// flag at run time really lowers the number of files kept.
+//
+// A log file that disappeared from under the process is not a rotation
+// failure: the handle is closed so that the next write starts a fresh file,
+// and the backups are left untouched.
+//
+// A rename that fails does not disable rotation for good. The size at which
+// it failed is remembered and rotation is retried once the file has grown by
+// another --log_rotate_size_mb, which keeps a directory that cannot be
+// written to from closing, reopening and renaming the file for every single
+// log. A file that turns out to be smaller than it was at that point has been
+// replaced or truncated from the outside, and rotation resumes immediately.
+//
+// Sharing one log file between multiple processes is NOT supported together
+// with rotation: on POSIX LoggingLock only serializes the threads of a single
+// process, and after the rename the other processes would keep writing to the
+// renamed inode.
+
+// Return "<path>.<index>".
+PathString MakeBackupLogPath(const PathString& path, int index) {
+#if defined(OS_WIN)
+    wchar_t suffix[16];
+    swprintf(suffix, 16, L".%d", index);
+#else
+    char suffix[16];
+    snprintf(suffix, sizeof(suffix), ".%d", index);
+#endif
+    return path + suffix;
+}
+
+bool PathExists(const PathString& path) {
+#if defined(OS_WIN)
+    return GetFileAttributes(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+#else
+    return ::access(path.c_str(), F_OK) == 0;
+#endif
+}
+
+bool RenameFilePath(const PathString& from, const PathString& to) {
+#if defined(OS_WIN)
+    return ::MoveFileEx(from.c_str(), to.c_str(),
+                        MOVEFILE_REPLACE_EXISTING) != 0;
+#elif defined(OS_NACL)
+    // Do nothing; rename() isn't supported on NaCl.
+    return false;
+#else
+    return ::rename(from.c_str(), to.c_str()) == 0;
+#endif
+}
+
+// Rename the current log file to "<log_file_name>.1" and shift the older
+// backups down by one. The caller must hold the logging lock.
+void RotateLogFileUnlocked() {
+    if (!log_file_name) {
+        return;
+    }
+    if (!PathExists(*log_file_name)) {
+        // The file was renamed or removed from the outside. There is nothing
+        // to rotate: closing the handle makes the next write start a fresh
+        // file under the original name, which is what a rotation would have
+        // done anyway. The backups are left alone, shifting them down would
+        // consume one generation for nothing.
+        CloseLogFileUnlocked();
+        failed_rotation_size = -1;
+        rotation_failure_reported = false;
+        return;
+    }
+    // Remember it before closing, CloseLogFileUnlocked() resets the size.
+    const int64_t size_before_rotation = log_file_size;
+    // Close before renaming: on Windows an opened file cannot be renamed, and
+    // on POSIX the handle would keep pointing at the renamed inode.
+    CloseLogFileUnlocked();
+
+    const int max_backups = std::max(1, FLAGS_log_rotate_max_backups);
+    // Remove the oldest backup, and any left over from a previously larger
+    // --log_rotate_max_backups, so that lowering the flag at run time really
+    // lowers the number of files kept.
+    for (int i = max_backups; ; ++i) {
+        const PathString path = MakeBackupLogPath(*log_file_name, i);
+        if (!PathExists(path)) {
+            break;
+        }
+        DeleteFilePath(path);
+        if (PathExists(path)) {
+            break;  // could not remove it, do not spin
+        }
+    }
+    for (int i = max_backups - 1; i >= 1; --i) {
+        RenameFilePath(MakeBackupLogPath(*log_file_name, i),
+                       MakeBackupLogPath(*log_file_name, i + 1));
+    }
+    if (RenameFilePath(*log_file_name,
+                       MakeBackupLogPath(*log_file_name, 1))) {
+        failed_rotation_size = -1;
+        rotation_failure_reported = false;
+        return;
+    }
+    // Back off rather than retrying on every log. The next write reopens the
+    // file under its original name and keeps appending, which is better than
+    // dropping logs.
+    failed_rotation_size = size_before_rotation;
+    if (!rotation_failure_reported) {
+        rotation_failure_reported = true;
+#if defined(OS_POSIX)
+        fprintf(stderr, "Fail to rotate %s: %s, retrying after another "
+                "--log_rotate_size_mb of logs\n",
+                log_file_name->c_str(), berror());
+#endif
+    }
+}
+
+// Rotate the log file if appending `incoming_size' bytes would grow it beyond
+// --log_rotate_size_mb. The caller must hold the logging lock.
+void MaybeRotateLogFileUnlocked(size_t incoming_size) {
+    const int64_t rotate_size =
+        (int64_t)FLAGS_log_rotate_size_mb * 1024 * 1024;
+    if (rotate_size <= 0) {  // rotation is disabled
+        return;
+    }
+    // Opening the file is what tells us how large it already is.
+    if (!InitializeLogFileHandle() || !log_file) {
+        return;
+    }
+    if (failed_rotation_size >= 0 && log_file_size < failed_rotation_size) {
+        // The file is smaller than it was when rotation failed, so it was
+        // replaced or truncated from the outside. Rotation may work again.
+        failed_rotation_size = -1;
+        rotation_failure_reported = false;
+    }
+    // Never rotate an empty file, otherwise a single log larger than
+    // `rotate_size' would rotate on every write and produce empty backups.
+    if (log_file_size == 0 ||
+        log_file_size + (int64_t)incoming_size <= rotate_size) {
+        return;
+    }
+    if (failed_rotation_size >= 0 &&
+        log_file_size < failed_rotation_size + rotate_size) {
+        return;  // backing off after a failed rotation
+    }
+    RotateLogFileUnlocked();
 }
 
 void Log2File(const std::string& log) {
@@ -437,14 +621,19 @@ void Log2File(const std::string& log) {
     // thread at the beginning of execution.
     LoggingLock::Init(LOCK_LOG_FILE, nullptr);
     LoggingLock logging_lock;
+    // Rotate before writing so that a single log is never split into two files.
+    MaybeRotateLogFileUnlocked(log.size());
     if (InitializeLogFileHandle()) {
 #if defined(OS_WIN)
         SetFilePointer(log_file, 0, 0, SEEK_END);
-        DWORD num_written;
+        DWORD num_written = 0;
         WriteFile(log_file, static_cast<const void*>(log.data()),
                   static_cast<DWORD>(log.size()), &num_written, nullptr);
+        log_file_size += num_written;
 #else
-        fwrite(log.data(), log.size(), 1, log_file);
+        if (fwrite(log.data(), log.size(), 1, log_file) == 1) {
+            log_file_size += (int64_t)log.size();
+        }
         fflush(log_file);
 #endif
     }
@@ -812,6 +1001,9 @@ bool BaseInitLoggingImpl(const LoggingSettings& settings) {
     }
     if (settings.delete_old == DELETE_OLD_LOG_FILE)
         DeleteFilePath(*log_file_name);
+    // Give rotation another chance, the destination may have changed.
+    failed_rotation_size = -1;
+    rotation_failure_reported = false;
 
     return InitializeLogFileHandle();
 }

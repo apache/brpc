@@ -9,6 +9,8 @@
 #include "butil/popen.h"
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #if !BRPC_WITH_GLOG
 
@@ -19,6 +21,8 @@ DECLARE_bool(log_func_name);
 DECLARE_bool(async_log);
 DECLARE_bool(async_log_in_background_always);
 DECLARE_int32(max_async_log_queue_size);
+DECLARE_int32(log_rotate_size_mb);
+DECLARE_int32(log_rotate_max_backups);
 
 namespace {
 
@@ -538,6 +542,340 @@ TEST_F(LoggingTest, async_log) {
     ASSERT_EQ(log_count, test_logging_count.load());
 
     FLAGS_async_log = saved_async_log;
+}
+
+static bool FileSize(const std::string& path, off_t* size) {
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) {
+        return false;
+    }
+    if (size) {
+        *size = st.st_size;
+    }
+    return true;
+}
+
+class LogRotationTest : public LoggingTest {
+public:
+    void SetUp() override {
+        LoggingTest::SetUp();
+        _saved_async_log = FLAGS_async_log;
+        _saved_rotate_size_mb = FLAGS_log_rotate_size_mb;
+        _saved_max_backups = FLAGS_log_rotate_max_backups;
+        FLAGS_async_log = false;
+        _log_path = _temp_file.fname();
+    }
+
+    void TearDown() override {
+        CloseLogFile();
+        for (int i = 1; i <= _saved_max_backups + 2; ++i) {
+            unlink(BackupPath(i).c_str());
+        }
+        FLAGS_log_rotate_max_backups = _saved_max_backups;
+        FLAGS_log_rotate_size_mb = _saved_rotate_size_mb;
+        FLAGS_async_log = _saved_async_log;
+        LoggingTest::TearDown();
+    }
+
+protected:
+    // Point the logging framework at `_log_path' and start from an empty file.
+    void InitLoggingToTempFile() {
+        LoggingSettings settings;
+        settings.logging_dest = LOG_TO_FILE;
+        settings.log_file = _log_path.c_str();
+        settings.delete_old = DELETE_OLD_LOG_FILE;
+        ASSERT_TRUE(InitLogging(settings));
+    }
+
+    std::string BackupPath(int index) const {
+        return _log_path + butil::string_printf(".%d", index);
+    }
+
+    // Each log adds a header on top of `size', which only makes the file grow
+    // faster than the caller expects, never slower.
+    void WriteLogs(int count, size_t size) {
+        const std::string content(size, 'x');
+        for (int i = 0; i < count; ++i) {
+            LOG(INFO) << content;
+        }
+    }
+
+    std::string _log_path;
+
+private:
+    butil::TempFile _temp_file;
+    bool _saved_async_log{false};
+    int _saved_rotate_size_mb{0};
+    int _saved_max_backups{0};
+};
+
+TEST_F(LogRotationTest, disabled_by_default) {
+    FLAGS_log_rotate_size_mb = 0;
+    InitLoggingToTempFile();
+
+    WriteLogs(2000, 1000);  // ~2MB
+    CloseLogFile();
+
+    off_t size = 0;
+    ASSERT_TRUE(FileSize(_log_path, &size));
+    ASSERT_GT(size, 1L * 1024 * 1024);
+    ASSERT_FALSE(FileSize(BackupPath(1), nullptr));
+}
+
+TEST_F(LogRotationTest, rotate_and_prune) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 2;
+    InitLoggingToTempFile();
+
+    WriteLogs(3000, 1000);  // ~3MB, rotates 3 times
+    CloseLogFile();
+
+    const off_t rotate_size = 1L * 1024 * 1024;
+    off_t size = 0;
+    // The current file was restarted by the last rotation.
+    ASSERT_TRUE(FileSize(_log_path, &size));
+    ASSERT_LE(size, rotate_size);
+    // ".1" is the most recent backup, older ones are pruned.
+    ASSERT_TRUE(FileSize(BackupPath(1), &size));
+    ASSERT_GT(size, 0);
+    ASSERT_LE(size, rotate_size);
+    ASSERT_TRUE(FileSize(BackupPath(2), &size));
+    ASSERT_GT(size, 0);
+    ASSERT_LE(size, rotate_size);
+    ASSERT_FALSE(FileSize(BackupPath(3), nullptr));
+}
+
+TEST_F(LogRotationTest, keep_one_backup) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 1;
+    InitLoggingToTempFile();
+
+    WriteLogs(3000, 1000);
+    CloseLogFile();
+
+    ASSERT_TRUE(FileSize(BackupPath(1), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(2), nullptr));
+}
+
+// A log bigger than the threshold is written as a whole rather than being
+// split or triggering a rotation on every single write. Only the number of
+// files holding a whole oversized log is checked, so that logs written by the
+// rest of the process cannot make the test flaky.
+TEST_F(LogRotationTest, log_larger_than_rotate_size) {
+    FLAGS_log_rotate_size_mb = 1;
+    // High enough that none of the files below can be pruned.
+    FLAGS_log_rotate_max_backups = 10;
+    InitLoggingToTempFile();
+
+    const size_t log_size = 2 * 1024 * 1024;
+    WriteLogs(3, log_size);
+    CloseLogFile();
+
+    int whole_logs = 0;
+    off_t size = 0;
+    if (FileSize(_log_path, &size) && size >= (off_t)log_size) {
+        ++whole_logs;
+    }
+    for (int i = 1; i <= FLAGS_log_rotate_max_backups; ++i) {
+        if (!FileSize(BackupPath(i), &size)) {
+            continue;
+        }
+        // A rotation never leaves an empty file behind.
+        ASSERT_GT(size, 0) << BackupPath(i);
+        if (size >= (off_t)log_size) {
+            ++whole_logs;
+        }
+    }
+    ASSERT_EQ(3, whole_logs);
+}
+
+// The log file is opened with "a", so the size a restarted process starts
+// from must come from the file itself instead of being counted from zero.
+TEST_F(LogRotationTest, size_of_existing_file_is_taken_into_account) {
+    // Grow the file beyond the future threshold while rotation is still off.
+    FLAGS_log_rotate_size_mb = 0;
+    FLAGS_log_rotate_max_backups = 2;
+    InitLoggingToTempFile();
+    WriteLogs(1500, 1000);
+    CloseLogFile();  // as if the process exited here
+
+    off_t before = 0;
+    ASSERT_TRUE(FileSize(_log_path, &before));
+    ASSERT_GT(before, 1L * 1024 * 1024);
+    ASSERT_FALSE(FileSize(BackupPath(1), nullptr));
+
+    // Turn rotation on and write a single log. The file is reopened in append
+    // mode, so this can only rotate if the size was read from the file rather
+    // than counted from zero.
+    FLAGS_log_rotate_size_mb = 1;
+    WriteLogs(1, 10);
+    CloseLogFile();
+
+    off_t rotated = 0;
+    ASSERT_TRUE(FileSize(BackupPath(1), &rotated));
+    ASSERT_GE(rotated, before);
+    off_t current = 0;
+    ASSERT_TRUE(FileSize(_log_path, &current));
+    ASSERT_LT(current, before);
+}
+
+TEST_F(LogRotationTest, async_log) {
+    FLAGS_async_log = true;
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 2;
+    InitLoggingToTempFile();
+
+    WriteLogs(3000, 1000);
+    // The background thread writes the logs, wait for the rotations to show up
+    // instead of sleeping for a fixed amount of time.
+    for (int i = 0; i < 600 && !FileSize(BackupPath(2), nullptr); ++i) {
+        usleep(100 * 1000);
+    }
+    // Drain the rest of the queue so that no leftover log is written into the
+    // file of whichever test runs next.
+    off_t last_size = -1;
+    off_t current_size = 0;
+    for (int i = 0; i < 100 && last_size != current_size; ++i) {
+        last_size = current_size;
+        usleep(100 * 1000);
+        FileSize(_log_path, &current_size);
+    }
+    FLAGS_async_log = false;
+    CloseLogFile();
+
+    off_t size = 0;
+    ASSERT_TRUE(FileSize(BackupPath(1), &size));
+    ASSERT_GT(size, 0);
+    ASSERT_LE(size, 1L * 1024 * 1024);
+    ASSERT_TRUE(FileSize(BackupPath(2), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(3), nullptr));
+}
+
+// Lowering --log_rotate_max_backups at run time must also remove the files
+// left over from the previous, larger value.
+TEST_F(LogRotationTest, lowering_max_backups_removes_leftovers) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 5;
+    InitLoggingToTempFile();
+
+    WriteLogs(6000, 1000);  // fills every backup slot
+    ASSERT_TRUE(FileSize(BackupPath(5), nullptr));
+
+    FLAGS_log_rotate_max_backups = 2;
+    WriteLogs(2000, 1000);  // rotates at least once with the new value
+    CloseLogFile();
+
+    ASSERT_TRUE(FileSize(BackupPath(1), nullptr));
+    ASSERT_TRUE(FileSize(BackupPath(2), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(3), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(4), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(5), nullptr));
+}
+
+// An external tool taking the log file away is not a rotation failure. The
+// next write starts a fresh file and the existing backups must be left alone
+// rather than shifted down for nothing.
+TEST_F(LogRotationTest, external_rename_does_not_consume_a_backup) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 5;
+    InitLoggingToTempFile();
+
+    WriteLogs(2500, 1000);  // rotates a couple of times
+    off_t first_backup = 0;
+    ASSERT_TRUE(FileSize(BackupPath(1), &first_backup));
+    int backups_before = 0;
+    for (int i = 1; i <= FLAGS_log_rotate_max_backups; ++i) {
+        if (FileSize(BackupPath(i), nullptr)) {
+            ++backups_before;
+        }
+    }
+
+    // Take the file away the way an external log rotator would, then log
+    // enough that a rotation would otherwise have been due.
+    const std::string moved = _log_path + ".moved";
+    ASSERT_EQ(0, rename(_log_path.c_str(), moved.c_str()));
+    WriteLogs(800, 1000);
+    CloseLogFile();
+
+    off_t size = 0;
+    ASSERT_TRUE(FileSize(BackupPath(1), &size));
+    ASSERT_EQ(first_backup, size);  // ".1" was not shifted away
+    int backups_after = 0;
+    for (int i = 1; i <= FLAGS_log_rotate_max_backups; ++i) {
+        if (FileSize(BackupPath(i), nullptr)) {
+            ++backups_after;
+        }
+    }
+    ASSERT_EQ(backups_before, backups_after);
+    // Logging went on under the original name.
+    ASSERT_TRUE(FileSize(_log_path, nullptr));
+    unlink(moved.c_str());
+}
+
+// When the rename can not succeed, rotation must back off instead of closing
+// and reopening the file on every single log.
+TEST_F(LogRotationTest, backs_off_when_rotation_keeps_failing) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 2;
+    InitLoggingToTempFile();
+
+    // Occupy every backup slot with a non-empty directory, which makes both
+    // the shift and the final rename fail with EISDIR/ENOTEMPTY.
+    for (int i = 1; i <= FLAGS_log_rotate_max_backups; ++i) {
+        ASSERT_EQ(0, mkdir(BackupPath(i).c_str(), 0755));
+        ASSERT_EQ(0, mkdir((BackupPath(i) + "/x").c_str(), 0755));
+    }
+
+    WriteLogs(1500, 1000);  // ~1.5MB, crosses the threshold
+    CloseLogFile();
+
+    // Nothing was dropped, the logs kept being appended to the current file.
+    off_t size = 0;
+    ASSERT_TRUE(FileSize(_log_path, &size));
+    ASSERT_GT(size, 1L * 1024 * 1024);
+
+    for (int i = 1; i <= FLAGS_log_rotate_max_backups; ++i) {
+        ASSERT_EQ(0, rmdir((BackupPath(i) + "/x").c_str()));
+        ASSERT_EQ(0, rmdir(BackupPath(i).c_str()));
+    }
+    // InitLogging() clears the back off for the tests that follow.
+    InitLoggingToTempFile();
+}
+
+// An external tool renaming the log file away must not disable rotation for
+// good: the file it is reopened on starts empty, which is the signal that
+// rotation can be attempted again.
+TEST_F(LogRotationTest, recovers_after_the_log_file_is_replaced) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 2;
+    InitLoggingToTempFile();
+
+    for (int i = 1; i <= FLAGS_log_rotate_max_backups; ++i) {
+        ASSERT_EQ(0, mkdir(BackupPath(i).c_str(), 0755));
+        ASSERT_EQ(0, mkdir((BackupPath(i) + "/x").c_str(), 0755));
+    }
+    WriteLogs(1500, 1000);  // rotation fails and backs off
+    off_t size = 0;
+    ASSERT_TRUE(FileSize(_log_path, &size));
+    ASSERT_GT(size, 1L * 1024 * 1024);
+
+    for (int i = 1; i <= FLAGS_log_rotate_max_backups; ++i) {
+        ASSERT_EQ(0, rmdir((BackupPath(i) + "/x").c_str()));
+        ASSERT_EQ(0, rmdir(BackupPath(i).c_str()));
+    }
+    // Take the file away the way an external log rotator would.
+    CloseLogFile();
+    const std::string moved = _log_path + ".moved";
+    ASSERT_EQ(0, rename(_log_path.c_str(), moved.c_str()));
+
+    WriteLogs(1500, 1000);
+    CloseLogFile();
+
+    // Rotation works again without InitLogging() having been called.
+    ASSERT_TRUE(FileSize(BackupPath(1), &size));
+    ASSERT_GT(size, 0);
+    ASSERT_LE(size, 1L * 1024 * 1024);
+    unlink(moved.c_str());
 }
 
 #if defined(BRPC_ENABLE_CPU_PROFILER) || defined(BAIDU_RPC_ENABLE_CPU_PROFILER)

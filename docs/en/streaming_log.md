@@ -261,6 +261,27 @@ CHECK(x > y);    // Check failed: x > y.
 
 Like DLOG, you should NOT include important side effects inside DCHECK.
 
+## Log rotation
+
+When logs go to a file (`LoggingSettings.logging_dest` contains `LOG_TO_FILE`), size based rotation can be turned on with the following gflags:
+
+| Name | Default | Description |
+| ---- | ---- | ---- |
+| log_rotate_size_mb | 0 | Rotate the log file once it is about to grow beyond this size in megabytes. 0 means never rotate. |
+| log_rotate_max_backups | 10 | Max number of rotated files kept besides the current one. Files beyond the limit are removed by the next rotation. |
+
+Rotation is disabled by default, so upgrading changes neither the file names nor the existing files. Once enabled, the current file `foo.log` is renamed to `foo.log.1`, the previous `foo.log.1` becomes `foo.log.2` and so on, and the files beyond `log_rotate_max_backups` are removed. In other words `.1` is always the most recent backup. The check happens before the write, so a single log is never split into two files; a log larger than `log_rotate_size_mb` does not produce empty backups either, it is written to the current file as a whole.
+
+If the rename fails, for example because the directory holding the log file is not writable, brpc prints an error and retries only once the file has grown by another `log_rotate_size_mb`, instead of closing, reopening and renaming the file for every single log. Logs keep being appended to the current file in the meantime, none of them are lost. If the file turns out to be smaller than it was when rotation failed, it has been replaced or truncated from the outside and rotation resumes immediately.
+
+> Do not run an external rotator such as logrotate on the same log file. Once an external tool renames the file, the next write recreates it under the original name, the two sets of rotation rules interfere with each other and the number of files kept around is no longer bounded by `log_rotate_max_backups`. Use one or the other.
+
+Both flags are modifiable at run time via `/flags`.
+
+Synchronous and asynchronous logging (`--async_log`) share the same file writing path, so rotation works for both.
+
+> **Do not enable rotation when several processes share one log file.** On POSIX `LoggingLock` uses a process-local mutex which does not serialize different processes, and rotation is implemented with rename: after one process renames the file, the file handles of the other processes still refer to the renamed inode and their logs keep going to the old file.
+
 ## LogSink
 
 The default destination of streaming log is the screen. You can change it through `logging::SetLogSink`. Users can inherit LogSink and implement their own output logic. We provide an internal LogSink as an example:
