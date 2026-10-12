@@ -31,6 +31,9 @@ ParseResult ParseMongoMessage(butil::IOBuf* source, Socket* socket, bool read_eo
 // Actions to a (client) request in mongo format
 void ProcessMongoRequest(InputMessageBase* msg);
 
+// Verify authentication information in mongo format
+bool VerifyMongoRequest(const InputMessageBase* msg);
+
 } // namespace policy
 } // namespace brpc
 
