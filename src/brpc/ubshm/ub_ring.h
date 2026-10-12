@@ -45,21 +45,26 @@ public:
 
     RETURN_CODE UbrTrxClose();
 
-    RETURN_CODE UbrAddCloseTimer();
-
+    // Arms both per-trx timers. The only entry point for them: it holds the
+    // manager's arming exclusion, which UbrMgrFini relies on to know that no
+    // new timer can appear after it took the shutdown flag.
     RETURN_CODE UbrAddTimer();
 
-    static void *UbrTrxCloseCallback(void *args);
+    static void *UbrTrxCloseCallback(void *args, uint64_t gen);
 
-    RETURN_CODE UbrAddHBTimer();
+    static void *UbrTrxHBCallback(void *args, uint64_t gen);
 
-    static void *UbrTrxHBCallback(void *args);
+    // Teardown entry point for a per-trx timer callback and for the faulty-shm
+    // event. `expect_ubr_id' is the generation the caller saw; the close is
+    // claimed atomically for that generation, so a slot released and reused in
+    // between is left alone.
+    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx, uint64_t expect_ubr_id);
 
-    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE type);
+    static RETURN_CODE UbrAddAsynClearTimer(UbrTrx *trx, uint64_t expect_ubr_id);
 
-    static RETURN_CODE UbrAddAsynClearTimer(UbrTrx *trx);
+    static void *UbrAsynClearCallback(void *args, uint64_t gen);
 
-    static void *UbrAsynClearCallback(void *args);
+    static void *UbrPassiveClearCallback(void *args, uint64_t gen);
 
     int UbrTrxSend(const void *buf, uint32_t buf_len);
 
@@ -96,11 +101,11 @@ public:
 
     static inline RETURN_CODE CheckTrxConnectParam(const char *listener_name, const char *local_name)
     {
-        if (UNLIKELY(listener_name == nullptr)) {
+        if (BAIDU_UNLIKELY(listener_name == nullptr)) {
             LOG(ERROR) << "The request listener name is null.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(local_name == nullptr)) {
+        if (BAIDU_UNLIKELY(local_name == nullptr)) {
             LOG(ERROR) << "The request trx shared memory name is null.";
             return UBRING_ERR;
         }
@@ -117,7 +122,7 @@ public:
 
     static inline RETURN_CODE CheckTrxSendPreCheck(UbrTrx *trx)
     {
-        if (UNLIKELY(trx->ubr_tx.trx_state != UBR_STATE_CONNECTED)) {
+        if (BAIDU_UNLIKELY(trx->ubr_tx.trx_state != UBR_STATE_CONNECTED)) {
             LOG(ERROR) << "Trx send failed, trx is not connected state.";
             return UBRING_ERR;
         }
@@ -126,25 +131,25 @@ public:
     }
     static RETURN_CODE CheckTrxRecvParam(UbrTrx *trx, const void *buf, uint32_t buf_len)
     {
-        if (UNLIKELY(trx == nullptr)) {
+        if (BAIDU_UNLIKELY(trx == nullptr)) {
             LOG(ERROR) << "Trx recv failed, trx is null.";
             return UBRING_ERR;
         }
 
-        if (UNLIKELY((UbrEventQMsg *)trx->ubr_rx.local_rx_event_q.addr == nullptr)) {
+        if (BAIDU_UNLIKELY((UbrEventQMsg *)trx->ubr_rx.local_rx_event_q.addr == nullptr)) {
             LOG(ERROR) << "Trx send failed, local_tx_event_q addr is NULL.";
             return UBRING_ERR;
         }
 
-        if (UNLIKELY(trx->ubr_rx.trx_state != UBR_STATE_CONNECTED)) {
+        if (BAIDU_UNLIKELY(trx->ubr_rx.trx_state != UBR_STATE_CONNECTED)) {
             LOG(ERROR) << "Trx recv failed, trx is not connected statep=" << trx->ubr_rx.trx_state;
             return UBR_NOT_CONNECTED;
         }
-        if (UNLIKELY(buf == nullptr)) {
+        if (BAIDU_UNLIKELY(buf == nullptr)) {
             LOG(ERROR) << "Trx recv failed, buf is null.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(buf_len == 0)) {
+        if (BAIDU_UNLIKELY(buf_len == 0)) {
             LOG(ERROR) << "Trx recv failed, buf_len is 0.";
             return UBRING_ERR;
         }
@@ -153,7 +158,7 @@ public:
 
     static inline RETURN_CODE CheckTrxRecvPreCheck(UbrTrx *trx)
     {
-        if (UNLIKELY(trx->ubr_rx.trx_state != UBR_STATE_CONNECTED)) {
+        if (BAIDU_UNLIKELY(trx->ubr_rx.trx_state != UBR_STATE_CONNECTED)) {
             LOG(ERROR) << "Trx recv failed, trx is not connected state.";
             return UBRING_ERR;
         }
@@ -186,15 +191,15 @@ public:
             LOG(ERROR) << "Trx close callback failed, trx is null.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->local_shm.addr == nullptr)) {
+        if (BAIDU_UNLIKELY(trx->local_shm.addr == nullptr)) {
             LOG(ERROR) << "Trx close failed, local_shm addr is NULL.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->ubr_rx.local_rx_event_q.addr == nullptr)) {
+        if (BAIDU_UNLIKELY(trx->ubr_rx.local_rx_event_q.addr == nullptr)) {
             LOG(ERROR) << "Trx close failed, local_rx_event_q addr is NULL.";
             return UBRING_ERR;
         }
-        if (UNLIKELY(trx->ubr_tx.local_tx_event_q.addr == nullptr)) {
+        if (BAIDU_UNLIKELY(trx->ubr_tx.local_tx_event_q.addr == nullptr)) {
             LOG(ERROR) << "Trx close failed, local_tx_event_q addr is NULL.";
             return UBRING_ERR;
         }
@@ -202,18 +207,23 @@ public:
     }
 
 private:
+    // Only UbrAddTimer may call these: arming outside its manager-held
+    // exclusion would break the UbrMgrFini invariant described above.
+    RETURN_CODE UbrAddCloseTimer();
+    RETURN_CODE UbrAddHBTimer();
+
     RETURN_CODE UbrTrxMapLocalShm(SHM *local_shm);
     RETURN_CODE UbrTrxMapRemoteShm(SHM *remote_shm);
     RETURN_CODE ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_name);
     RETURN_CODE ApplyAndMapRemoteShm(SHM *remote_trx_shm);
-    static RETURN_CODE UbrTrxCloseCheck(UbrTrx *trx);
+    static RETURN_CODE UbrTrxCloseCheck(UbrTrx *trx, uint64_t expect_ubr_id);
     void ReleaseFileLock(int lock_fd);
     ssize_t StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, size_t remain_buf_len);
     void PreWriteAddr(uint8_t *addr, size_t len);
     RETURN_CODE WritevHasEnoughSpace(size_t buf_len);
     RETURN_CODE UbrServerTrxInit(SHM *local_shm, SHM *remote_shm);
-    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type);
-    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type, int op=0);
+    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx);
+    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t expect_ubr_id);
 
     UbrTrx* _trx{nullptr};
 };

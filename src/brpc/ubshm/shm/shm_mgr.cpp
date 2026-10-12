@@ -57,7 +57,7 @@ static bool CheckInputShmParam(SHM *shm) {
 }
 
 RETURN_CODE ShmMgrInit(void) {
-    if (UNLIKELY(FLAGS_ub_shm_type >= (int32_t)SHM_TYPE_UNSUPPORT || FLAGS_ub_shm_type <= (int32_t)SHM_TYPE_UB)) {
+    if (BAIDU_UNLIKELY(FLAGS_ub_shm_type >= (int32_t)SHM_TYPE_UNSUPPORT || FLAGS_ub_shm_type <= (int32_t)SHM_TYPE_UB)) {
         LOG(ERROR) << "Shm type config=" << FLAGS_ub_shm_type << " is not supported.";
         return UBRING_ERR;
     }
@@ -88,7 +88,7 @@ void SetShmType(SHM_TYPE type) {
 }
 
 RETURN_CODE ShmLocalMalloc(SHM *shm) {
-    if (UNLIKELY(!CheckInputShmParam(shm))) {
+    if (BAIDU_UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }
@@ -110,11 +110,11 @@ RETURN_CODE ShmLocalMalloc(SHM *shm) {
 
 RETURN_CODE ShmLocalCalloc(SHM *shm) {
     RETURN_CODE rc = ShmLocalMalloc(shm);
-    if (UNLIKELY(rc != UBRING_OK)) {
+    if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Failed to alloc local shm.";
         return rc;
     }
-    if (UNLIKELY(shm->addr == nullptr)) {
+    if (BAIDU_UNLIKELY(shm->addr == nullptr)) {
         LOG(ERROR) << "Local shm=" << shm->name << " allocated with NULL address.";
         ShmFree(shm);
         return SHM_ERR;
@@ -124,7 +124,7 @@ RETURN_CODE ShmLocalCalloc(SHM *shm) {
 }
 
 RETURN_CODE ShmLocalFree(SHM *shm) {
-    if (UNLIKELY(!CheckInputShmParam(shm))) {
+    if (BAIDU_UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }
@@ -145,7 +145,7 @@ RETURN_CODE ShmLocalFree(SHM *shm) {
 }
 
 RETURN_CODE ShmRemoteMalloc(SHM *shm) {
-    if (UNLIKELY(!CheckInputShmParam(shm))) {
+    if (BAIDU_UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }
@@ -166,7 +166,7 @@ RETURN_CODE ShmRemoteMalloc(SHM *shm) {
 }
 
 RETURN_CODE ShmRemoteFree(SHM *shm) {
-    if (UNLIKELY(!CheckInputShmParam(shm))) {
+    if (BAIDU_UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }
@@ -187,7 +187,7 @@ RETURN_CODE ShmRemoteFree(SHM *shm) {
 }
 
 RETURN_CODE ShmLocalMmap(SHM *shm, int prot) {
-    if (UNLIKELY(!CheckInputShmParam(shm))) {
+    if (BAIDU_UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }
@@ -208,7 +208,7 @@ RETURN_CODE ShmLocalMmap(SHM *shm, int prot) {
 }
 
 RETURN_CODE ShmMunmap(SHM *shm) {
-    if (UNLIKELY(!CheckInputShmParam(shm))) {
+    if (BAIDU_UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }
@@ -229,7 +229,7 @@ RETURN_CODE ShmMunmap(SHM *shm) {
 }
 
 RETURN_CODE ShmFree(SHM *shm) {
-    if (UNLIKELY(!CheckInputShmParam(shm))) {
+    if (BAIDU_UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";
         return SHM_ERR_INPUT_INVALID;
     }

@@ -187,7 +187,7 @@ UBRing 架构包含以下组件：
 
 ### 定时器管理
 
-UBRing 使用高精度定时器系统 (`timer_mgr.cpp`) 进行连接管理和超时处理，支持 epoll（Linux）和 kqueue（macOS）。
+UBRing 的连接管理和超时处理基于 bthread 定时器（`bthread_timer_add`/`bthread_timer_del`，由 `timer_mgr.cpp` 封装）。非阻塞的 `UbrTimerDel` 可在回调内自删，此时句柄会保留到该回调返回，因此并发的外部 `UbrTimerDelAndWait` 一定能等到它；销毁回调参数所属资源的外部路径用 `UbrTimerDelAndWait` 等待运行中回调退出；一次性定时器触发后自动清理句柄。进入关闭处理时会带上调用方看到的代际，并在 manager 锁内原子认领槽位，因此按旧快照发起的关闭（例如共享内存故障事件回调）不会误伤释放后被复用的新连接。定时器回调运行在进程全局的 bthread 定时线程上，必须快速返回。阻塞的共享内存清理不在这里进行：延迟清理与待回收映射的回调只仲裁清理所有权，并把任务投递给专用的清理 worker bthread（`ub_cleanup_worker.cpp`），由它把 UBS SDK 的 `unmap`/`deallocate` 调用移出定时线程。对一次性定时器，`UbrTimerDel` 返回 0 还额外保证 facade 已不再访问句柄槽位所在的存储（它会等待被定时线程派发但尚未竞争槽位的 wrapper 退出竞争），因此调用方可以释放承载该槽位的对象；延迟清理路径正是据此释放 `UbrCleanupCtl`。关闭检查定时器在链路空闲时按指数退避轮询（上限 `ub_event_queue_timer_interval_max_us`，默认 10ms），有流量或正在关闭时恢复快速轮询。
 
 ## 参考资料
 
