@@ -707,9 +707,10 @@ TEST_F(HistogramTest, window) {
 
     // Window values are produced by the global sampler thread. Wait until it
     // observes all writes instead of assuming a fixed sleep covers a sampling
-    // round, which is not guaranteed when the test host is busy.
+    // round, which is not guaranteed when the test host is busy. Allow up to
+    // 30 seconds at 100 ms per retry.
     bvar::Histogram::Value wv;
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < 300; ++i) {
         wv = w.get_value();
         if (wv.num == 3) {
             break;
@@ -734,11 +735,38 @@ TEST_F(HistogramTest, window_forgets_old_samples) {
     bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20, 30}));
     bvar::Window<bvar::Histogram> w(&h, 1);
     h << 5;
-    sleep(2);
-    // The value recorded 2 seconds ago has left the 1-second window.
-    ASSERT_EQ(0, w.get_value().num);
+
+    // First wait for the sampler to observe the write. An empty window before
+    // the first sampling round must not count as forgetting the sample. Allow
+    // up to 30 seconds at 100 ms per retry on busy test hosts.
+    bvar::Histogram::Value wv;
+    for (int i = 0; i < 300; ++i) {
+        wv = w.get_value();
+        if (wv.num == 1) {
+            break;
+        }
+        usleep(100 * 1000);
+    }
+    ASSERT_EQ(1, wv.num);
+
+    // Expiration needs another sampling round. A fixed sleep does not guarantee
+    // that the sampler has run, especially when the test host is busy. Allow
+    // another 30 seconds for this phase.
+    for (int i = 0; i < 300; ++i) {
+        wv = w.get_value();
+        if (wv.num == 0) {
+            break;
+        }
+        usleep(100 * 1000);
+    }
+    ASSERT_EQ(0, wv.num);
+    ASSERT_DOUBLE_EQ(0.0, wv.sum);
+    for (size_t i = 0; i < h.schema().num_buckets(); ++i) {
+        ASSERT_EQ(0u, wv.counts[i]) << "bucket=" << i;
+    }
     // But the histogram itself still remembers it.
     ASSERT_EQ(1, h.count());
+    ASSERT_DOUBLE_EQ(5.0, h.sum());
 }
 
 struct AddArgs {
