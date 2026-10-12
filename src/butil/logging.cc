@@ -473,13 +473,20 @@ void CloseLogFileUnlocked() {
 //
 // A log file that disappeared from under the process is not a rotation
 // failure: the handle is closed so that the next write starts a fresh file,
-// and the backups are left untouched.
+// and the backups are left untouched. The size at which it happened is
+// remembered all the same, so that a file which is still over the limit
+// once reopened (the ".\\debug.log" that Windows falls back to when the
+// requested name could not be opened at all) is not closed and reopened on
+// every single log.
 //
-// A rename that fails does not disable rotation for good. The size at which
-// it failed is remembered and rotation is retried once the file has grown by
-// another --log_rotate_size_mb, which keeps a directory that cannot be
-// written to from closing, reopening and renaming the file for every single
-// log. A file that turns out to be smaller than it was at that point has been
+// A rename that fails does not disable rotation for good, and a backup is
+// only ever replaced by a shift that succeeded: a backup that cannot be
+// moved out of the way aborts the rotation instead of being silently
+// overwritten with the current file. The size at which the rotation failed
+// is remembered and rotation is retried once the file has grown by another
+// --log_rotate_size_mb, which keeps a directory that cannot be written to
+// from closing, reopening and renaming the file for every single log. A
+// file that turns out to be smaller than it was at that point has been
 // replaced or truncated from the outside, and rotation resumes immediately.
 //
 // Sharing one log file between multiple processes is NOT supported together
@@ -519,25 +526,60 @@ bool RenameFilePath(const PathString& from, const PathString& to) {
 #endif
 }
 
+// Narrow representation of a path, for printing. Paths are wide on Windows.
+std::string PathAsString(const PathString& path) {
+#if defined(OS_WIN)
+    return butil::WideToUTF8(path);
+#else
+    return path;
+#endif
+}
+
+// Back off after a rotation that could not rename `from' to `to': the size
+// that triggered it does not change by itself, so retrying on the next log
+// would close, reopen and rename the file for every single log. The failure
+// is printed once rather than per log. The caller must hold the logging
+// lock and `err' must have been captured before anything else could
+// overwrite it.
+void BackOffAfterFailedRotation(int64_t size_before_rotation,
+                                const PathString& from,
+                                const PathString& to,
+                                SystemErrorCode err) {
+    failed_rotation_size = size_before_rotation;
+    if (rotation_failure_reported) {
+        return;
+    }
+    rotation_failure_reported = true;
+    fprintf(stderr, "Fail to rotate %s: renaming %s to %s failed: %s, "
+            "retrying after another --log_rotate_size_mb of logs\n",
+            PathAsString(*log_file_name).c_str(), PathAsString(from).c_str(),
+            PathAsString(to).c_str(),
+            SystemErrorCodeToString(err).c_str());
+}
+
 // Rename the current log file to "<log_file_name>.1" and shift the older
 // backups down by one. The caller must hold the logging lock.
 void RotateLogFileUnlocked() {
     if (!log_file_name) {
         return;
     }
+    // Remember it before closing, CloseLogFileUnlocked() resets the size.
+    const int64_t size_before_rotation = log_file_size;
     if (!PathExists(*log_file_name)) {
         // The file was renamed or removed from the outside. There is nothing
         // to rotate: closing the handle makes the next write start a fresh
         // file under the original name, which is what a rotation would have
         // done anyway. The backups are left alone, shifting them down would
-        // consume one generation for nothing.
+        // consume one generation for nothing. This is not an error, but the
+        // back off still applies: the file that the next write reopens may
+        // still be over the limit, which is the case of the Windows
+        // fallback to ".\\debug.log" when the requested name could not be
+        // opened at all. A fresh file is smaller than
+        // `size_before_rotation', which lets the next write retry at once.
         CloseLogFileUnlocked();
-        failed_rotation_size = -1;
-        rotation_failure_reported = false;
+        failed_rotation_size = size_before_rotation;
         return;
     }
-    // Remember it before closing, CloseLogFileUnlocked() resets the size.
-    const int64_t size_before_rotation = log_file_size;
     // Close before renaming: on Windows an opened file cannot be renamed, and
     // on POSIX the handle would keep pointing at the renamed inode.
     CloseLogFileUnlocked();
@@ -556,28 +598,39 @@ void RotateLogFileUnlocked() {
             break;  // could not remove it, do not spin
         }
     }
-    for (int i = max_backups - 1; i >= 1; --i) {
-        RenameFilePath(MakeBackupLogPath(*log_file_name, i),
-                       MakeBackupLogPath(*log_file_name, i + 1));
+    // Rotation numbers the backups contiguously, so the first missing index
+    // bounds the existing ones from above. Shifting from the highest
+    // existing index rather than from --log_rotate_max_backups keeps a huge
+    // value (only validated to be a positive int) from turning into as many
+    // rename() calls on every rotation, all under the logging lock.
+    int highest_backup = 0;
+    for (int i = 1; i < max_backups; ++i) {
+        if (!PathExists(MakeBackupLogPath(*log_file_name, i))) {
+            break;
+        }
+        highest_backup = i;
     }
-    if (RenameFilePath(*log_file_name,
-                       MakeBackupLogPath(*log_file_name, 1))) {
+    // Shift the backups down by one. A rename that fails aborts the
+    // rotation: renaming the current file over "<log_file_name>.1" anyway
+    // would destroy the newest backup, the very one that the failed shift
+    // could not move out of the way.
+    for (int i = highest_backup; i >= 1; --i) {
+        const PathString from = MakeBackupLogPath(*log_file_name, i);
+        const PathString to = MakeBackupLogPath(*log_file_name, i + 1);
+        if (!RenameFilePath(from, to)) {
+            BackOffAfterFailedRotation(size_before_rotation, from, to,
+                                       GetLastSystemErrorCode());
+            return;
+        }
+    }
+    const PathString first_backup = MakeBackupLogPath(*log_file_name, 1);
+    if (RenameFilePath(*log_file_name, first_backup)) {
         failed_rotation_size = -1;
         rotation_failure_reported = false;
         return;
     }
-    // Back off rather than retrying on every log. The next write reopens the
-    // file under its original name and keeps appending, which is better than
-    // dropping logs.
-    failed_rotation_size = size_before_rotation;
-    if (!rotation_failure_reported) {
-        rotation_failure_reported = true;
-#if defined(OS_POSIX)
-        fprintf(stderr, "Fail to rotate %s: %s, retrying after another "
-                "--log_rotate_size_mb of logs\n",
-                log_file_name->c_str(), berror());
-#endif
-    }
+    BackOffAfterFailedRotation(size_before_rotation, *log_file_name,
+                               first_backup, GetLastSystemErrorCode());
 }
 
 // Rotate the log file if appending `incoming_size' bytes would grow it beyond
