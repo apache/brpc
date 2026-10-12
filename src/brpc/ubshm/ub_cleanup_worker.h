@@ -67,15 +67,20 @@ struct UbrCleanupJob {
 // needs to be quiescent (DrainAndWait) before the shared memory it may touch
 // is finalized, and an idle worker performs no SDK call at all. Posting is
 // serialized, so a job can never be queued behind a worker start that failed.
+// A failed start (bthread creation may fail transiently, e.g. ENOMEM) is
+// retried on the next post; only the posts made while the start keeps failing
+// run inline on the caller.
 class UbrCleanupWorker {
 public:
-    // Post a shared-memory drain step. Returns false when the worker cannot be
-    // started, in which case the caller must run `shm_step' inline.
+    // Post a shared-memory drain step. Returns false when the worker could not
+    // be started for this post (the start is retried on the next post), in
+    // which case the caller must run `shm_step' inline.
     static bool PostShmDrain(ShmList* shm_list, void (*shm_step)(ShmList* shm_list));
 
     // Post a delayed trx cleanup, transferring the timer/callback reference of
-    // `ctl'. Returns false when the worker cannot be started, in which case
-    // the caller keeps the reference and must run the cleanup inline.
+    // `ctl'. Returns false when the worker could not be started for this post
+    // (the start is retried on the next post), in which case the caller keeps
+    // the reference and must run the cleanup inline.
     static bool PostTrxCleanup(UbrTrx* trx, uint64_t ubr_id,
                                void (*work)(UbrTrx* trx, uint64_t ubr_id),
                                UbrCleanupCtl* ctl);
