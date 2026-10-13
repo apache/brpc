@@ -33,6 +33,7 @@
 #include "brpc/ubshm/ub_helper.h"
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/shm/shm_mgr.h"
 #include "brpc/ubshm/common/common.h"
 #include "brpc/ubshm_transport.h"
 #include "brpc/ubshm/ubr_trx.h"
@@ -84,6 +85,27 @@ void HelloFormatExtension::Deserialize(const void* data) {
     uint16_t net_format_id;
     memcpy(&net_format_id, current_pos, sizeof(net_format_id));
     format_id = butil::NetToHost16(net_format_id);
+}
+
+UbrDataFormat PreferredDataFormatForShmType(SHM_TYPE shm_type) {
+    switch (shm_type) {
+    case SHM_TYPE_IPC:
+        return UBR_DATA_FORMAT_IPC_V2;
+    case SHM_TYPE_UBS:
+        return UBR_DATA_FORMAT_LEGACY_64;
+    default:
+        return UBR_DATA_FORMAT_NONE;
+    }
+}
+
+UbrDataFormat SelectDataFormat(UbrDataFormat local_format,
+                               uint16_t remote_format_id) {
+    if ((local_format != UBR_DATA_FORMAT_LEGACY_64 &&
+         local_format != UBR_DATA_FORMAT_IPC_V2) ||
+        remote_format_id != static_cast<uint16_t>(local_format)) {
+        return UBR_DATA_FORMAT_NONE;
+    }
+    return local_format;
 }
 
 void HelloMessage::Serialize(void* data) const {
@@ -426,6 +448,8 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         return nullptr;
     }
 
+    const UbrDataFormat local_format =
+        PreferredDataFormatForShmType(GetShmType());
     UbrDataFormat selected_format = UBR_DATA_FORMAT_NONE;
     if (!HelloNegotiationValid(remote_msg)) {
         LOG(WARNING) << "Fail to negotiate with server, fallback to tcp:"
@@ -433,7 +457,8 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         ub_transport->_ub_state = UBShmTransport::UB_OFF;
     } else {
         HelloFormatExtension local_extension = {
-            HelloFormatExtension::WIRE_SIZE, UBR_DATA_FORMAT_LEGACY_64};
+            HelloFormatExtension::WIRE_SIZE,
+            static_cast<uint16_t>(local_format)};
         local_extension.Serialize(data);
         ep->_state = C_FORMAT_SEND;
         if (ep->WriteToFd(data, HelloFormatExtension::WIRE_SIZE) < 0) {
@@ -460,16 +485,19 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
         }
         HelloFormatExtension remote_extension;
         remote_extension.Deserialize(data);
-        if (remote_extension.extension_len != HelloFormatExtension::WIRE_SIZE ||
-            remote_extension.format_id == UBR_DATA_FORMAT_NONE ||
-            remote_extension.format_id != local_extension.format_id) {
+        if (remote_extension.extension_len == HelloFormatExtension::WIRE_SIZE) {
+            selected_format =
+                SelectDataFormat(local_format, remote_extension.format_id);
+        }
+        if (selected_format == UBR_DATA_FORMAT_NONE) {
             LOG(WARNING) << "Fail to negotiate data format with server, "
                          << "fallback to tcp:" << s->description();
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
         } else {
-            selected_format = UBR_DATA_FORMAT_LEGACY_64;
             ep->_state = C_MAP_REMOTE_SHM;
-            if (ep->_ub_ring->UbrMapRemoteShm(&local_trx_shm, shm_name) < 0) {
+            if (ep->_ub_ring->UbrMapRemoteShm(
+                    &local_trx_shm, shm_name, remote_msg.len,
+                    selected_format) < 0) {
                 LOG(WARNING) << "Fail to map the remote shm, fallback to tcp:"
                              << s->description();
                 ub_transport->_ub_state = UBShmTransport::UB_OFF;
@@ -563,6 +591,8 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->_state = FAILED;
         return nullptr;
     }
+    const UbrDataFormat local_format =
+        PreferredDataFormatForShmType(GetShmType());
     if (!HelloNegotiationValid(remote_msg)) {
         LOG(WARNING) << "Fail to negotiate with client, fallback to tcp:"
                      << s->description();
@@ -588,7 +618,8 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
             LOG(WARNING) << "Copy client shared memory name failed, ret=" << result;
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
         }
-        if (result >= 0 && ep->AllocateServerResources(&remote_trx_shm, &local_trx_shm) < 0) {
+        if (result >= 0 && ep->AllocateServerResources(
+                &remote_trx_shm, &local_trx_shm, local_format) < 0) {
             LOG(WARNING) << "Fail to allocate ub resources, fallback to tcp:"
                          << s->description();
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
@@ -636,10 +667,13 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         remote_extension.Deserialize(data);
         HelloFormatExtension local_extension = {
             HelloFormatExtension::WIRE_SIZE, UBR_DATA_FORMAT_NONE};
-        if (remote_extension.extension_len == HelloFormatExtension::WIRE_SIZE &&
-            remote_extension.format_id == UBR_DATA_FORMAT_LEGACY_64) {
-            local_extension.format_id = UBR_DATA_FORMAT_LEGACY_64;
-            selected_format = UBR_DATA_FORMAT_LEGACY_64;
+        if (remote_extension.extension_len == HelloFormatExtension::WIRE_SIZE) {
+            selected_format =
+                SelectDataFormat(local_format, remote_extension.format_id);
+        }
+        if (selected_format != UBR_DATA_FORMAT_NONE) {
+            local_extension.format_id =
+                static_cast<uint16_t>(selected_format);
         } else {
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
         }
@@ -783,7 +817,9 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM* local_trx_shm, const cha
     return 0;
 }
 
-int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm, ubring::SHM* local_trx_shm) {
+int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm,
+                                           ubring::SHM* local_trx_shm,
+                                           UbrDataFormat format) {
     if (BAIDU_UNLIKELY(g_skip_ub_init)) {
         // For UT
         return 0;
@@ -800,7 +836,8 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm, ubring::
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
-    int ret = _ub_ring->UbrAllocateServerShm(remote_trx_shm, local_trx_shm);
+    int ret = _ub_ring->UbrAllocateServerShm(
+        remote_trx_shm, local_trx_shm, format);
     if (ret != 0) {
         return ret;
     }

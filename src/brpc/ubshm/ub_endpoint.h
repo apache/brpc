@@ -30,6 +30,7 @@
 #include "butil/macros.h"
 #include "butil/containers/mpsc_queue.h"
 #include "brpc/socket.h"
+#include "brpc/ubshm/ubr_data_format.h"
 #include "brpc/ubshm/ub_helper.h"
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/shm/shm_def.h"
@@ -43,11 +44,6 @@ DECLARE_int32(ub_poller_num);
 DECLARE_bool(ub_edisp_unsched);
 DECLARE_bool(ub_disable_bthread);
 
-enum UbrDataFormat {
-    UBR_DATA_FORMAT_NONE = 0,
-    UBR_DATA_FORMAT_LEGACY_64 = 1,
-};
-
 struct HelloFormatExtension {
     // The V3 format extension is a fixed-size frame. A different wire size
     // requires negotiation through a new hello version.
@@ -59,6 +55,10 @@ struct HelloFormatExtension {
     void Serialize(void* data) const;
     void Deserialize(const void* data);
 };
+
+UbrDataFormat PreferredDataFormatForShmType(SHM_TYPE shm_type);
+UbrDataFormat SelectDataFormat(UbrDataFormat local_format,
+                               uint16_t remote_format_id);
 
 struct HelloMessage {
     void Serialize(void* data) const;
@@ -176,7 +176,8 @@ private:
     // Return 0 if success, -1 if failed and errno set
     int AllocateClientResources(SHM* local_trx_shm, const char* shm_name);
 
-    int AllocateServerResources(SHM* remote_trx_shm, SHM* local_trx_shm);
+    int AllocateServerResources(SHM* remote_trx_shm, SHM* local_trx_shm,
+                                UbrDataFormat format);
 
     // Release resources
     void DeallocateResources();
