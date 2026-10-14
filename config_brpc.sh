@@ -54,9 +54,10 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-rdma,with-urma,with-urma-mock,without-urma-mock,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,with-cpu-frequency,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-flatbuffers,with-rdma,with-urma,with-urma-mock,without-urma-mock,with-mesalink,with-bthread-tracer,with-debug-bthread-sche-safety,with-debug-lock,with-asan,with-riscv-zvbc,with-riscv-zbc,with-cpu-frequency,nodebugsymbols,werror -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
+WITH_FLATBUFFERS=0
 WITH_RDMA=0
 WITH_URMA=0
 URMA_MOCK_MODE=auto
@@ -91,6 +92,7 @@ while true; do
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;
         --with-thrift) WITH_THRIFT=1; shift 1 ;;
+        --with-flatbuffers) WITH_FLATBUFFERS=1; shift 1 ;;
         --with-rdma) WITH_RDMA=1; shift 1 ;;
         --with-urma) WITH_URMA=1; shift 1 ;;
         --with-urma-mock) URMA_MOCK_MODE=on; shift 1 ;;
@@ -479,6 +481,7 @@ append_to_output "HDRS=$($ECHO $HDRS)"
 append_to_output "LIBS=$($ECHO $LIBS)"
 append_to_output "PROTOC=$PROTOC"
 append_to_output "PROTOBUF_HDR=$PROTOBUF_HDR"
+append_to_output "WITH_FLATBUFFERS=$WITH_FLATBUFFERS"
 append_to_output "CC=$CC"
 append_to_output "CXX=$CXX"
 append_to_output "GCC_VERSION=$GCC_VERSION"
@@ -486,7 +489,7 @@ append_to_output "STATIC_LINKINGS=$STATIC_LINKINGS"
 append_to_output "DYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
 
 # CPP means C PreProcessing, not C PlusPlus
-CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_GLOG=$WITH_GLOG -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=$BRPC_DEBUG_BTHREAD_SCHE_SAFETY -DBRPC_DEBUG_LOCK=$BRPC_DEBUG_LOCK -DBUTIL_USE_CPU_FREQUENCY=$WITH_CPU_FREQUENCY"
+CPPFLAGS="${CPPFLAGS} -DBRPC_WITH_GLOG=$WITH_GLOG -DBRPC_WITH_FLATBUFFERS=$WITH_FLATBUFFERS -DBRPC_DEBUG_BTHREAD_SCHE_SAFETY=$BRPC_DEBUG_BTHREAD_SCHE_SAFETY -DBRPC_DEBUG_LOCK=$BRPC_DEBUG_LOCK -DBUTIL_USE_CPU_FREQUENCY=$WITH_CPU_FREQUENCY"
 
 # Avoid over-optimizations of TLS variables by GCC>=4.8
 # See: https://github.com/apache/brpc/issues/1693
@@ -504,6 +507,12 @@ if [ "$SYSTEM" = "Darwin" ]; then
     if [[ `echo "$version<10.12" | bc -l` == 1 ]]; then
         CPPFLAGS="${CPPFLAGS} -DNO_CLOCK_GETTIME_IN_MAC"
     fi
+fi
+
+if [ $WITH_FLATBUFFERS != 0 ]; then
+    FLATBUFFERS_HDR=$(find_dir_of_header_or_die flatbuffers/flatbuffers.h) || exit 1
+    append_to_output_headers "$FLATBUFFERS_HDR"
+    print_success "Found FlatBuffers headers: $FLATBUFFERS_HDR"
 fi
 
 if [ $WITH_THRIFT != 0 ]; then
@@ -692,6 +701,11 @@ cat << EOF > src/butil/config.h
 #endif
 #define BRPC_WITH_GLOG $WITH_GLOG
 
+#ifdef BRPC_WITH_FLATBUFFERS
+#undef BRPC_WITH_FLATBUFFERS
+#endif
+#define BRPC_WITH_FLATBUFFERS $WITH_FLATBUFFERS
+
 #ifdef BUTIL_USE_CPU_FREQUENCY
 #undef BUTIL_USE_CPU_FREQUENCY
 #endif
@@ -714,6 +728,7 @@ print_info "C++ std:   $CXXFLAGS"
 print_info "System:    $SYSTEM"
 if [ $WITH_GLOG -ne 0 ]; then print_info "With glog: yes"; fi
 if [ $WITH_THRIFT -ne 0 ]; then print_info "With thrift: yes"; fi
+if [ $WITH_FLATBUFFERS -ne 0 ]; then print_info "With FlatBuffers: yes (headers only)"; fi
 if [ $WITH_RDMA -ne 0 ]; then print_info "With RDMA: yes"; fi
 if [ $WITH_URMA -ne 0 ]; then print_info "With URMA: yes"; fi
 if [ $WITH_MESALINK -ne 0 ]; then print_info "With MesaLink: yes"; fi

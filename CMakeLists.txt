@@ -23,6 +23,7 @@ option(WITH_MESALINK "With MesaLink" OFF)
 option(WITH_BORINGSSL "With BoringSSL" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
+option(WITH_FLATBUFFERS "With FlatBuffers message support (headers only)" OFF)
 option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
@@ -80,6 +81,17 @@ set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
     set(BRPC_WITH_GLOG 1)
+endif()
+
+set(WITH_FLATBUFFERS_VAL "0")
+if(WITH_FLATBUFFERS)
+    find_path(FLATBUFFERS_INCLUDE_DIR NAMES flatbuffers/flatbuffers.h)
+    if(NOT FLATBUFFERS_INCLUDE_DIR)
+        message(FATAL_ERROR
+            "WITH_FLATBUFFERS requires FlatBuffers headers; set FLATBUFFERS_INCLUDE_DIR.")
+    endif()
+    set(WITH_FLATBUFFERS_VAL "1")
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${FLATBUFFERS_INCLUDE_DIR})
 endif()
 
 set(WITH_CPU_FREQUENCY_VAL "0")
@@ -177,6 +189,7 @@ endif()
 
 list(APPEND BRPC_COMMON_DEFINITIONS
     BRPC_WITH_GLOG=${WITH_GLOG_VAL}
+    BRPC_WITH_FLATBUFFERS=${WITH_FLATBUFFERS_VAL}
     BRPC_WITH_RDMA=${WITH_RDMA_VAL}
     BRPC_WITH_URMA=${WITH_URMA_VAL}
     BRPC_WITH_UBRING=${WITH_UBRING_VAL}
@@ -670,6 +683,9 @@ file(GLOB_RECURSE BTHREAD_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/b
 file(GLOB_RECURSE JSON2PB_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/json2pb/*.cpp")
 file(GLOB_RECURSE BRPC_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc/*.cpp")
 file(GLOB_RECURSE THRIFT_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc/thrift*.cpp")
+if(NOT WITH_FLATBUFFERS)
+    list(FILTER BRPC_SOURCES EXCLUDE REGEX "/brpc/flatbuffers/.*\\.cpp$")
+endif()
 file(GLOB_RECURSE EXCLUDE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/brpc/event_dispatcher_*.cpp")
 
 # When building with the real liburma, exclude the link-time mock so its urma_*
