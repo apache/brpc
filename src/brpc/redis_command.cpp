@@ -85,9 +85,20 @@ inline void AppendHeader(butil::IOBuf& buf, char fc, unsigned long value) {
     buf.append(header, len + 3);
 }
 
-static void FlushComponent(std::string* out, std::string* compbuf, int* ncomp) {
+inline void AppendHeader(butil::IOBufAppender& buf, char fc,
+                         unsigned long value) {
+    char header[32];
+    header[0] = fc;
+    size_t len = AppendDecimal(header + 1, value);
+    header[len + 1] = '\r';
+    header[len + 2] = '\n';
+    buf.append(header, len + 3);
+}
+
+static void FlushComponent(butil::IOBufAppender* out, std::string* compbuf,
+                           int* ncomp) {
     AppendHeader(*out, '$', compbuf->size());
-    out->append(*compbuf);
+    out->append(compbuf->data(), compbuf->size());
     out->append("\r\n", 2);
     compbuf->clear();
     ++*ncomp;
@@ -105,8 +116,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
         return butil::Status(EINVAL, "Param[outbuf] or [fmt] is NULL");
     }
     const size_t fmt_len = strlen(fmt);
-    std::string nocount_buf;
-    nocount_buf.reserve(fmt_len * 3 / 2 + 16);
+    butil::IOBufAppender nocount_buf;
     std::string compbuf;  // A component
     compbuf.reserve(fmt_len + 16);
     const char* c = fmt;
@@ -332,7 +342,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
         "formatting of conversion specifiers)";
     
     AppendHeader(*outbuf, '*', ncomponent);
-    outbuf->append(nocount_buf);
+    outbuf->append(nocount_buf.buf().movable());
     return butil::Status::OK();
 }
 
@@ -350,8 +360,7 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
         return butil::Status(EINVAL, "Param[outbuf] or [cmd] is NULL");
     }
     const size_t cmd_len = cmd.size();
-    std::string nocount_buf;
-    nocount_buf.reserve(cmd_len * 3 / 2 + 16);
+    butil::IOBufAppender nocount_buf;
     std::string compbuf;  // A component
     compbuf.reserve(cmd_len + 16);
     int ncomponent = 0;
@@ -404,7 +413,7 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
     }
 
     AppendHeader(*outbuf, '*', ncomponent);
-    outbuf->append(nocount_buf);
+    outbuf->append(nocount_buf.buf().movable());
     return butil::Status::OK();
 }
 
