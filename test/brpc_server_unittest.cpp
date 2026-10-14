@@ -31,6 +31,7 @@
 #include "butil/macros.h"
 #include "butil/fd_guard.h"
 #include "butil/files/scoped_file.h"
+#include "bthread/countdown_event.h"
 #include "brpc/socket.h"
 #include "butil/object_pool.h"
 #include "brpc/builtin/version_service.h"
@@ -378,34 +379,39 @@ TEST_F(ServerTest, failed_start_destruction_cleans_thread_local_data) {
 static bthread_key_t g_init_child_key = INVALID_BTHREAD_KEY;
 static bthread_t g_init_child = INVALID_BTHREAD;
 
-static void* InitChildOutlivingFailedStart(void*) {
-    // Outlive the failed Start(), then borrow and return a KeyTable of the
-    // server's keytable pool.
-    bthread_usleep(100 * 1000);
+static void* InitChildOutlivingFailedStart(void* arg) {
+    // Wait until the failed Start() has returned and the Server is destroyed.
+    EXPECT_EQ(0, static_cast<bthread::CountdownEvent*>(arg)->wait());
+    // Create a KeyTable that will be returned to the pool on bthread exit.
     EXPECT_EQ(0, bthread_setspecific(g_init_child_key, (void*)1));
     return nullptr;
 }
 
-static bool InitFnSpawningChild(void*) {
+static bool InitFnSpawningChild(void* arg) {
     bthread_attr_t attr;
     // attr.keytable_pool is the server's _keytable_pool.
     EXPECT_EQ(0, bthread_getattr(bthread_self(), &attr));
     return bthread_start_background(&g_init_child, &attr,
                                     InitChildOutlivingFailedStart,
-                                    nullptr) == 0;
+                                    arg) == 0;
 }
 
 TEST_F(ServerTest, failed_start_keeps_keytable_pool_for_init_bthreads) {
     ASSERT_EQ(0, bthread_key_create(&g_init_child_key, nullptr));
     brpc::Server listener;
     ASSERT_EQ(0, listener.Start("127.0.0.1:0", nullptr));
+    bthread::CountdownEvent server_destroyed;
     brpc::ServerOptions options;
     options.bthread_init_fn = InitFnSpawningChild;
+    options.bthread_init_args = &server_destroyed;
     options.bthread_init_count = 1;
     {
         brpc::Server server;
-        ASSERT_EQ(-1, server.Start(listener.listen_address(), &options));
+        // Keep signaling and joining the child even if Start() unexpectedly
+        // succeeds, so it cannot remain blocked on a destroyed event.
+        EXPECT_EQ(-1, server.Start(listener.listen_address(), &options));
     }
+    server_destroyed.signal();
     // The child calls return_keytable() on the destroyed (but not deleted)
     // pool. Deleting the pool on the failure path is a use-after-free here
     // (reported by ASan).
