@@ -883,6 +883,23 @@ TEST(HttpMessageTest, http_header) {
     ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::SET_COOKIE));
     ASSERT_EQ(header._first_set_cookie, nullptr);
 
+    header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value1);
+    for (int i = 0; i < 128; ++i) {
+        header.SetHeader("header" + std::to_string(i), "value");
+    }
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value1);
+
+    brpc::HttpHeader other_header;
+    other_header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value2);
+    header.Swap(other_header);
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value2);
+    value = other_header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value1);
+    header.Clear();
+    ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::SET_COOKIE));
+
     ASSERT_EQ(brpc::HTTP_METHOD_GET, header.method());
     header.set_method(brpc::HTTP_METHOD_POST);
     ASSERT_EQ(brpc::HTTP_METHOD_POST, header.method());

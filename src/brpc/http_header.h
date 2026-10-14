@@ -171,6 +171,8 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
 
     std::string& AddHeader(const std::string& key);
 
+    void RefreshFirstSetCookie();
+
     bool IsSetCookie(const std::string& key) const {
         return _header_key_equal(key, SET_COOKIE);
     }
