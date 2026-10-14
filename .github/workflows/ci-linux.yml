@@ -19,6 +19,42 @@ concurrency:
 
 # https://github.com/actions/runner-images
 jobs:
+  flatbuffers-codegen:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++-11, clang++-14]
+    steps:
+    - uses: actions/checkout@v7.0.1
+    - name: Install codegen dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake g++-11 clang-14 \
+          libprotobuf-dev libprotoc-dev protobuf-compiler \
+          libgflags-dev libleveldb-dev libssl-dev zlib1g-dev
+    - name: Build isolated Gperftools
+      env:
+        CXX: ${{ matrix.cxx }}
+      run: |
+        archive="$RUNNER_TEMP/gperftools-2.16.tar.gz"
+        curl --fail --location --retry 3 \
+          https://github.com/gperftools/gperftools/releases/download/gperftools-2.16/gperftools-2.16.tar.gz \
+          --output "$archive"
+        printf '%s  %s\n' f12624af5c5987f2cc830ee534f754c3c5961eec08004c26a8b80de015cf056f "$archive" | sha256sum --check
+        tar -xzf "$archive" -C "$RUNNER_TEMP"
+        cd "$RUNNER_TEMP/gperftools-2.16"
+        ./configure --prefix="$RUNNER_TEMP/gperftools-install" \
+          --enable-frame-pointers --disable-libunwind
+        make -j2
+        make install
+        printf 'CMAKE_PREFIX_PATH=%s\n' "$RUNNER_TEMP/gperftools-install" >> "$GITHUB_ENV"
+    - name: Verify FlatBuffers generation and runtime
+      env:
+        CXX: ${{ matrix.cxx }}
+        JOBS: 2
+      run: bash tools/flatbuffers/verify.sh "$RUNNER_TEMP/flatbuffers-codegen"
+
   compile-with-make:
     name: compile-with-make (${{ matrix.name }})
     runs-on: ubuntu-22.04
