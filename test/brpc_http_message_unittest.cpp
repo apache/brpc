@@ -884,9 +884,12 @@ TEST(HttpMessageTest, http_header) {
     ASSERT_EQ(header._first_set_cookie, nullptr);
 
     header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value1);
-    for (int i = 0; i < 128; ++i) {
+    const size_t bucket_count = header._headers.bucket_count();
+    for (int i = 0; i < 4096 &&
+             header._headers.bucket_count() == bucket_count; ++i) {
         header.SetHeader("header" + std::to_string(i), "value");
     }
+    ASSERT_NE(bucket_count, header._headers.bucket_count());
     value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
     ASSERT_TRUE(value && *value == set_cookie_value1);
 
