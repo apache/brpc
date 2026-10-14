@@ -289,6 +289,18 @@ TEST(NamingServiceTest, remotefile) {
     }
 }
 
+TEST(NamingServiceTest, remotefile_invalid_url) {
+    const char* service_names[] = {
+        "http://", "bns://", "http:////"
+    };
+    for (size_t i = 0; i < ARRAY_SIZE(service_names); ++i) {
+        brpc::policy::RemoteFileNamingService rfns;
+        std::vector<brpc::ServerNode> servers;
+        EXPECT_EQ(-1, rfns.GetServers(service_names[i], &servers));
+        EXPECT_TRUE(servers.empty());
+    }
+}
+
 // Build a JSON array nested `depth' levels deep, e.g. depth=2 -> "[[]]".
 static std::string MakeDeeplyNestedJson(int depth) {
     return std::string(depth, '[') + std::string(depth, ']');
