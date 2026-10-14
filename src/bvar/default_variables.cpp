@@ -404,7 +404,9 @@ static int get_fd_count(int limit) {
     if (limit <= 0) {
         return 0;
     }
-    std::vector<proc_fdinfo> fds(limit);
+    // Reuse storage across samples without sharing it between reader threads.
+    thread_local std::vector<proc_fdinfo> fds;
+    fds.resize(limit);
     errno = 0;
     // This query opens no additional FD.
     const int bytes = proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0,
