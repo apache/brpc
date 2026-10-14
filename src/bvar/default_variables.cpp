@@ -29,6 +29,7 @@
 #if defined(__APPLE__)
 #include <libproc.h>
 #include <mach/mach.h>
+#include <mach/mach_error.h>                 // mach_error_string
 #include <sys/proc.h>                      // BSD process states
 #include <sys/resource.h>
 #else
@@ -292,7 +293,8 @@ static bool read_proc_memory(ProcMemory &m) {
         mach_task_self(), MACH_TASK_BASIC_INFO,
         reinterpret_cast<task_info_t>(&info), &count);
     if (result != KERN_SUCCESS) {
-        LOG_ONCE(WARNING) << "Cannot read own task memory, Mach error=" << result;
+        LOG_ONCE(WARNING) << "Cannot read own task memory, Mach error=" << result
+                          << " (" << mach_error_string(result) << ")";
         return false;
     }
     const long pagesize = getpagesize();
@@ -409,6 +411,11 @@ static int get_fd_count(int limit) {
                                   fds.data(), fds.size() * sizeof(proc_fdinfo));
     if (bytes < 0 || (bytes == 0 && errno != 0)) {
         PLOG(WARNING) << "Fail to list own file descriptors";
+        return -1;
+    }
+    if (static_cast<size_t>(bytes) > fds.size() * sizeof(proc_fdinfo) ||
+        bytes % sizeof(proc_fdinfo) != 0) {
+        LOG(WARNING) << "Invalid file descriptor list size: " << bytes;
         return -1;
     }
     return bytes / sizeof(proc_fdinfo);
