@@ -183,6 +183,12 @@ TEST(RedisCommandFormatTest, no_format_encodes_components) {
               buf.to_string());
 }
 
+TEST(RedisCommandFormatTest, empty_format_encodes_empty_array) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "").ok());
+    EXPECT_EQ("*0\r\n", buf.to_string());
+}
+
 TEST(RedisCommandFormatTest, authenticator_encodes_password_and_database) {
     brpc::policy::RedisAuthenticator authenticator("a b", 3);
     std::string credential;
