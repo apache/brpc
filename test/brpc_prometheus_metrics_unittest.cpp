@@ -26,6 +26,7 @@
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/string_printf.h"
+#include "butil/time.h"
 #include "echo.pb.h"
 #include "bvar/bvar.h"
 #include "bvar/histogram.h"
@@ -79,8 +80,9 @@ TEST(PrometheusMetrics, sanity) {
     std::string echo_count_name = butil::string_printf(
         "rpc_server_%d_test_echo_service_echo_count",
         server.listen_address().port);
-    for (int i = 0; i < 500 &&
-             bvar::Variable::describe_exposed(echo_count_name).empty(); ++i) {
+    const int64_t deadline_us = butil::cpuwide_time_us() + 5000000;
+    while (bvar::Variable::describe_exposed(echo_count_name).empty() &&
+           butil::cpuwide_time_us() < deadline_us) {
         bthread_usleep(10000);
     }
     ASSERT_FALSE(bvar::Variable::describe_exposed(echo_count_name).empty());
