@@ -536,11 +536,8 @@ private:
 
 private:
     bool pop_free_chunk(FreeChunk& c) {
-        // Critical for the case that most return_object are called in
-        // different threads of get_object.
-        if (_free_chunks.empty()) {
-            return false;
-        }
+        // LocalPool is thread-local, while _free_chunks is shared.
+        // Protect all accesses to _free_chunks with _free_chunks_mutex.
         pthread_mutex_lock(&_free_chunks_mutex);
         if (_free_chunks.empty()) {
             pthread_mutex_unlock(&_free_chunks_mutex);
