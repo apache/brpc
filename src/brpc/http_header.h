@@ -19,6 +19,8 @@
 #ifndef  BRPC_HTTP_HEADER_H
 #define  BRPC_HTTP_HEADER_H
 
+#include <deque>
+#include <memory>
 #include <vector>
 #include "butil/strings/string_piece.h"  // StringPiece
 #include "butil/containers/case_ignored_flat_map.h"
@@ -45,6 +47,8 @@ public:
     typedef HeaderMap::key_equal HeaderKeyEqual;
 
     HttpHeader();
+    HttpHeader(const HttpHeader& rhs);
+    HttpHeader& operator=(const HttpHeader& rhs);
 
     // Exchange internal fields with another HttpHeader.
     void Swap(HttpHeader &rhs);
@@ -165,16 +169,18 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     static const char* COOKIE;
     static const char* CONTENT_TYPE;
 
-    std::vector<const std::string*> GetMultiLineHeaders(const std::string& key) const;
-
     std::string& GetOrAddHeader(const std::string& key);
 
     std::string& AddHeader(const std::string& key);
 
-    void RefreshFirstSetCookie();
+    void SyncSetCookieHeaders();
 
     bool IsSetCookie(const std::string& key) const {
         return _header_key_equal(key, SET_COOKIE);
+    }
+
+    bool HasSetCookieHeaders() const {
+        return _set_cookie_headers && !_set_cookie_headers->empty();
     }
 
     bool IsCookie(const std::string& key) const {
@@ -204,7 +210,11 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     std::string _content_type;
     std::string _unresolved_path;
     std::pair<int, int> _version;
-    std::string* _first_set_cookie;
+    // HeaderMap rehashing invalidates value pointers and does not preserve
+    // duplicate-key order. deque keeps existing value pointers stable when
+    // another Set-Cookie header is appended.
+    typedef std::deque<std::pair<std::string, std::string> > SetCookieHeaders;
+    std::unique_ptr<SetCookieHeaders> _set_cookie_headers;
 };
 
 const HttpHeader& DefaultHttpHeader();
