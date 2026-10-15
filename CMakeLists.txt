@@ -418,7 +418,6 @@ endif()
 
 list(APPEND BRPC_COMMON_INCLUDE_DIRS
     ${GFLAGS_INCLUDE_PATH}
-    ${PROTOBUF_INCLUDE_DIRS}
     ${LEVELDB_INCLUDE_PATH}
 )
 if(WITH_URMA)
@@ -511,7 +510,13 @@ add_library(brpc_common_config INTERFACE)
 # Generated protobuf headers live in the build directory. Search it before src/
 # so leftover in-source *.pb.h (gitignored, produced by Make) cannot shadow
 # updated .proto files such as errno.proto.
-target_include_directories(brpc_common_config BEFORE INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+# Keep protobuf headers ahead of generic dependency include paths. On Homebrew,
+# a dependency may contribute the common prefix containing a different protobuf
+# installation.
+target_include_directories(brpc_common_config BEFORE INTERFACE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${PROTOBUF_INCLUDE_DIRS}
+)
 target_include_directories(brpc_common_config INTERFACE ${BRPC_COMMON_INCLUDE_DIRS})
 target_compile_definitions(brpc_common_config INTERFACE ${BRPC_COMMON_DEFINITIONS})
 target_compile_options(brpc_common_config INTERFACE ${BRPC_COMMON_COMPILE_OPTIONS})
