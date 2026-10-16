@@ -169,6 +169,9 @@ std::string& HttpHeader::GetOrAddHeader(const std::string& key) {
 }
 
 std::string& HttpHeader::AddHeader(const std::string& key) {
+    if (!IsSetCookie(key)) {
+        return *_headers.insert({ key, "" });
+    }
     if (!_set_cookie_headers) {
         _set_cookie_headers.reset(new SetCookieHeaders);
     }

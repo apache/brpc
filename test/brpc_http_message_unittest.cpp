@@ -923,10 +923,7 @@ TEST(HttpMessageTest, http_header) {
     ASSERT_NE(nullptr, first_set_cookie_after_reset);
     header.AppendHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value2);
     const size_t bucket_count = header._headers.bucket_count();
-    for (int i = 0; i < 4096 &&
-             header._headers.bucket_count() == bucket_count; ++i) {
-        header.SetHeader("header" + std::to_string(i), "value");
-    }
+    ASSERT_TRUE(header._headers.resize(bucket_count * 2));
     ASSERT_NE(bucket_count, header._headers.bucket_count());
     ASSERT_EQ(set_cookie_value1, *first_set_cookie_after_reset);
     value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
@@ -935,20 +932,20 @@ TEST(HttpMessageTest, http_header) {
     ASSERT_EQ(2u, all_set_cookie.size());
     ASSERT_EQ(set_cookie_value1, *all_set_cookie[0]);
     ASSERT_EQ(set_cookie_value2, *all_set_cookie[1]);
-    int set_cookie_value1_count = 0;
-    set_cookie_value2_count = 0;
+    int set_cookie_value1_after_rehash_count = 0;
+    int set_cookie_value2_after_rehash_count = 0;
     for (auto iter = header.HeaderBegin(); iter != header.HeaderEnd(); ++iter) {
         if (!header.IsSetCookie(iter->first)) {
             continue;
         }
         if (iter->second == set_cookie_value1) {
-            ++set_cookie_value1_count;
+            ++set_cookie_value1_after_rehash_count;
         } else if (iter->second == set_cookie_value2) {
-            ++set_cookie_value2_count;
+            ++set_cookie_value2_after_rehash_count;
         }
     }
-    ASSERT_EQ(1, set_cookie_value1_count);
-    ASSERT_EQ(1, set_cookie_value2_count);
+    ASSERT_EQ(1, set_cookie_value1_after_rehash_count);
+    ASSERT_EQ(1, set_cookie_value2_after_rehash_count);
 
     brpc::HttpHeader other_header;
     other_header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value2);
