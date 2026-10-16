@@ -22,6 +22,7 @@
 
 #include "brpc/handshake/ubshm_handshake.h"
 #include "brpc/socket.h"
+#include "brpc/ubshm/ubr_data_format.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/ub_helper.h"
 #include "brpc/ubshm/ub_ring.h"
@@ -109,7 +110,8 @@ private:
     // Return 0 if success, -1 if failed and errno set
     int AllocateClientResources(SHM* local_trx_shm, const char* shm_name);
 
-    int AllocateServerResources(SHM* remote_trx_shm, SHM* local_trx_shm);
+    int AllocateServerResources(SHM* remote_trx_shm, SHM* local_trx_shm,
+                                UbrDataFormat format);
 
     // Release resources
     void DeallocateResources();

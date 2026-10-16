@@ -33,6 +33,7 @@
 #include "butil/logging.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/ubshm/common/common.h"
+#include "brpc/ubshm/shm/shm_mgr.h"
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/ub_helper.h"
 #include "brpc/ubshm/ubr_trx.h"
@@ -76,6 +77,27 @@ namespace ubring {
 DEFINE_int32(data_queue_size, 4, "data queue size for UB");
 DEFINE_bool(ub_trace_verbose, false, "Print log message verbosely");
 BRPC_VALIDATE_GFLAG(ub_trace_verbose, brpc::PassValidate);
+
+UbrDataFormat PreferredDataFormatForShmType(SHM_TYPE shm_type) {
+    switch (shm_type) {
+    case SHM_TYPE_IPC:
+        return UBR_DATA_FORMAT_IPC_V2;
+    case SHM_TYPE_UBS:
+        return UBR_DATA_FORMAT_LEGACY_64;
+    default:
+        return UBR_DATA_FORMAT_NONE;
+    }
+}
+
+UbrDataFormat SelectDataFormat(UbrDataFormat local_format,
+                               uint16_t remote_format_id) {
+    if ((local_format != UBR_DATA_FORMAT_LEGACY_64 &&
+         local_format != UBR_DATA_FORMAT_IPC_V2) ||
+        remote_format_id != static_cast<uint16_t>(local_format)) {
+        return UBR_DATA_FORMAT_NONE;
+    }
+    return local_format;
+}
 
 void HelloMessage::Serialize(void* data) const {
     char* current_pos = static_cast<char*>(data);
@@ -187,7 +209,7 @@ handshake::StepResult UBShmHandshakeAdapter::BuildExtension(
     bool enabled, std::string* payload) {
     const HelloFormatExtension extension = {
         HelloFormatExtension::WIRE_SIZE,
-        static_cast<uint16_t>(enabled ? UBR_DATA_FORMAT_LEGACY_64
+        static_cast<uint16_t>(enabled ? _local_format
                                       : UBR_DATA_FORMAT_NONE)};
     payload->resize(HelloFormatExtension::WIRE_SIZE);
     extension.Serialize(&(*payload)[0]);
@@ -203,7 +225,8 @@ handshake::StepResult UBShmHandshakeAdapter::ParseExtension(
     HelloFormatExtension extension{};
     extension.Deserialize(payload.data());
     return extension.extension_len == HelloFormatExtension::WIRE_SIZE &&
-                   extension.format_id == UBR_DATA_FORMAT_LEGACY_64
+                   SelectDataFormat(_local_format, extension.format_id) !=
+                       UBR_DATA_FORMAT_NONE
                ? handshake::STEP_OK : handshake::STEP_FALLBACK;
 }
 
@@ -382,7 +405,8 @@ public:
             return STEP_FALLBACK;
         }
         if (_transport->PrepareServerUpgradeResources(
-                &remote_trx_shm, &local_trx_shm) < 0) {
+                &remote_trx_shm, &local_trx_shm,
+                _protocol->local_format()) < 0) {
             LOG(WARNING)
                 << "Fail to allocate ub resources, fallback to tcp:"
                 << _socket->description();
@@ -393,7 +417,11 @@ public:
     }
 
     StepResult NegotiateResources() override { return STEP_OK; }
-    void OnEstablished() override { _transport->ActivateUpgrade(); }
+    void OnEstablished() override {
+        _transport->GetUBShmEp()->SetNegotiatedDataFormat(
+            _protocol->local_format());
+        _transport->ActivateUpgrade();
+    }
     void OnFallback() override { _transport->DeactivateUpgrade(); }
     void OnFailed() override { _transport->DeactivateUpgrade(); }
 
@@ -413,7 +441,8 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     UBShmTransport* transport = UBShmTransport::Get(socket);
     CHECK(transport->GetUBShmEp() != NULL);
 
-    ubring::UBShmHandshakeAdapter wire;
+    ubring::UBShmHandshakeAdapter wire(
+        ubring::PreferredDataFormatForShmType(ubring::GetShmType()));
     const uint64_t local_shm_len =
         static_cast<uint64_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
     wire.ConfigureServerReply(local_shm_len);
@@ -424,8 +453,6 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     const StepResult result = GetSession(socket)->RunServer(
         protocols, &input, &participant, false);
     if (result == STEP_OK) {
-        transport->GetUBShmEp()->SetNegotiatedDataFormat(
-            ubring::UBR_DATA_FORMAT_LEGACY_64);
         transport->FinishUpgrade();
         LOG_IF(INFO, ubring::FLAGS_ub_trace_verbose)
             << "Server handshake ends (use ubring) on "

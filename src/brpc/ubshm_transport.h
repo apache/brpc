@@ -22,6 +22,7 @@
 #include "brpc/channel.h"
 #include "brpc/transport.h"
 #include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/ubr_data_format.h"
 
 namespace brpc {
 class AdapterTransport;
@@ -50,9 +51,12 @@ public:
     int PrepareUpgradeResources(ubring::SHM* local_trx_shm,
                                 const char* shm_name);
     int NegotiateUpgradeResources(ubring::SHM* local_trx_shm,
-                                  const char* shm_name);
+                                  const char* shm_name,
+                                  uint64_t remote_shm_len,
+                                  ubring::UbrDataFormat format);
     int PrepareServerUpgradeResources(ubring::SHM* remote_trx_shm,
-                                      ubring::SHM* local_trx_shm);
+                                      ubring::SHM* local_trx_shm,
+                                      ubring::UbrDataFormat format);
     void ActivateUpgrade();
     void DeactivateUpgrade();
     void FinishUpgrade();

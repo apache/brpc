@@ -392,6 +392,12 @@ bool ReadAMFUint32(uint32_t* val, AMFInputStream* stream) {
     if (!ReadAMFNumber(&d, stream)) {
         return false;
     }
+    // The number comes from the peer and may be NaN or out of [0, UINT32_MAX],
+    // for which the conversion below is undefined. The check is false for NaN.
+    if (!(d >= 0.0 && d <= 4294967295.0)) {
+        LOG(ERROR) << "Invalid AMF number=" << d << " for uint32";
+        return false;
+    }
     *val = (uint32_t)d;
     return true;
 }
@@ -540,7 +546,7 @@ static bool ReadAMFObjectField(AMFInputStream* stream,
         LOG(ERROR) << marker2str(marker) << " is not supported yet";
         return false;
     case AMF_MARKER_OBJECT_END:
-        CHECK(false) << "object-end shouldn't be present here";
+        LOG(ERROR) << "Unexpected object-end marker in a value position";
         return false;
     case AMF_MARKER_LONG_STRING: {
         std::string val;
@@ -760,8 +766,8 @@ static bool ReadAMFObjectField(AMFInputStream* stream,
         LOG(ERROR) << marker2str(marker) << " is not supported yet";
         return false;
     case AMF_MARKER_OBJECT_END:
-        CHECK(false) << "object-end shouldn't be present here";
-        break;
+        LOG(ERROR) << "Unexpected object-end marker in a value position";
+        return false;
     case AMF_MARKER_LONG_STRING: {
         std::string val;
         if (!ReadAMFLongStringBody(&val, stream)) {
@@ -921,8 +927,8 @@ static bool ReadAMFArrayItem(AMFInputStream* stream, AMFArray* arr, int depth) {
         LOG(ERROR) << marker2str(marker) << " is not supported yet";
         return false;
     case AMF_MARKER_OBJECT_END:
-        CHECK(false) << "object-end shouldn't be present here";
-        break;
+        LOG(ERROR) << "Unexpected object-end marker in a value position";
+        return false;
     case AMF_MARKER_LONG_STRING: {
         std::string val;
         if (!ReadAMFLongStringBody(&val, stream)) {
