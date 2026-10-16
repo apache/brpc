@@ -293,10 +293,10 @@ TEST(NamingServiceTest, remotefile_invalid_url) {
     const char* service_names[] = {
         "http://", "bns://", "http:////"
     };
-    for (size_t i = 0; i < ARRAY_SIZE(service_names); ++i) {
+    for (const char* service_name : service_names) {
         brpc::policy::RemoteFileNamingService rfns;
         std::vector<brpc::ServerNode> servers;
-        EXPECT_EQ(-1, rfns.GetServers(service_names[i], &servers));
+        EXPECT_EQ(-1, rfns.GetServers(service_name, &servers));
         EXPECT_TRUE(servers.empty());
     }
 }
