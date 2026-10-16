@@ -23,6 +23,7 @@
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/common/common.h"
 #include "brpc/ubshm/common/thread_lock.h"
+#include "brpc/ubshm/ubr_data_format.h"
 #include "brpc/ubshm/ubr_msg.h"
 
 /* +----------------------------------------------------------------------------+
@@ -124,6 +125,7 @@ typedef struct TagUbrRx {
     uint32_t deal_msg_num;
     uint32_t deal_msg_max_cnt;
     uint32_t ep_eof_pos;
+    uint32_t ipc_v2_read_offset;
     volatile EventQState trx_state;
 } UbrRx;
 
@@ -133,6 +135,7 @@ typedef struct TagUbrTrx {
     uint64_t ubr_id;
     uint32_t trx_mgr_index;
     UbrTrxType type;
+    UbrDataFormat data_format;
     SHM local_shm;
     SHM remote_shm;
     int timer_fd;

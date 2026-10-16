@@ -934,19 +934,21 @@ void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
 }
 
 void TaskGroup::priority_to_run(void* args_in) {
-    ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    // Publishing the parent lets another worker resume it immediately and
+    // reuse its stack. Copy the on-stack arguments before enqueueing it.
+    const ReadyToRunArgs args = *static_cast<ReadyToRunArgs*>(args_in);
     TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
 #ifdef BRPC_BTHREAD_TRACER
-    g->_control->_task_tracer.set_status(TASK_STATUS_READY, args->meta);
+    g->_control->_task_tracer.set_status(TASK_STATUS_READY, args.meta);
 #endif // BRPC_BTHREAD_TRACER
-    if (args->meta->priority_index < 0) {
-        return g->push_rq(args->meta->tid);
+    if (args.meta->priority_index < 0) {
+        return g->push_rq(args.meta->tid);
     }
     g->control()->push_ed_priority_queue(
-        args->tag, args->meta->priority_index, args->meta->tid);
+        args.tag, args.meta->priority_index, args.meta->tid);
 
     ++g->_nsignaled;
-    g->control()->signal_task(1, args->tag);
+    g->control()->signal_task(1, args.tag);
 }
 
 struct SleepArgs {

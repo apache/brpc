@@ -19,6 +19,7 @@
 
 // Date: Fri May 20 15:52:22 CST 2016
 
+#include <limits>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -734,6 +735,44 @@ TEST(RtmpTest, amf) {
     ASSERT_EQ("heheda", info3.description());
 }
 
+TEST(RtmpTest, amf_rejects_out_of_range_uint32) {
+    // Each value below encodes legally in an AMF0 number but has no uint32
+    // representation; the cast in ReadAMFUint32 was undefined for them.
+    const double bad_values[] = { -1.0, 4294967296.0, 1e30, -1e30,
+                                  std::numeric_limits<double>::infinity(),
+                                  std::numeric_limits<double>::quiet_NaN() };
+    for (size_t i = 0; i < arraysize(bad_values); ++i) {
+        std::string buf;
+        {
+            google::protobuf::io::StringOutputStream zc_stream(&buf);
+            brpc::AMFOutputStream ostream(&zc_stream);
+            brpc::WriteAMFNumber(bad_values[i], &ostream);
+            ASSERT_TRUE(ostream.good());
+        }
+        google::protobuf::io::ArrayInputStream zc_stream(buf.data(), buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        uint32_t val = 0;
+        EXPECT_FALSE(brpc::ReadAMFUint32(&val, &istream)) << "i=" << i;
+    }
+
+    const double good_values[] = { 0.0, 42.5, 4294967295.0 };
+    const uint32_t expected_values[] = { 0, 42, 4294967295u };
+    for (size_t i = 0; i < arraysize(good_values); ++i) {
+        std::string buf;
+        {
+            google::protobuf::io::StringOutputStream zc_stream(&buf);
+            brpc::AMFOutputStream ostream(&zc_stream);
+            brpc::WriteAMFNumber(good_values[i], &ostream);
+            ASSERT_TRUE(ostream.good());
+        }
+        google::protobuf::io::ArrayInputStream zc_stream(buf.data(), buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        uint32_t val = 0;
+        ASSERT_TRUE(brpc::ReadAMFUint32(&val, &istream)) << "i=" << i;
+        ASSERT_EQ(expected_values[i], val);
+    }
+}
+
 TEST(RtmpTest, amf_rejects_oversized_string_before_growing_output) {
     std::string req_buf;
     AppendAMFLongStringHeader(&req_buf, 16);
@@ -858,6 +897,49 @@ TEST(RtmpTest, amf_rejects_oversized_strict_array_count) {
     brpc::AMFArray arr;
     EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
     EXPECT_EQ(0u, arr.size());
+}
+
+TEST(RtmpTest, amf_rejects_stray_object_end_marker) {
+    // A stray object-end marker (0x09) in a value position used to hit
+    // CHECK(false): the process aborted with -crash_on_fatal_log, and the
+    // object/array readers then continued as if the input were valid.
+    {
+        // As the value of a field in a generic object.
+        std::string req_buf;
+        AppendAMFObjectHeader(&req_buf);
+        AppendAMFShortStringBody(&req_buf, "a");
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+        AppendAMFObjectEnd(&req_buf);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::AMFObject obj;
+        EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+    }
+    {
+        // As an item of a strict array.
+        std::string req_buf;
+        AppendAMFStrictArrayHeader(&req_buf, 1);
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::AMFArray arr;
+        EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
+    }
+    {
+        // As the value of a field mapped to a protobuf message.
+        std::string req_buf;
+        AppendAMFObjectHeader(&req_buf);
+        AppendAMFShortStringBody(&req_buf, "code");
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+        AppendAMFObjectEnd(&req_buf);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::RtmpInfo info;
+        EXPECT_FALSE(brpc::ReadAMFObject(&info, &istream));
+    }
 }
 
 TEST(RtmpTest, amf_rejects_deep_nested_arrays) {

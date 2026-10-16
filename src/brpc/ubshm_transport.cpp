@@ -85,13 +85,18 @@ int UBShmTransport::PrepareUpgradeResources(ubring::SHM *local_trx_shm,
 }
 
 int UBShmTransport::NegotiateUpgradeResources(ubring::SHM *local_trx_shm,
-                                              const char *shm_name) {
-    return _ub_ep->_ub_ring->UbrMapRemoteShm(local_trx_shm, shm_name);
+                                              const char *shm_name,
+                                              uint64_t remote_shm_len,
+                                              ubring::UbrDataFormat format) {
+    return _ub_ep->_ub_ring->UbrMapRemoteShm(
+        local_trx_shm, shm_name, remote_shm_len, format);
 }
 
 int UBShmTransport::PrepareServerUpgradeResources(ubring::SHM *remote_trx_shm,
-                                                  ubring::SHM *local_trx_shm) {
-    return _ub_ep->AllocateServerResources(remote_trx_shm, local_trx_shm);
+                                                  ubring::SHM *local_trx_shm,
+                                                  ubring::UbrDataFormat format) {
+    return _ub_ep->AllocateServerResources(
+        remote_trx_shm, local_trx_shm, format);
 }
 
 void UBShmTransport::ActivateUpgrade() {

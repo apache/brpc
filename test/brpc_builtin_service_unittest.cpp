@@ -47,6 +47,7 @@
 #include "brpc/builtin/rpcz_service.h"         // RpczService
 #include "brpc/builtin/dir_service.h"          // DirService
 #include "brpc/builtin/pprof_service.h"        // PProfService
+#include "brpc/builtin/hotspots_service.h"     // HotspotsService
 #include "brpc/builtin/bthreads_service.h"     // BthreadsService
 #include "brpc/builtin/ids_service.h"          // IdsService
 #include "brpc/builtin/sockets_service.h"      // SocketsService
@@ -751,6 +752,68 @@ TEST_F(BuiltinServiceTest, flags_escaping) {
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, payload.c_str());
     }
+}
+
+TEST_F(BuiltinServiceTest, hotspots_query_escaping) {
+    // `view' and `base' are written into the inline script of the page and
+    // are forwarded to /hotspots/*_non_responsive, which rejects them with
+    // ValidProfilePath.
+    const std::string payload =
+        "\" + alert(1) + \"</script><script>alert(2)</script>";
+    brpc::HotspotsService service;
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::HotspotsRequest req;
+        brpc::HotspotsResponse res;
+        SetUpController(&cntl, true);
+        cntl.http_request().uri().SetQuery("view", payload);
+        service.cpu(&cntl, &req, &res, &done);
+        EXPECT_TRUE(cntl.Failed());
+        EXPECT_EQ(EINVAL, cntl.ErrorCode());
+        const std::string body = cntl.response_attachment().to_string();
+        EXPECT_EQ(std::string::npos, body.find(payload))
+            << "unescaped payload in html: " << body;
+    }
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::HotspotsRequest req;
+        brpc::HotspotsResponse res;
+        SetUpController(&cntl, true);
+        // A well-formed `view' so that `base' is reached.
+        cntl.http_request().uri().SetQuery(
+            "view", brpc::FLAGS_rpc_profiling_dir + "/0/20240101.000000.cpu");
+        cntl.http_request().uri().SetQuery("base", payload);
+        service.cpu(&cntl, &req, &res, &done);
+        EXPECT_TRUE(cntl.Failed());
+        EXPECT_EQ(EINVAL, cntl.ErrorCode());
+        const std::string body = cntl.response_attachment().to_string();
+        EXPECT_EQ(std::string::npos, body.find(payload))
+            << "unescaped payload in html: " << body;
+    }
+}
+
+TEST_F(BuiltinServiceTest, rpcz_query_escaping) {
+    // Restore -enable_rpcz on any exit of this test.
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+                     "enable_rpcz", "true").empty());
+    const std::string payload = "<svg onload=alert(1)>&\"'";
+    const std::string escaped = brpc::WebEscape(payload);
+    ClosureChecker done;
+    brpc::Controller cntl;
+    brpc::RpczRequest req;
+    brpc::RpczResponse res;
+    brpc::RpczService service;
+    SetUpController(&cntl, true);
+    cntl.http_request().uri().SetQuery(brpc::TIME_STR, payload);
+    service.default_method(&cntl, &req, &res, &done);
+    EXPECT_FALSE(cntl.Failed());
+    const std::string body = cntl.response_attachment().to_string();
+    EXPECT_EQ(std::string::npos, body.find(payload))
+        << "unescaped payload in html: " << body;
+    CheckContent(cntl, escaped.c_str());
 }
 
 TEST_F(BuiltinServiceTest, bad_method) {

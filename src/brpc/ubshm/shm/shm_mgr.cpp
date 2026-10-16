@@ -87,6 +87,10 @@ void SetShmType(SHM_TYPE type) {
     g_shm_type = type;
 }
 
+SHM_TYPE GetShmType() {
+    return g_shm_type;
+}
+
 RETURN_CODE ShmLocalMalloc(SHM *shm) {
     if (UNLIKELY(!CheckInputShmParam(shm))) {
         LOG(ERROR) << "Input param shm is invalid.";

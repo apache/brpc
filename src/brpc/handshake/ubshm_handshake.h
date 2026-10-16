@@ -40,6 +40,7 @@ HandshakeAdapter* GetUBShmServerHandshakeAdapter();
 #include "butil/macros.h"
 #include "brpc/transport_handshake.h"
 #include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/ubr_data_format.h"
 
 namespace brpc {
 namespace ubring {
@@ -61,10 +62,9 @@ struct HelloMessage {
     char shm_name[SHM_MAX_NAME_BUFF_LEN];
 };
 
-enum UbrDataFormat {
-    UBR_DATA_FORMAT_NONE = 0,
-    UBR_DATA_FORMAT_LEGACY_64 = 1,
-};
+UbrDataFormat PreferredDataFormatForShmType(SHM_TYPE shm_type);
+UbrDataFormat SelectDataFormat(UbrDataFormat local_format,
+                               uint16_t remote_format_id);
 
 struct HelloFormatExtension {
     static const uint16_t WIRE_SIZE = 4;
@@ -77,8 +77,10 @@ struct HelloFormatExtension {
 
 class UBShmHandshakeAdapter : public handshake::HandshakeProtocol {
 public:
-    UBShmHandshakeAdapter()
-        : _local_len(0), _server_reply(false), _remote() {}
+    explicit UBShmHandshakeAdapter(
+        UbrDataFormat local_format = UBR_DATA_FORMAT_LEGACY_64)
+        : _local_len(0), _server_reply(false), _remote(),
+          _local_format(local_format) {}
 
     int ProtocolVersion() const override { return 3; }
     const handshake::FrameSpec& HelloFrameSpec() const override;
@@ -103,6 +105,7 @@ public:
         _server_reply = true;
     }
     const HelloMessage& remote() const { return _remote; }
+    UbrDataFormat local_format() const { return _local_format; }
 
     handshake::StepResult BuildHello(
         bool enabled, uint64_t len, const char* shm_name,
@@ -116,6 +119,7 @@ private:
     std::string _local_name;
     bool _server_reply;
     HelloMessage _remote;
+    UbrDataFormat _local_format;
     DISALLOW_COPY_AND_ASSIGN(UBShmHandshakeAdapter);
 };
 

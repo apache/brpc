@@ -42,7 +42,9 @@ protocol 和 transport participant，`HandshakeSession` 只负责调用参与者
 
 - RDMA 保持既有 v2/v3 wire format、协议 ID 和注册名称。
 - UBSHM 使用 v3 hello。64 字节 hello 后，双方交换 4 字节网络序格式扩展；
-  只有双方选择 `LEGACY_64` 才能升级，否则回退 TCP。ACK 仍为 4 字节。
+  本地 IPC 后端选择 `IPC_V2`，UBS 后端选择 `LEGACY_64`；只有双方选择相同的
+  受支持格式才能升级，否则回退 TCP。资源映射传递对端共享内存长度及协商格式，
+  激活数据面前发布格式。ACK 仍为 4 字节。
 - 公共 framing 仅负责帧边界，协议字段由各自 `HandshakeProtocol` 解释。
 
 ## 验证重点

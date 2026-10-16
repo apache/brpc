@@ -403,7 +403,7 @@ if(NOT PROTOC_LIB)
 endif()
 
 if(WITH_BORINGSSL)
-    find_package(BoringSSL)
+    find_package(BoringSSL REQUIRED)
     list(APPEND BRPC_COMMON_INCLUDE_DIRS ${BORINGSSL_INCLUDE_DIR})
 else()
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT OPENSSL_ROOT_DIR)

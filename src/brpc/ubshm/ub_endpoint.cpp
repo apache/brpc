@@ -168,8 +168,9 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM *local_trx_shm,
     return 0;
 }
 
-int UBShmEndpoint::AllocateServerResources(ubring::SHM *remote_trx_shm,
-                                           ubring::SHM *local_trx_shm) {
+int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm,
+                                           ubring::SHM* local_trx_shm,
+                                           UbrDataFormat format) {
     if (BAIDU_UNLIKELY(g_skip_ub_init)) {
         // For UT
         return 0;
@@ -191,7 +192,8 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM *remote_trx_shm,
         errno = saved_errno;
         return -1;
     }
-    int ret = _ub_ring->UbrAllocateServerShm(remote_trx_shm, local_trx_shm);
+    int ret = _ub_ring->UbrAllocateServerShm(
+        remote_trx_shm, local_trx_shm, format);
     if (ret != 0) {
         const int saved_errno = errno;
         DeallocateResources();

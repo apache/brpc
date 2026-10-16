@@ -31,6 +31,7 @@
 #include "brpc/rdma/rdma_helper.h"
 #endif
 #if BRPC_WITH_UBRING
+#include "brpc/ubshm/shm/shm_mgr.h"
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/ub_helper.h"
 #include "brpc/ubshm/ubr_trx.h"
@@ -188,11 +189,16 @@ public:
 
     handshake::StepResult NegotiateResources() override {
         return _transport->NegotiateUpgradeResources(
-                   _local_shm, _shm_name.c_str()) == 0
+                   _local_shm, _shm_name.c_str(), _protocol->remote().len,
+                   _protocol->local_format()) == 0
             ? handshake::STEP_OK : handshake::STEP_FALLBACK;
     }
 
-    void OnEstablished() override { _transport->ActivateUpgrade(); }
+    void OnEstablished() override {
+        _transport->GetUBShmEp()->SetNegotiatedDataFormat(
+            _protocol->local_format());
+        _transport->ActivateUpgrade();
+    }
     void OnFallback() override { _transport->DeactivateUpgrade(); }
 
     void OnFailed() override {
@@ -387,15 +393,14 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
             NULL, local_shm_len, 0, {0}, static_cast<uint32_t>(socket->fd())};
         const auto shm_name_str =
             butil::endpoint2str(socket->local_side());
-        ubring::UBShmHandshakeAdapter wire;
+        ubring::UBShmHandshakeAdapter wire(
+            ubring::PreferredDataFormatForShmType(ubring::GetShmType()));
         UBShmClientHandshakeTransport participant(
             transport, &local_trx_shm, shm_name_str.c_str(), &wire, socket,
             &connect_error);
         const handshake::StepResult result = adapter->_handshake.RunClient(
             &wire, &participant);
         if (result == handshake::STEP_OK) {
-            transport->GetUBShmEp()->SetNegotiatedDataFormat(
-                ubring::UBR_DATA_FORMAT_LEGACY_64);
             transport->FinishUpgrade();
             transport->GetUBShmEp()->StartReceiveEvents();
         }

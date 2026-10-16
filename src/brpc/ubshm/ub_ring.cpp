@@ -19,11 +19,13 @@
 #include <gflags/gflags.h>
 #include <unistd.h>
 #include <ctime>
+#include <limits>
 #include "bthread/bthread.h"
 #include "butil/logging.h"
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "brpc/ubshm/shm/shm_ipc.h"
+#include "brpc/ubshm/ubr_msg_v2.h"
 
 namespace brpc {
 namespace ubring {
@@ -336,6 +338,10 @@ void *UBRing::UbrAsynClearCallback(void *args)
 
 int UBRing::UbrTrxSend(const void *buf, uint32_t buf_len)
 {
+    if (_trx == nullptr || _trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
+        errno = EPROTONOSUPPORT;
+        return UBRING_ERR;
+    }
     if (UNLIKELY(CheckTrxSendPreCheck(_trx) != UBRING_OK)) {
         return UBRING_ERR;
     }
@@ -378,6 +384,10 @@ int UBRing::UbrTrxSend(const void *buf, uint32_t buf_len)
 
 int UBRing::UbrTrxRecv(void *buf, uint32_t buf_len)
 {
+    if (_trx == nullptr || _trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
+        errno = EPROTONOSUPPORT;
+        return UBRING_ERR;
+    }
     RETURN_CODE rc = UBRING_OK;
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, buf, buf_len)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
@@ -393,6 +403,10 @@ int UBRing::UbrTrxRecv(void *buf, uint32_t buf_len)
 
 int UBRing::UbrTrxRecvBlockMode(uint8_t *dest, uint32_t buf_len)
 {
+    if (_trx == nullptr || _trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
+        errno = EPROTONOSUPPORT;
+        return UBRING_ERR;
+    }
     RETURN_CODE rc = UBRING_OK;
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, dest, buf_len)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
@@ -449,9 +463,100 @@ int UBRing::UbrTrxRecvBlockMode(uint8_t *dest, uint32_t buf_len)
     return (int)total_copied;
 }
 
+ssize_t UBRing::UbrIpcV2Writev(const struct iovec* iov, int iovcnt)
+{
+    size_t total = 0;
+    if (!ValidateIpcV2Iov(iov, iovcnt, total)) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (total > static_cast<size_t>(std::numeric_limits<ssize_t>::max())) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+    if (_trx->ubr_tx.remote_data_q.addr == nullptr ||
+        _trx->ubr_tx.local_data_status_q.addr == nullptr ||
+        _trx->ubr_tx.remote_rx_event_q.addr == nullptr) {
+        errno = EPROTO;
+        return -1;
+    }
+
+    UbrDataStatusQMsg* status = reinterpret_cast<UbrDataStatusQMsg*>(
+        _trx->ubr_tx.local_data_status_q.addr);
+    IpcV2TxView tx(
+        reinterpret_cast<IpcV2Slot*>(_trx->ubr_tx.remote_data_q.addr),
+        &status->tail, _trx->ubr_tx.capacity, &_trx->ubr_tx.write_pos);
+    size_t written = 0;
+    const IpcV2RingResult result = tx.TryWritev(iov, iovcnt, written);
+    if (result == IPC_V2_RING_RETRY) {
+        return UBRING_RETRY;
+    }
+    if (result == IPC_V2_RING_TOO_LARGE) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+    if (result != IPC_V2_RING_OK) {
+        errno = EBADMSG;
+        return -1;
+    }
+    if (written != 0) {
+        ++_trx->ubr_tx.out_io_id;
+        reinterpret_cast<UbrEventQMsg*>(
+            _trx->ubr_tx.remote_rx_event_q.addr)->io_id =
+                _trx->ubr_tx.out_io_id;
+    }
+    return static_cast<ssize_t>(written);
+}
+
+ssize_t UBRing::UbrIpcV2Readv(const struct iovec* iov, int iovcnt)
+{
+    size_t total = 0;
+    if (!ValidateIpcV2Iov(iov, iovcnt, total)) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (_trx->ubr_rx.local_data_q.addr == nullptr ||
+        _trx->ubr_rx.remote_data_status_q.addr == nullptr) {
+        errno = EPROTO;
+        return -1;
+    }
+
+    UbrDataStatusQMsg* status = reinterpret_cast<UbrDataStatusQMsg*>(
+        _trx->ubr_rx.remote_data_status_q.addr);
+    IpcV2RxView rx(
+        reinterpret_cast<IpcV2Slot*>(_trx->ubr_rx.local_data_q.addr),
+        &status->tail, _trx->ubr_rx.capacity, &_trx->ubr_rx.read_pos,
+        &_trx->ubr_rx.ipc_v2_read_offset);
+    const bool update_ep_eof_pos =
+        _trx->ubr_rx.read_pos == _trx->ubr_rx.ep_eof_pos;
+    size_t read = 0;
+    bool batch_end = false;
+    const IpcV2RingResult result =
+        rx.TryReadv(iov, iovcnt, read, batch_end);
+    if (result == IPC_V2_RING_RETRY) {
+        errno = EAGAIN;
+        return -1;
+    }
+    if (result != IPC_V2_RING_OK) {
+        errno = EBADMSG;
+        return -1;
+    }
+    if (update_ep_eof_pos) {
+        _trx->ubr_rx.ep_eof_pos = _trx->ubr_rx.read_pos;
+    }
+    return static_cast<ssize_t>(read);
+}
+
 ssize_t UBRing::UbrTrxWritev(const struct iovec *iov, int iovcnt)
 {
     if (UNLIKELY(CheckTrxSendPreCheck(_trx) != UBRING_OK)) {
+        return UBRING_ERR;
+    }
+    if (_trx->data_format == UBR_DATA_FORMAT_IPC_V2) {
+        return UbrIpcV2Writev(iov, iovcnt);
+    }
+    if (_trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
+        errno = EPROTONOSUPPORT;
         return UBRING_ERR;
     }
 
@@ -511,6 +616,13 @@ ssize_t UBRing::UbrTrxReadv(const struct iovec *iov, int iovcnt)
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, iov, (uint32_t)iovcnt)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
     }
+    if (_trx->data_format == UBR_DATA_FORMAT_IPC_V2) {
+        return UbrIpcV2Readv(iov, iovcnt);
+    }
+    if (_trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
+        errno = EPROTONOSUPPORT;
+        return UBRING_ERR;
+    }
     UbrMsgFormat *data_msg = (UbrMsgFormat *)_trx->ubr_rx.local_data_q.addr;
     uint32_t read_pos_end = _trx->ubr_rx.read_pos;
     uint8_t flag = data_msg[read_pos_end].header[UBR_MSG_FLAG_INDEX];
@@ -529,6 +641,10 @@ ssize_t UBRing::UbrTrxReadv(const struct iovec *iov, int iovcnt)
 
 ssize_t UBRing::UbrTrxReadvBlockMode(const struct iovec *iov, int iovcnt)
 {
+    if (_trx == nullptr || _trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
+        errno = EPROTONOSUPPORT;
+        return UBRING_ERR;
+    }
     RETURN_CODE rc = UBRING_OK;
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, iov, (uint32_t)iovcnt)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
@@ -559,6 +675,12 @@ RETURN_CODE UBRing::IsUbrTrxReadable(uint32_t ep_event)
         return UBRING_ERR;
     }
     if (UNLIKELY(_trx->ubr_tx.trx_state != UBR_STATE_CONNECTED)) {
+        return UBRING_ERR;
+    }
+    if (_trx->data_format == UBR_DATA_FORMAT_IPC_V2) {
+        return IsIpcV2Readable(ep_event);
+    }
+    if (_trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
         return UBRING_ERR;
     }
 
@@ -606,6 +728,12 @@ RETURN_CODE UBRing::IsUbrTrxWriteable(uint32_t ep_event)
         LOG(ERROR) << "The trx is not connected state.";
         return UBRING_ERR;
     }
+    if (_trx->data_format == UBR_DATA_FORMAT_IPC_V2) {
+        return IsIpcV2Writeable(ep_event);
+    }
+    if (_trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
+        return UBRING_ERR;
+    }
 
     UbrDataStatusQMsg *data_status_msg = (UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr;
     uint32_t cap = _trx->ubr_tx.capacity;
@@ -622,6 +750,82 @@ RETURN_CODE UBRing::IsUbrTrxWriteable(uint32_t ep_event)
         return MPA_MUXER_NOT_READY;
     }
     _trx->ubr_tx.ep_last_cap = remain_chunk_num;
+    return UBRING_OK;
+}
+
+RETURN_CODE UBRing::IsIpcV2Readable(uint32_t ep_event)
+{
+    if (_trx->ubr_rx.local_rx_event_q.addr == nullptr ||
+        _trx->ubr_rx.local_data_q.addr == nullptr ||
+        _trx->ubr_rx.capacity < 2 ||
+        _trx->ubr_rx.read_pos >= _trx->ubr_rx.capacity ||
+        _trx->ubr_rx.ep_eof_pos >= _trx->ubr_rx.capacity) {
+        return UBRING_ERR;
+    }
+    const uint64_t io_id = reinterpret_cast<UbrEventQMsg*>(
+        _trx->ubr_rx.local_rx_event_q.addr)->io_id;
+    if ((ep_event & EPOLLET) && io_id == _trx->ubr_rx.in_io_id) {
+        return MPA_MUXER_NOT_READY;
+    }
+    const uint32_t pos = (ep_event & EPOLLET)
+        ? _trx->ubr_rx.ep_eof_pos : _trx->ubr_rx.read_pos;
+    IpcV2Slot* slots = reinterpret_cast<IpcV2Slot*>(
+        _trx->ubr_rx.local_data_q.addr);
+    IpcV2Slot& slot = slots[pos];
+    const uint32_t state =
+        __atomic_load_n(&slot.header.state, __ATOMIC_ACQUIRE);
+    if (state == IPC_V2_SLOT_EMPTY &&
+        (pos != _trx->ubr_rx.read_pos ||
+         _trx->ubr_rx.ipc_v2_read_offset == 0)) {
+        return MPA_MUXER_NOT_READY;
+    }
+    // Leave metadata validation to UbrIpcV2Readv so PollIn can observe
+    // EBADMSG and fail the connection instead of repeatedly polling it.
+    if (ep_event & EPOLLET) {
+        _trx->ubr_rx.in_io_id = io_id;
+    }
+    return UBRING_OK;
+}
+
+RETURN_CODE UBRing::IsIpcV2Writeable(uint32_t ep_event)
+{
+    if (_trx->ubr_tx.remote_data_q.addr == nullptr ||
+        _trx->ubr_tx.local_data_status_q.addr == nullptr ||
+        _trx->ubr_tx.capacity < 2 ||
+        _trx->ubr_tx.write_pos >= _trx->ubr_tx.capacity) {
+        return UBRING_ERR;
+    }
+    IpcV2Slot* slots = reinterpret_cast<IpcV2Slot*>(
+        _trx->ubr_tx.remote_data_q.addr);
+    const uint32_t current_state = __atomic_load_n(
+        &slots[_trx->ubr_tx.write_pos].header.state, __ATOMIC_ACQUIRE);
+    if (current_state != IPC_V2_SLOT_EMPTY &&
+        current_state != IPC_V2_SLOT_READY) {
+        return UBRING_ERR;
+    }
+    UbrDataStatusQMsg* status = reinterpret_cast<UbrDataStatusQMsg*>(
+        _trx->ubr_tx.local_data_status_q.addr);
+    const uint32_t tail = __atomic_load_n(&status->tail, __ATOMIC_ACQUIRE);
+    if (tail >= _trx->ubr_tx.capacity) {
+        return UBRING_ERR;
+    }
+    const uint32_t capacity = _trx->ubr_tx.capacity;
+    const uint64_t available = _trx->ubr_tx.write_pos > tail
+        ? static_cast<uint64_t>(tail) + capacity - _trx->ubr_tx.write_pos
+        : tail - _trx->ubr_tx.write_pos;
+    const uint32_t remain_slots = static_cast<uint32_t>(available);
+    if (remain_slots == 0) {
+        _trx->ubr_tx.ep_last_cap = 0;
+        return MPA_MUXER_NOT_READY;
+    }
+    if (current_state != IPC_V2_SLOT_EMPTY) {
+        return UBRING_ERR;
+    }
+    if ((ep_event & EPOLLET) && _trx->ubr_tx.ep_last_cap >= remain_slots) {
+        _trx->ubr_tx.ep_last_cap = remain_slots;
+        return MPA_MUXER_NOT_READY;
+    }
+    _trx->ubr_tx.ep_last_cap = remain_slots;
     return UBRING_OK;
 }
 
@@ -770,19 +974,14 @@ RETURN_CODE UBRing::UbrTrxMapRemoteShm(SHM *remote_shm)
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrServerTrxInit(SHM *local_shm, SHM *remote_shm)
+RETURN_CODE UBRing::InitializeServerLegacyFormat()
 {
-    RETURN_CODE rc = UbrTrxMapShm(local_shm, remote_shm);
-    if (UNLIKELY(rc != UBRING_OK)) {
-        LOG(ERROR) <<"Trx map shared memory failed.";
-        return rc;
-    }
-
     uint32_t local_data_msg_cap = (uint32_t)(_trx->ubr_rx.local_data_q.len / UBR_MSG_LEN);
     uint32_t remote_data_msg_cap = (uint32_t)(_trx->ubr_tx.remote_data_q.len / UBR_MSG_LEN);
     _trx->ubr_rx.capacity = local_data_msg_cap;
     _trx->ubr_tx.capacity = remote_data_msg_cap;
-    rc = UBRingManager::GetUbrDealMsgMaxCnt(_trx->ubr_rx.capacity, &_trx->ubr_rx.deal_msg_max_cnt);
+    RETURN_CODE rc = UBRingManager::GetUbrDealMsgMaxCnt(
+        _trx->ubr_rx.capacity, &_trx->ubr_rx.deal_msg_max_cnt);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Get ubring deal msg max cnt.";
         return rc;
@@ -792,6 +991,28 @@ RETURN_CODE UBRing::UbrServerTrxInit(SHM *local_shm, SHM *remote_shm)
 
     ((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->tail = remote_data_msg_cap - 1;
     ((UbrDataStatusQMsg *)(_trx->ubr_rx.remote_data_status_q.addr))->tail = local_data_msg_cap - 1;
+    return UBRING_OK;
+}
+
+RETURN_CODE UBRing::UbrServerTrxInit(SHM* local_shm, SHM* remote_shm,
+                                     UbrDataFormat format)
+{
+    RETURN_CODE rc = UbrTrxMapShm(local_shm, remote_shm);
+    if (UNLIKELY(rc != UBRING_OK)) {
+        LOG(ERROR) << "Trx map shared memory failed.";
+        return rc;
+    }
+
+    if (format == UBR_DATA_FORMAT_LEGACY_64) {
+        rc = InitializeServerLegacyFormat();
+    } else if (format == UBR_DATA_FORMAT_IPC_V2) {
+        rc = UbrPrepareIpcV2Format() == 0 ? UBRING_OK : UBRING_ERR;
+    } else {
+        rc = UBRING_ERR;
+    }
+    if (UNLIKELY(rc != UBRING_OK)) {
+        return rc;
+    }
 
     if (UNLIKELY(UbrAddTimer() != UBRING_OK)) {
         LOG(ERROR) << "Ubr add timer failed, local_name=" << local_shm->name;
@@ -807,10 +1028,58 @@ RETURN_CODE UBRing::UbrServerTrxInit(SHM *local_shm, SHM *remote_shm)
     ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->flag = UBR_STATE_CONNECTED;
     _trx->ubr_tx.trx_state = UBR_STATE_CONNECTED;
     _trx->ubr_rx.trx_state = UBR_STATE_CONNECTED;
+    _trx->data_format = format;
     return UBRING_OK;
 }
 
-int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm) {
+int UBRing::UbrPrepareIpcV2Format()
+{
+    if (_trx == nullptr || _trx->data_format != UBR_DATA_FORMAT_NONE) {
+        LOG(ERROR) << "Prepare IPC_V2 format failed, invalid transaction state.";
+        return -1;
+    }
+    if (_trx->ubr_rx.local_data_q.addr == nullptr ||
+        _trx->ubr_tx.remote_data_q.addr == nullptr ||
+        _trx->ubr_tx.local_data_status_q.addr == nullptr ||
+        _trx->ubr_rx.remote_data_status_q.addr == nullptr) {
+        LOG(ERROR) << "Prepare IPC_V2 format failed, queue is not mapped.";
+        return -1;
+    }
+
+    UbrDataStatusQMsg* local_status = reinterpret_cast<UbrDataStatusQMsg*>(
+        _trx->ubr_tx.local_data_status_q.addr);
+    UbrDataStatusQMsg* remote_status = reinterpret_cast<UbrDataStatusQMsg*>(
+        _trx->ubr_rx.remote_data_status_q.addr);
+    IpcV2QueueView tx_queue;
+    IpcV2QueueView rx_queue;
+    if (!MapIpcV2Queue(_trx->ubr_tx.remote_data_q.addr,
+                       _trx->ubr_tx.remote_data_q.len,
+                       &local_status->tail, tx_queue) ||
+        !MapIpcV2Queue(_trx->ubr_rx.local_data_q.addr,
+                       _trx->ubr_rx.local_data_q.len,
+                       &remote_status->tail, rx_queue)) {
+        LOG(ERROR) << "Prepare IPC_V2 format failed, invalid queue layout.";
+        return -1;
+    }
+    if (!IpcV2RxView::InitializeShared(rx_queue.slots, rx_queue.tail,
+                                       rx_queue.capacity)) {
+        LOG(ERROR) << "Prepare IPC_V2 receive queue failed.";
+        return -1;
+    }
+
+    _trx->ubr_tx.capacity = tx_queue.capacity;
+    _trx->ubr_tx.write_pos = 0;
+    _trx->ubr_tx.ep_last_cap = 0;
+    _trx->ubr_rx.capacity = rx_queue.capacity;
+    _trx->ubr_rx.read_pos = 0;
+    _trx->ubr_rx.ep_eof_pos = 0;
+    _trx->ubr_rx.ipc_v2_read_offset = 0;
+    _trx->data_format = UBR_DATA_FORMAT_IPC_V2;
+    return 0;
+}
+
+int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm,
+                                 UbrDataFormat format) {
     UbrSetSleepTask(UBR_TASK_ACCEPT_MAP_FRONT);
     if (UNLIKELY((ShmRemoteMalloc(remote_trx_shm)) != UBRING_OK)) {
         LOG(ERROR) << "Trx apply remote shared memory failed.";
@@ -831,7 +1100,8 @@ int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm) {
         return -1;
     }
     _trx->type = TCP_TRX;
-    if (UNLIKELY((UbrServerTrxInit(local_trx_shm, remote_trx_shm)) != UBRING_OK)) {
+    if (UNLIKELY((UbrServerTrxInit(
+            local_trx_shm, remote_trx_shm, format)) != UBRING_OK)) {
         LOG(ERROR) << "Server trx init failed.";
         UbrTrxFreeShm(_trx);
         UBRingManager::ReleaseUbrTrxFromMgr(_trx);
@@ -849,7 +1119,8 @@ int UBRing::UbrAllocateLocalShm(SHM *local_trx_shm, const char *shm_name)
     }
 
     _trx->type = TCP_TRX;
-    if (UNLIKELY((ApplyAndMapLocalShm(local_trx_shm, shm_name)) != UBRING_OK)) {
+    RETURN_CODE rc = ApplyAndMapLocalShm(local_trx_shm, shm_name);
+    if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx apply or map local shared memory failed, local_name=" << shm_name;
         _trx = nullptr;
         return -1;
@@ -857,29 +1128,71 @@ int UBRing::UbrAllocateLocalShm(SHM *local_trx_shm, const char *shm_name)
     return 0;
 }
 
-int UBRing::UbrMapRemoteShm(SHM *local_trx_shm, const char *local_name)
+int UBRing::UbrMapRemoteShm(SHM *local_trx_shm, const char *local_name,
+                          uint64_t remote_shm_len, UbrDataFormat format)
 {
-    RETURN_CODE rc = UbrMapRemoteShmAddTimer(local_trx_shm, local_name);
+    RETURN_CODE rc = UbrMapRemoteShmAddTimer(
+        local_trx_shm, local_name, remote_shm_len, format);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Connect Trx failed, local shm name=" << local_trx_shm->name;
         return -1;
     }
+    return 0;
+}
+
+void UBRing::InitializeClientLegacyFormat()
+{
+    // The local and remote Legacy initialization has already set the RX and
+    // TX capacities. Only prewrite the queues here.
     PrewriteUbrRx(&_trx->ubr_rx);
     PrewriteUbrTx(&_trx->ubr_tx);
+}
+
+RETURN_CODE UBRing::InitializeClientLocalLegacyFormat()
+{
+    _trx->ubr_rx.capacity =
+        (uint32_t)(_trx->ubr_rx.local_data_q.len / UBR_MSG_LEN);
+    RETURN_CODE rc = UBRingManager::GetUbrDealMsgMaxCnt(
+        _trx->ubr_rx.capacity, &_trx->ubr_rx.deal_msg_max_cnt);
+    if (UNLIKELY(rc != UBRING_OK)) {
+        LOG(ERROR) << "Get ubring deal msg max cnt.";
+        return rc;
+    }
+    return UBRING_OK;
+}
+
+void UBRing::InitializeClientRemoteLegacyFormat()
+{
+    _trx->ubr_tx.capacity =
+        (uint32_t)(_trx->ubr_tx.remote_data_q.len / UBR_MSG_LEN);
+}
+
+void UBRing::ActivateClientFormat()
+{
+    // Only publish the connected states here. UbrMapRemoteShmAddTimer has
+    // already started the timers; preserve that legacy ordering.
     ((UbrEventQMsg *)_trx->ubr_rx.remote_tx_event_q.addr)->flag = UBR_STATE_CONNECTED;
     ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->flag = UBR_STATE_CONNECTED;
     _trx->ubr_tx.trx_state = UBR_STATE_CONNECTED;
     _trx->ubr_rx.trx_state = UBR_STATE_CONNECTED;
-    return 0;
 }
 
-RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *local_name)
+RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *local_name,
+                                        uint64_t remote_shm_len,
+                                        UbrDataFormat format)
 {
     uint64_t start_time = GetCurNanoSeconds();
 
-    size_t remote_server_len = UBR_MSG_LEN * (((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->tail + 1) +
-                             UBR_MSG_LEN * ((DATAQ_ADDR_OFFSET / UBR_MSG_LEN) + 1);
-    SHM remote_trx_shm = {nullptr, remote_server_len, 0, {0}, local_trx_shm->fd};
+    // Use the base Hello length, not a tail initialized for a particular format.
+    // Bound the conversion and the current Legacy capacity before mapping.
+    // ShmRemoteMalloc additionally checks the minimum size and allocation unit.
+    if (remote_shm_len > std::numeric_limits<size_t>::max() ||
+        remote_shm_len / UBR_MSG_LEN > std::numeric_limits<uint32_t>::max()) {
+        LOG(ERROR) << "Remote shared memory length is too large: " << remote_shm_len;
+        return SHM_ERR_INPUT_INVALID;
+    }
+    SHM remote_trx_shm = {nullptr, static_cast<size_t>(remote_shm_len),
+                         0, {0}, local_trx_shm->fd};
     int result = snprintf(remote_trx_shm.name,
         SHM_MAX_NAME_BUFF_LEN,
         "%s_%s_%s",
@@ -894,6 +1207,22 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
     RETURN_CODE rc = ApplyAndMapRemoteShm(&remote_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Connect Trx map shared memory failed, remote shm=" << remote_trx_shm.name;
+        return rc;
+    }
+    if (format == UBR_DATA_FORMAT_LEGACY_64) {
+        InitializeClientRemoteLegacyFormat();
+        rc = InitializeClientLocalLegacyFormat();
+        if (LIKELY(rc == UBRING_OK)) {
+            InitializeClientLegacyFormat();
+        }
+    } else if (format == UBR_DATA_FORMAT_IPC_V2) {
+        rc = UbrPrepareIpcV2Format() == 0 ? UBRING_OK : UBRING_ERR;
+    } else {
+        rc = UBRING_ERR;
+    }
+    if (UNLIKELY(rc != UBRING_OK)) {
+        LOG(ERROR) << "Initialize client data format failed, local_name="
+                   << local_name << ", format=" << format;
         return rc;
     }
 
@@ -914,6 +1243,8 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
         return UBRING_ERR_TIMEOUT;
     }
 
+    ActivateClientFormat();
+    _trx->data_format = format;
     return UBRING_OK;
 }
 
@@ -952,14 +1283,6 @@ RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_na
     }
     ((UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr)->timeout =
         FLAGS_ub_connect_timeout_s;
-    _trx->ubr_rx.capacity = (uint32_t)(_trx->ubr_rx.local_data_q.len / UBR_MSG_LEN);
-    rc = UBRingManager::GetUbrDealMsgMaxCnt(_trx->ubr_rx.capacity, &_trx->ubr_rx.deal_msg_max_cnt);
-    if (rc != UBRING_OK) {
-        LOG(ERROR) << "Get ubring deal msg max cnt, local shm name=" << local_trx_shm->name;
-        ShmLocalFree(local_trx_shm);
-        UBRingManager::ReleaseUbrTrxFromMgr(_trx);
-        return rc;
-    }
     return UBRING_OK;
 }
 
@@ -976,7 +1299,6 @@ RETURN_CODE UBRing::ApplyAndMapRemoteShm(SHM *remote_trx_shm)
         ShmRemoteFree(remote_trx_shm);
         return rc;
     }
-    _trx->ubr_tx.capacity = (uint32_t)(_trx->ubr_tx.remote_data_q.len / UBR_MSG_LEN);
     return UBRING_OK;
 }
 
