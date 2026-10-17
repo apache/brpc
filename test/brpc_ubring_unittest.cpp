@@ -744,6 +744,11 @@ TEST_F(HelloMessageTest, large_len_value) {
 }
 
 TEST_F(HelloMessageTest, full_shm_name) {
+    // A peer that fills every byte of shm_name leaves no terminator on the
+    // wire. Deserialize must still hand back a valid C-string, because the
+    // handshake feeds the decoded name straight into strncpy/strrchr/
+    // snprintf("%s") and the shm allocate/map calls; without a terminator
+    // those scan past shm_name.
     memset(msg.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN);
     msg.msg_len = 64;
     msg.hello_ver = 2;
@@ -755,7 +760,11 @@ TEST_F(HelloMessageTest, full_shm_name) {
     memset(&decoded, 0, sizeof(decoded));
     decoded.Deserialize(&buffer[0]);
 
-    EXPECT_EQ(0, memcmp(msg.shm_name, decoded.shm_name, SHM_MAX_NAME_BUFF_LEN));
+    EXPECT_EQ('\0', decoded.shm_name[SHM_MAX_NAME_BUFF_LEN - 1]);
+    EXPECT_EQ(static_cast<size_t>(SHM_MAX_NAME_BUFF_LEN - 1),
+              strnlen(decoded.shm_name, SHM_MAX_NAME_BUFF_LEN));
+    EXPECT_EQ(0, memcmp(msg.shm_name, decoded.shm_name,
+                        SHM_MAX_NAME_BUFF_LEN - 1));
 }
 
 TEST_F(HelloMessageTest, toString_contains_fields) {
