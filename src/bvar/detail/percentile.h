@@ -23,7 +23,6 @@
 #include <string.h>                     // memset memcmp
 #include <stdint.h>                     // uint32_t
 #include <limits>                       // std::numeric_limits
-#include <memory>                       // std::unique_ptr
 #include <ostream>                      // std::ostream
 #include <algorithm>                    // std::sort
 #include <math.h>                       // ceil
@@ -130,13 +129,7 @@ public:
             const size_t num_remain_from_rhs = SAMPLE_SIZE - num_remain;
             CHECK_LE(num_remain_from_rhs, rhs._num_samples);
             // Have to copy data from rhs to shuffle since it's const
-            uint32_t tmp_stack[64];
-            std::unique_ptr<uint32_t[]> tmp_heap;
-            uint32_t* tmp = tmp_stack;
-            if (rhs._num_samples > ARRAY_SIZE(tmp_stack)) {
-                tmp_heap.reset(new uint32_t[rhs._num_samples]);
-                tmp = tmp_heap.get();
-            }
+            DEFINE_SMALL_ARRAY(uint32_t, tmp, rhs._num_samples, 64);
             memcpy(tmp, rhs._samples, sizeof(uint32_t) * rhs._num_samples);
             for (size_t i = 0; i < num_remain_from_rhs; ++i) {
                 const int index = butil::fast_rand_less_than(rhs._num_samples - i);
