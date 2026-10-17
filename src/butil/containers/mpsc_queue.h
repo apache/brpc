@@ -144,6 +144,7 @@ bool MPSCQueue<T, Alloc>::DequeueImpl(T* data) {
         ReverseList(node);
     }
     _cur_dequeue_node = node->next;
+    node->data_mem.Destroy();
     _alloc.Free(old_node);
 
     return true;
