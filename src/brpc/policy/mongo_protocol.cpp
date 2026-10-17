@@ -171,6 +171,17 @@ ParseResult ParseMongoMessage(butil::IOBuf* source,
     return MakeMessage(msg);
 }
 
+bool VerifyMongoRequest(const InputMessageBase* msg_base) {
+    Server* server = (Server*)msg_base->arg();
+    if (server->options().auth) {
+        // The mongo protocol carries no credential that ServerOptions.auth
+        // could verify.
+        LOG(WARNING) << "mongo does not support authentication";
+        return false;
+    }
+    return true;
+}
+
 // Defined in baidu_rpc_protocol.cpp
 void EndRunningCallMethodInPool(
     ::google::protobuf::Service* service,

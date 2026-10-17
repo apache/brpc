@@ -1576,6 +1576,52 @@ TEST_F(RedisTest, server_is_not_served_on_internal_port) {
     ASSERT_EQ(0, server.Join());
 }
 
+class MyServerAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string*) const override { return 0; }
+    int VerifyCredential(const std::string&, const butil::EndPoint&,
+                         brpc::AuthContext*) const override { return 0; }
+};
+
+TEST_F(RedisTest, server_rejects_unauthenticated_commands) {
+    std::string password = GeneratePassword();
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<SetCommandHandler> sh(new SetCommandHandler(rsimpl));
+    std::unique_ptr<AuthCommandHandler> ah(new AuthCommandHandler(rsimpl));
+    rsimpl->AddCommandHandler("set", sh.get());
+    rsimpl->AddCommandHandler("auth", ah.get());
+
+    // Redis commands are handled inside ParseRedisMessage() and never reach
+    // InputMessenger's authentication hook. With ServerOptions.auth set they
+    // must be rejected, like VerifyNsheadRequest/VerifyThriftRequest do for
+    // the other protocols that carry no credential.
+    MyServerAuthenticator auth;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.redis_service = rsimpl;
+    server_options.auth = &auth;
+    brpc::PortRange pr(8081, 8900);
+    ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    options.max_retry = 0;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(
+        "127.0.0.1", server.listen_address().port, &options));
+
+    brpc::RedisRequest request;
+    brpc::RedisResponse response;
+    brpc::Controller cntl;
+    ASSERT_TRUE(request.AddCommand("set key1 value1"));
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(0, response.reply_size());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
 void* incr_thread(void* arg) {
     brpc::Channel* c = static_cast<brpc::Channel*>(arg);
     for (int i = 0; i < 5000; ++i) {
