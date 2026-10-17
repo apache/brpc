@@ -70,9 +70,7 @@ endif()
 
 set(BRPC_COMMON_COMPILE_OPTIONS)
 set(BRPC_COMMON_DEFINITIONS)
-set(BRPC_COMMON_INCLUDE_DIRS
-    ${PROJECT_SOURCE_DIR}/src
-)
+set(BRPC_COMMON_INCLUDE_DIRS)
 set(BRPC_COMMON_LINK_OPTIONS)
 set(BRPC_CXX_STANDARD 14)
 
@@ -418,7 +416,6 @@ endif()
 
 list(APPEND BRPC_COMMON_INCLUDE_DIRS
     ${GFLAGS_INCLUDE_PATH}
-    ${PROTOBUF_INCLUDE_DIRS}
     ${LEVELDB_INCLUDE_PATH}
 )
 if(WITH_URMA)
@@ -508,10 +505,13 @@ endif()
 list(REMOVE_DUPLICATES BRPC_COMMON_INCLUDE_DIRS)
 
 add_library(brpc_common_config INTERFACE)
-# Generated protobuf headers live in the build directory. Search it before src/
-# so leftover in-source *.pb.h (gitignored, produced by Make) cannot shadow
-# updated .proto files such as errno.proto.
-target_include_directories(brpc_common_config BEFORE INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+# Keep generated, in-tree, and selected protobuf headers ahead of generic
+# dependency paths to avoid header shadowing.
+target_include_directories(brpc_common_config BEFORE INTERFACE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${PROJECT_SOURCE_DIR}/src
+    ${PROTOBUF_INCLUDE_DIRS}
+)
 target_include_directories(brpc_common_config INTERFACE ${BRPC_COMMON_INCLUDE_DIRS})
 target_compile_definitions(brpc_common_config INTERFACE ${BRPC_COMMON_DEFINITIONS})
 target_compile_options(brpc_common_config INTERFACE ${BRPC_COMMON_COMPILE_OPTIONS})
