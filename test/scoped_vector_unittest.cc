@@ -4,10 +4,23 @@
 
 #include "butil/memory/scoped_vector.h"
 
+#include <type_traits>
+#include <utility>
+
 #include "butil/memory/scoped_ptr.h"
 #include <gtest/gtest.h>
 
 namespace {
+
+static_assert(!std::is_copy_constructible<butil::ScopedVector<int> >::value,
+              "ScopedVector must not be copy constructible");
+static_assert(!std::is_copy_assignable<butil::ScopedVector<int> >::value,
+              "ScopedVector must not be copy assignable");
+static_assert(std::is_nothrow_move_constructible<
+                  butil::ScopedVector<int> >::value,
+              "ScopedVector move construction must be noexcept");
+static_assert(std::is_move_assignable<butil::ScopedVector<int> >::value,
+              "ScopedVector must be move assignable");
 
 // The LifeCycleObject notifies its Observer upon construction & destruction.
 class LifeCycleObject {
@@ -223,7 +236,8 @@ TEST(ScopedVectorTest, MoveConstruct) {
     EXPECT_FALSE(scoped_vector.empty());
     EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
 
-    butil::ScopedVector<LifeCycleObject> scoped_vector_copy(scoped_vector.Pass());
+    butil::ScopedVector<LifeCycleObject> scoped_vector_copy(
+        std::move(scoped_vector));
     EXPECT_TRUE(scoped_vector.empty());
     EXPECT_FALSE(scoped_vector_copy.empty());
     EXPECT_TRUE(watcher.IsWatching(scoped_vector_copy.back()));
@@ -243,7 +257,7 @@ TEST(ScopedVectorTest, MoveAssign) {
     EXPECT_FALSE(scoped_vector.empty());
     EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
 
-    scoped_vector_assign = scoped_vector.Pass();
+    scoped_vector_assign = std::move(scoped_vector);
     EXPECT_TRUE(scoped_vector.empty());
     EXPECT_FALSE(scoped_vector_assign.empty());
     EXPECT_TRUE(watcher.IsWatching(scoped_vector_assign.back()));
@@ -271,23 +285,74 @@ class DeleteCounter {
   DISALLOW_COPY_AND_ASSIGN(DeleteCounter);
 };
 
-template <typename T>
-butil::ScopedVector<T> PassThru(butil::ScopedVector<T> scoper) {
-  return scoper.Pass();
+TEST(ScopedVectorTest, MoveAssignDeletesPopulatedTarget) {
+  int source_deletes = 0;
+  int target_deletes = 0;
+  {
+    butil::ScopedVector<DeleteCounter> source;
+    source.push_back(new DeleteCounter(&source_deletes));
+    butil::ScopedVector<DeleteCounter> target;
+    target.push_back(new DeleteCounter(&target_deletes));
+
+    target = std::move(source);
+
+    EXPECT_TRUE(source.empty());
+    ASSERT_EQ(1u, target.size());
+    EXPECT_EQ(0, source_deletes);
+    EXPECT_EQ(1, target_deletes);
+  }
+  EXPECT_EQ(1, source_deletes);
+  EXPECT_EQ(1, target_deletes);
 }
 
-TEST(ScopedVectorTest, Passed) {
+TEST(ScopedVectorTest, SelfMoveAssignmentPreservesOwnership) {
+  int deletes = 0;
+  {
+    butil::ScopedVector<DeleteCounter> vector;
+    vector.push_back(new DeleteCounter(&deletes));
+
+    auto& same_owner = vector;
+    vector = std::move(same_owner);
+
+    ASSERT_EQ(1u, vector.size());
+    EXPECT_EQ(0, deletes);
+  }
+  EXPECT_EQ(1, deletes);
+}
+
+template <typename T>
+butil::ScopedVector<T> PassThru(butil::ScopedVector<T> scoper) {
+  return scoper;
+}
+
+TEST(ScopedVectorTest, MovedOwnerCanBeCleared) {
   int deletes = 0;
   butil::ScopedVector<DeleteCounter> deleter_vector;
   deleter_vector.push_back(new DeleteCounter(&deletes));
   EXPECT_EQ(0, deletes);
   
   EXPECT_EQ(0, deletes);
-  butil::ScopedVector<DeleteCounter> result = deleter_vector.Pass();
+  butil::ScopedVector<DeleteCounter> result = std::move(deleter_vector);
   EXPECT_EQ(0, deletes);
   result.clear();
   EXPECT_EQ(1, deletes);
 };
+
+TEST(ScopedVectorTest, ImplicitMoveOnReturn) {
+  int deletes = 0;
+  {
+    butil::ScopedVector<DeleteCounter> source;
+    source.push_back(new DeleteCounter(&deletes));
+
+    butil::ScopedVector<DeleteCounter> result =
+        PassThru(std::move(source));
+
+    EXPECT_TRUE(source.empty());
+    ASSERT_EQ(1u, result.size());
+    EXPECT_EQ(0, deletes);
+  }
+  EXPECT_EQ(1, deletes);
+}
 
 TEST(ScopedVectorTest, InsertRange) {
   LifeCycleWatcher watchers[5];

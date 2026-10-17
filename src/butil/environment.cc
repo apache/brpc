@@ -229,7 +229,7 @@ scoped_ptr<char*[]> AlterEnvironment(const char* const* const env,
     result[i] = &storage_data[result_indices[i]];
   result[result_indices.size()] = 0;  // Null terminator.
 
-  return result.Pass();
+  return result;
 }
 
 #endif  // OS_POSIX

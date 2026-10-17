@@ -4,6 +4,8 @@
 
 #include "butil/files/memory_mapped_file.h"
 
+#include <utility>
+
 #include "butil/files/file_path.h"
 #include "butil/logging.h"
 
@@ -36,7 +38,7 @@ bool MemoryMappedFile::Initialize(File file) {
   if (IsValid())
     return false;
 
-  file_ = file.Pass();
+  file_ = std::move(file);
 
   if (!MapFileToMemory()) {
     CloseHandles();

@@ -344,14 +344,14 @@ ExecutionQueueBase::scoped_ptr_t ExecutionQueueBase::address(uint64_t id) {
         const uint32_t ver1 = _version_of_vref(vref1);
         if (ver1 == _version_of_id(id)) {
             ret.reset(m);
-            return ret.Pass();
+            return ret;
         }
 
         const uint64_t vref2 = m->_versioned_ref.fetch_sub(
             1, butil::memory_order_release);
         const int32_t nref = _ref_of_vref(vref2);
         if (nref > 1) {
-            return ret.Pass();
+            return ret;
         } else if (__builtin_expect(nref == 1, 1)) {
             const uint32_t ver2 = _version_of_vref(vref2);
             if ((ver2 & 1)) {
@@ -379,7 +379,7 @@ ExecutionQueueBase::scoped_ptr_t ExecutionQueueBase::address(uint64_t id) {
             CHECK(false) << "Over dereferenced id=" << id;
         }
     }
-    return ret.Pass();
+    return ret;
 }
 
 int ExecutionQueueBase::create(uint64_t* id, const ExecutionQueueOptions* options,

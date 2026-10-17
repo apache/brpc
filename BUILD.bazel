@@ -316,7 +316,6 @@ objc_library(
         "src/butil/memory/aligned_memory.h",
         "src/butil/memory/scoped_policy.h",
         "src/butil/memory/scoped_ptr.h",
-        "src/butil/move.h",
         "src/butil/port.h",
         "src/butil/posix/eintr_wrapper.h",
         "src/butil/scoped_generic.h",

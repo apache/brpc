@@ -4,6 +4,8 @@
 
 #include "butil/callback_list.h"
 
+#include <utility>
+
 #include "butil/basictypes.h"
 #include "butil/bind.h"
 #include "butil/bind_helpers.h"
@@ -37,7 +39,7 @@ class Remover {
   }
   void SetSubscriptionToRemove(
       scoped_ptr<CallbackList<void(void)>::Subscription> sub) {
-    removal_subscription_ = sub.Pass();
+    removal_subscription_ = std::move(sub);
   }
 
   int total() const { return total_; }
@@ -234,9 +236,9 @@ TEST(CallbackListTest, RemoveCallbacksDuringIteration) {
       cb_reg.Add(Bind(&Listener::IncrementTotal, Unretained(&b)));
 
   // |remover_1| will remove itself.
-  remover_1.SetSubscriptionToRemove(remover_1_sub.Pass());
+  remover_1.SetSubscriptionToRemove(std::move(remover_1_sub));
   // |remover_2| will remove a.
-  remover_2.SetSubscriptionToRemove(a_subscription.Pass());
+  remover_2.SetSubscriptionToRemove(std::move(a_subscription));
 
   cb_reg.Notify();
 

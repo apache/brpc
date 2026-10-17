@@ -79,7 +79,7 @@ class ScopedPtrHashMap {
 
     scoped_ptr<Value> ret(it->second);
     it->second = nullptr;
-    return ret.Pass();
+    return ret;
   }
 
   scoped_ptr<Value> take(const Key& k) {
@@ -97,7 +97,7 @@ class ScopedPtrHashMap {
 
     scoped_ptr<Value> ret(it->second);
     data_.erase(it);
-    return ret.Pass();
+    return ret;
   }
 
   scoped_ptr<Value> take_and_erase(const Key& k) {
