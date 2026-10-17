@@ -83,6 +83,55 @@ void MarkCalled(bool* called) {
     *called = true;
 }
 
+// Hold completed subcalls before invoking SelectiveChannel's SubDone. Their
+// call IDs stay locked, just as they do while Controller::EndRPC runs done,
+// so cancellation cannot replace an already received response.
+class DeferredSelectiveChannel : public brpc::ChannelBase {
+public:
+    struct SubCall {
+        brpc::Controller* cntl;
+        google::protobuf::Closure* done;
+
+        void Run() const {
+            const brpc::CallId cid = cntl->call_id();
+            done->Run();
+            // The final SubDone may have deleted its Controller.
+            EXPECT_EQ(0, bthread_id_unlock_and_destroy(cid));
+        }
+    };
+
+    explicit DeferredSelectiveChannel(std::vector<SubCall>* calls)
+        : _calls(calls) {}
+
+    void CallMethod(const google::protobuf::MethodDescriptor*,
+                    google::protobuf::RpcController* controller,
+                    const google::protobuf::Message*,
+                    google::protobuf::Message* response,
+                    google::protobuf::Closure* done) override {
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
+        cntl->_response = response;
+        cntl->set_used_by_rpc();
+        CHECK_EQ(0, bthread_id_lock(cntl->call_id(), nullptr));
+        _calls->push_back({cntl, done});
+    }
+
+    int CheckHealth() override { return 0; }
+    int Weight() override { return 1; }
+
+private:
+    std::vector<SubCall>* _calls;
+};
+
+class SelectiveRetryPolicy : public brpc::RetryPolicy {
+public:
+    bool DoRetry(const brpc::Controller* cntl) const override {
+        ++calls;
+        return cntl->ErrorCode() == 5013;
+    }
+
+    mutable int calls = 0;
+};
+
 class DeleteOnlyOnceChannel : public brpc::Channel {
 public:
     DeleteOnlyOnceChannel() : _c(1) {
@@ -3387,6 +3436,183 @@ TEST_F(ChannelTest, selective_channel_ignores_late_subdone_after_timeout) {
     EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
     server.Stop(0);
     server.Join();
+}
+
+static void TestSelectiveLateSubDone(int terminal_error, int late_error,
+                                     bool backup_first, bool delete_in_done) {
+    SCOPED_TRACE(testing::Message() << "terminal_error=" << terminal_error
+                 << " late_error=" << late_error
+                 << " backup_first=" << backup_first
+                 << " delete_in_done=" << delete_in_done);
+    SelectiveRetryPolicy retry_policy;
+    brpc::ChannelOptions options;
+    options.timeout_ms = -1;
+    options.max_retry = 3;
+    options.retry_policy = &retry_policy;
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", &options));
+    for (int i = 0; i < 2; ++i) {
+        ASSERT_EQ(0, channel.AddChannel(
+                         new DeferredSelectiveChannel(&calls), nullptr));
+    }
+
+    std::unique_ptr<brpc::Controller> cntl(new brpc::Controller);
+    const brpc::CallId cid = cntl->call_id();
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message("late subcall");
+    res.set_message("original response");
+    int done_count = 0;
+    auto on_done = [](int* count, std::unique_ptr<brpc::Controller>* owner,
+                      bool destroy) {
+        ++*count;
+        if (destroy) {
+            owner->reset();
+        }
+    };
+    test::EchoService::Stub(&channel).Echo(
+        cntl.get(), &req, &res,
+        brpc::NewCallback(+on_done, &done_count, &cntl, delete_in_done));
+    ASSERT_EQ(1u, calls.size());
+
+    // Drive the backup and timeout/cancel paths under the same call-id lock
+    // as timer callbacks, without depending on timer scheduling or sleeps.
+    const brpc::Controller::CompletionInfo info = {cid, false};
+    ASSERT_EQ(0, bthread_id_trylock(cid, nullptr));
+    cntl->SetFailed(brpc::EBACKUPREQUEST, "trigger backup");
+    cntl->OnVersionedRPCReturned(info, false, 0);
+    ASSERT_EQ(2u, calls.size());
+    ASSERT_TRUE(cntl->has_backup_request());
+
+    const int first = backup_first ? 1 : 0;
+    if (late_error != 0) {
+        calls[first].cntl->SetFailed(late_error, "late subcall error");
+    }
+    static_cast<test::EchoResponse*>(calls[first].cntl->_response)
+        ->set_message("late response");
+    calls[first].cntl->response_attachment().append("late attachment");
+    cntl->response_attachment().append("original attachment");
+
+    ASSERT_EQ(0, bthread_id_trylock(cid, nullptr));
+    cntl->SetFailed(terminal_error, "main RPC finished");
+    cntl->OnVersionedRPCReturned(info, false, 0);
+    ASSERT_TRUE(cntl->is_ending_rpc());
+    ASSERT_EQ(nullptr, cntl->_lb.get());
+    ASSERT_EQ(0, done_count);
+    const std::string error_text = cntl->ErrorText();
+    const int retry_calls = retry_policy.calls;
+    const int retried_count = cntl->retried_count();
+
+    calls[first].Run();
+    EXPECT_EQ(0, done_count);
+    EXPECT_EQ(2u, calls.size());
+    EXPECT_EQ(retry_calls, retry_policy.calls);
+    EXPECT_EQ(retried_count, cntl->retried_count());
+    EXPECT_EQ(terminal_error, cntl->ErrorCode());
+    EXPECT_EQ(error_text, cntl->ErrorText());
+    EXPECT_EQ("original response", res.message());
+    EXPECT_EQ("original attachment", cntl->response_attachment().to_string());
+
+    // Fail promptly if the non-final callback forgot to release the lock.
+    ASSERT_EQ(0, bthread_id_trylock(cid, nullptr));
+    ASSERT_EQ(0, bthread_id_unlock(cid));
+    calls[1 - first].Run();
+    EXPECT_EQ(1, done_count);
+    EXPECT_EQ(2u, calls.size());
+    EXPECT_EQ(retry_calls, retry_policy.calls);
+    EXPECT_EQ(EINVAL, bthread_id_trylock(cid, nullptr));
+    if (cntl) {
+        EXPECT_EQ(terminal_error, cntl->ErrorCode());
+        EXPECT_EQ(error_text, cntl->ErrorText());
+        EXPECT_EQ("original attachment", cntl->response_attachment().to_string());
+    }
+    EXPECT_EQ("original response", res.message());
+    EXPECT_EQ(delete_in_done, cntl == nullptr);
+}
+
+TEST_F(ChannelTest, selective_channel_preserves_result_after_late_subdone) {
+    const int terminal_errors[] = {brpc::ERPCTIMEDOUT, ECANCELED};
+    for (int terminal_error : terminal_errors) {
+        for (int late_error : {5013, EINVAL, 0}) {
+            for (bool backup_first : {false, true}) {
+                for (bool delete_in_done : {false, true}) {
+                    TestSelectiveLateSubDone(terminal_error, late_error,
+                                             backup_first, delete_in_done);
+                }
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, selective_channel_retries_before_completion) {
+    SelectiveRetryPolicy retry_policy;
+    brpc::ChannelOptions options;
+    options.timeout_ms = -1;
+    options.max_retry = 3;
+    options.retry_policy = &retry_policy;
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", &options));
+    ASSERT_EQ(0, channel.AddChannel(
+                     new DeferredSelectiveChannel(&calls), nullptr));
+
+    brpc::Controller cntl;
+    const brpc::CallId cid = cntl.call_id();
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message("retry before completion");
+    bool done_called = false;
+    test::EchoService::Stub(&channel).Echo(
+        &cntl, &req, &res, brpc::NewCallback(&MarkCalled, &done_called));
+    ASSERT_EQ(1u, calls.size());
+    calls[0].cntl->SetFailed(5013, "retryable subcall");
+    // Retrying appends to calls and may reallocate the vector.
+    const DeferredSelectiveChannel::SubCall first = calls[0];
+    first.Run();
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_FALSE(done_called);
+    EXPECT_EQ(1, retry_policy.calls);
+    EXPECT_EQ(1, cntl.retried_count());
+
+    static_cast<test::EchoResponse*>(calls[1].cntl->_response)
+        ->set_message("retried successfully");
+    calls[1].Run();
+    EXPECT_TRUE(done_called);
+    EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_EQ("retried successfully", res.message());
+    EXPECT_EQ(EINVAL, bthread_id_trylock(cid, nullptr));
+}
+
+TEST_F(ChannelTest, selective_channel_reports_subcall_error_before_completion) {
+    SelectiveRetryPolicy retry_policy;
+    brpc::ChannelOptions options;
+    options.timeout_ms = -1;
+    options.retry_policy = &retry_policy;
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", &options));
+    ASSERT_EQ(0, channel.AddChannel(
+                     new DeferredSelectiveChannel(&calls), nullptr));
+
+    brpc::Controller cntl;
+    const brpc::CallId cid = cntl.call_id();
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message("subcall error before completion");
+    bool done_called = false;
+    test::EchoService::Stub(&channel).Echo(
+        &cntl, &req, &res, brpc::NewCallback(&MarkCalled, &done_called));
+    ASSERT_EQ(1u, calls.size());
+    calls[0].cntl->SetFailed(EINVAL, "non-retryable subcall error");
+    calls[0].Run();
+    EXPECT_TRUE(done_called);
+    EXPECT_EQ(EINVAL, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_NE(std::string::npos,
+              cntl.ErrorText().find("non-retryable subcall error"));
+    EXPECT_EQ(1, retry_policy.calls);
+    EXPECT_EQ(0, cntl.retried_count());
+    EXPECT_EQ(EINVAL, bthread_id_trylock(cid, nullptr));
 }
 
 TEST_F(ChannelTest, multiple_threads_single_channel) {
