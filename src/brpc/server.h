@@ -659,6 +659,9 @@ friend struct RevertServerStatus;
     // and a retry would overwrite _keytable_pool and leak the previous one.
     void DestroyPreStartAllocations();
 
+    // Destroy pooled keytables before deleting the server's TLS key.
+    void DestroyThreadLocalResources();
+
     int AddServiceInternal(google::protobuf::Service* service,
                            bool is_builtin_service,
                            const ServiceOptions& options);
