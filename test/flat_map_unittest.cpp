@@ -1624,6 +1624,17 @@ TEST_F(FlatMapTest, multi) {
     Bar& g2 = map2[1];
     ASSERT_EQ(&g, &g2);
     ASSERT_EQ(0, g2.x);
-}
 
+    // Erase the first node in a bucket and move the next node to the bucket head.
+    butil::MultiFlatMap<int, std::vector<char>> map3;
+    ASSERT_EQ(0, map3.init(bucket_count));
+
+    ASSERT_NE(nullptr, map3.insert(1, std::vector<char>(64, 'a')));
+    ASSERT_NE(nullptr, map3.insert(same_bucket_key, std::vector<char>(64, 'b')));
+    ASSERT_EQ(1u, map3.erase(1));
+
+    const std::vector<char> *value = map3.seek(same_bucket_key);
+    ASSERT_NE(nullptr, value);
+    ASSERT_EQ(std::vector<char>(64, 'b'), *value);
+}
 }
