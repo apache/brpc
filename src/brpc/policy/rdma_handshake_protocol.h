@@ -18,36 +18,15 @@
 #ifndef BRPC_POLICY_RDMA_HANDSHAKE_PROTOCOL_H
 #define BRPC_POLICY_RDMA_HANDSHAKE_PROTOCOL_H
 
-// NOTE: This file is intentionally INDEPENDENT of BRPC_WITH_RDMA. A server may
-// run in TCP mode either because it was built without RDMA, or because RDMA was
-// not enabled at runtime. In both cases an RDMA client that connects to it will
-// send an RDMA handshake magic ("RDMA" for v2, "RDM3" for v3) first. Without
-// special handling the server treats those bytes as an unknown protocol and
-// closes the connection, so the client (blocked reading the server hello) only
-// sees EOF and cannot fall back to TCP.
-//
-// To let the client fall back on the SAME connection, the server recognizes the
-// RDMA handshake as a "first-class" protocol (magic in the first 4 bytes,
-// PROTOCOL_RDMA_HANDSHAKE is ordered before PROTOCOL_HTTP), replies a hello with
-// an incompatible version so the client rejects it and downgrades to TCP, then
-// drains the client's subsequent ACK and lets normal RPC parsing continue.
-
-#include "butil/iobuf.h"
-#include "brpc/input_message_base.h"
-#include "brpc/parse_result.h"
-#include "brpc/socket.h"
+// Compatibility facade. New code should include
+// transport_handshake_protocol.h and use ParseTransportHandshake.
+#include "brpc/policy/transport_handshake_protocol.h"
 
 namespace brpc {
 namespace policy {
 
-// Parse binary format of rdma handshake.
 ParseResult ParseRdmaHandshake(butil::IOBuf* source, Socket* socket,
                                bool read_eof, const void* arg);
-
-// Actions to a rdma handshake request, which is left unimplemented.
-// All requests are processed in the parsing process. This function
-// must be declared since server only enables rdma handshake as a
-// server-side protocol when this function is declared.
 void ProcessRdmaHandshake(InputMessageBase* msg);
 
 }  // namespace policy
