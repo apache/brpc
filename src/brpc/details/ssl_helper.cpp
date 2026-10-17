@@ -287,10 +287,10 @@ void ExtractHostnames(X509* x, std::vector<std::string>* hostnames) {
 #endif // SSL_CTRL_SET_TLSEXT_HOSTNAME 
 
     int i = -1;
-    X509_NAME* xname = X509_get_subject_name(x);
+    auto* xname = X509_get_subject_name(x);
     while ((i = X509_NAME_get_index_by_NID(xname, NID_commonName, i)) != -1) {
         char* str = nullptr;
-        X509_NAME_ENTRY* entry = X509_NAME_get_entry(xname, i);
+        auto* entry = X509_NAME_get_entry(xname, i);
         const int len = ASN1_STRING_to_UTF8((unsigned char**)&str, 
                                             X509_NAME_ENTRY_get_data(entry));
         if (len >= 0) {
