@@ -491,8 +491,8 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(
     }
     if (nullptr == new_head) {
         // Erase all elements.
-        first_node.set_invalid();
         first_node.destroy_element();
+        first_node.set_invalid();
         if (_S) {
             bit_array_unset(_thumbnail, index);
         }
