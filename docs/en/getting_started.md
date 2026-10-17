@@ -94,9 +94,16 @@ To enable [thrift support](../en/thrift.md), install thrift first and cmake with
 
 **Run example with cmake**
 
+Install brpc from the repository root first. CMake installs headers and
+libraries directly; it no longer stages headers in `output/include` during
+the build. Pass the installation prefix to the example explicitly:
+
 ```shell
+$ cmake --install build --prefix "$PWD/build/output"
 $ cd example/echo_c++
-$ cmake -B build && cmake --build build -j4
+$ cmake -B build -DCMAKE_PREFIX_PATH="$PWD/../../build/output"
+$ cmake --build build -j4
+$ cd build
 $ ./echo_server &
 $ ./echo_client
 ```

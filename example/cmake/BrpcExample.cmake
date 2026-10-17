@@ -28,15 +28,7 @@ function(brpc_example_append_existing_dirs out_var)
 endfunction()
 
 macro(brpc_example_find_common_deps out_libs)
-    execute_process(
-        COMMAND bash -c "find ${CMAKE_CURRENT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
-        OUTPUT_VARIABLE OUTPUT_PATH
-    )
-
-    if(OUTPUT_PATH)
-        list(PREPEND CMAKE_PREFIX_PATH ${OUTPUT_PATH})
-    endif()
-
+    # Locate an installed bundle through the caller's CMAKE_PREFIX_PATH.
     find_package(Threads REQUIRED)
     find_package(Protobuf REQUIRED)
     set(BRPC_EXAMPLE_CXX_STANDARD 14)
@@ -126,7 +118,7 @@ macro(brpc_example_find_common_deps out_libs)
     set(_common_libs
         Threads::Threads
         ${GFLAGS_LIBRARY}
-        ${PROTOBUF_LIBRARIES}
+        protobuf::libprotobuf
         ${_protobuf_absl_targets}
         ${LEVELDB_LIB}
         ${OPENSSL_CRYPTO_LIBRARY}
