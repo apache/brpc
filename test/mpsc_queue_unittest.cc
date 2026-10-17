@@ -158,6 +158,11 @@ TEST(MPSCQueueTest, destroys_dequeued_element) {
     ASSERT_EQ(0, DestructionTracked::alive);
 }
 
+TEST(MPSCQueueTest, enqueue_move_only) {
+  butil::MPSCQueue<std::unique_ptr<int>> q;
+  q.Enqueue(std::make_unique<int>(1));
+}
+
 TEST(MPSCQueueTest, mpsc_test_allocator) {
     butil::ObjectPoolAllocator<MyObject> alloc;
 
