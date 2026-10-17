@@ -85,12 +85,30 @@ inline void AppendHeader(butil::IOBuf& buf, char fc, unsigned long value) {
     buf.append(header, len + 3);
 }
 
-static void FlushComponent(std::string* out, std::string* compbuf, int* ncomp) {
-    AppendHeader(*out, '$', compbuf->size());
-    out->append(*compbuf);
-    out->append("\r\n", 2);
+inline int AppendHeader(butil::IOBufAppender& buf, char fc,
+                        unsigned long value) {
+    char header[32];
+    header[0] = fc;
+    size_t len = AppendDecimal(header + 1, value);
+    header[len + 1] = '\r';
+    header[len + 2] = '\n';
+    return buf.append(header, len + 3);
+}
+
+static int FlushComponent(butil::IOBufAppender* out, std::string* compbuf,
+                          int* ncomp) {
+    if (AppendHeader(*out, '$', compbuf->size()) != 0 ||
+        out->append(compbuf->data(), compbuf->size()) != 0 ||
+        out->append("\r\n", 2) != 0) {
+        return -1;
+    }
     compbuf->clear();
     ++*ncomp;
+    return 0;
+}
+
+inline butil::Status AppendFailed() {
+    return butil::Status(ENOMEM, "Fail to append Redis command");
 }
 
 // Support hiredis-style format, namely everything is same with printf except
@@ -105,8 +123,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
         return butil::Status(EINVAL, "Param[outbuf] or [fmt] is NULL");
     }
     const size_t fmt_len = strlen(fmt);
-    std::string nocount_buf;
-    nocount_buf.reserve(fmt_len * 3 / 2 + 16);
+    butil::IOBufAppender nocount_buf;
     std::string compbuf;  // A component
     compbuf.reserve(fmt_len + 16);
     const char* c = fmt;
@@ -123,7 +140,9 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                 if (quote_char) {
                     compbuf.push_back(*c);
                 } else if (!compbuf.empty() || format_arg_in_comp) {
-                    FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                    if (FlushComponent(&nocount_buf, &compbuf, &ncomponent) != 0) {
+                        return AppendFailed();
+                    }
                     format_arg_in_comp = false;
                 }
             } else if (*c == '"' || *c == '\'') {  // Check quotation.
@@ -131,7 +150,9 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                     quote_char = *c;
                     quote_pos = c;
                     if (!compbuf.empty() || format_arg_in_comp) {
-                        FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                        if (FlushComponent(&nocount_buf, &compbuf, &ncomponent) != 0) {
+                            return AppendFailed();
+                        }
                         format_arg_in_comp = false;
                     }
                 } else if (quote_char == *c) {
@@ -144,7 +165,9 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                         compbuf.push_back(*c);
                     } else { // end quote
                         quote_char = 0;
-                        FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                        if (FlushComponent(&nocount_buf, &compbuf, &ncomponent) != 0) {
+                            return AppendFailed();
+                        }
                         format_arg_in_comp = false;
                     }
                 } else {
@@ -323,7 +346,9 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
     }
     
     if (!compbuf.empty() || format_arg_in_comp) {
-        FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+        if (FlushComponent(&nocount_buf, &compbuf, &ncomponent) != 0) {
+            return AppendFailed();
+        }
         format_arg_in_comp = false;
     }
 
@@ -332,7 +357,9 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
         "formatting of conversion specifiers)";
     
     AppendHeader(*outbuf, '*', ncomponent);
-    outbuf->append(nocount_buf);
+    if (ncomponent != 0) {
+        outbuf->append(nocount_buf.buf().movable());
+    }
     return butil::Status::OK();
 }
 
@@ -350,8 +377,7 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
         return butil::Status(EINVAL, "Param[outbuf] or [cmd] is NULL");
     }
     const size_t cmd_len = cmd.size();
-    std::string nocount_buf;
-    nocount_buf.reserve(cmd_len * 3 / 2 + 16);
+    butil::IOBufAppender nocount_buf;
     std::string compbuf;  // A component
     compbuf.reserve(cmd_len + 16);
     int ncomponent = 0;
@@ -362,14 +388,18 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
             if (quote_char) {
                 compbuf.push_back(*c);
             } else if (!compbuf.empty()) {
-                FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                if (FlushComponent(&nocount_buf, &compbuf, &ncomponent) != 0) {
+                    return AppendFailed();
+                }
             }
         } else if (*c == '"' || *c == '\'') {  // Check quotation.
             if (!quote_char) {  // begin quote
                 quote_char = *c;
                 quote_pos = c;
                 if (!compbuf.empty()) {
-                    FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                    if (FlushComponent(&nocount_buf, &compbuf, &ncomponent) != 0) {
+                        return AppendFailed();
+                    }
                 }
             } else if (quote_char == *c) {
                 const char last_char = (compbuf.empty() ? 0 : compbuf.back());
@@ -381,7 +411,9 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
                     compbuf.push_back(*c);
                 } else { // end quote
                     quote_char = 0;
-                    FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+                    if (FlushComponent(&nocount_buf, &compbuf, &ncomponent) != 0) {
+                        return AppendFailed();
+                    }
                 }
             } else {
                 compbuf.push_back(*c);
@@ -400,11 +432,15 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
     }
     
     if (!compbuf.empty()) {
-        FlushComponent(&nocount_buf, &compbuf, &ncomponent);
+        if (FlushComponent(&nocount_buf, &compbuf, &ncomponent) != 0) {
+            return AppendFailed();
+        }
     }
 
     AppendHeader(*outbuf, '*', ncomponent);
-    outbuf->append(nocount_buf);
+    if (ncomponent != 0) {
+        outbuf->append(nocount_buf.buf().movable());
+    }
     return butil::Status::OK();
 }
 
