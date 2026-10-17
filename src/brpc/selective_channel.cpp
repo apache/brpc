@@ -185,6 +185,10 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     }
     BAIDU_SCOPED_LOCK(_mutex);
     if (_chan_map.find(sub_channel) != _chan_map.end()) {
+        // Duplicate: no new registration is created. Ownership is decided by
+        // the first successful registration, so ignore this call's ownership,
+        // don't delete (still referenced by the live registration) and don't
+        // reassign (a failing call should have no side effect).
         LOG(ERROR) << "Duplicated sub_channel=" << sub_channel;
         return -1;
     }
@@ -193,11 +197,17 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     sub_chan->ownership = subopt.ownership;
     SocketId sock_id;
     SocketOptions options;
-    options.user = sub_chan;
+    // Deliberately do NOT attach sub_chan as SocketUser on creation: failure
+    // of get_resource() runs no recycling callback at all, while failure of
+    // OnCreated() recycles synchronously. Keeping _user unset until the
+    // socket is fully created makes cleanup a single call-site rule.
     options.health_check_interval_s = FLAGS_channel_check_interval;
 
     if (Socket::Create(options, &sock_id) != 0) {
-        delete sub_chan;
+        // The socket was never user-attached, so no BeforeRecycle callback
+        // runs on any creation-failure path. Dispose sub_chan here: deletes
+        // chan iff OWNS_CHANNEL, then sub_chan (same as the callback does).
+        sub_chan->BeforeRecycle(nullptr);
         LOG(ERROR) << "Fail to create fake socket for sub channel";
         return -1;
     }
@@ -205,11 +215,24 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     int rc = Socket::AddressFailedAsWell(sock_id, &ptr);
     if (rc < 0) {
         LOG(ERROR) << "Fail to address SocketId=" << sock_id;
+        // Practically unreachable: the additional reference taken by Create()
+        // keeps the socket addressable. The socket is not user-attached yet,
+        // so dispose sub_chan here as above.
+        sub_chan->BeforeRecycle(nullptr);
         return -1;
     }
+    // The socket is fully created and referenced by `ptr'. Attach sub_chan
+    // now; from here on, failures SetFailed() the socket and its recycling
+    // runs SubChannel::BeforeRecycle, deleting sub_chan (and chan iff
+    // OWNS_CHANNEL).
+    ptr->set_user(sub_chan);
     if (rc > 0 && !ptr->HCEnabled()) {
         LOG(ERROR) << "Health check of SocketId="
                    << sock_id << " is disabled";
+        // sub_chan will be deleted when the socket is recycled.
+        ptr->SetFailed();
+        // Cancel health checking.
+        ptr->ReleaseHCRelatedReference();
         return -1;
     }
     if (!AddServer(ServerId(sock_id, subopt.tag))) {
