@@ -722,10 +722,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
 int Socket::OnCreated(const SocketOptions& options) {
     if (_io_event.Init((void*)id()) != 0) {
         LOG(ERROR) << "Fail to init IOEvent";
-        // VersionedRefWithId::Create() performs the failure transition after
-        // OnCreated() returns an error; attach the user before returning so
-        // recycling invokes SocketUser::BeforeRecycle.
-        _user = options.user;
+        SetFailed(ENOMEM, "%s", "Fail to init IOEvent");
         return -1;
     }
     _io_event.set_bthread_tag(options.bthread_tag);

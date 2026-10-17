@@ -493,6 +493,13 @@ public:
     // `user' parameter passed to Create().
     SocketUser* user() const { return _user; }
 
+    // Attach the SocketUser after creation. Only safe before the SocketId
+    // is published to other threads (e.g. right after a successful
+    // Create+Address). Callers creating a socket with a null user and
+    // attaching it here get a single cleanup rule: creation failures never
+    // run SocketUser::BeforeRecycle, so the call site disposes the user.
+    void set_user(SocketUser* user) { _user = user; }
+
     // `conn' parameter passed to Create()
     void set_conn(SocketConnection* conn) { _conn = conn; }
     SocketConnection* conn() const { return _conn; }
