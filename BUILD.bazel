@@ -511,7 +511,7 @@ cc_library(
 filegroup(
     name = "brpc_idl_options_proto_srcs",
     srcs = [
-        "src/idl_options.proto",
+        "src/mcpack2pb/idl_options.proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -519,7 +519,7 @@ filegroup(
 brpc_proto_library(
     name = "brpc_idl_options_cc_proto",
     srcs = [":brpc_idl_options_proto_srcs"],
-    include = "src",
+    include = "src/mcpack2pb",
     visibility = ["//visibility:public"],
 )
 
