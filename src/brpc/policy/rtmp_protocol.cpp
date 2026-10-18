@@ -3482,6 +3482,13 @@ ParseResult ParseRtmpMessage(butil::IOBuf* source, Socket *socket, bool read_eof
             // to avoid the confusion from root.
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
+        if (IsInternalPort(*server, socket->local_side())) {
+            // ServerOptions.internal_port serves builtin and Tabbed services
+            // only and an RtmpService is neither. RTMP is handled right here
+            // without a Controller to reject the request with, so behave as
+            // if rtmp was not enabled on this port at all.
+            return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+        }
         if (read_eof) {
             // No former RtmpContext when we read an EOF
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
