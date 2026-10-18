@@ -53,6 +53,7 @@ graphify-out/
 /protoc-gen-mcpack*/
 
 # Ignore bazel files
+MODULE.bazel.lock
 bazel-bin
 bazel-out
 bazel-testlogs
