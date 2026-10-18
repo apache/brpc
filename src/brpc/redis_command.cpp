@@ -68,14 +68,6 @@ inline size_t AppendDecimal(char* outbuf, unsigned long d) {
 // short or does not have many %. In a 100K-time call to formating of
 // "GET key1", the time spent on RedisRequest.AddCommand() are ~700ns
 // vs. ~400ns while using snprintf() vs. AppendDecimal() respectively.
-inline void AppendHeader(std::string& buf, char fc, unsigned long value) {
-    char header[32];
-    header[0] = fc;
-    size_t len = AppendDecimal(header + 1, value);
-    header[len + 1] = '\r';
-    header[len + 2] = '\n';
-    buf.append(header, len + 3);
-}
 inline void AppendHeader(butil::IOBuf& buf, char fc, unsigned long value) {
     char header[32];
     header[0] = fc;
