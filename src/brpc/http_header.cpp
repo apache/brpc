@@ -29,7 +29,8 @@ const char* HttpHeader::CONTENT_TYPE = "content-type";
 HttpHeader::HttpHeader() 
     : _status_code(HTTP_STATUS_OK)
     , _method(HTTP_METHOD_GET)
-    , _version(1, 1) {}
+    , _version(1, 1)
+    , _set_cookie_headers_dirty(false) {}
 
 HttpHeader::HttpHeader(const HttpHeader& rhs)
     : _headers(rhs._headers)
@@ -38,7 +39,8 @@ HttpHeader::HttpHeader(const HttpHeader& rhs)
     , _method(rhs._method)
     , _content_type(rhs._content_type)
     , _unresolved_path(rhs._unresolved_path)
-    , _version(rhs._version) {
+    , _version(rhs._version)
+    , _set_cookie_headers_dirty(rhs._set_cookie_headers_dirty) {
     if (rhs._set_cookie_headers) {
         _set_cookie_headers.reset(new SetCookieHeaders(*rhs._set_cookie_headers));
     }
@@ -61,6 +63,7 @@ void HttpHeader::Swap(HttpHeader &rhs) {
     _unresolved_path.swap(rhs._unresolved_path);
     std::swap(_version, rhs._version);
     _set_cookie_headers.swap(rhs._set_cookie_headers);
+    std::swap(_set_cookie_headers_dirty, rhs._set_cookie_headers_dirty);
 }
 
 void HttpHeader::Clear() {
@@ -72,6 +75,7 @@ void HttpHeader::Clear() {
     _unresolved_path.clear();
     _version = std::make_pair(1, 1);
     _set_cookie_headers.reset();
+    _set_cookie_headers_dirty = false;
 }
 
 const std::string* HttpHeader::GetHeader(const char* key) const {
@@ -109,6 +113,7 @@ void HttpHeader::SetHeader(const std::string& key,
         } else {
             _set_cookie_headers->front().second = value;
         }
+        _set_cookie_headers_dirty = true;
         SyncSetCookieHeaders();
         return;
     }
@@ -122,6 +127,7 @@ void HttpHeader::RemoveHeader(const char* key) {
         _headers.erase(key);
         if (IsSetCookie(key)) {
             _set_cookie_headers.reset();
+            _set_cookie_headers_dirty = false;
         }
     }
 }
@@ -133,9 +139,12 @@ void HttpHeader::AppendHeader(const std::string& key,
         if (!_set_cookie_headers) {
             _set_cookie_headers.reset(new SetCookieHeaders);
         }
+        if (_set_cookie_headers_dirty) {
+            SyncSetCookieHeaders();
+        }
         _set_cookie_headers->push_back(
             std::make_pair(key, std::string(value.data(), value.size())));
-        SyncSetCookieHeaders();
+        _headers.insert(_set_cookie_headers->back());
     } else {
         std::string& slot = GetOrAddHeader(key);
         if (slot.empty()) {
@@ -175,18 +184,25 @@ std::string& HttpHeader::AddHeader(const std::string& key) {
     if (!_set_cookie_headers) {
         _set_cookie_headers.reset(new SetCookieHeaders);
     }
+    if (!_set_cookie_headers_dirty) {
+        _headers.erase(SET_COOKIE);
+        _set_cookie_headers_dirty = true;
+    }
     _set_cookie_headers->push_back(std::make_pair(key, std::string()));
-    SyncSetCookieHeaders();
     return _set_cookie_headers->back().second;
 }
 
 void HttpHeader::SyncSetCookieHeaders() {
+    if (!_set_cookie_headers_dirty) {
+        return;
+    }
     _headers.erase(SET_COOKIE);
     if (_set_cookie_headers) {
         for (const auto& header : *_set_cookie_headers) {
             _headers.insert(header);
         }
     }
+    _set_cookie_headers_dirty = false;
 }
 
 const HttpHeader& DefaultHttpHeader() {

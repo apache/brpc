@@ -889,7 +889,7 @@ TEST(HttpMessageTest, http_header) {
     int set_cookie_value2_count = 0;
     int set_cookie_value3_count = 0;
     for (auto iter = header.HeaderBegin(); iter != header.HeaderEnd(); ++iter) {
-        if (!header.IsSetCookie(brpc::HttpHeader::SET_COOKIE)) {
+        if (!header.IsSetCookie(iter->first)) {
             continue;
         }
         if (iter->second == set_cookie_value2) {

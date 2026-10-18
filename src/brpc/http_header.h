@@ -124,7 +124,12 @@ public:
     HeaderIterator HeaderBegin() const { return _headers.begin(); }
     HeaderIterator HeaderEnd() const { return _headers.end(); }
     // #headers
-    size_t HeaderCount() const { return _headers.size(); }
+    size_t HeaderCount() const {
+        if (_set_cookie_headers_dirty) {
+            return _headers.size() + _set_cookie_headers->size();
+        }
+        return _headers.size();
+    }
 
     // Get the URI object, check src/brpc/uri.h for details.
     const URI& uri() const { return _uri; }
@@ -215,6 +220,8 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     // another Set-Cookie header is appended.
     typedef std::deque<std::pair<std::string, std::string> > SetCookieHeaders;
     std::unique_ptr<SetCookieHeaders> _set_cookie_headers;
+    // When true, Set-Cookie headers are only stored in _set_cookie_headers.
+    bool _set_cookie_headers_dirty;
 };
 
 const HttpHeader& DefaultHttpHeader();
