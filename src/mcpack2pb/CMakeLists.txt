@@ -41,7 +41,6 @@ set_property(TARGET MCPACK2PB_LIB PROPERTY BRPC_PRIVATE_LIBS "-lprotoc")
 add_executable(protoc-gen-mcpack generator.cpp)
 set_target_properties(protoc-gen-mcpack PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/output/bin)
-target_link_libraries(protoc-gen-mcpack PRIVATE butil_build_config)
 if(BUILD_SHARED_LIBS)
     target_link_libraries(protoc-gen-mcpack PRIVATE brpc-shared brpc_bundle_dependencies)
 else()
