@@ -352,7 +352,7 @@ void FlatMap<_K, _T, _H, _E, _S, _A, _M>::swap(
             _buckets = rhs._buckets;
             _thumbnail = rhs._thumbnail;
             rhs._buckets = rhs._default_buckets;
-            rhs._thumbnail = rhs._thumbnail;
+            rhs._thumbnail = rhs._default_thumbnail;
         } // else both are default buckets which has been swapped, so no need to swap `_buckets'.
     }
 
