@@ -2289,7 +2289,7 @@ TEST_F(HttpTest, h2_ping_ack_respects_socket_write_cap) {
     brpc::Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = false;
     ASSERT_EQ(0, sock->Write(&big, &wopt));
-    ASSERT_TRUE(sock->_overcrowded);
+    ASSERT_TRUE(sock->is_overcrowded());
 
     brpc::policy::H2Context* ctx =
         new brpc::policy::H2Context(sock.get(), nullptr);
@@ -2317,6 +2317,23 @@ TEST_F(HttpTest, h2_ping_ack_respects_socket_write_cap) {
     // The overcrowded connection must terminate parsing instead of accepting
     // the PING and queueing a PONG past the socket write cap.
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
+}
+
+TEST_F(HttpTest, socket_overcrowded_state_follows_unwritten_bytes) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_socket_max_unwritten_bytes = 64;
+
+    _socket->_unwritten_bytes.store(0, butil::memory_order_relaxed);
+    ASSERT_FALSE(_socket->is_overcrowded());
+
+    _socket->_unwritten_bytes.store(63, butil::memory_order_relaxed);
+    ASSERT_FALSE(_socket->is_overcrowded());
+
+    _socket->_unwritten_bytes.store(64, butil::memory_order_relaxed);
+    ASSERT_TRUE(_socket->is_overcrowded());
+
+    _socket->_unwritten_bytes.store(65, butil::memory_order_relaxed);
+    ASSERT_TRUE(_socket->is_overcrowded());
 }
 
 TEST_F(HttpTest, http2_goaway_with_debug_data) {
