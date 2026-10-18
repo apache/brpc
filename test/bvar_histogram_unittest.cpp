@@ -24,7 +24,7 @@
 #include <iomanip>                      // std::setprecision
 #include <limits>
 #include <map>
-#include <memory>                       // std::make_shared
+#include <memory>                       // std::unique_ptr, std::make_unique
 #include <sstream>
 #include <string>
 #include <vector>
@@ -32,7 +32,6 @@
 #include <butil/atomicops.h>
 #include <butil/float_util.h>
 #include <butil/logging.h>
-#include <butil/scoped_lock.h>
 #include <butil/strings/string_number_conversions.h>
 #include <butil/time.h>
 #include "bvar/bvar.h"
@@ -733,41 +732,25 @@ TEST_F(HistogramTest, window) {
 }
 
 TEST_F(HistogramTest, window_forgets_old_samples) {
+    // Own the unscheduled sampler until after h's destructor calls destroy().
+    std::unique_ptr<bvar::Histogram::sampler_type> sampler;
     bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20, 30}));
+    sampler = std::make_unique<bvar::Histogram::sampler_type>(&h);
+    h._sampler = sampler.get();
     bvar::Window<bvar::Histogram> w(&h, 1);
+
+    // Drive sampling explicitly so that both states can be observed even when
+    // the test thread would miss a background sampling interval on a busy host.
     h << 5;
+    sampler->take_sample();
+    bvar::Histogram::Value wv = w.get_value();
+    ASSERT_EQ(1, wv.num);
+    ASSERT_DOUBLE_EQ(5.0, wv.sum);
+    ASSERT_EQ(1u, wv.counts[0]);
 
-    // Check the latest cumulative snapshot: it still includes the write even
-    // if the one-second window has expired before this thread can poll it.
-    // Allow up to 30 seconds at 100 ms per retry on busy test hosts.
-    bvar::Histogram::sampler_type* sampler = h.get_sampler();
-    int64_t sampled_count = 0;
-    for (int i = 0; i < 300; ++i) {
-        {
-            BAIDU_SCOPED_LOCK(sampler->_mutex);
-            const auto* latest = sampler->_q.bottom();
-            if (latest != nullptr) {
-                sampled_count = latest->data.num;
-            }
-        }
-        if (sampled_count == 1) {
-            break;
-        }
-        usleep(100 * 1000);
-    }
-    ASSERT_EQ(1, sampled_count);
-
-    // Expiration needs another sampling round. A fixed sleep does not guarantee
-    // that the sampler has run, especially when the test host is busy. Allow
-    // another 30 seconds for this phase.
-    bvar::Histogram::Value wv;
-    for (int i = 0; i < 300; ++i) {
-        wv = w.get_value();
-        if (wv.num == 0) {
-            break;
-        }
-        usleep(100 * 1000);
-    }
+    // The next round advances past the observation in the one-second window.
+    sampler->take_sample();
+    wv = w.get_value();
     ASSERT_EQ(0, wv.num);
     ASSERT_DOUBLE_EQ(0.0, wv.sum);
     for (size_t i = 0; i < h.schema().num_buckets(); ++i) {
