@@ -144,6 +144,11 @@ void HelloMessage::Deserialize(void* data) {
     len = butil::NetToHost64(net_len);
     current_pos += sizeof(net_len);
     memcpy(shm_name, current_pos, SHM_MAX_NAME_BUFF_LEN);
+    // shm_name arrives verbatim from the peer and is used downstream as a
+    // C-string (strncpy/strrchr/snprintf("%s")/shm allocate+map). A peer that
+    // fills all SHM_MAX_NAME_BUFF_LEN bytes without a terminator would make
+    // those scans run past the buffer, so force termination here.
+    shm_name[SHM_MAX_NAME_BUFF_LEN - 1] = '\0';
 }
 
 std::string HelloMessage::toString() const {
