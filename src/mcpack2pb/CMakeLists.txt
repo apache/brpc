@@ -44,7 +44,7 @@ set_target_properties(protoc-gen-mcpack PROPERTIES
 if(BUILD_SHARED_LIBS)
     target_link_libraries(protoc-gen-mcpack PRIVATE brpc-shared brpc_bundle_dependencies)
 else()
-    target_link_libraries(protoc-gen-mcpack PRIVATE brpc-static brpc_bundle_dependencies)
+    target_link_libraries(protoc-gen-mcpack PRIVATE brpc-static)
 endif()
 
 brpc_install_module_headers()

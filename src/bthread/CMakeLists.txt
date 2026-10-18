@@ -56,9 +56,9 @@ file(GLOB_RECURSE BTHREAD_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}
 set(bthread_libraries)
 set(bthread_private_libs "")
 if(WITH_BTHREAD_TRACER)
-    list(APPEND bthread_libraries ${LIBUNWIND_LIB} ${LIBUNWIND_X86_64_LIB}
-        ${bthread_tracer_ABSL_USED_TARGETS})
-    set(bthread_private_libs "-lunwind -lunwind-x86_64 -labsl_stacktrace -labsl_symbolize -labsl_debugging_internal -labsl_demangle_internal -labsl_malloc_internal -labsl_raw_logging_internal -labsl_spinlock_wait -labsl_base")
+    list(APPEND bthread_libraries ${bthread_tracer_ABSL_USED_TARGETS}
+        ${LIBUNWIND_X86_64_LIB} ${LIBUNWIND_LIB})
+    set(bthread_private_libs "-labsl_stacktrace -labsl_symbolize -labsl_debugging_internal -labsl_demangle_internal -labsl_malloc_internal -labsl_base -labsl_spinlock_wait -labsl_raw_logging_internal -lunwind-x86_64 -lunwind")
 endif()
 
 add_library(bthread_runtime_dependencies INTERFACE)

@@ -17,5 +17,5 @@
 
 file(GLOB SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 add_executable(rpc_press ${SOURCES})
-target_link_libraries(rpc_press PRIVATE brpc-static ${DYNAMIC_LIB})
+target_link_libraries(rpc_press PRIVATE brpc-static)
 install(TARGETS rpc_press RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
