@@ -240,6 +240,27 @@ TEST_F(MongoTest, verify_request) {
     msg->Destroy();
 }
 
+TEST_F(MongoTest, process_request_after_parsing_context_reset) {
+    brpc::mongo_head_t header = { 0, 0, 0, 0 };
+    header.op_code = brpc::MONGO_OPCODE_REPLY;
+    header.message_length = sizeof(header) + EXP_REQUEST.length();
+    butil::IOBuf total_buf;
+    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    total_buf.append(EXP_REQUEST);
+    brpc::ParseResult req_pr = brpc::policy::ParseMongoMessage(
+        &total_buf, _socket.get(), false, &_server);
+    ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
+    // The bthread parsing messages may reset the parsing context, e.g. before
+    // trying other protocols, ahead of the request being processed.
+    _socket->reset_parsing_context(nullptr);
+    ProcessMessage(brpc::policy::ProcessMongoRequest, req_pr.message(), false);
+    // The request is still processed with the context it was parsed with.
+    ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
+    int bytes_in_pipe = 0;
+    ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe);
+    ASSERT_LT(0, bytes_in_pipe);
+}
+
 TEST_F(MongoTest, complete_flow) {
     butil::IOBuf request_buf;
     butil::IOBuf total_buf;
