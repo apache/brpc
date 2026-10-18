@@ -605,10 +605,12 @@ butil::Status AVCDecoderConfigurationRecord::Create(const void* data, size_t len
     // 5.2.4.1.2 Semantics
     // The value of this field shall be one of 0, 1, or 3 corresponding to a
     // length encoded with 1, 2, or 4 bytes, respectively.
-    length_size_minus1 = buf[4] & 0x03;
-    if (length_size_minus1 == 2) {
+    // Reject before storing: AVCNaluIterator CHECKs the stored value, and
+    // TsWriter keeps using its record after a failed Create().
+    if ((buf[4] & 0x03) == 2) {
         return butil::Status(EINVAL, "lengthSizeMinusOne should never be 2");
     }
+    length_size_minus1 = buf[4] & 0x03;
 
     // Parsing SPS
     const int num_sps = (int)(buf[5] & 0x1f);
