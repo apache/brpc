@@ -32,6 +32,7 @@
 #include <butil/atomicops.h>
 #include <butil/float_util.h>
 #include <butil/logging.h>
+#include <butil/scoped_lock.h>
 #include <butil/strings/string_number_conversions.h>
 #include <butil/time.h>
 #include "bvar/bvar.h"
@@ -736,22 +737,30 @@ TEST_F(HistogramTest, window_forgets_old_samples) {
     bvar::Window<bvar::Histogram> w(&h, 1);
     h << 5;
 
-    // First wait for the sampler to observe the write. An empty window before
-    // the first sampling round must not count as forgetting the sample. Allow
-    // up to 30 seconds at 100 ms per retry on busy test hosts.
-    bvar::Histogram::Value wv;
+    // Check the latest cumulative snapshot: it still includes the write even
+    // if the one-second window has expired before this thread can poll it.
+    // Allow up to 30 seconds at 100 ms per retry on busy test hosts.
+    bvar::Histogram::sampler_type* sampler = h.get_sampler();
+    int64_t sampled_count = 0;
     for (int i = 0; i < 300; ++i) {
-        wv = w.get_value();
-        if (wv.num == 1) {
+        {
+            BAIDU_SCOPED_LOCK(sampler->_mutex);
+            const auto* latest = sampler->_q.bottom();
+            if (latest != nullptr) {
+                sampled_count = latest->data.num;
+            }
+        }
+        if (sampled_count == 1) {
             break;
         }
         usleep(100 * 1000);
     }
-    ASSERT_EQ(1, wv.num);
+    ASSERT_EQ(1, sampled_count);
 
     // Expiration needs another sampling round. A fixed sleep does not guarantee
     // that the sampler has run, especially when the test host is busy. Allow
     // another 30 seconds for this phase.
+    bvar::Histogram::Value wv;
     for (int i = 0; i < 300; ++i) {
         wv = w.get_value();
         if (wv.num == 0) {
