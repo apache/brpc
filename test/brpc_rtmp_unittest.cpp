@@ -1334,9 +1334,18 @@ TEST(RtmpTest, not_served_on_internal_port) {
     const std::string http_req = "GET /version HTTP/1.1\r\n\r\n";
     ASSERT_EQ((ssize_t)http_req.size(),
               write(fd, http_req.data(), http_req.size()));
+    // The reply may arrive in several segments, read until the status
+    // line prefix is complete.
+    const char status_prefix[] = "HTTP/1.1 200";
+    const size_t prefix_len = sizeof(status_prefix) - 1;
     char resp[1024];
-    ASSERT_GT(read(fd, resp, sizeof(resp)), 0);
-    ASSERT_EQ(0, memcmp(resp, "HTTP/1.1 200", 12));
+    size_t nread = 0;
+    while (nread < prefix_len) {
+        const ssize_t n = read(fd, resp + nread, sizeof(resp) - nread);
+        ASSERT_GT(n, 0);
+        nread += n;
+    }
+    ASSERT_EQ(0, memcmp(resp, status_prefix, prefix_len));
 
     // internal_port serves builtin and Tabbed services only, an RTMP
     // handshake on the same connection must not reach rtmp_service.
