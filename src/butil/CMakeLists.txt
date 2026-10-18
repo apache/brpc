@@ -282,7 +282,6 @@ add_library(BUTIL_LIB OBJECT ${BUTIL_SOURCES})
 target_link_libraries(BUTIL_LIB PRIVATE butil_build_config)
 set_property(TARGET BUTIL_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
 set_property(TARGET BUTIL_LIB PROPERTY BRPC_CRC32C_COMPILE_OPTIONS "${butil_crc32c_options}")
-set_property(TARGET BUTIL_LIB PROPERTY BRPC_PLATFORM_LIBRARIES "${butil_platform_libraries}")
 set_property(TARGET BUTIL_LIB PROPERTY BRPC_BUNDLE_LIBRARIES "${butil_libraries}")
 set_property(TARGET BUTIL_LIB PROPERTY BRPC_PRIVATE_LIBS "${butil_private_libs}")
 

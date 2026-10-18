@@ -237,9 +237,6 @@ set_target_properties(brpc-shared-debug PROPERTIES
          LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/test)
 
 target_link_libraries(brpc-shared-debug PUBLIC brpc_test_config ${DYNAMIC_LIB})
-if(WITH_GLOG)
-    target_link_libraries(brpc-shared-debug PUBLIC ${GLOG_LIB})
-endif()
 
 # AddressSanitizer is incompatible with tcmalloc/gperftools, do not link it when WITH_ASAN is on
 if(WITH_ASAN)
@@ -309,9 +306,6 @@ if(BUILD_FUZZ_TESTS)
             LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/test)
 
     target_link_libraries(brpc-static-debug PUBLIC brpc_test_config ${DYNAMIC_LIB})
-    if(WITH_GLOG)
-        target_link_libraries(brpc-static-debug PUBLIC ${GLOG_LIB})
-    endif()
 
     set(FUZZ_TARGETS fuzz_butil fuzz_esp fuzz_hpack fuzz_http
         fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri
