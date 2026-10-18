@@ -586,6 +586,11 @@ int SelectiveChannel::AddChannel(ChannelBase* sub_channel,
         static_cast<schan::ChannelBalancer*>(_chan._lb.get());
     if (lb == nullptr) {
         LOG(ERROR) << "You must call Init() to initialize a SelectiveChannel";
+        // The ownership contract applies to every failure: take over an
+        // OWNS_CHANNEL sub channel even though it was never registered.
+        if (option.ownership == OWNS_CHANNEL) {
+            delete sub_channel;
+        }
         return -1;
     }
     return lb->AddChannel(sub_channel, option, handle);

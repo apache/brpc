@@ -3760,6 +3760,33 @@ TEST_F(ChannelTest, selective_channel_add_failure_ownership) {
     }
     ASSERT_EQ(0, CountingSubChannel::s_alive);
 
+    // AddChannel before Init() honors the contract as well: an OWNS_CHANNEL
+    // sub channel is consumed, a DOESNT_OWN_CHANNEL one is left to the caller.
+    {
+        brpc::SelectiveChannel channel;  // no Init()
+        CountingSubChannel* u = new CountingSubChannel();
+        ASSERT_EQ(0, u->Init("127.0.0.1:1", nullptr));
+        ASSERT_EQ(1, CountingSubChannel::s_alive);
+        brpc::SelectiveChannel::SubChannelOptions opt;
+        opt.ownership = brpc::OWNS_CHANNEL;
+        EXPECT_EQ(-1, channel.AddChannel(u, opt, nullptr));
+        EXPECT_EQ(0, CountingSubChannel::s_alive);
+    }
+    ASSERT_EQ(0, CountingSubChannel::s_alive);
+    {
+        brpc::SelectiveChannel channel;  // no Init()
+        CountingSubChannel* u = new CountingSubChannel();
+        ASSERT_EQ(0, u->Init("127.0.0.1:1", nullptr));
+        ASSERT_EQ(1, CountingSubChannel::s_alive);
+        brpc::SelectiveChannel::SubChannelOptions opt;
+        opt.ownership = brpc::DOESNT_OWN_CHANNEL;
+        EXPECT_EQ(-1, channel.AddChannel(u, opt, nullptr));
+        EXPECT_EQ(1, CountingSubChannel::s_alive);
+        delete u;
+        EXPECT_EQ(0, CountingSubChannel::s_alive);
+    }
+    ASSERT_EQ(0, CountingSubChannel::s_alive);
+
     // Plan 1: a duplicate AddChannel never reassigns ownership; the FIRST
     // successful registration is the single source of truth.
     // First reg = OWNS, duplicate with DOESNT_OWN must NOT downgrade: schan
