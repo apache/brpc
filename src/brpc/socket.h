@@ -950,6 +950,12 @@ private:
 
     // Saved context for parsing, reset before trying other protocols.
     butil::atomic<Destroyable*> _parsing_context;
+    // DebugSocket() describes _parsing_context outside the bthread parsing
+    // messages, which may reset or release the context at the same time.
+    // Both hold this mutex, so that the context is not destroyed while
+    // being described. initialize_parsing_context() does not need it: it
+    // never destroys a context set in the socket.
+    butil::Mutex _parsing_context_mutex;
 
     // The stream whose data the handlers are currently cutting.
     butil::atomic<InputMessengerProcessor::StreamType> _parsing_stream_type;
