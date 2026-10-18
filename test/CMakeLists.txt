@@ -21,7 +21,7 @@ add_library(brpc_test_config INTERFACE)
 target_link_libraries(brpc_test_config INTERFACE brpc_common_config)
 target_include_directories(brpc_test_config BEFORE INTERFACE
     ${CMAKE_CURRENT_BINARY_DIR}
-    ${PROJECT_SOURCE_DIR}/src
+    ${PROJECT_BINARY_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
 )
 target_compile_definitions(brpc_test_config INTERFACE
