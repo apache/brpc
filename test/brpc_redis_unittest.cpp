@@ -164,6 +164,31 @@ TEST(RedisCommandFormatTest, vector_components_preserve_binary_payload) {
     EXPECT_EQ(expected, buf.to_string());
 }
 
+TEST(RedisCommandFormatTest, format_preserves_binary_payload) {
+    const std::string value("a\0b", 3);
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(
+                    &buf, "SET key %b", value.data(), value.size())
+                    .ok());
+
+    std::string expected = "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\n";
+    expected.append(value).append("\r\n");
+    EXPECT_EQ(expected, buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, no_format_encodes_components) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandNoFormat(&buf, "SET key value").ok());
+    EXPECT_EQ("*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n",
+              buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, empty_format_encodes_empty_array) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "").ok());
+    EXPECT_EQ("*0\r\n", buf.to_string());
+}
+
 TEST(RedisCommandFormatTest, authenticator_encodes_password_and_database) {
     brpc::policy::RedisAuthenticator authenticator("a b", 3);
     std::string credential;
