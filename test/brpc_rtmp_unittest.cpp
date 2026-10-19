@@ -19,6 +19,7 @@
 
 // Date: Fri May 20 15:52:22 CST 2016
 
+#include <limits>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -269,9 +270,16 @@ public:
                       << " ms before responding play request";
             bthread_usleep(_sleep_ms * 1000L);
         }
+        // Reserve a reference for the sender bthread, keeping the stream alive
+        // until SendData() returns, even if a failed send synchronously runs
+        // OnStop() and releases the framework's references. The reference
+        // belongs to the sender from the moment it is acquired, so only the
+        // failed creation path gives it back.
+        AddRefManually();
         int rc = bthread_start_background(&_play_thread, nullptr,
                                           RunSendData, this);
         if (rc) {
+            RemoveRefManually();
             status->set_error(rc, "Fail to create thread");
             return;
         }
@@ -289,8 +297,17 @@ public:
     void OnStop() {
         LOG(INFO) << "OnStop of PlayingDummyStream=" << this;
         if (_state.exchange(STATE_STOPPED) == STATE_PLAYING) {
+            // A send failure can invoke this callback on the sender bthread
+            // itself. bthread_stop() only sets the stop flag that SendData's
+            // loop checks, so it must be called on the current bthread too,
+            // otherwise the sender loops and sleeps forever while holding its
+            // stream reference. Only joining the current bthread is unsafe, so
+            // skip just the join on the self-callback path; the sender's own
+            // reference keeps the stream alive until SendData returns.
             bthread_stop(_play_thread);
-            bthread_join(_play_thread, nullptr);
+            if (_play_thread != bthread_self()) {
+                bthread_join(_play_thread, nullptr);
+            }
         }
     }
 
@@ -298,7 +315,10 @@ public:
     
 private:
     static void* RunSendData(void* arg) {
-        ((PlayingDummyStream*)arg)->SendData();
+        // Adopt the reference acquired before starting this bthread.
+        butil::intrusive_ptr<PlayingDummyStream> stream(
+            static_cast<PlayingDummyStream*>(arg), false);
+        stream->SendData();
         return nullptr;
     }
 
@@ -342,6 +362,90 @@ void PlayingDummyStream::SendData() {
     LOG(INFO) << "Quit SendData of PlayingDummyStream=" << this;
 }
 
+// Regression test for a use-after-free where a send failure synchronously ran
+// OnStop() on the sender bthread and dropped the framework's reference while
+// SendData() was still using the stream. This reproduces the ordering
+// deterministically without a socket: the sender bthread runs OnStop() itself,
+// which releases the framework's reference, and then keeps touching the stream.
+class SelfStopStream : public brpc::RtmpServerStream {
+public:
+    SelfStopStream(butil::atomic<bool>* destroyed,
+                   butil::atomic<bool>* alive_after_stop,
+                   butil::atomic<bool>* stop_on_sender)
+        : _destroyed(destroyed)
+        , _alive_after_stop(alive_after_stop)
+        , _stop_on_sender(stop_on_sender)
+        , _sender_ready(false) {}
+    ~SelfStopStream() override {
+        _destroyed->store(true, butil::memory_order_relaxed);
+    }
+
+    void OnStop() override {
+        _stop_on_sender->store(_sender == bthread_self(),
+                               butil::memory_order_relaxed);
+        // Drop the framework's reference from within OnStop(), exactly like
+        // RtmpServerStream::RunOnFailed does on the sender bthread.
+        _framework_ref.reset();
+    }
+
+    // Starts the sender bthread and returns its id. The framework keeps one
+    // reference until OnStop() drops it; a second reference is reserved for
+    // the sender bthread, exactly like PlayingDummyStream::OnPlay does.
+    bthread_t Start() {
+        _framework_ref.reset(this);
+        AddRefManually();
+        CHECK_EQ(0, bthread_start_background(
+                        &_sender, nullptr, RunSender, this));
+        // Publish _sender before the sender bthread reads it in OnStop().
+        _sender_ready.store(true, butil::memory_order_release);
+        return _sender;
+    }
+
+private:
+    static void* RunSender(void* arg) {
+        butil::intrusive_ptr<SelfStopStream> self(
+            static_cast<SelfStopStream*>(arg), false);
+        while (!self->_sender_ready.load(butil::memory_order_acquire)) {
+            bthread_usleep(100);
+        }
+        // Run OnStop() on this very bthread, releasing the framework reference.
+        self->OnStop();
+        // The stream must still be alive here, kept by the sender's reference.
+        self->_alive_after_stop->store(
+            !self->_destroyed->load(butil::memory_order_relaxed) &&
+                self->ref_count() >= 1,
+            butil::memory_order_relaxed);
+        return nullptr;
+    }
+
+    butil::atomic<bool>* _destroyed;
+    butil::atomic<bool>* _alive_after_stop;
+    butil::atomic<bool>* _stop_on_sender;
+    butil::atomic<bool> _sender_ready;
+    bthread_t _sender;
+    butil::intrusive_ptr<SelfStopStream> _framework_ref;
+};
+
+TEST(RtmpTest, on_stop_on_sender_bthread_keeps_stream_alive) {
+    butil::atomic<bool> destroyed(false);
+    butil::atomic<bool> alive_after_stop(false);
+    butil::atomic<bool> stop_on_sender(false);
+    bthread_t sender;
+    {
+        butil::intrusive_ptr<SelfStopStream> stream(
+            new SelfStopStream(&destroyed, &alive_after_stop, &stop_on_sender));
+        sender = stream->Start();
+        ASSERT_EQ(0, bthread_join(sender, nullptr));
+        // OnStop ran on the sender bthread and the stream survived it.
+        ASSERT_TRUE(stop_on_sender.load(butil::memory_order_relaxed));
+        ASSERT_TRUE(alive_after_stop.load(butil::memory_order_relaxed));
+        // The sender's reference is gone but the test still holds one.
+        ASSERT_FALSE(destroyed.load(butil::memory_order_relaxed));
+    }
+    // The last reference is gone now, the stream must be destroyed.
+    ASSERT_TRUE(destroyed.load(butil::memory_order_relaxed));
+}
+
 class PlayingDummyService : public brpc::RtmpService {
 public:
     PlayingDummyService(int64_t sleep_ms = 0) : _sleep_ms(sleep_ms) {}
@@ -353,6 +457,14 @@ private:
         return new PlayingDummyStream(_sleep_ms);
     }
     int64_t _sleep_ms;
+};
+
+class RejectingRtmpService : public brpc::RtmpService {
+private:
+    brpc::RtmpServerStream* NewStream(
+        const brpc::RtmpConnectRequest&) override {
+        return nullptr;
+    }
 };
 
 class PublishStream : public brpc::RtmpServerStream {
@@ -623,6 +735,44 @@ TEST(RtmpTest, amf) {
     ASSERT_EQ("heheda", info3.description());
 }
 
+TEST(RtmpTest, amf_rejects_out_of_range_uint32) {
+    // Each value below encodes legally in an AMF0 number but has no uint32
+    // representation; the cast in ReadAMFUint32 was undefined for them.
+    const double bad_values[] = { -1.0, 4294967296.0, 1e30, -1e30,
+                                  std::numeric_limits<double>::infinity(),
+                                  std::numeric_limits<double>::quiet_NaN() };
+    for (size_t i = 0; i < arraysize(bad_values); ++i) {
+        std::string buf;
+        {
+            google::protobuf::io::StringOutputStream zc_stream(&buf);
+            brpc::AMFOutputStream ostream(&zc_stream);
+            brpc::WriteAMFNumber(bad_values[i], &ostream);
+            ASSERT_TRUE(ostream.good());
+        }
+        google::protobuf::io::ArrayInputStream zc_stream(buf.data(), buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        uint32_t val = 0;
+        EXPECT_FALSE(brpc::ReadAMFUint32(&val, &istream)) << "i=" << i;
+    }
+
+    const double good_values[] = { 0.0, 42.5, 4294967295.0 };
+    const uint32_t expected_values[] = { 0, 42, 4294967295u };
+    for (size_t i = 0; i < arraysize(good_values); ++i) {
+        std::string buf;
+        {
+            google::protobuf::io::StringOutputStream zc_stream(&buf);
+            brpc::AMFOutputStream ostream(&zc_stream);
+            brpc::WriteAMFNumber(good_values[i], &ostream);
+            ASSERT_TRUE(ostream.good());
+        }
+        google::protobuf::io::ArrayInputStream zc_stream(buf.data(), buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        uint32_t val = 0;
+        ASSERT_TRUE(brpc::ReadAMFUint32(&val, &istream)) << "i=" << i;
+        ASSERT_EQ(expected_values[i], val);
+    }
+}
+
 TEST(RtmpTest, amf_rejects_oversized_string_before_growing_output) {
     std::string req_buf;
     AppendAMFLongStringHeader(&req_buf, 16);
@@ -747,6 +897,49 @@ TEST(RtmpTest, amf_rejects_oversized_strict_array_count) {
     brpc::AMFArray arr;
     EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
     EXPECT_EQ(0u, arr.size());
+}
+
+TEST(RtmpTest, amf_rejects_stray_object_end_marker) {
+    // A stray object-end marker (0x09) in a value position used to hit
+    // CHECK(false): the process aborted with -crash_on_fatal_log, and the
+    // object/array readers then continued as if the input were valid.
+    {
+        // As the value of a field in a generic object.
+        std::string req_buf;
+        AppendAMFObjectHeader(&req_buf);
+        AppendAMFShortStringBody(&req_buf, "a");
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+        AppendAMFObjectEnd(&req_buf);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::AMFObject obj;
+        EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
+    }
+    {
+        // As an item of a strict array.
+        std::string req_buf;
+        AppendAMFStrictArrayHeader(&req_buf, 1);
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::AMFArray arr;
+        EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
+    }
+    {
+        // As the value of a field mapped to a protobuf message.
+        std::string req_buf;
+        AppendAMFObjectHeader(&req_buf);
+        AppendAMFShortStringBody(&req_buf, "code");
+        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+        AppendAMFObjectEnd(&req_buf);
+
+        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+        brpc::AMFInputStream istream(&zc_stream);
+        brpc::RtmpInfo info;
+        EXPECT_FALSE(brpc::ReadAMFObject(&info, &istream));
+    }
 }
 
 TEST(RtmpTest, amf_rejects_deep_nested_arrays) {
@@ -910,11 +1103,9 @@ TEST(RtmpTest, flv_reader_rejects_zero_datasize_audio_tag) {
     ASSERT_EQ(before, buf.size());
 }
 
-// A crafted Abort message that names the chunk stream currently being parsed
-// (itself) used to make ClearChunkStream delete the RtmpChunkStream while its
-// Feed() is still running, which caused a heap-use-after-free right after
-// OnMessage() returned.
-TEST(RtmpTest, abort_message_naming_own_chunk_stream) {
+// Abort discards an incomplete message without deleting the chunk stream,
+// whether it names the stream carrying the Abort or a different stream.
+TEST(RtmpTest, abort_message_preserves_chunk_stream_state) {
     int pipe_fds[2];
     ASSERT_EQ(0, pipe(pipe_fds));
     butil::fd_guard guard0(pipe_fds[0]);   // read end, closed by this guard
@@ -965,6 +1156,134 @@ TEST(RtmpTest, abort_message_naming_own_chunk_stream) {
     butil::IOBuf buf2;
     buf2.append(cont);
     ASSERT_EQ(brpc::PARSE_OK, ctx.Feed(&buf2, sock.get()).error());
+
+    // Reduce the inbound chunk size to split four-byte control messages.
+    std::string set_chunk_size;
+    set_chunk_size.push_back((char)0x02);  // fmt=0, cs_id=2
+    set_chunk_size.append(3, '\0');        // timestamp = 0
+    AppendBigEndian3Bytes(&set_chunk_size, 4);
+    set_chunk_size.push_back((char)0x01);  // message_type = SetChunkSize
+    set_chunk_size.append(4, '\0');        // stream_id = 0
+    set_chunk_size.append(3, '\0');
+    set_chunk_size.push_back((char)0x02);  // new chunk size = 2
+    butil::IOBuf set_chunk_size_buf;
+    set_chunk_size_buf.append(set_chunk_size);
+    ASSERT_EQ(brpc::PARSE_OK,
+              ctx.Feed(&set_chunk_size_buf, sock.get()).error());
+
+    // Start an Ack on chunk stream 3, leaving half of its body incomplete.
+    std::string partial_ack;
+    partial_ack.push_back((char)0x03);     // fmt=0, cs_id=3
+    partial_ack.append(3, '\0');           // timestamp = 0
+    AppendBigEndian3Bytes(&partial_ack, 4);
+    partial_ack.push_back((char)0x03);     // message_type = Ack
+    partial_ack.append(4, '\0');           // stream_id = 0
+    partial_ack.append(2, '\0');           // first two body bytes
+    butil::IOBuf partial_ack_buf;
+    partial_ack_buf.append(partial_ack);
+    ASSERT_EQ(brpc::PARSE_OK,
+              ctx.Feed(&partial_ack_buf, sock.get()).error());
+
+    // Abort chunk stream 3. The Abort itself is split over two chunks because
+    // the inbound chunk size is now two bytes.
+    std::string abort_first;
+    abort_first.push_back((char)0x02);     // fmt=0, cs_id=2
+    abort_first.append(3, '\0');           // timestamp = 0
+    AppendBigEndian3Bytes(&abort_first, 4);
+    abort_first.push_back((char)0x02);     // message_type = Abort
+    abort_first.append(4, '\0');           // stream_id = 0
+    abort_first.append(2, '\0');           // first two bytes of cs_id
+    butil::IOBuf abort_first_buf;
+    abort_first_buf.append(abort_first);
+    ASSERT_EQ(brpc::PARSE_OK,
+              ctx.Feed(&abort_first_buf, sock.get()).error());
+
+    const char abort_last[] = { (char)0xC2, 0, 3 };  // fmt=3, cs_id=2
+    butil::IOBuf abort_last_buf;
+    abort_last_buf.append(abort_last, sizeof(abort_last));
+    ASSERT_EQ(brpc::PARSE_OK,
+              ctx.Feed(&abort_last_buf, sock.get()).error());
+
+    // A type-3 chunk starts a new message using stream 3's previous header.
+    // Deleting the stream on Abort would lose that header and reject this.
+    const char ack_part[] = { (char)0xC3, 0, 0 };  // fmt=3, cs_id=3
+    butil::IOBuf ack_part1_buf;
+    ack_part1_buf.append(ack_part, sizeof(ack_part));
+    ASSERT_EQ(brpc::PARSE_OK,
+              ctx.Feed(&ack_part1_buf, sock.get()).error());
+}
+
+TEST(RtmpTest, rejected_create_stream_with_response_write_failure) {
+    RejectingRtmpService rtmp_service;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.rtmp_service = &rtmp_service;
+    ASSERT_EQ(0, server.Start(0, &server_options));
+
+    brpc::SocketId socket_id;
+    brpc::SocketOptions socket_options;
+    ASSERT_EQ(0, brpc::Socket::Create(socket_options, &socket_id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+    ASSERT_EQ(0, socket->SetFailed());
+
+    brpc::policy::RtmpContext ctx(nullptr, &server);
+    brpc::policy::RtmpChunkStream chunk_stream(
+        &ctx, brpc::policy::RTMP_CONTROL_CHUNK_STREAM_ID);
+
+    std::string request;
+    google::protobuf::io::StringOutputStream zc_stream(&request);
+    brpc::AMFOutputStream ostream(&zc_stream);
+    brpc::WriteAMFNumber(1, &ostream);
+    brpc::AMFObject command;
+    brpc::WriteAMFObject(command, &ostream);
+    ASSERT_TRUE(ostream.good());
+
+    google::protobuf::io::ArrayInputStream input(
+        request.data(), request.size());
+    brpc::AMFInputStream istream(&input);
+    brpc::policy::RtmpMessageHeader message_header;
+    ASSERT_FALSE(chunk_stream.OnCreateStream(
+        message_header, &istream, socket.get()));
+
+    server.Stop(0);
+    server.Join();
+}
+
+class MyServerAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string*) const override { return 0; }
+    int VerifyCredential(const std::string&, const butil::EndPoint&,
+                         brpc::AuthContext*) const override { return 0; }
+};
+
+TEST(RtmpTest, reject_unauthenticated_connection) {
+    PlayingDummyService rtmp_service;
+    MyServerAuthenticator auth;
+    brpc::Server server;
+    brpc::ServerOptions server_opt;
+    server_opt.rtmp_service = &rtmp_service;
+    server_opt.auth = &auth;
+    ASSERT_EQ(0, server.Start(0, &server_opt));
+
+    brpc::SocketId socket_id;
+    brpc::SocketOptions socket_options;
+    ASSERT_EQ(0, brpc::Socket::Create(socket_options, &socket_id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+
+    // RTMP messages are handled inside the parser and never reach
+    // InputMessenger's authentication hook. With ServerOptions.auth set the
+    // connection must be rejected before any handshaking happens.
+    butil::IOBuf buf;
+    buf.append("\x03", 1);  // C0 (version)
+    brpc::ParseResult pr = brpc::policy::ParseRtmpMessage(
+        &buf, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
+    ASSERT_EQ(nullptr, socket->parsing_context());
+
+    server.Stop(0);
+    server.Join();
 }
 
 TEST(RtmpTest, successfully_play_streams) {
@@ -972,14 +1291,14 @@ TEST(RtmpTest, successfully_play_streams) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8571, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8571", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1004,14 +1323,14 @@ TEST(RtmpTest, fail_to_play_streams) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8571, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8571", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1035,14 +1354,14 @@ TEST(RtmpTest, successfully_publish_streams) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8571, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8571", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1098,14 +1417,14 @@ TEST(RtmpTest, failed_to_publish_streams) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8575, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8575", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1208,14 +1527,14 @@ TEST(RtmpTest, destroy_client_streams_during_creation) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8574, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8574", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1240,14 +1559,14 @@ TEST(RtmpTest, destroy_retrying_client_streams_during_creation) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8574, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8574", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server.listen_address(), rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1273,14 +1592,15 @@ TEST(RtmpTest, retrying_stream) {
     brpc::Server server;
     brpc::ServerOptions server_opt;
     server_opt.rtmp_service = &rtmp_service;
-    ASSERT_EQ(0, server.Start(8576, &server_opt));
+    ASSERT_EQ(0, server.Start(0, &server_opt));
+    const butil::EndPoint server_address = server.listen_address();
 
     brpc::RtmpClientOptions rtmp_opt;
     rtmp_opt.app = "hello";
     rtmp_opt.swfUrl = "anything";
     rtmp_opt.tcUrl = "rtmp://heheda";
     brpc::RtmpClient rtmp_client;
-    ASSERT_EQ(0, rtmp_client.Init("localhost:8576", rtmp_opt));
+    ASSERT_EQ(0, rtmp_client.Init(server_address, rtmp_opt));
 
     // Create multiple streams.
     const int NSTREAM = 2;
@@ -1299,7 +1619,7 @@ TEST(RtmpTest, retrying_stream) {
     server.Join();
     LOG(INFO) << "Stopped server and sleep for a while";
     sleep(3);
-    ASSERT_EQ(0, server.Start(8576, &server_opt));
+    ASSERT_EQ(0, server.Start(server_address, &server_opt));
     sleep(3);
     for (int i = 0; i < NSTREAM; ++i) {
         ASSERT_EQ(1, cstreams[i]->_called_on_first_message);

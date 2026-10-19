@@ -26,12 +26,16 @@
 #include "butil/third_party/murmurhash3/murmurhash3.h"
 #include "butil/process_util.h"              // ReadCommandLine
 #include "brpc/server.h"
+#include "brpc/reloadable_flags.h"
 #include "brpc/builtin/common.h"
 
 namespace brpc {
 
 DEFINE_string(rpc_profiling_dir, "./rpc_data/profiling",
               "For storing profiling results.");
+
+DEFINE_int32(max_profiling_seconds, 300, "upper limit of running time of profilers");
+BRPC_VALIDATE_GFLAG(max_profiling_seconds, PositiveInteger);
 
 bool UseHTML(const HttpHeader& header) {
     const std::string* console = header.uri().GetQuery(CONSOLE_STR);

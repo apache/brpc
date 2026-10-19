@@ -106,9 +106,6 @@ static std::string GeneratePerlScriptPath(const std::string& filename) {
 
 extern bool cpu_profiler_enabled;
 
-DEFINE_int32(max_profiling_seconds, 300, "upper limit of running time of profilers");
-BRPC_VALIDATE_GFLAG(max_profiling_seconds, NonNegativeInteger);
-
 DEFINE_int32(max_profiles_kept, 32,
              "max profiles kept for cpu/heap/growth/contention respectively");
 BRPC_VALIDATE_GFLAG(max_profiles_kept, PassValidate);
@@ -916,6 +913,15 @@ static void StartProfiling(ProfilingType type,
                 "(https://github.com/apache/brpc/blob/master/docs/cn/cpu_profiler.md)");
         }
 #endif
+    }
+    // `view' and `base' are written into the page below and into the url of
+    // the request that page issues to *_non_responsive, which applies this
+    // same check before handing them to pprof.
+    if (view != nullptr && !ValidProfilePath(*view)) {
+        return cntl->SetFailed(EINVAL, "Invalid query `view'");
+    }
+    if (base_name != nullptr && !ValidProfilePath(*base_name)) {
+        return cntl->SetFailed(EINVAL, "Invalid query `base'");
     }
 
     ProfilingClient profiling_client;

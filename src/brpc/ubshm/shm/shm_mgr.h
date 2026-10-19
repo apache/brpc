@@ -26,6 +26,8 @@ namespace brpc {
 namespace ubring {
 void SetShmType(SHM_TYPE type);
 
+SHM_TYPE GetShmType();
+
 RETURN_CODE ShmMgrInit(void);
 
 void ShmMgrFini(void);

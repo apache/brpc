@@ -96,21 +96,41 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
 }
 
 ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
-    return ConsumePartialIOBuf(buf, 0);
+    // `used_bytes' accumulates the arena bytes charged to
+    // -redis_max_allocation_size for this reply. It is shared by the whole
+    // reply tree so that nested arrays draw from one budget instead of each
+    // getting a full one (which multiplied the cap by nesting depth). When
+    // the parsing suspends, the count is saved in the root array and restored
+    // on resume, otherwise a peer could reset the budget by withholding data.
+    uint32_t used_bytes = 0;
+    ParseError err = ConsumePartialIOBuf(buf, 0, &used_bytes);
+    if (err != PARSE_OK && _type == REDIS_REPLY_ARRAY &&
+        _data.array.last_index >= 0) {
+        // The parsing suspends on sub replies, remember the budget for resume.
+        _data.array.used_bytes = used_bytes;
+    }
+    return err;
 }
 
-ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth) {
+ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth,
+                                           uint32_t* used_bytes) {
     if (depth > FLAGS_redis_max_reply_depth) {
         LOG(ERROR) << "redis reply exceeds max depth! max="
                    << FLAGS_redis_max_reply_depth << ", actually=" << depth;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (_type == REDIS_REPLY_ARRAY && _data.array.last_index >= 0) {
+        if (depth == 0) {
+            // Resuming the root array of a suspended reply: restore the
+            // budget charged by previous calls.
+            *used_bytes = _data.array.used_bytes;
+        }
         // The parsing was suspended while parsing sub replies,
         // continue the parsing.
         RedisReply* subs = (RedisReply*)_data.array.replies;
         for (int i = _data.array.last_index; i < _length; ++i) {
-            ParseError err = subs[i].ConsumePartialIOBuf(buf, depth + 1);
+            ParseError err = subs[i].ConsumePartialIOBuf(buf, depth + 1,
+                                                         used_bytes);
             if (err != PARSE_OK) {
                 return err;
             }
@@ -268,12 +288,26 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth) {
                            << max_count << ", actually=" << count;
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
+            // Charge the allocation to the per-reply budget so that nested
+            // arrays cannot multiply -redis_max_allocation_size by depth.
+            const size_t need = sizeof(RedisReply) * count;
+            if (FLAGS_redis_max_allocation_size > 0 &&
+                (uint64_t)*used_bytes + need >
+                    (uint64_t)FLAGS_redis_max_allocation_size) {
+                LOG(ERROR) << "accumulated array allocation exceeds max "
+                              "allocation size! max="
+                           << FLAGS_redis_max_allocation_size
+                           << ", already=" << *used_bytes
+                           << ", requesting=" << need;
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
+            }
             // FIXME(gejun): Call allocate_aligned instead.
-            RedisReply* subs = (RedisReply*)_arena->allocate(sizeof(RedisReply) * count);
+            RedisReply* subs = (RedisReply*)_arena->allocate(need);
             if (subs == nullptr) {
                 LOG(FATAL) << "Fail to allocate RedisReply[" << count << "]";
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
+            *used_bytes += need;
             for (int64_t i = 0; i < count; ++i) {
                 new (&subs[i]) RedisReply(_arena);
             }
@@ -286,7 +320,8 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth) {
             // be continued in next calls by tracking _data.array.last_index.
             _data.array.last_index = 0;
             for (int64_t i = 0; i < count; ++i) {
-                ParseError err = subs[i].ConsumePartialIOBuf(buf, depth + 1);
+                ParseError err = subs[i].ConsumePartialIOBuf(buf, depth + 1,
+                                                             used_bytes);
                 if (err != PARSE_OK) {
                     return err;
                 }
@@ -404,6 +439,7 @@ void RedisReply::CopyFromDifferentArena(const RedisReply& other) {
             new (&subs[i]) RedisReply(_arena);
         }
         _data.array.last_index = other._data.array.last_index;
+        _data.array.used_bytes = other._data.array.used_bytes;
         if (_data.array.last_index > 0) {
             // incomplete state
             for (int i = 0; i < _data.array.last_index; ++i) {

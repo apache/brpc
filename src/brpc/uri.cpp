@@ -17,9 +17,9 @@
 
 
 #include <ctype.h>                         // isalnum
-
+#include <string.h>                        // strpbrk
 #include <unordered_set>
-
+#include <gflags/gflags.h>
 #include "brpc/log.h"
 #include "brpc/details/http_parser.h"      // http_parser_parse_url
 #include "brpc/uri.h"                      // URI
@@ -27,14 +27,15 @@
 
 namespace brpc {
 
+DEFINE_uint32(http_max_query_count, 1000,
+              "Reject a URL carrying more than so many query parameters. "
+              "0 lifts the limit.");
+
 URI::URI() 
     : _port(-1)
     , _query_was_modified(false)
     , _initialized_query_map(false)
 {}
-
-URI::~URI() {
-}
 
 void URI::Clear() {
     _st.reset();
@@ -62,6 +63,22 @@ void URI::Swap(URI &rhs) {
     _scheme.swap(rhs._scheme);
     _query.swap(rhs._query);
     _query_map.swap(rhs._query_map);
+}
+
+// Counting separators rather than map entries deliberately overestimates: the
+// splitter walks every segment even when the keys repeat, and it is that walk,
+// not the final map size, that the limit is meant to bound.
+static bool TooManyQueries(const std::string& query) {
+    if (FLAGS_http_max_query_count == 0 || query.empty()) {
+        return false;
+    }
+    uint32_t count = 1;
+    for (char i : query) {
+        if (i == '&' && ++count > FLAGS_http_max_query_count) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Parse queries, which is case-sensitive
@@ -164,10 +181,26 @@ static const char g_url_parsing_fast_action_map_raw[] = {
 static const char* const g_url_parsing_fast_action_map =
     g_url_parsing_fast_action_map_raw + 128;
 
+// CR and LF are never valid in a URL and must not survive parsing: every
+// component is written verbatim into the serialized message later on, the
+// host/port into the "Host" header and the :authority pseudo-header, and
+// path/query/fragment into the HTTP/1 request line (PrintWithoutHost) and
+// the HTTP/2 :path (GenerateH2Path). Either byte there appends headers to
+// the request or starts a second one. Only the parsers below reject it; the
+// set_*() overwriters are documented as taking already-valid input.
+static bool has_crlf(const char* s) {
+    return strpbrk(s, "\r\n") != nullptr;
+}
+
 // This implementation is faster than http_parser_parse_url() and allows
 // ignoring of scheme("http://")
 int URI::SetHttpURL(const char* url) {
     Clear();
+
+    if (has_crlf(url)) {
+        _st.set_error(EINVAL, "Invalid CR/LF in url");
+        return -1;
+    }
     
     const char* p = url;
     // skip heading blanks
@@ -238,6 +271,11 @@ int URI::SetHttpURL(const char* url) {
             }
         }
         _query.assign(start, p - start);
+        if (TooManyQueries(_query)) {
+            _st.set_error(EINVAL, "More than %u query parameters in url",
+                          FLAGS_http_max_query_count);
+            return -1;
+        }
     }
     if (*p == '#') {
         start = ++p;
@@ -411,13 +449,19 @@ void URI::SetHostAndPort(const std::string& host) {
     _host.assign(host_begin, host_end - host_begin);
 }
 
-void URI::SetH2Path(const char* h2_path) {
+int URI::SetH2Path(const char* h2_path) {
+    _st.reset();
     _path.clear();
     _query.clear();
     _fragment.clear();
     _query_was_modified = false;
     _initialized_query_map = false;
     _query_map.clear();
+
+    if (has_crlf(h2_path)) {
+        _st.set_error(EINVAL, "Invalid CR/LF in :path");
+        return -1;
+    }
 
     const char* p = h2_path;
     const char* start = p;
@@ -427,12 +471,18 @@ void URI::SetH2Path(const char* h2_path) {
         start = ++p;
         for (; *p && *p != '#'; ++p) {}
         _query.assign(start, p - start);
+        if (TooManyQueries(_query)) {
+            _st.set_error(EINVAL, "More than %u query parameters in :path",
+                          FLAGS_http_max_query_count);
+            return -1;
+        }
     }
     if (*p == '#') {
         start = ++p;
         for (; *p; ++p) {}
         _fragment.assign(start, p - start);
     }
+    return 0;
 }
 
 QueryRemover::QueryRemover(const std::string* str)

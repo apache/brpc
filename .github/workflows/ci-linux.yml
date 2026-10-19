@@ -203,7 +203,12 @@ jobs:
     # real server (e.g. brpc_redis_unittest) actually run under bazel instead
     # of skipping. Same shared action the make-based unittest jobs use.
     - uses: ./.github/actions/install-essential-dependencies
-    - run: bazel test --config=rdma --config=ubring //test/...
+    - run: |
+        bazel test --test_output=errors \
+                   --local_test_jobs=3 \
+                   --config=rdma \
+                   --config=ubring \
+                   //test/...
 
   gcc-compile-with-bazel-all-options:
     runs-on: ubuntu-22.04
@@ -256,7 +261,9 @@ jobs:
     # actually run under bazel (see gcc-unittest-with-bazel).
     - uses: ./.github/actions/install-essential-dependencies
     - run: |
-        bazel test --test_output=streamed \
+        # Keep test targets parallel; streamed output forces local serial execution.
+        bazel test --test_output=errors \
+                   --local_test_jobs=3 \
                    --action_env=CC=clang \
                    --config=rdma \
                    --config=ubring \
@@ -384,7 +391,9 @@ jobs:
         grep -qE "bazel_dep\(name = ['\"]protobuf['\"], version = ['\"]${TEST_PROTOBUF_VERSION}['\"]" MODULE.bazel \
           || { echo "ERROR: failed to override protobuf version in MODULE.bazel to ${TEST_PROTOBUF_VERSION}"; exit 1; }
     - run: | 
-        bazel test --action_env=CC=clang --config=rdma --config=ubring \
+        bazel test --test_output=errors \
+                   --local_test_jobs=3 \
+                   --action_env=CC=clang --config=rdma --config=ubring \
                    --define with_bthread_tracer=true \
                    --define with_babylon_counter=true \
                    //test/...

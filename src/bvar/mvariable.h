@@ -74,7 +74,10 @@ public:
         return expose_impl(prefix, name);
     }
 
-    // Dump this mvariable
+    // Dump this mvariable, returning the number of metrics written out. One
+    // mvariable holds one value per label combination, and a composite value
+    // (a Histogram, a LatencyRecorder) writes several metrics out of each, so
+    // the count is a number of metrics and not of label combinations.
     virtual size_t dump(Dumper* dumper, const DumpOptions* options) = 0;
 
     // Hide this variable so that it's not counted in *_exposed functions.
@@ -92,8 +95,10 @@ public:
     // Find all exposed mvariables matching `white_wildcards' but
     // `black_wildcards' and send them to `dumper'.
     // Use default options when `options' is nullptr.
-    // Return number of dumped mvariables, -1 on error.
-    static size_t dump_exposed(Dumper* dumper, const DumpOptions* options);
+    // Return the number of dumped metrics, which is what every dump() reports
+    // and not the number of mvariables, -1 on error. The number is capped by
+    // -bvar_max_dump_multi_dimension_metric_number.
+    static int dump_exposed(Dumper* dumper, const DumpOptions* options);
 
     // Find an exposed mvariable by `name' and put its description into `os'.
     // Returns 0 on found, -1 otherwise.
@@ -113,8 +118,8 @@ public:
 #endif
 
 protected:
-    int expose_impl(const butil::StringPiece& prefix,
-                    const butil::StringPiece& name);
+    virtual int expose_impl(const butil::StringPiece& prefix,
+                            const butil::StringPiece& name);
 
 protected:
     std::string _name;

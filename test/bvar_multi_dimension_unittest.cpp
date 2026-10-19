@@ -23,10 +23,12 @@
 #include <iostream>
 #include <array>
 #include <string>
+#include <vector>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/strings/string_number_conversions.h"
 #include "bvar/bvar.h"
 #include "bvar/multi_dimension.h"
 #include "butil/third_party/rapidjson/rapidjson.h"
@@ -395,18 +397,8 @@ TEST_F(MultiDimensionTest, get_description) {
 }
 
 TEST_F(MultiDimensionTest, mlatencyrecorder) {
-    std::string old_bvar_dump_interval;
-    std::string old_mbvar_dump;
-    std::string old_bvar_latency_p1;
-    std::string old_bvar_latency_p2;
-    std::string old_bvar_latency_p3;
-
-    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_dump_interval", &old_bvar_dump_interval);
-    GFLAGS_NAMESPACE::GetCommandLineOption("mbvar_dump", &old_mbvar_dump);
-    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p1", &old_bvar_latency_p1);
-    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p2", &old_bvar_latency_p2);
-    GFLAGS_NAMESPACE::GetCommandLineOption("bvar_latency_p3", &old_bvar_latency_p3);
-
+    // Restore flags even if a fatal assertion returns from the test.
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
     GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", "1");
     GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump", "true");
     GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", "60");
@@ -418,17 +410,40 @@ TEST_F(MultiDimensionTest, mlatencyrecorder) {
     bvar::LatencyRecorder* my_latencyrecorder = my_mlatencyrecorder.get_stats(labels_value);
     ASSERT_TRUE(my_latencyrecorder);
     *my_latencyrecorder << 1 << 2 << 3 << 4 << 5 << 6 << 7;
-    sleep(1);
-    ASSERT_EQ(4, my_latencyrecorder->latency());
-    ASSERT_EQ(7, my_latencyrecorder->max_latency());
-    ASSERT_LE(7, my_latencyrecorder->qps());
-    ASSERT_EQ(7, my_latencyrecorder->count());
+    EXPECT_EQ(7, my_latencyrecorder->count());
 
-    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_dump_interval", old_bvar_dump_interval.c_str());
-    GFLAGS_NAMESPACE::SetCommandLineOption("mbvar_dump", old_mbvar_dump.c_str());
-    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p1", old_bvar_latency_p1.c_str());
-    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p2", old_bvar_latency_p2.c_str());
-    GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p3", old_bvar_latency_p3.c_str());
+    // Sampling runs once per second. Allow five seconds for scheduling
+    // delays on busy CI runners while keeping the wait bounded.
+    const int64_t sampling_timeout_us = 5 * 1000000L;
+    const int64_t deadline =
+        butil::monotonic_time_us() + sampling_timeout_us;
+    int64_t latency = 0;
+    int64_t max_latency = 0;
+    int64_t qps = 0;
+    // Keep each nonzero observation: the next sampler tick can clear
+    // these one-second windows before the other metrics are read.
+    while ((latency == 0 || max_latency == 0 || qps == 0) &&
+           butil::monotonic_time_us() < deadline) {
+        if (latency == 0) {
+            latency = my_latencyrecorder->latency();
+        }
+        if (max_latency == 0) {
+            max_latency = my_latencyrecorder->max_latency();
+        }
+        if (qps == 0) {
+            qps = my_latencyrecorder->qps();
+        }
+        if (latency != 0 && max_latency != 0 && qps != 0) {
+            break;
+        }
+        usleep(10000);
+    }
+
+    EXPECT_EQ(4, latency);
+    EXPECT_EQ(7, max_latency);
+    // QPS uses the actual sampling interval and randomized rounding.
+    // Seven requests can yield fewer than seven requests per second.
+    EXPECT_GT(qps, 0);
 }
 
 TEST_F(MultiDimensionTest, mstatus) {
@@ -438,6 +453,27 @@ TEST_F(MultiDimensionTest, mstatus) {
     ASSERT_TRUE(my_status);
     my_status->set_value(1);
     ASSERT_EQ(1, my_status->get_value());
+}
+
+TEST_F(MultiDimensionTest, metric_is_not_exposed) {
+    bvar::MultiDimension<bvar::Adder<int> > my_madder("madder_not_exposed", labels);
+    size_t nexposed = bvar::Variable::count_exposed();
+    std::list<std::string> labels_value {"bj", "get", "200"};
+    ASSERT_TRUE(my_madder.get_stats(labels_value));
+    // The metric of a label set is dumped by the MultiDimension, it is not a
+    // bvar of its own.
+    ASSERT_EQ(nexposed, bvar::Variable::count_exposed());
+}
+
+TEST_F(MultiDimensionTest, named_metric_is_hidden) {
+    bvar::MultiDimension<bvar::LatencyRecorder> my_mlr(
+        "mlr_not_exposed", labels, "inner_lr");
+    size_t nexposed = bvar::Variable::count_exposed();
+    std::list<std::string> labels_value {"bj", "get", "200"};
+    bvar::LatencyRecorder* lr = my_mlr.get_stats(labels_value);
+    ASSERT_TRUE(lr);
+    ASSERT_TRUE(lr->latency_name().empty());
+    ASSERT_EQ(nexposed, bvar::Variable::count_exposed());
 }
 
 typedef size_t (*hash_fun)(const std::list<std::string>& labels_name);
@@ -663,3 +699,79 @@ TEST_F(MultiDimensionTest, shared) {
     ASSERT_EQ(0, pthread_join(delete_thread, nullptr));
 }
 
+namespace {
+
+// Collects everything a Dumper is asked to write, in order.
+class RecordingDumper : public bvar::Dumper {
+public:
+    bool dump(const std::string& name,
+              const butil::StringPiece& desc) override {
+        lines.push_back("dump_" + name + " " + desc.as_string());
+        return true;
+    }
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        lines.push_back("mvar_" + name + " " + desc.as_string());
+        return true;
+    }
+    bool dump_comment(const std::string& name,
+                      const std::string& type) override {
+        lines.push_back("comment " + name + " " + type);
+        return true;
+    }
+    std::vector<std::string> lines;
+};
+
+// A composite metric of one's own, defined entirely outside bvar: it derives
+// from nothing and specializes nothing, it just declares the two members. Two
+// families, so it also pins down the ordering MultiDimension dumps them in.
+class HitRate {
+public:
+    void hit() { ++_hits; ++_total; }
+    void miss() { ++_total; }
+
+    static std::vector<bvar::MetricFamily> list_metric_families() {
+        return {{"_hits", "counter", {}}, {"_total", "counter", {}}};
+    }
+
+    bool dump_samples(bvar::Dumper* dumper, size_t family_index,
+                      const std::string& name,
+                      butil::StringPiece labels) const {
+        std::string key(name);
+        if (!labels.empty()) {
+            key.push_back('{');
+            key.append(labels.data(), labels.size());
+            key.push_back('}');
+        }
+        return dumper->dump_mvar(
+            key, butil::Int64ToString(family_index == 0 ? _hits : _total));
+    }
+
+private:
+    int64_t _hits{0};
+    int64_t _total{0};
+};
+
+}  // namespace
+
+TEST_F(MultiDimensionTest, user_defined_composite_metric) {
+    // Opting in is what the detector keys on, nothing else.
+    ASSERT_TRUE(bvar::detail::IsCompositeMetric<HitRate>::value);
+    ASSERT_TRUE(bvar::detail::IsCompositeMetric<bvar::Histogram>::value);
+    ASSERT_TRUE(bvar::detail::IsCompositeMetric<bvar::LatencyRecorder>::value);
+    ASSERT_FALSE(bvar::detail::IsCompositeMetric<bvar::Adder<int> >::value);
+
+    bvar::MultiDimension<HitRate> mhr("hitrate_mvar_test", {"cache"});
+    mhr.get_stats({"l1"})->hit();
+    mhr.get_stats({"l1"})->miss();
+
+    RecordingDumper d;
+    bvar::DumpOptions opt;
+    ASSERT_EQ(2u, mhr.dump(&d, &opt));
+    // Families in the declared order, each preceded by its own TYPE line.
+    ASSERT_EQ(4u, d.lines.size());
+    ASSERT_EQ("comment hitrate_mvar_test_hits counter", d.lines[0]);
+    ASSERT_EQ("mvar_hitrate_mvar_test_hits{cache=\"l1\"} 1", d.lines[1]);
+    ASSERT_EQ("comment hitrate_mvar_test_total counter", d.lines[2]);
+    ASSERT_EQ("mvar_hitrate_mvar_test_total{cache=\"l1\"} 2", d.lines[3]);
+}

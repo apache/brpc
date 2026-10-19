@@ -25,7 +25,7 @@ extern "C" int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     if (size < kMinInputLength || size > kMaxInputLength){
-        return 1;
+        return 0;
     }
 
     char *data_in = (char *)malloc(size + 1);

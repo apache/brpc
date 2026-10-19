@@ -407,6 +407,8 @@ enum header_states
 
   , h_connection
   , h_content_length
+  , h_content_length_num
+  , h_content_length_ws
   , h_transfer_encoding
   , h_upgrade
 
@@ -435,9 +437,13 @@ const char* http_parser_header_state_name(unsigned int header_state) {
     case h_matching_upgrade: return "h_matching_upgrade";
     case h_connection: return "h_connection";
     case h_content_length: return "h_content_length";
+    case h_content_length_num: return "h_content_length_num";
+    case h_content_length_ws: return "h_content_length_ws";
     case h_transfer_encoding: return "h_transfer_encoding";
     case h_upgrade: return "h_upgrade";
+    case h_matching_transfer_encoding_token_start: return "h_matching_transfer_encoding_token_start";
     case h_matching_transfer_encoding_chunked: return "h_matching_transfer_encoding_chunked";
+    case h_matching_transfer_encoding_token: return "h_matching_transfer_encoding_token";
     case h_matching_connection_keep_alive: return "h_matching_connection_keep_alive";
     case h_matching_connection_close: return "h_matching_connection_close";
     case h_transfer_encoding_chunked: return "h_transfer_encoding_chunked";
@@ -445,6 +451,26 @@ const char* http_parser_header_state_name(unsigned int header_state) {
     case h_connection_close: return "h_connection_close";
     }
     return "h_unknown";
+}
+
+/* States in which the value being parsed decides where the body ends. Folding
+ * such a value (RFC 7230 3.2.4 obs-fold) is never legitimate and makes us
+ * disagree with front proxies on the framing, which is a smuggling primitive.
+ */
+static int is_framing_header_state(unsigned int header_state) {
+  switch (header_state) {
+  case h_content_length:
+  case h_content_length_num:
+  case h_content_length_ws:
+  case h_transfer_encoding:
+  case h_matching_transfer_encoding_token_start:
+  case h_matching_transfer_encoding_chunked:
+  case h_matching_transfer_encoding_token:
+  case h_transfer_encoding_chunked:
+    return 1;
+  default:
+    return 0;
+  }
 }
 
 const char* http_parser_type_name(enum http_parser_type type) {
@@ -477,6 +503,10 @@ enum http_host_state
 #define IS_ALPHA(c)         (LOWER(c) >= 'a' && LOWER(c) <= 'z')
 #define IS_NUM(c)           ((c) >= '0' && (c) <= '9')
 #define IS_ALPHANUM(c)      (IS_ALPHA(c) || IS_NUM(c))
+/* RFC 7230 3.2.3: OWS = *( SP / HTAB ). Pass the raw byte, never the LOWER()ed
+ * one: LOWER('\t') is ')', so a tab never compares equal to '\t' afterwards.
+ */
+#define IS_OWS(ch)          ((ch) == ' ' || (ch) == '\t')
 #define IS_HEX(c)           (IS_NUM(c) || (LOWER(c) >= 'a' && LOWER(c) <= 'f'))
 #define IS_MARK(c)          ((c) == '-' || (c) == '_' || (c) == '.' || \
   (c) == '!' || (c) == '~' || (c) == '*' || (c) == '\'' || (c) == '(' || \
@@ -489,6 +519,12 @@ enum http_host_state
  * characeters seem to be OK.
  */
 #define TOKEN(c)            ((c == ' ') ? ' ' : tokens[(unsigned char)c])
+/* tokens[] already leaves SP out, as RFC 7230 3.2.6 does, so the strict form is
+ * the plain lookup and TOKEN() is the leniency layered on top of it. The name
+ * matches upstream, where the table keeps SP and STRICT_TOKEN() is what drops
+ * it, so both forks spell the same two behaviours the same way.
+ */
+#define STRICT_TOKEN(c)     (tokens[(unsigned char)c])
 #define IS_HOST_CHAR(c)                                         \
   (IS_ALPHANUM(c) || (c) == '.' || (c) == '-' || (c) == '_')
 /* NOTE(gejun): Enable utf8 which is compatible with ASCII. Services in baidu
@@ -702,6 +738,8 @@ size_t http_parser_execute (http_parser *parser,
   const char *status_mark = 0;
   const unsigned int lenient = parser->lenient_http_headers;
   const unsigned int allow_chunked_length = parser->allow_chunked_length;
+  const unsigned int allow_obs_fold = parser->allow_obs_fold;
+  const unsigned int strict_header_token = parser->strict_header_token;
 
   /* We're in an error state. Don't bother doing anything. */
   if (HTTP_PARSER_ERRNO(parser) != HPE_OK) {
@@ -1369,7 +1407,7 @@ size_t http_parser_execute (http_parser *parser,
           goto reexecute_byte;
         }
 
-        c = TOKEN(ch);
+        c = strict_header_token ? STRICT_TOKEN(ch) : TOKEN(ch);
 
         if (!c) {
           SET_ERRNO(HPE_INVALID_HEADER_TOKEN);
@@ -1407,7 +1445,7 @@ size_t http_parser_execute (http_parser *parser,
 
       case s_header_field:
       {
-        c = TOKEN(ch);
+        c = strict_header_token ? STRICT_TOKEN(ch) : TOKEN(ch);
 
         if (c) {
           switch (parser->header_state) {
@@ -1504,7 +1542,19 @@ size_t http_parser_execute (http_parser *parser,
             case h_content_length:
             case h_transfer_encoding:
             case h_upgrade:
-              if (ch != ' ') parser->header_state = h_general;
+              /* TOKEN() accepts ' ' (see the NOTE above it), so without this
+               * `Content-Length : 5` would keep header_state and be used for
+               * framing while the field name we report is "Content-Length ".
+               * RFC 7230 3.2.4 forbids whitespace before the colon; front
+               * proxies that follow it disagree with us, which is a smuggling
+               * primitive. Only these four names are strict, lenient names
+               * elsewhere stay accepted.
+               */
+              if (ch == ' ') {
+                SET_ERRNO(HPE_INVALID_HEADER_TOKEN);
+                goto error;
+              }
+              parser->header_state = h_general;
               break;
 
             default:
@@ -1580,6 +1630,12 @@ size_t http_parser_execute (http_parser *parser,
 
             parser->flags |= F_CONTENTLENGTH;
             parser->content_length = ch - '0';
+            parser->header_state = h_content_length_num;
+            break;
+
+          /* when obsolete line folding is encountered for content length
+           * continue to the s_header_value state */
+          case h_content_length_ws:
             break;
 
           case h_connection:
@@ -1633,10 +1689,18 @@ size_t http_parser_execute (http_parser *parser,
             break;
 
           case h_content_length:
+            if (IS_OWS(ch)) break;
+            parser->header_state = h_content_length_num;
+            /* FALLTHROUGH */
+
+          case h_content_length_num:
           {
             uint64_t t;
 
-            if (ch == ' ') break;
+            if (IS_OWS(ch)) {
+              parser->header_state = h_content_length_ws;
+              break;
+            }
 
             if (!IS_NUM(ch)) {
               SET_ERRNO(HPE_INVALID_CONTENT_LENGTH);
@@ -1657,14 +1721,25 @@ size_t http_parser_execute (http_parser *parser,
             break;
           }
 
+          /* Trailing OWS ends the number. A digit after it means the value was
+           * something like "1 3", which we used to read as 13 while proxies may
+           * read 1 or reject the message. cf. CVE-2022-32213.
+           */
+          case h_content_length_ws:
+            if (IS_OWS(ch)) break;
+            SET_ERRNO(HPE_INVALID_CONTENT_LENGTH);
+            goto error;
+
           /* Transfer-Encoding: chunked */
           case h_matching_transfer_encoding_token_start:
             /* looking for 'Transfer-Encoding: chunked' */
             if ('c' == c) {
               parser->header_state = h_matching_transfer_encoding_chunked;
-            } else if (TOKEN(c)) {
-              /* NOTE(gejun): Not use strict mode for these macros since the additional
-               * characeters seem to be OK.
+            } else if (STRICT_TOKEN(c)) {
+              /* TOKEN() here made the OWS arm below unreachable for SP, so the
+               * space in `Transfer-Encoding: gzip, chunked` started a token
+               * instead of being skipped and chunked was never matched. Use the
+               * strict form unconditionally, as upstream does.
                */
 
               /* TODO(indutny): similar code below does this, but why?
@@ -1673,7 +1748,7 @@ size_t http_parser_execute (http_parser *parser,
                * `STRICT_TOKEN`
                */
               parser->header_state = h_matching_transfer_encoding_token;
-            } else if (c == ' ' || c == '\t') {
+            } else if (IS_OWS(ch)) {
               /* Skip lws */
             } else {
               parser->header_state = h_general;
@@ -1720,12 +1795,12 @@ size_t http_parser_execute (http_parser *parser,
             break;
 
           case h_transfer_encoding_chunked:
-            if (ch != ' ') parser->header_state = h_matching_transfer_encoding_token;
+            if (!IS_OWS(ch)) parser->header_state = h_matching_transfer_encoding_token;
             break;
 
           case h_connection_keep_alive:
           case h_connection_close:
-            if (ch != ' ') parser->header_state = h_general;
+            if (!IS_OWS(ch)) parser->header_state = h_general;
             break;
 
           default:
@@ -1747,6 +1822,14 @@ size_t http_parser_execute (http_parser *parser,
       case s_header_value_lws:
       {
         if (ch == ' ' || ch == '\t') {
+          if (!allow_obs_fold && is_framing_header_state(parser->header_state)) {
+            SET_ERRNO(HPE_INVALID_HEADER_TOKEN);
+            goto error;
+          }
+          if (parser->header_state == h_content_length_num) {
+            /* treat obsolete line folding as space */
+            parser->header_state = h_content_length_ws;
+          }
           parser->state = s_header_value_start;
           goto reexecute_byte;
         }
@@ -1780,6 +1863,15 @@ size_t http_parser_execute (http_parser *parser,
       case s_header_value_discard_lws:
       {
         if (ch == ' ' || ch == '\t') {
+          /* The value is still empty, so `Transfer-Encoding:\r\n chunked` and
+           * `Content-Length:\r\n 5` come through here rather than through
+           * s_header_value_lws. Both states keep header_state across the fold,
+           * so both have to refuse it.
+           */
+          if (!allow_obs_fold && is_framing_header_state(parser->header_state)) {
+            SET_ERRNO(HPE_INVALID_HEADER_TOKEN);
+            goto error;
+          }
           parser->state = s_header_value_discard_ws;
           break;
         } else {

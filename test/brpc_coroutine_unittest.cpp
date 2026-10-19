@@ -176,17 +176,14 @@ Awaitable<void> func(brpc::Channel& channel, int* out) {
 }
 
 TEST_F(CoroutineTest, coroutine) {
-    butil::EndPoint ep;
-    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
-
     brpc::Server server;
     EchoServiceImpl service;
     server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE);
-    ASSERT_EQ(0, server.Start(ep, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    ASSERT_EQ(0, channel.Init(ep, &options));
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
 
     int out = 0;
     Coroutine coro(func(channel, &out));

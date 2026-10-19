@@ -27,12 +27,20 @@
 #include <set>
 #include <string>
 #include <array>
+#include <vector>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include "butil/time.h"
+#include "butil/logging.h"
 #include "butil/macros.h"
+#include "butil/memory/scope_guard.h"
+#include "butil/strings/string_number_conversions.h"
 #include "bvar/bvar.h"
 #include "bvar/multi_dimension.h"
+
+namespace bvar {
+DECLARE_int32(bvar_max_dump_multi_dimension_metric_number);
+}
 
 static const std::list<std::string> labels = {"idc", "method", "status"};
 
@@ -117,6 +125,22 @@ TEST_F(MVariableTest, expose) {
     ASSERT_EQ(2, exposed_vars.size());
 }
 
+// hide_all() detaches the map entries, so the owners have to be told as well,
+// otherwise they keep a name they are no longer exposed under and cannot be
+// exposed again.
+TEST_F(MVariableTest, hide_all_clears_name) {
+    std::list<std::string> one_label = {"method"};
+    bvar::MultiDimension<bvar::Histogram> multi(
+        one_label, bvar::Histogram::BucketSchema({1}));
+    ASSERT_EQ(0, multi.expose("hide_all_clears_name"));
+
+    bvar::MVariableBase::hide_all();
+    ASSERT_EQ(0UL, bvar::MVariableBase::count_exposed());
+    ASSERT_TRUE(multi.name().empty());
+
+    ASSERT_EQ(0, multi.expose("hide_all_clears_name"));
+}
+
 TEST_F(MVariableTest, dump) {
     std::string old_bvar_dump_interval;
     std::string old_mbvar_dump;
@@ -198,4 +222,221 @@ TEST_F(MVariableTest, test_describe_exposed) {
     std::ostringstream describe_oss;
     ASSERT_EQ(0, bvar::MVariableBase::describe_exposed(bvar_name, describe_oss));
     ASSERT_STREQ(describe_str.c_str(), describe_oss.str().c_str());
+}
+
+// A composite metric of our own: it exports a single gauge family whose
+// samples carry a `region` label of their own. The reserved-label check in
+// MultiDimension reads MetricFamily::reserved_labels, so it applies to any
+// composite metric and is not hardcoded for Histogram's `le' or
+// LatencyRecorder's `quantile'. This type is here to prove that.
+class RegionedGauge {
+public:
+    explicit RegionedGauge(const std::string& region = "north")
+        : _region(region) {}
+    void set(int64_t value) { _value = value; }
+
+    static std::vector<bvar::MetricFamily> list_metric_families() {
+        return {{"", "gauge", {"region"}}};
+    }
+
+    bool dump_samples(bvar::Dumper* dumper, size_t /*family_index*/,
+                      const std::string& name,
+                      butil::StringPiece labels) const {
+        std::string key(name);
+        key.push_back('{');
+        if (!labels.empty()) {
+            key.append(labels.data(), labels.size());
+            key.push_back(',');
+        }
+        key.append("region=\"");
+        key.append(_region);
+        key.append("\"}");
+        return dumper->dump_mvar(key, butil::Int64ToString(_value));
+    }
+
+private:
+    std::string _region;
+    int64_t _value{0};
+};
+
+
+// When a label of the enclosing MultiDimension collides with one reserved by
+// the composite metric, the samples cannot be written out: they would carry
+// the same label twice. Only the exposure is refused, recording keeps working
+// so that a call site upgrading into the collision does not start
+// dereferencing a nullptr. The builtin Histogram (reserves `le'),
+// LatencyRecorder (reserves `quantile') and the custom RegionedGauge
+// (reserves `region') all go through the same check.
+TEST_F(MVariableTest, multi_dimension_rejects_reserved_labels) {
+    size_t nexposed = bvar::MVariableBase::count_exposed();
+
+    // Precondition: RegionedGauge really is detected as a composite metric,
+    // otherwise the reserved-label check never runs and the collision cases
+    // below would prove nothing.
+    ASSERT_TRUE(bvar::detail::IsCompositeMetric<RegionedGauge>::value);
+
+    bvar::MultiDimension<bvar::Histogram> mhist(
+        "hist_reserved_label_test", {"method", "le"},
+        bvar::Histogram::BucketSchema({10, 20}));
+    ASSERT_TRUE(mhist.name().empty());
+    ASSERT_NE(nullptr, mhist.get_stats({"echo", "10"}));
+    ASSERT_EQ(-1, mhist.expose("hist_reserved_label_test"));
+    ASSERT_TRUE(mhist.name().empty());
+
+    // The guard lives in the shared expose_impl, so base-class pointers take
+    // the same path.
+    bvar::MVariableBase* mvariable_base = &mhist;
+    ASSERT_EQ(-1, mvariable_base->expose("hist_reserved_label_base_test"));
+    ASSERT_TRUE(mhist.name().empty());
+
+    bvar::MVariable<std::list<std::string> >* typed_base = &mhist;
+    ASSERT_EQ(-1, typed_base->expose_as("hist", "reserved_label_typed_base_test"));
+    ASSERT_TRUE(mhist.name().empty());
+
+    bvar::MultiDimension<bvar::LatencyRecorder> mlr(
+        "latency_reserved_label_test", {"method", "quantile"});
+    ASSERT_TRUE(mlr.name().empty());
+    ASSERT_NE(nullptr, mlr.get_stats({"echo", "0.99"}));
+    ASSERT_EQ(-1, mlr.expose("latency_reserved_label_test"));
+
+    // `region' is taken by RegionedGauge itself, so the enclosing
+    // MultiDimension cannot use it as a label either.
+    bvar::MultiDimension<RegionedGauge> conflict(
+        "custom_reserved_label_test", {"idc", "region"});
+    ASSERT_TRUE(conflict.name().empty());
+    ASSERT_NE(nullptr, conflict.get_stats({"bj", "north"}));
+    ASSERT_EQ(-1, conflict.expose("custom_reserved_label_test"));
+    ASSERT_TRUE(conflict.name().empty());
+
+    // Reserved labels only block a same-named outer label: any other label
+    // name works fine, and the reserved labels of the two builtin types are
+    // independent of each other.
+    bvar::MultiDimension<bvar::Histogram> valid_histogram(
+        {"quantile"}, bvar::Histogram::BucketSchema({10, 20}));
+    ASSERT_NE(nullptr, valid_histogram.get_stats({"0.99"}));
+    bvar::MultiDimension<bvar::LatencyRecorder> valid_recorder({"le"});
+    ASSERT_NE(nullptr, valid_recorder.get_stats({"10"}));
+    bvar::MultiDimension<RegionedGauge> ok(
+        "custom_reserved_label_ok", {"idc", "method"});
+    ASSERT_NE(nullptr, ok.get_stats({"bj", "get"}));
+    ASSERT_STREQ("custom_reserved_label_ok", ok.name().c_str());
+
+    ASSERT_TRUE(ok.hide());
+    ASSERT_EQ(nexposed, bvar::MVariableBase::count_exposed());
+}
+
+// Collects everything a Dumper is asked to write, in order.
+class RecordingDumper : public bvar::Dumper {
+public:
+    bool dump(const std::string& name,
+              const butil::StringPiece& desc) override {
+        lines.push_back("dump_" + name + " " + desc.as_string());
+        return true;
+    }
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        lines.push_back("mvar_" + name + " " + desc.as_string());
+        return true;
+    }
+    bool dump_comment(const std::string& name,
+                      const std::string& type) override {
+        lines.push_back("comment " + name + " " + type);
+        return true;
+    }
+
+    // A comment describes a family, the cap counts metrics only.
+    size_t count_metrics() const {
+        size_t n = 0;
+        for (auto& line : lines) {
+            if (line.compare(0, 5, "mvar_") == 0 ||
+                line.compare(0, 5, "dump_") == 0) {
+                ++n;
+            }
+        }
+        return n;
+    }
+
+    std::vector<std::string> lines;
+};
+
+// The cap is a number of dumped metrics, and a composite metric writes a dozen
+// or more of them per label set. Checking it only in between two mvars lets a
+// single MultiDimension<Histogram> write every one of its label sets out first,
+// which is the case the cap exists for.
+TEST_F(MVariableTest, dump_exposed_honours_the_metric_cap) {
+    bvar::MultiDimension<bvar::Histogram> mhist(
+        "hist_mvar_cap_test", {"method"},
+        bvar::Histogram::BucketSchema({10, 20}));
+    // 3 buckets + _sum + _count per label set, 100 metrics in total.
+    for (int i = 0; i < 20; ++i) {
+        *mhist.get_stats({"m" + butil::IntToString(i)}) << 5;
+    }
+
+    int32_t saved = bvar::FLAGS_bvar_max_dump_multi_dimension_metric_number;
+    bvar::FLAGS_bvar_max_dump_multi_dimension_metric_number = 7;
+    BUTIL_SCOPE_EXIT {
+        bvar::FLAGS_bvar_max_dump_multi_dimension_metric_number = saved;
+    };
+
+    // Other tests leave mvars of their own exposed, so the assertions below are
+    // on the total rather than on this one mvar: either way nothing may get
+    // past the cap.
+    RecordingDumper d;
+    bvar::DumpOptions opt;
+    ASSERT_EQ(7, bvar::MVariableBase::dump_exposed(&d, &opt));
+    ASSERT_EQ(7u, d.count_metrics());
+}
+
+// Keeps whatever it was constructed from, so that an argument read at the
+// wrong time shows up as a wrong tag rather than as a crash that only a
+// sanitizer would catch.
+class TaggedCounter {
+public:
+    explicit TaggedCounter(const std::string& tag) : _tag(tag) {}
+
+    void describe(std::ostream& os, bool) const { os << _tag; }
+
+    const std::string& tag() const { return _tag; }
+
+private:
+    std::string _tag;
+};
+
+// A MultiDimension builds one value per label combination, lazily, so the
+// arguments of the value are read long after the constructor returned. An
+// argument that owns its storage is copied into the factory right there, so
+// the caller is free to do whatever it likes with its own afterwards. Only a
+// borrowed one (a `const char*`, a butil::StringPiece) stays borrowed, and
+// that is the case the constructor documents as the caller's to keep alive.
+TEST_F(MVariableTest, value_args_are_copied) {
+    std::string tag(64, 'a');
+    bvar::MultiDimension<TaggedCounter> md({"method"}, tag);
+    // Past the small string optimization, so an argument kept by reference
+    // would really see this rather than a buffer the copy shares.
+    tag.assign(64, 'b');
+
+    TaggedCounter* counter = md.get_stats({"echo"});
+    ASSERT_NE(nullptr, counter);
+    ASSERT_EQ(std::string(64, 'a'), counter->tag());
+}
+
+// Passing the name after the labels reads like the mirror of passing it before
+// them, but it names every value instead of the MultiDimension. The values are
+// hidden again right after, so nothing is exposed under that name and the
+// mistake leaves no trace at all unless it is reported.
+TEST_F(MVariableTest, value_naming_itself_is_reported) {
+    std::list<std::string> one_label = {"method"};
+    bvar::MultiDimension<bvar::Adder<int> > md(one_label, "misplaced_mvar_name");
+    ASSERT_TRUE(md.name().empty());
+
+    logging::StringSink log_str;
+    logging::LogSink* old_sink = logging::SetLogSink(&log_str);
+    bvar::Adder<int>* adder = md.get_stats({"echo"});
+    ASSERT_EQ(&log_str, logging::SetLogSink(old_sink));
+
+    ASSERT_NE(nullptr, adder);
+    // The value is usable and hidden all the same, only the name is dropped.
+    ASSERT_TRUE(adder->name().empty());
+    ASSERT_NE(std::string::npos, log_str.find("misplaced_mvar_name"))
+        << "log: " << log_str;
 }

@@ -278,6 +278,12 @@ struct BaiduProxyPBMessages : public RpcPBMessages {
 };
 }
 
+static bool IsBaiduMasterService(const Server* server,
+                                 const butil::EndPoint& local_side) {
+    return nullptr != server->options().baidu_master_service &&
+           !IsInternalPort(*server, local_side);
+}
+
 // Used by UT, can't be static.
 void SendRpcResponse(int64_t correlation_id, Controller* cntl,
                      RpcPBMessages* messages, const Server* server,
@@ -306,10 +312,10 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
         }
 
         cntl->CallAfterRpcResp(req, res);
-        if (nullptr == server->options().baidu_master_service) {
-            server->options().rpc_pb_message_factory->Return(messages);
-        } else {
+        if (IsBaiduMasterService(server, cntl->local_side())) {
             BaiduProxyPBMessages::Return(static_cast<BaiduProxyPBMessages*>(messages));
+        } else {
+            server->options().rpc_pb_message_factory->Return(messages);
         }
     };
     
@@ -713,14 +719,14 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
         google::protobuf::Service* svc = nullptr;
         google::protobuf::MethodDescriptor* method = nullptr;
-        if (nullptr != server->options().baidu_master_service) {
-          if (socket->is_overcrowded() &&
+        if (IsBaiduMasterService(server, cntl->local_side())) {
+            if (socket->is_overcrowded() &&
               !server->options().ignore_eovercrowded &&
               !server->options().baidu_master_service->ignore_eovercrowded()) {
-            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
-                            butil::endpoint2str(socket->remote_side()).c_str());
-            break;
-          }
+                  cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                                  butil::endpoint2str(socket->remote_side()).c_str());
+                  break;
+            }
             svc = server->options().baidu_master_service;
             auto sampled_request = new SampledRequest;
             sampled_request->meta.set_service_name(request_meta.service_name());
@@ -732,10 +738,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             if (method_status) {
                 int rejected_cc = 0;
                 if (!method_status->OnRequested(&rejected_cc, cntl.get())) {
-                    cntl->SetFailed(
-                        ELIMIT,
-                        "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
-                        butil::class_name<BaiduMasterService>(), rejected_cc);
+                    cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                                    butil::class_name<BaiduMasterService>(), rejected_cc);
                     break;
                 }
             }
@@ -744,9 +748,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             messages = BaiduProxyPBMessages::Get();
-            msg->payload.cutn(
-                &((SerializedRequest*)messages->Request())->serialized_data(),
-                req_size - meta.attachment_size());
+            msg->payload.cutn(&((SerializedRequest*)messages->Request())->serialized_data(),
+                              req_size - meta.attachment_size());
             if (!msg->payload.empty()) {
                 cntl->request_attachment().swap(msg->payload);
             }
@@ -759,7 +762,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                     server_accessor.FindServicePropertyByName(svc_name);
                 if (nullptr == sp) {
                     cntl->SetFailed(ENOSERVICE, "Fail to find service=%s",
-                        request_meta.service_name().c_str());
+                                    request_meta.service_name().c_str());
                     break;
                 }
                 svc_name = sp->service->GetDescriptor()->full_name();
@@ -772,7 +775,12 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                                 request_meta.service_name().c_str(),
                                 request_meta.method_name().c_str());
                 break;
-            } else if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {
+            }
+            if (RejectBuiltinAccess(cntl.get(), *server, mp) ||
+                RejectNonBuiltinAccessFromInternalPort(cntl.get(), *server, mp)) {
+                break;
+            }
+            if (mp->service->GetDescriptor() == BadMethodService::descriptor()) {
                 BadMethodRequest breq;
                 BadMethodResponse bres;
                 breq.set_service_name(request_meta.service_name());
@@ -960,7 +968,23 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         }
         return;
     }
-    
+
+    if (cntl == nullptr || !ControllerPrivateAccessor(cntl)
+            .does_response_match_request_socket(cid, msg->socket()->id())) {
+        LOG(WARNING) << "correlation_id=" << cid.value
+                     << " of the response from " << *msg->socket()
+                     << " does not match a request sent over it, drop it";
+        CHECK_EQ(0, bthread_id_unlock(cid));
+        if (remote_stream_id != INVALID_STREAM_ID) {
+            SendStreamRst(msg->socket(), remote_stream_id);
+            const auto& extra_stream_ids = meta.stream_settings().extra_stream_ids();
+            for (int i = 0; i < extra_stream_ids.size(); ++i) {
+                SendStreamRst(msg->socket(), extra_stream_ids[i]);
+            }
+        }
+        return;
+    }
+
     ControllerPrivateAccessor accessor(cntl);
     if (remote_stream_id != INVALID_STREAM_ID) {
         accessor.set_remote_stream_settings(

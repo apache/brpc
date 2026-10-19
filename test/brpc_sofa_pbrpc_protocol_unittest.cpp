@@ -296,6 +296,32 @@ TEST_F(SofaTest, reject_huge_meta_size) {
     ASSERT_EQ(brpc::PARSE_ERROR_TOO_BIG_DATA, pr.error());
 }
 
+TEST_F(SofaTest, process_response_requires_sending_socket) {
+    brpc::Controller cntl;
+    test::EchoResponse res;
+    cntl._response = &res;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                     cntl.call_id(), nullptr, 2));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    brpc::SocketId sending_id;
+    ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sending_id));
+    ASSERT_EQ(0, brpc::Socket::Address(
+                     sending_id, &cntl._current_call.sending_sock));
+
+    brpc::policy::SofaRpcMeta meta;
+    meta.set_type(brpc::policy::SofaRpcMeta::RESPONSE);
+    meta.set_sequence_id(cntl.current_id().value);
+    ProcessMessage(brpc::policy::ProcessSofaResponse, MakeResponseMessage(meta), false);
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+
+    brpc::policy::MostCommonMessage* msg = MakeResponseMessage(meta);
+    cntl._current_call.sending_sock->ReAddress(&msg->_socket);
+    ProcessMessage(brpc::policy::ProcessSofaResponse, msg, false);
+    EXPECT_EQ(EXP_RESPONSE, res.message());
+    EXPECT_EQ(0, cntl.ErrorCode());
+}
+
 TEST_F(SofaTest, process_response_error_code) {
     const int ERROR_CODE = 12345;
     brpc::policy::SofaRpcMeta meta;

@@ -283,6 +283,42 @@ Monterey中openssl的安装位置可能不再位于`/usr/local/opt/openssl`，�
 * 先运行`brew link openssl --force`看看`/usr/local/opt/openssl`是否出现了
 * 没有的话可以自行设置软链：`sudo ln -s /opt/homebrew/Cellar/openssl@3/3.0.3 /usr/local/opt/openssl`。请注意此命令中openssl的目录可能随环境变化而变化，可通过`brew info openssl`查看。
 
+### 使用 CMake 编译 Debug 版 brpc
+
+Apple Silicon 可以使用 Homebrew 安装的依赖编译 Debug 版本：
+
+```shell
+cmake -S . -B build -G "Unix Makefiles" \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DDEBUG=ON \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+  -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+cmake --build build --parallel
+```
+
+该命令使用单配置的Unix Makefiles生成器，因此`CMAKE_BUILD_TYPE=Debug`会选择
+CMake的Debug构建配置。`DEBUG=ON`启用brpc的调试日志并保留断言。构建产物位于
+`build/output/`。
+
+如需为 clangd 等工具生成编译数据库，请在配置命令中添加以下可选项：
+
+```shell
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
+
+生成的编译数据库位于 `build/compile_commands.json`。
+
+如果 CMake 报错 `tapi error: malformed file`，请确认 Command Line Tools 与 Xcode
+版本一致，并选择当前安装的 Xcode：
+
+```shell
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+```
+
+如果问题仍然存在，请检查`xcrun --sdk macosx --show-sdk-path`返回的SDK路径是否有效。
+
 ### 使用config_brpc.sh编译brpc
 git克隆brpc，进入到项目目录然后运行：
 ```shell

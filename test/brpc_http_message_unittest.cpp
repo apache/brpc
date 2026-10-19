@@ -18,6 +18,7 @@
 // Date 2014/10/24 16:44:30
 
 #include <gtest/gtest.h>
+#include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 
 #include "brpc/server.h"
@@ -29,6 +30,9 @@ namespace brpc {
 
 DECLARE_bool(allow_chunked_length);
 DECLARE_bool(allow_http_1_1_request_without_host);
+DECLARE_bool(http_allow_obs_fold);
+DECLARE_bool(http_strict_header_token);
+DECLARE_uint32(http_max_header_count);
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -38,6 +42,7 @@ int main(int argc, char* argv[]) {
 }
 
 namespace policy {
+DECLARE_bool(http_allow_empty_path_segments);
 Server::MethodProperty*
 FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
                         std::string* unknown_method_str);
@@ -339,6 +344,8 @@ TEST(HttpMessageTest, parse_http_set_cookie) {
 }
 
 TEST(HttpMessageTest, cl_and_te) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+
     // https://datatracker.ietf.org/doc/html/rfc2616#section-14.41
     // If multiple encodings have been applied to an entity, the transfer-
     // codings MUST be listed in the order in which they were applied.
@@ -425,11 +432,282 @@ TEST(HttpMessageTest, cl_and_te) {
     }
 }
 
+brpc::http_errno ParseHttpErrno(const char* buf) {
+    butil::IOBuf data;
+    data.append(buf);
+    brpc::HttpMessage http_message;
+    if (http_message.ParseFromIOBuf(data) == (ssize_t)data.size() &&
+        http_message.Completed()) {
+        return brpc::HPE_OK;
+    }
+    brpc::http_errno err = (brpc::http_errno)http_message._parser.http_errno;
+    return err != brpc::HPE_OK ? err : brpc::HPE_UNKNOWN;
+}
+
+TEST(HttpMessageTest, space_before_colon_of_framing_headers) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_strict_header_token = false;
+
+    const char* rejected[] = {
+        "POST / HTTP/1.1\r\nHost: a.com\r\nContent-Length : 5\r\n\r\nhello",
+        "POST / HTTP/1.1\r\nHost: a.com\r\nTransfer-Encoding : chunked\r\n\r\n0\r\n\r\n",
+        "GET / HTTP/1.1\r\nHost: a.com\r\nConnection : close\r\n\r\n",
+        "GET / HTTP/1.1\r\nHost: a.com\r\nUpgrade : h2c\r\n\r\n",
+    };
+    for (size_t i = 0; i < arraysize(rejected); ++i) {
+        ASSERT_EQ(brpc::HPE_INVALID_HEADER_TOKEN, ParseHttpErrno(rejected[i]))
+            << rejected[i];
+    }
+
+    // Names without framing semantics keep the historical leniency.
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno(
+        "POST / HTTP/1.1\r\nHost: a.com\r\nX-Foo : bar\r\n"
+        "Content-Length: 5\r\n\r\nhello"));
+}
+
+TEST(HttpMessageTest, strict_header_token) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_strict_header_token = false;
+
+    const char* lenient_only[] = {
+        "POST / HTTP/1.1\r\nHost: a.com\r\nX-Foo : bar\r\n"
+        "Content-Length: 5\r\n\r\nhello",
+        // A space anywhere in the name, not just before the colon.
+        "GET / HTTP/1.1\r\nHost: a.com\r\nX Foo: bar\r\n\r\n",
+        // Names that only look like a framing one until they diverge.
+        "GET / HTTP/1.1\r\nHost: a.com\r\nContent-Type : text/plain\r\n\r\n",
+    };
+    for (size_t i = 0; i < arraysize(lenient_only); ++i) {
+        ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno(lenient_only[i]))
+            << lenient_only[i];
+    }
+
+    brpc::FLAGS_http_strict_header_token = true;
+    for (size_t i = 0; i < arraysize(lenient_only); ++i) {
+        ASSERT_EQ(brpc::HPE_INVALID_HEADER_TOKEN,
+                  ParseHttpErrno(lenient_only[i])) << lenient_only[i];
+    }
+    // Well-formed names are unaffected.
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno("POST / HTTP/1.1\r\n"
+                                           "Host: a.com\r\nX-Foo: bar\r\n"
+                                           "Content-Length: 5\r\n\r\n"
+                                           "hello"));
+}
+
+TEST(HttpMessageTest, transfer_encoding_list_with_space_after_comma) {
+    butil::IOBuf response;
+    response.append("HTTP/1.1 200 OK\r\n"
+                    "Transfer-Encoding: gzip, chunked\r\n\r\n"
+                    "5\r\nhello\r\n0\r\n\r\n");
+    brpc::HttpMessage http_message;
+    ASSERT_EQ((ssize_t)response.size(), http_message.ParseFromIOBuf(response))
+        << http_message._parser;
+    ASSERT_TRUE(http_message.Completed());
+    ASSERT_TRUE(http_message._parser.flags & brpc::F_CHUNKED)
+        << http_message._parser;
+    ASSERT_EQ("hello", http_message.body().to_string());
+
+    // A request would have been rejected outright by RFC 7230 3.3.3 before,
+    // because uses_transfer_encoding was set while F_CHUNKED was not.
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno("POST / HTTP/1.1\r\n"
+                                           "Host: a.com\r\n"
+                                           "Transfer-Encoding: gzip, chunked\r\n\r\n"
+                                           "0\r\n\r\n"));
+}
+
+TEST(HttpMessageTest, content_length_with_interior_space) {
+    ASSERT_EQ(brpc::HPE_INVALID_CONTENT_LENGTH, ParseHttpErrno("POST / HTTP/1.1\r\n"
+                                                               "Host: a.com\r\n"
+                                                               "Content-Length: 1 3\r\n\r\n"
+                                                               "0123456789abc"));
+
+    // Trailing OWS is legal and does not change the value.
+    butil::IOBuf data;
+    data.append("POST / HTTP/1.1\r\nHost: a.com\r\nContent-Length: 13 \r\n\r\n0123456789abc");
+    brpc::HttpMessage http_message;
+    ASSERT_EQ((ssize_t)data.size(), http_message.ParseFromIOBuf(data))
+        << http_message._parser;
+    ASSERT_TRUE(http_message.Completed());
+    ASSERT_EQ("0123456789abc", http_message.body().to_string());
+}
+
+TEST(HttpMessageTest, obs_fold_of_framing_headers) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_allow_obs_fold = false;
+
+    const char* folded_te_value = "POST / HTTP/1.1\r\n"
+                                  "Host: a.com\r\n"
+                                  "Transfer-Encoding:\r\n chunked\r\n\r\n"
+                                  "0\r\n\r\n";
+    // Folding inside the value restarts the chunked matcher, so this one never
+    // reached F_CHUNKED, but we still report "chun ked" where a proxy that
+    // unfolds reports "chunked".
+    const char* folded_te_token = "GET / HTTP/1.1\r\n"
+                                  "Host: a.com\r\n"
+                                  "Transfer-Encoding: chun\r\n ked\r\n\r\n";
+    const char* folded_cl_value = "POST / HTTP/1.1\r\n"
+                                  "Host: a.com\r\n"
+                                  "Content-Length:\r\n 13\r\n\r\n"
+                                  "0123456789abc";
+    const char* folded_cl_digits = "POST / HTTP/1.1\r\n"
+                                   "Host: a.com\r\n"
+                                   "Content-Length: 1\r\n 3\r\n\r\n"
+                                   "0123456789abc";
+
+    ASSERT_EQ(brpc::HPE_INVALID_HEADER_TOKEN, ParseHttpErrno(folded_te_value));
+    ASSERT_EQ(brpc::HPE_INVALID_HEADER_TOKEN, ParseHttpErrno(folded_te_token));
+    ASSERT_EQ(brpc::HPE_INVALID_HEADER_TOKEN, ParseHttpErrno(folded_cl_value));
+    ASSERT_EQ(brpc::HPE_INVALID_HEADER_TOKEN, ParseHttpErrno(folded_cl_digits));
+
+    // Folding a header that decides nothing about framing is still accepted.
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno(
+        "POST / HTTP/1.1\r\nHost: a.com\r\nX-Foo: a\r\n b\r\n"
+        "Content-Length: 5\r\n\r\nhello"));
+
+    brpc::FLAGS_http_allow_obs_fold = true;
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno(folded_te_value));
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno(folded_cl_value));
+    // Unfolding turns this into `Content-Length: 1 3`, which stays invalid.
+    ASSERT_EQ(brpc::HPE_INVALID_CONTENT_LENGTH,
+              ParseHttpErrno(folded_cl_digits));
+    // Unfolding leaves a Transfer-Encoding that is not chunked, which RFC 7230
+    // 3.3.3 makes unparseable in a request whatever the fold policy is.
+    ASSERT_EQ(brpc::HPE_INVALID_TRANSFER_ENCODING,
+              ParseHttpErrno(folded_te_token));
+}
+
+TEST(HttpMessageTest, chunked_trailer_is_not_a_header) {
+    butil::IOBuf request;
+    request.append("POST / HTTP/1.1\r\n"
+                   "Host: a.com\r\n"
+                   "X-Forwarded-For: 10.0.0.1\r\n"
+                   "Transfer-Encoding: chunked\r\n\r\n"
+                   "5\r\nhello\r\n"
+                   "0\r\n"
+                   "X-Injected: evil\r\n"
+                   "Authorization: Bearer stolen\r\n"
+                   "X-Forwarded-For: 6.6.6.6\r\n"
+                   "\r\n");
+    brpc::HttpMessage http_message;
+    ASSERT_EQ((ssize_t)request.size(), http_message.ParseFromIOBuf(request))
+        << http_message._parser;
+    ASSERT_TRUE(http_message.Completed());
+    // The body is unaffected by dropping the trailer.
+    ASSERT_EQ("hello", http_message.body().to_string());
+
+    brpc::HttpHeader& header = http_message.header();
+    ASSERT_EQ(nullptr, header.GetHeader("X-Injected"));
+    ASSERT_EQ(nullptr, header.GetHeader("Authorization"));
+    // A trailer repeating a real header must not be appended to it either,
+    // which is where a comma-folded name like X-Forwarded-For would land.
+    const std::string* xff = header.GetHeader("X-Forwarded-For");
+    ASSERT_TRUE(xff != nullptr);
+    ASSERT_EQ("10.0.0.1", *xff);
+}
+
+TEST(HttpMessageTest, htab_is_ows_in_header_values) {
+    // Trailing OWS after the number, alone and mixed with SP.
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno("POST / HTTP/1.1\r\n"
+                                           "Host: a.com\r\n"
+                                           "Content-Length: 13\t\r\n\r\n"
+                                           "0123456789abc"));
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno("POST / HTTP/1.1\r\n"
+                                           "Host: a.com\r\n"
+                                           "Content-Length: 13 \t\r\n\r\n"
+                                           "0123456789abc"));
+    // A tab between digits ends the number just like a space, so the value
+    // stays invalid rather than reading as 13.
+    ASSERT_EQ(brpc::HPE_INVALID_CONTENT_LENGTH,
+              ParseHttpErrno("POST / HTTP/1.1\r\n"
+                             "Host: a.com\r\n"
+                             "Content-Length: 1\t3\r\n\r\n"
+                             "0123456789abc"));
+
+    // Tabs around a transfer-coding and after `Connection: close` used to leave
+    // the matcher in a state that never set the flag. The Connection case
+    // parsed without an error, so only the flag catches it.
+    struct { const char* buf; unsigned int flag; } flagged[] = {
+        {"POST / HTTP/1.1\r\nHost: a.com\r\n"
+         "Transfer-Encoding: gzip,\tchunked\r\n\r\n0\r\n\r\n", brpc::F_CHUNKED},
+        {"POST / HTTP/1.1\r\nHost: a.com\r\n"
+         "Transfer-Encoding: chunked\t\r\n\r\n0\r\n\r\n", brpc::F_CHUNKED},
+        {"GET / HTTP/1.1\r\nHost: a.com\r\nConnection: close\t\r\n\r\n", brpc::F_CONNECTION_CLOSE},
+    };
+    for (size_t i = 0; i < arraysize(flagged); ++i) {
+        butil::IOBuf data;
+        data.append(flagged[i].buf);
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)data.size(), http_message.ParseFromIOBuf(data))
+            << http_message._parser;
+        ASSERT_TRUE(http_message._parser.flags & flagged[i].flag)
+            << http_message._parser;
+    }
+}
+
+TEST(HttpMessageTest, too_many_headers) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_header_count = 8;
+
+    // Host counts as well, so 8 distinct names in total are accepted.
+    std::string at_limit = "GET / HTTP/1.1\r\nHost: a.com\r\n";
+    for (int i = 1; i < 8; ++i) {
+        at_limit.append("h" + std::to_string(i) + ": v\r\n");
+    }
+    std::string over_limit = at_limit + "last: v\r\n\r\n";
+    at_limit.append("\r\n");
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)at_limit.size(),
+                  http_message.ParseFromArray(at_limit.data(), at_limit.size()))
+            << http_message._parser;
+        ASSERT_EQ(8u, http_message.header().HeaderCount());
+    }
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ(-1, http_message.ParseFromArray(over_limit.data(),
+                                                  over_limit.size()));
+    }
+
+    // Repeated names fold into one entry, so they occupy one bucket and are not
+    // what the limit is aimed at.
+    std::string folded = "GET / HTTP/1.1\r\nHost: a.com\r\n";
+    for (int i = 0; i < 100; ++i) {
+        folded.append("dup: v\r\n");
+    }
+    folded.append("\r\n");
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)folded.size(),
+                  http_message.ParseFromArray(folded.data(), folded.size()))
+            << http_message._parser;
+        ASSERT_EQ(2u, http_message.header().HeaderCount());
+    }
+    // Set-Cookie is the one name that does not fold, so each occurrence is its
+    // own entry and does count.
+    std::string cookies = "GET / HTTP/1.1\r\nHost: a.com\r\n";
+    for (int i = 0; i < 100; ++i) {
+        cookies.append("Set-Cookie: a=b\r\n");
+    }
+    cookies.append("\r\n");
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ(-1, http_message.ParseFromArray(cookies.data(), cookies.size()));
+    }
+
+    brpc::FLAGS_http_max_header_count = 0;
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)over_limit.size(),
+                  http_message.ParseFromArray(over_limit.data(), over_limit.size()))
+            << http_message._parser;
+    }
+}
+
 TEST(HttpMessageTest, find_method_property_by_uri) {
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(new test::EchoService(),
                                    brpc::SERVER_OWNS_SERVICE));
-    ASSERT_EQ(0, server.Start(9237, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
     std::string unknown_method;
     brpc::Server::MethodProperty* mp = nullptr;
               
@@ -442,8 +720,7 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     ASSERT_EQ("index", mp->method->service()->name());
 
     mp = FindMethodPropertyByURI("//", &server, nullptr);
-    ASSERT_TRUE(mp);
-    ASSERT_EQ("index", mp->method->service()->name());
+    ASSERT_FALSE(mp);
 
     mp = FindMethodPropertyByURI("flags", &server, &unknown_method);
     ASSERT_TRUE(mp);
@@ -482,6 +759,49 @@ TEST(HttpMessageTest, find_method_property_by_uri) {
     mp = FindMethodPropertyByURI("/test.EchoService/no_such_method",
                                  &server, &unknown_method);
     ASSERT_FALSE(mp);
+}
+
+// A path with empty segments is a different path per RFC 3986, but the
+// splitter used to resolve it skips them, so //flags used to reach the same
+// builtin service as /flags. That difference is what lets a request slip past
+// a front proxy whose ACL only matches the collapsed form, so such paths are
+// rejected rather than collapsed.
+TEST(HttpMessageTest, reject_empty_path_segments) {
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(new test::EchoService(),
+                                   brpc::SERVER_OWNS_SERVICE));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    std::string unknown_method;
+
+    const char* const kRejected[] = {
+        "//",
+        "//flags",
+        "///flags",
+        "/flags//port",
+        "//EchoService/Echo",
+        "/EchoService//Echo",
+        "/EchoService/Echo//",
+    };
+    for (const char* path : kRejected) {
+        ASSERT_FALSE(FindMethodPropertyByURI(path, &server, &unknown_method))
+            << "path=" << path;
+    }
+
+    // The collapsed forms keep working.
+    ASSERT_TRUE(FindMethodPropertyByURI("/", &server, nullptr));
+    ASSERT_TRUE(FindMethodPropertyByURI("/flags/port", &server,
+                                        &unknown_method));
+    ASSERT_TRUE(FindMethodPropertyByURI("/EchoService/Echo", &server,
+                                        &unknown_method));
+
+    // -http_allow_empty_path_segments restores the old lenient behavior for
+    // deployments that depend on it.
+    brpc::policy::FLAGS_http_allow_empty_path_segments = true;
+    for (const char* path : kRejected) {
+        ASSERT_TRUE(FindMethodPropertyByURI(path, &server, &unknown_method))
+            << "path=" << path;
+    }
+    brpc::policy::FLAGS_http_allow_empty_path_segments = false;
 }
 
 TEST(HttpMessageTest, http_header) {
@@ -756,6 +1076,7 @@ TEST(HttpMessageTest, serialize_content_type_with_crlf_is_not_injected) {
 }
 
 TEST(HttpMessageTest, http_1_1_request_without_host) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
     brpc::FLAGS_allow_http_1_1_request_without_host = false;
     {
         butil::IOBuf request;
@@ -787,7 +1108,6 @@ TEST(HttpMessageTest, http_1_1_request_without_host) {
         ASSERT_TRUE(http_message.Completed());
         ASSERT_EQ("text/plain", http_message.header().content_type());
     }
-    brpc::FLAGS_allow_http_1_1_request_without_host = true;
 }
 
 } //namespace

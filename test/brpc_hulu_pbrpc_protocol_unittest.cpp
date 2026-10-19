@@ -265,6 +265,114 @@ TEST_F(HuluTest, process_response_after_eof) {
     ASSERT_TRUE(_socket->Failed());
 }
 
+TEST_F(HuluTest, process_response_from_foreign_socket_is_dropped) {
+    brpc::policy::HuluRpcResponseMeta meta;
+    test::EchoResponse res;
+    brpc::Controller cntl;
+    cntl._response = &res;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                     cntl.call_id(), nullptr, 2));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    meta.set_correlation_id(cntl.current_id().value);
+
+    brpc::SocketId sending_id;
+    brpc::SocketOptions sending_options;
+    ASSERT_EQ(0, brpc::Socket::Create(sending_options, &sending_id));
+    ASSERT_EQ(0, brpc::Socket::Address(
+                     sending_id, &cntl._current_call.sending_sock));
+
+    brpc::policy::MostCommonMessage* msg = MakeResponseMessage(meta);
+    ProcessMessage(brpc::policy::ProcessHuluResponse, msg, false);
+
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+
+    // Dropping the response must leave the call available for its real peer.
+    msg = MakeResponseMessage(meta);
+    cntl._current_call.sending_sock->ReAddress(&msg->_socket);
+    ProcessMessage(brpc::policy::ProcessHuluResponse, msg, false);
+    EXPECT_EQ(EXP_RESPONSE, res.message());
+    EXPECT_EQ(0, cntl.ErrorCode());
+}
+
+TEST_F(HuluTest, process_response_from_sending_socket_is_accepted) {
+    brpc::policy::HuluRpcResponseMeta meta;
+    test::EchoResponse res;
+    brpc::Controller cntl;
+    cntl._response = &res;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                     cntl.call_id(), nullptr, 2));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    meta.set_correlation_id(cntl.current_id().value);
+    _socket->ReAddress(&cntl._current_call.sending_sock);
+
+    brpc::policy::MostCommonMessage* msg = MakeResponseMessage(meta);
+    ProcessMessage(brpc::policy::ProcessHuluResponse, msg, false);
+
+    EXPECT_EQ(EXP_RESPONSE, res.message());
+    EXPECT_EQ(0, cntl.ErrorCode());
+}
+
+TEST_F(HuluTest, process_response_from_previous_retry_is_dropped) {
+    brpc::Controller cntl;
+    test::EchoResponse res;
+    cntl._response = &res;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                     cntl.call_id(), nullptr, 3));
+    const brpc::CallId previous_id = cntl.current_id();
+    cntl._current_call.nretry = 1;
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    _socket->ReAddress(&cntl._current_call.sending_sock);
+
+    // Even on the right socket, a completed attempt cannot supply the result.
+    brpc::policy::HuluRpcResponseMeta meta;
+    meta.set_correlation_id(previous_id.value);
+    ProcessMessage(brpc::policy::ProcessHuluResponse,
+                   MakeResponseMessage(meta), false);
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+
+    meta.set_correlation_id(cntl.current_id().value);
+    ProcessMessage(brpc::policy::ProcessHuluResponse,
+                   MakeResponseMessage(meta), false);
+    EXPECT_EQ(EXP_RESPONSE, res.message());
+    EXPECT_EQ(0, cntl.ErrorCode());
+}
+
+TEST_F(HuluTest, process_response_matches_unfinished_backup_socket) {
+    brpc::Controller cntl;
+    test::EchoResponse res;
+    cntl._response = &res;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                     cntl.call_id(), nullptr, 3));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    const brpc::CallId previous_id = cntl.current_id();
+
+    brpc::SocketId previous_socket_id;
+    ASSERT_EQ(0, brpc::Socket::Create(
+                     brpc::SocketOptions(), &previous_socket_id));
+    ASSERT_EQ(0, brpc::Socket::Address(
+                     previous_socket_id, &cntl._current_call.sending_sock));
+    // Mirror starting a backup: preserve the first attempt and its socket.
+    cntl._unfinished_call = new brpc::Controller::Call(&cntl._current_call);
+    ++cntl._current_call.nretry;
+    _socket->ReAddress(&cntl._current_call.sending_sock);
+
+    brpc::policy::HuluRpcResponseMeta meta;
+    meta.set_correlation_id(previous_id.value);
+    ProcessMessage(brpc::policy::ProcessHuluResponse,
+                   MakeResponseMessage(meta), false);
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+
+    // The preserved attempt may still finish, but only on its own socket.
+    brpc::policy::MostCommonMessage* msg = MakeResponseMessage(meta);
+    cntl._unfinished_call->sending_sock->ReAddress(&msg->_socket);
+    ProcessMessage(brpc::policy::ProcessHuluResponse, msg, false);
+    EXPECT_EQ(EXP_RESPONSE, res.message());
+    EXPECT_EQ(0, cntl.ErrorCode());
+}
+
 TEST_F(HuluTest, process_response_error_code) {
     const int ERROR_CODE = 12345;
     brpc::policy::HuluRpcResponseMeta meta;

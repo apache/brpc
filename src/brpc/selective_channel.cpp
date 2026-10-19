@@ -22,6 +22,8 @@
 #include "brpc/socket.h"                             // SocketUser
 #include "brpc/load_balancer.h"                      // LoadBalancer
 #include "brpc/details/controller_private_accessor.h"        // RPCSender
+#include "brpc/errno.pb.h"                           // ERESPONSE
+#include "brpc/nonreflectable_message.h"
 #include "brpc/selective_channel.h"
 #include "brpc/global.h"
 
@@ -140,6 +142,9 @@ public:
     ~Sender() { Clear(); }
     int IssueRPC(int64_t start_realtime_us);
     Resource PopFree();
+    // Called with the main call-id lock held. On false, the lock has been
+    // released or cleanup completed; the caller must return immediately
+    // without accessing the Sender, SubDone, or main Controller.
     bool PushFree(const Resource& r);
     const Controller* SubController(int index) const;
     void Run();
@@ -394,8 +399,17 @@ void SubDone::Run() {
         main_cntl->_error_code = _cntl._error_code;
     } else {
         if (_cntl._response != main_cntl->_response) {
-            main_cntl->_response->GetReflection()->Swap(
-                main_cntl->_response, _cntl._response);
+            NonreflectableMessageBase* nr_msg =
+                dynamic_cast<NonreflectableMessageBase*>(main_cntl->_response);
+            if (nr_msg != nullptr) {
+                if (!nr_msg->CopyFromSameType(*_cntl._response)) {
+                    main_cntl->SetFailed(
+                        ERESPONSE, "Fail to copy SelectiveChannel response");
+                }
+            } else {
+                main_cntl->_response->GetReflection()->Swap(
+                    main_cntl->_response, _cntl._response);
+            }
         }
     }
     const Controller::CompletionInfo info = { _cid, true };
@@ -474,8 +488,15 @@ inline Resource Sender::PopFree() {
 inline bool Sender::PushFree(const Resource& r) {
     if (_nfree < 2) {
         _free_resources[_nfree++] = r;
-        if (_finished && _nfree == _nalloc) {
-            Clear();
+        if (_finished) {
+            if (_nfree == _nalloc) {
+                Clear();
+            } else {
+                // Let the remaining sub callbacks return their resources.
+                const CallId cid = _main_cntl->call_id();
+                CHECK_EQ(0, bthread_id_unlock(cid));
+            }
+            // Clear() or another callback after unlock may destroy us.
             return false;
         }
         return true;

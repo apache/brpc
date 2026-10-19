@@ -1,5 +1,12 @@
 # brpc apache release guide step by step
 
+> **Start with the release Skill when possible**: [`community/skills/brpc-release/`](skills/brpc-release) orchestrates
+> this process as resumable stages, provides scripts for version updates, Release Notes, packaging, and verification,
+> and stops for the Release Manager (RM) before irreversible actions such as GPG signing, pushing tags, SVN commits,
+> sending emails, and publishing a GitHub Release. See [`community/skills/README.md`](skills/README.md) for installation,
+> dependency checks, and RM/verifier usage guidance. This document remains the authoritative release process; if the
+> Skill differs from this guide, follow this guide and update the Skill accordingly.
+
 ## Preparation
 
 ### 1. Confirm the release notes
@@ -198,6 +205,14 @@ Edit the `/package/rpm/brpc.spec` file in the project root directory, update the
 Version:	1.0.0
 ```
 
+#### Update the `CLAUDE.md` file
+
+Edit the `CLAUDE.md` file in the project root directory and update `Current version` in the project overview to the release version:
+
+```
+Current version: 1.0.0.
+```
+
 #### Update the `MODULE.bazel` file
 
 Edit the `MODULE.bazel` file in the project root directory, update the version number, and submit it to the code repository. For example:
@@ -258,13 +273,13 @@ sha512sum --check apache-brpc-1.0.0-src.tar.gz.sha512
 If there is no local working directory, create a local working directory first. Checkout the Apache SVN repository, username needs to use your own Apache LDAP username:
 
 ```bash
-mkdir -p ~/brpc_svn/dev/
+mkdir -p ~/brpc_release/svn/dev/
 
-cd ~/brpc_svn/dev/
+cd ~/brpc_release/svn/dev/
 
 svn --username=lorinlee co https://dist.apache.org/repos/dist/dev/brpc/
 
-cd ~/brpc_svn/dev/brpc
+cd ~/brpc_release/svn/dev/brpc
 ```
 
 ### 2. Add GPG public key
@@ -289,15 +304,15 @@ By fingerprint:
 ### 3. Add the releasing package to SVN directory
 
 ```bash
-mkdir -p ~/brpc_svn/dev/brpc/1.0.0
+mkdir -p ~/brpc_release/svn/dev/brpc/1.0.0
 
-cd ~/brpc_svn/dev/brpc/1.0.0
+cd ~/brpc_release/svn/dev/brpc/1.0.0
 
-cp ~/brpc/apache-brpc-1.0.0-src.tar.gz ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-src.tar.gz ~/brpc_release/svn/dev/brpc/1.0.0
 
-cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.asc ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.asc ~/brpc_release/svn/dev/brpc/1.0.0
 
-cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
+cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.sha512 ~/brpc_release/svn/dev/brpc/1.0.0
 ```
 
 ### 4. Submit SVN
@@ -305,7 +320,7 @@ cp ~/brpc/apache-brpc-1.0.0-src.tar.gz.sha512 ~/brpc_svn/dev/brpc/1.0.0
 Return to the parent directory and use the Apache LDAP account to submit SVN
 
 ```bash
-cd ~/brpc_svn/dev/brpc
+cd ~/brpc_release/svn/dev/brpc
 
 svn add *
 
@@ -314,7 +329,7 @@ svn --username=lorinlee commit -m "release 1.0.0"
 
 ## Verify release
 ```bash
-cd ~/brpc_svn/dev/brpc/1.0.0
+cd ~/brpc_release/svn/dev/brpc/1.0.0
 ```
 ### 1. Verify SHA512 checksum
 
@@ -406,8 +421,8 @@ This stage will cost 3+ days.
 
 ### 1. Vote stage
 
-1. Send a voting email to `dev@brpc.apache.org`. PMC needs to check the correctness of the version according to the document before voting. After at least 72 hours and 3 +1 PMC member votes, you can move to the next stage.
-2. Announce the voting result and send the voting result to dev@brpc.apache.org.
+1. Send a voting email to `dev@brpc.apache.org`. After sending it, find the message in the [dev@brpc.apache.org mail archive](https://lists.apache.org/list.html?dev@brpc.apache.org) and save its permanent link. PMC needs to check the correctness of the version according to the document before voting. After at least 72 hours and 3 +1 PMC member votes, you can move to the next stage.
+2. Announce the voting result and send the voting result to dev@brpc.apache.org; likewise save the permanent link of the result email from the mail archive.
 
 ### 2. Vote email template
 
@@ -491,7 +506,7 @@ Non-binding votes:
 - bbb
 - ccc
 
-Vote thread: xxx (vote email link in https://lists.apache.org/)
+Vote thread: {VOTE_THREAD_URL}
 
 Thank you to all the above members to help us to verify and vote for
 the 1.0.0 release. I will process to publish the release and send ANNOUNCE.

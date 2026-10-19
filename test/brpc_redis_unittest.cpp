@@ -19,6 +19,8 @@
 #include <iostream>
 #include <memory>
 #include <unordered_map>
+#include <butil/endpoint.h>
+#include <butil/fd_guard.h>
 #include <butil/time.h>
 #include <butil/logging.h>
 #include <brpc/redis.h>
@@ -114,6 +116,20 @@ private:
     int32_t _old_depth;
 };
 
+class ScopedRedisMaxAllocationSize {
+public:
+    explicit ScopedRedisMaxAllocationSize(int32_t size)
+        : _old_size(brpc::FLAGS_redis_max_allocation_size) {
+        brpc::FLAGS_redis_max_allocation_size = size;
+    }
+    ~ScopedRedisMaxAllocationSize() {
+        brpc::FLAGS_redis_max_allocation_size = _old_size;
+    }
+
+private:
+    int32_t _old_size;
+};
+
 class RedisTest : public testing::Test {
 protected:
     RedisTest() {}
@@ -122,6 +138,64 @@ protected:
     }
     void TearDown() {}
 };
+
+TEST(RedisCommandFormatTest, wide_numeric_conversion) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "SET key %100d tail %d", 7, 9).ok());
+
+    const std::string padded_value(99, ' ');
+    const std::string expected =
+        std::string("*5\r\n$3\r\nSET\r\n$3\r\nkey\r\n$100\r\n") +
+        padded_value + "7\r\n$4\r\ntail\r\n$1\r\n9\r\n";
+    EXPECT_EQ(expected, buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, vector_components_preserve_binary_payload) {
+    const std::string value("a\0b", 3);
+    const std::vector<butil::StringPiece> components = {
+        "SET", "key", butil::StringPiece(value.data(), value.size())};
+    brpc::RedisRequest request;
+    ASSERT_TRUE(request.AddCommandByComponents(components));
+
+    butil::IOBuf buf;
+    ASSERT_TRUE(request.SerializeTo(&buf));
+    std::string expected = "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\n";
+    expected.append(value).append("\r\n");
+    EXPECT_EQ(expected, buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, format_preserves_binary_payload) {
+    const std::string value("a\0b", 3);
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(
+                    &buf, "SET key %b", value.data(), value.size())
+                    .ok());
+
+    std::string expected = "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\n";
+    expected.append(value).append("\r\n");
+    EXPECT_EQ(expected, buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, no_format_encodes_components) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandNoFormat(&buf, "SET key value").ok());
+    EXPECT_EQ("*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n",
+              buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, empty_format_encodes_empty_array) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "").ok());
+    EXPECT_EQ("*0\r\n", buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, authenticator_encodes_password_and_database) {
+    brpc::policy::RedisAuthenticator authenticator("a b", 3);
+    std::string credential;
+    ASSERT_EQ(0, authenticator.GenerateCredential(&credential));
+    EXPECT_EQ("*2\r\n$4\r\nAUTH\r\n$3\r\na b\r\n"
+              "*2\r\n$6\r\nSELECT\r\n$1\r\n3\r\n", credential);
+}
 
 void AssertReplyEqual(const brpc::RedisReply& reply1,
                       const brpc::RedisReply& reply2) {
@@ -528,6 +602,100 @@ TEST_F(RedisTest, cmd_format) {
     request.AddCommand("  get   key'ext'   value  ");  // == get key ext value
     ASSERT_STREQ("*4\r\n$3\r\nget\r\n$3\r\nkey\r\n$3\r\next\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
     request.Clear();
+
+    // empty %b must still form a component (issue: empty arg was dropped)
+    {
+        std::string empty;
+        request.AddCommand("set key %b", empty.data(), empty.size());
+        ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                     request._buf.to_string().c_str());
+        request.Clear();
+    }
+    // empty %s must still form a component
+    {
+        std::string empty;
+        request.AddCommand("set key %s", empty.c_str());
+        ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                     request._buf.to_string().c_str());
+        request.Clear();
+    }
+    // %b with binary data containing \0
+    {
+        const char bin[] = {'a', '\0', 'b'};
+        request.AddCommand("set key %b", bin, (size_t)3);
+        // Compare full bytes: ASSERT_STREQ would stop at the embedded NUL and
+        // miss a payload truncated after 'a'.
+        std::string expected = "*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$3\r\n";
+        expected.append(bin, sizeof(bin));
+        expected.append("\r\n", 2);
+        ASSERT_EQ(expected, request._buf.to_string());
+        request.Clear();
+    }
+}
+
+// Format-only checks: do not need a running redis-server.
+TEST_F(RedisTest, empty_and_null_format_args) {
+    butil::IOBuf buf;
+    const std::string empty;
+
+    // empty %b still forms a component
+    ASSERT_TRUE(
+        brpc::RedisCommandFormat(&buf, "set key %b", empty.data(), empty.size())
+            .ok());
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                 buf.to_string().c_str());
+    buf.clear();
+
+    // empty %s still forms a component
+    ASSERT_TRUE(
+        brpc::RedisCommandFormat(&buf, "set key %s", empty.c_str()).ok());
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                 buf.to_string().c_str());
+    buf.clear();
+
+    // %b with NULL + size 0 is a valid empty arg (no deref)
+    ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "set key %b",
+                                         (const char*)nullptr, (size_t)0)
+                    .ok());
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$3\r\nkey\r\n$0\r\n\r\n",
+                 buf.to_string().c_str());
+    buf.clear();
+
+    // %s with NULL must report an error instead of strlen(UB)/crash
+    ASSERT_FALSE(
+        brpc::RedisCommandFormat(&buf, "set key %s", (const char*)nullptr)
+            .ok());
+    buf.clear();
+
+    // %b with NULL + size>0 must report an error instead of append(UB)/crash
+    ASSERT_FALSE(brpc::RedisCommandFormat(&buf, "set key %b",
+                                          (const char*)nullptr, (size_t)3)
+                     .ok());
+    buf.clear();
+
+    // multiple consecutive empty args: no state crosstalk, exact count
+    ASSERT_TRUE(brpc::RedisCommandFormat(
+                    &buf, "mset %b %b %b", empty.data(), empty.size(),
+                    empty.data(), empty.size(), empty.data(), empty.size())
+                    .ok());
+    ASSERT_STREQ("*4\r\n$4\r\nmset\r\n$0\r\n\r\n$0\r\n\r\n$0\r\n\r\n",
+                 buf.to_string().c_str());
+    buf.clear();
+}
+
+// NULL through the public AddCommand path must return false / set has_error,
+// not abort the process (the failure branch used to CHECK and crash).
+TEST_F(RedisTest, addcommand_null_returns_false) {
+    brpc::RedisRequest request;
+
+    ASSERT_FALSE(request.AddCommand("set key %s", (const char*)nullptr));
+    ASSERT_TRUE(request.has_error());
+    ASSERT_FALSE(request.AddCommand("ping"));  // sticky: still false after error
+
+    request.Clear();
+    ASSERT_FALSE(
+        request.AddCommand("set key %b", (const char*)nullptr, (size_t)3));
+    ASSERT_TRUE(request.has_error());
 }
 
 TEST_F(RedisTest, quote_and_escape) {
@@ -919,6 +1087,120 @@ TEST_F(RedisTest, redis_reply_rejects_deep_nested_arrays) {
     EXPECT_TRUE(valid_reply.is_array());
 }
 
+TEST_F(RedisTest, redis_reply_rejects_nested_array_memory_amplification) {
+    // Each array allocation below is individually within -redis_max_
+    // allocation_size, yet the total for one reply must not exceed it.
+    // Otherwise the per-allocation cap is multiplied by nesting depth and a
+    // tiny reply commits depth * cap bytes.
+    ScopedRedisMaxAllocationSize scoped_size(1024);
+    const int32_t count_at_cap =
+        brpc::FLAGS_redis_max_allocation_size / sizeof(brpc::RedisReply);
+
+    // One maximal array nested inside another.
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n");
+        buf.append("*" + std::to_string(count_at_cap) + "\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  reply.ConsumePartialIOBuf(buf));
+    }
+
+    // The budget must survive suspension: the outer header arrives first,
+    // the inner one only after a resume. A fresh budget per call would let
+    // the peer reset it by withholding data.
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                  reply.ConsumePartialIOBuf(buf));
+        buf.append("*" + std::to_string(count_at_cap) + "\r\n");
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  reply.ConsumePartialIOBuf(buf));
+    }
+
+    // Feeding one array header per call must not bypass the budget either.
+    {
+        butil::IOBuf buf;
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        // Each "*2" costs sizeof(RedisReply) * 2 = 64 bytes, so the 17th
+        // nested array exceeds the 1024-byte budget.
+        for (int i = 0; i < 20; ++i) {
+            buf.append("*2\r\n");
+            brpc::ParseError err = reply.ConsumePartialIOBuf(buf);
+            if (i < 16) {
+                EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, err);
+            } else {
+                EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, err);
+                break;
+            }
+        }
+    }
+
+    // Valid replies are unaffected: a nested reply well within the budget...
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n*2\r\n:1\r\n:2\r\n:3\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_OK, reply.ConsumePartialIOBuf(buf));
+        EXPECT_TRUE(reply.is_array());
+        EXPECT_EQ(2u, reply.size());
+        EXPECT_EQ(2u, reply[0].size());
+        EXPECT_EQ(1, reply[0][0].integer());
+    }
+    // ... and a single flat array exactly at the budget boundary.
+    {
+        butil::IOBuf buf;
+        buf.append("*" + std::to_string(count_at_cap) + "\r\n");
+        for (int i = 0; i < count_at_cap; ++i) {
+            buf.append(":7\r\n");
+        }
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_OK, reply.ConsumePartialIOBuf(buf));
+        EXPECT_TRUE(reply.is_array());
+        EXPECT_EQ((size_t)count_at_cap, reply.size());
+    }
+}
+
+TEST_F(RedisTest, command_parser_does_not_preallocate_declared_args) {
+    // A declared RESP array count must not commit memory before the arguments
+    // actually arrive: "*<count>\r\n" used to resize _args upfront, costing
+    // up to -redis_max_allocation_size per connection from ~12 bytes.
+    ScopedRedisMaxAllocationSize scoped_size(1024 * 1024);
+    const int32_t count_at_cap =
+        brpc::FLAGS_redis_max_allocation_size / sizeof(butil::StringPiece);
+
+    brpc::RedisCommandParser parser;
+    butil::Arena arena;
+    butil::IOBuf buf;
+    buf.append("*" + std::to_string(count_at_cap) + "\r\n$3\r\nget\r\n");
+    std::vector<butil::StringPiece> args;
+    EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+              parser.Consume(buf, &args, &arena));
+    // Only the argument that has arrived is stored.
+    EXPECT_EQ(1u, parser.ParsedArgsSize());
+
+    // Complete commands still parse into the full argument list.
+    {
+        brpc::RedisCommandParser parser2;
+        butil::Arena arena2;
+        butil::IOBuf buf2;
+        buf2.append("*3\r\n$3\r\nget\r\n$3\r\nfoo\r\n$3\r\nbar\r\n");
+        std::vector<butil::StringPiece> args2;
+        EXPECT_EQ(brpc::PARSE_OK, parser2.Consume(buf2, &args2, &arena2));
+        ASSERT_EQ(3u, args2.size());
+        EXPECT_EQ("get", args2[0].as_string());
+        EXPECT_EQ("foo", args2[1].as_string());
+        EXPECT_EQ("bar", args2[2].as_string());
+    }
+}
+
 butil::Mutex s_mutex;
 std::unordered_map<std::string, std::string> m;
 std::unordered_map<std::string, int64_t> int_map;
@@ -1221,6 +1503,148 @@ TEST_F(RedisTest, server_sanity) {
     ASSERT_EQ(value3, response.reply(2).data());
     ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
     ASSERT_EQ("", response.reply(3).data());
+}
+
+// Returns a port nothing is listening on, or -1. ServerOptions.internal_port
+// has to be an explicit number, Server::Start() rejects 0 because it stands
+// for an ephemeral port, so ask the system for a free one rather than hardcode
+// a port that another test may be listening on.
+static int PickUnusedPort() {
+    butil::fd_guard sockfd(butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
+    if (sockfd < 0) {
+        return -1;
+    }
+    butil::EndPoint point;
+    if (butil::get_local_side(sockfd, &point) != 0) {
+        return -1;
+    }
+    return point.port;
+}
+
+// Starts `server' on an ephemeral port and fills options->internal_port with
+// another one. Both are released before Start() binds them and something else
+// may take one in between, hence the retries. Returns 0 on success.
+static int StartWithInternalPort(brpc::Server* server,
+                                 brpc::ServerOptions* options) {
+    for (int i = 0; i < 10; ++i) {
+        int internal_port = PickUnusedPort();
+        if (internal_port < 0) {
+            continue;
+        }
+        options->internal_port = internal_port;
+        if (0 == server->Start("127.0.0.1:0", options)) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
+TEST_F(RedisTest, server_is_not_served_on_internal_port) {
+    std::string password = GeneratePassword();
+    std::unique_ptr<brpc::policy::RedisAuthenticator> redis_auth_holder(
+        new brpc::policy::RedisAuthenticator(password));
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<SetCommandHandler> sh(new SetCommandHandler(rsimpl));
+    std::unique_ptr<AuthCommandHandler> ah(new AuthCommandHandler(rsimpl));
+    rsimpl->AddCommandHandler("set", sh.get());
+    rsimpl->AddCommandHandler("auth", ah.get());
+
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.redis_service = rsimpl;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    options.auth = redis_auth_holder.get();
+    options.max_retry = 0;
+
+    brpc::RedisRequest request;
+    ASSERT_TRUE(request.AddCommand("set key1 value1"));
+
+    // The internal port is up and serving its builtin services, it just does
+    // not speak redis, so the command below fails to be parsed rather than
+    // fails to be sent.
+    brpc::ChannelOptions http_options;
+    http_options.protocol = brpc::PROTOCOL_HTTP;
+    http_options.max_retry = 0;
+    brpc::Channel http_channel;
+    ASSERT_EQ(0, http_channel.Init(
+        "127.0.0.1", server_options.internal_port, &http_options));
+    brpc::Controller http_cntl;
+    http_cntl.http_request().uri() = "/version";
+    http_channel.CallMethod(nullptr, &http_cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(http_cntl.Failed()) << http_cntl.ErrorText();
+
+    brpc::Channel internal_channel;
+    ASSERT_EQ(0, internal_channel.Init(
+        "127.0.0.1", server_options.internal_port, &options));
+    brpc::RedisResponse response;
+    brpc::Controller cntl;
+    internal_channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(0, response.reply_size());
+
+    // The port passed to Start() speaks redis as before.
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(
+        "127.0.0.1", server.listen_address().port, &options));
+    cntl.Reset();
+    response.Clear();
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(1, response.reply_size());
+    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+    ASSERT_STREQ("OK", response.reply(0).c_str());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+class MyServerAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string*) const override { return 0; }
+    int VerifyCredential(const std::string&, const butil::EndPoint&,
+                         brpc::AuthContext*) const override { return 0; }
+};
+
+TEST_F(RedisTest, server_rejects_unauthenticated_commands) {
+    std::string password = GeneratePassword();
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<SetCommandHandler> sh(new SetCommandHandler(rsimpl));
+    std::unique_ptr<AuthCommandHandler> ah(new AuthCommandHandler(rsimpl));
+    rsimpl->AddCommandHandler("set", sh.get());
+    rsimpl->AddCommandHandler("auth", ah.get());
+
+    // Redis commands are handled inside ParseRedisMessage() and never reach
+    // InputMessenger's authentication hook. With ServerOptions.auth set they
+    // must be rejected, like VerifyNsheadRequest/VerifyThriftRequest do for
+    // the other protocols that carry no credential.
+    MyServerAuthenticator auth;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.redis_service = rsimpl;
+    server_options.auth = &auth;
+    brpc::PortRange pr(8081, 8900);
+    ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    options.max_retry = 0;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(
+        "127.0.0.1", server.listen_address().port, &options));
+
+    brpc::RedisRequest request;
+    brpc::RedisResponse response;
+    brpc::Controller cntl;
+    ASSERT_TRUE(request.AddCommand("set key1 value1"));
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(0, response.reply_size());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
 }
 
 void* incr_thread(void* arg) {

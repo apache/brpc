@@ -39,6 +39,7 @@ public:
     bool Init();
     // Set the status to `s'.
     void set_status(TaskStatus s, TaskMeta* meta);
+    static bool set_status_unsafe(TaskStatus s, TaskMeta* meta);
     static void set_running_status(pthread_t worker_tid, TaskMeta* meta);
     static bool set_end_status_unsafe(TaskMeta* m);
 

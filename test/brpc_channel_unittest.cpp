@@ -21,6 +21,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <poll.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
@@ -28,15 +29,19 @@
 #include "butil/macros.h"
 #include "butil/logging.h"
 #include "butil/files/temp_file.h"
+#include "butil/fd_guard.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/policy/baidu_rpc_meta.pb.h"
 #include "brpc/policy/most_common_message.h"
+#include "brpc/policy/public_pbrpc_protocol.h"
+#include "brpc/policy/streaming_rpc_protocol.h"
 #include "brpc/channel.h"
 #include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/parallel_channel.h"
+#include "brpc/redis.h"
 #include "brpc/selective_channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
@@ -77,6 +82,55 @@ void* RunClosure(void* arg) {
 void MarkCalled(bool* called) {
     *called = true;
 }
+
+// Hold completed subcalls before invoking SelectiveChannel's SubDone. Their
+// call IDs stay locked, just as they do while Controller::EndRPC runs done,
+// so cancellation cannot replace an already received response.
+class DeferredSelectiveChannel : public brpc::ChannelBase {
+public:
+    struct SubCall {
+        brpc::Controller* cntl;
+        google::protobuf::Closure* done;
+
+        void Run() const {
+            const brpc::CallId cid = cntl->call_id();
+            done->Run();
+            // The final SubDone may have deleted its Controller.
+            EXPECT_EQ(0, bthread_id_unlock_and_destroy(cid));
+        }
+    };
+
+    explicit DeferredSelectiveChannel(std::vector<SubCall>* calls)
+        : _calls(calls) {}
+
+    void CallMethod(const google::protobuf::MethodDescriptor*,
+                    google::protobuf::RpcController* controller,
+                    const google::protobuf::Message*,
+                    google::protobuf::Message* response,
+                    google::protobuf::Closure* done) override {
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
+        cntl->_response = response;
+        cntl->set_used_by_rpc();
+        CHECK_EQ(0, bthread_id_lock(cntl->call_id(), nullptr));
+        _calls->push_back({cntl, done});
+    }
+
+    int CheckHealth() override { return 0; }
+    int Weight() override { return 1; }
+
+private:
+    std::vector<SubCall>* _calls;
+};
+
+class SelectiveRetryPolicy : public brpc::RetryPolicy {
+public:
+    bool DoRetry(const brpc::Controller* cntl) const override {
+        ++calls;
+        return cntl->ErrorCode() == 5013;
+    }
+
+    mutable int calls = 0;
+};
 
 class DeleteOnlyOnceChannel : public brpc::Channel {
 public:
@@ -230,6 +284,16 @@ public:
         }
         static_cast<brpc::Controller*>(cntl_base)->CloseConnection(
             "Close connection after delay");
+    }
+};
+class PingCommandHandler : public brpc::RedisCommandHandler {
+public:
+    brpc::RedisCommandHandlerResult Run(
+            const std::vector<butil::StringPiece>&,
+            brpc::RedisReply* output,
+            bool) override {
+        output->SetStatus("PONG");
+        return brpc::REDIS_CMD_HANDLED;
     }
 };
 
@@ -2194,6 +2258,7 @@ protected:
     void TestBackupRequestPolicy(bool single_server, bool async,
                                  bool short_connection) {
         ASSERT_EQ(0, StartAccept(_ep));
+        bool connection_close_timed_out = false;
         for (int i = 0; i < 2; ++i) {
             bool backup = i == 0;
             std::cout << " *** single=" << single_server
@@ -2223,10 +2288,15 @@ protected:
 
             if (short_connection) {
                 // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-                const int64_t start_time = butil::cpuwide_time_us();
-                while (_messenger.ConnectionCount() != 0) {
-                    ASSERT_LT(butil::cpuwide_time_us(), start_time + 100000L/*100ms*/);
+                const int64_t deadline =
+                    butil::cpuwide_time_us() + 1000000L /* 1s */;
+                while (_messenger.ConnectionCount() != 0 &&
+                       butil::cpuwide_time_us() < deadline) {
                     bthread_usleep(1000);
+                }
+                if (_messenger.ConnectionCount() != 0) {
+                    connection_close_timed_out = true;
+                    break;
                 }
             } else {
                 ASSERT_GE(1ul, _messenger.ConnectionCount());
@@ -2234,6 +2304,8 @@ protected:
         }
 
         StopAndJoin();
+        EXPECT_FALSE(connection_close_timed_out)
+            << "Timed out waiting for short connections to close";
     }
 
     butil::EndPoint _ep;
@@ -2262,6 +2334,140 @@ public:
 };
 int MyShared::nctor = 0;
 int MyShared::ndtor = 0;
+
+TEST(ResponseSocketTest, baidu_response_requires_sending_socket) {
+    brpc::Controller cntl;
+    test::EchoResponse res;
+    cntl._response = &res;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                     cntl.call_id(), nullptr, 2));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    brpc::SocketId sending_id;
+    brpc::SocketId foreign_id;
+    ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sending_id));
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    butil::fd_guard response_fd(fds[0]);
+    butil::fd_guard peer_fd(fds[1]);
+    brpc::SocketOptions foreign_options;
+    foreign_options.fd = response_fd;
+    ASSERT_EQ(0, brpc::Socket::Create(foreign_options, &foreign_id));
+    response_fd.release();
+    ASSERT_EQ(0, brpc::Socket::Address(
+                     sending_id, &cntl._current_call.sending_sock));
+    brpc::SocketUniquePtr foreign_socket;
+    ASSERT_EQ(0, brpc::Socket::Address(foreign_id, &foreign_socket));
+
+    brpc::policy::RpcMeta meta;
+    meta.set_correlation_id(cntl.current_id().value);
+    meta.mutable_response()->set_error_code(0);
+    auto make_response = [&meta](brpc::Socket* socket) {
+        auto* msg = brpc::policy::MostCommonMessage::Get();
+        butil::IOBufAsZeroCopyOutputStream meta_stream(&msg->meta);
+        EXPECT_TRUE(meta.SerializeToZeroCopyStream(&meta_stream));
+        test::EchoResponse response;
+        response.set_message("matched");
+        butil::IOBufAsZeroCopyOutputStream payload_stream(&msg->payload);
+        EXPECT_TRUE(response.SerializeToZeroCopyStream(&payload_stream));
+        socket->ReAddress(&msg->_socket);
+        socket->PostponeEOF();
+        return msg;
+    };
+    const int64_t stream_ids[] = {123, 456, 789};
+    meta.mutable_stream_settings()->set_stream_id(stream_ids[0]);
+    meta.mutable_stream_settings()->add_extra_stream_ids(stream_ids[1]);
+    meta.mutable_stream_settings()->add_extra_stream_ids(stream_ids[2]);
+    brpc::policy::ProcessRpcResponse(make_response(foreign_socket.get()));
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+    EXPECT_FALSE(cntl.has_remote_stream());
+
+    // All advertised streams must be reset on the response's arrival socket.
+    butil::IOBuf expected;
+    for (int64_t stream_id : stream_ids) {
+        brpc::StreamFrameMeta frame_meta;
+        frame_meta.set_stream_id(stream_id);
+        frame_meta.set_frame_type(brpc::FRAME_TYPE_RST);
+        brpc::policy::PackStreamMessage(&expected, frame_meta, nullptr);
+    }
+    butil::IOBuf received;
+    const int64_t deadline = butil::cpuwide_time_ms() + 5000;
+    while (received.size() < expected.size()) {
+        const int64_t remaining = deadline - butil::cpuwide_time_ms();
+        ASSERT_GT(remaining, 0);
+        pollfd pfd = {peer_fd, POLLIN, 0};
+        ASSERT_EQ(1, poll(&pfd, 1, remaining));
+        char buf[1024];
+        const ssize_t n = read(peer_fd, buf, sizeof(buf));
+        ASSERT_GT(n, 0);
+        received.append(buf, n);
+    }
+    EXPECT_EQ(expected, received);
+    meta.clear_stream_settings();
+
+    // A real request uses a versioned ID, not the timeout/cancel base ID.
+    meta.set_correlation_id(cntl.call_id().value);
+    brpc::policy::ProcessRpcResponse(
+        make_response(cntl._current_call.sending_sock.get()));
+    EXPECT_TRUE(res.message().empty());
+    EXPECT_EQ(0, cntl.ErrorCode());
+    meta.set_correlation_id(cntl.current_id().value);
+    brpc::policy::ProcessRpcResponse(
+        make_response(cntl._current_call.sending_sock.get()));
+    EXPECT_EQ("matched", res.message());
+    EXPECT_EQ(0, cntl.ErrorCode());
+}
+
+TEST(ResponseSocketTest, real_rpc_responses_match_sending_socket) {
+    class EchoService : public test::EchoService {
+        void Echo(google::protobuf::RpcController*,
+                  const test::EchoRequest* request,
+                  test::EchoResponse* response,
+                  google::protobuf::Closure* done) override {
+            brpc::ClosureGuard done_guard(done);
+            response->set_message("received " + request->message());
+        }
+    } service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions server_options;
+    server_options.nshead_service = new brpc::policy::PublicPbrpcServiceAdaptor;
+    ASSERT_EQ(0, server.Start(0, &server_options));
+
+    const char* protocols[] = {
+        "baidu_std", "hulu_pbrpc", "sofa_pbrpc", "public_pbrpc"};
+    const char* connections[] = {"single", "pooled", "short"};
+    for (const char* protocol : protocols) {
+        for (const char* connection : connections) {
+            // Public pbrpc uses the half-duplex nshead server adaptor.
+            if (strcmp(protocol, "public_pbrpc") == 0 &&
+                strcmp(connection, "single") == 0) {
+                continue;
+            }
+            SCOPED_TRACE(protocol);
+            SCOPED_TRACE(connection);
+            brpc::ChannelOptions options;
+            options.protocol = protocol;
+            options.connection_type = connection;
+            options.timeout_ms = 5000;
+            options.max_retry = 0;
+            brpc::Channel channel;
+            ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
+            test::EchoService_Stub stub(&channel);
+            for (int i = 0; i < 2; ++i) {
+                brpc::Controller cntl;
+                test::EchoRequest request;
+                test::EchoResponse response;
+                request.set_message("socket binding");
+                stub.Echo(&cntl, &request, &response, nullptr);
+                ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+                EXPECT_EQ("received socket binding", response.message());
+            }
+        }
+    }
+    server.Stop(0);
+    server.Join();
+}
 
 TEST_F(ChannelTest, intrusive_ptr_sanity) {
     MyShared::nctor = 0;
@@ -2644,6 +2850,37 @@ TEST_F(ChannelTest, empty_selective_channel) {
     req.set_message(__FUNCTION__);
     CallMethod(&channel, &cntl, &req, &res, false);
     EXPECT_EQ(ENODATA, cntl.ErrorCode()) << cntl.ErrorText();
+}
+TEST_F(ChannelTest, selective_channel_supports_nonreflectable_response) {
+    PingCommandHandler ping_handler;
+    std::unique_ptr<brpc::RedisService> redis_service(new brpc::RedisService);
+    ASSERT_TRUE(redis_service->AddCommandHandler("ping", &ping_handler));
+
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.redis_service = redis_service.release();
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &server_options));
+
+    brpc::ChannelOptions channel_options;
+    channel_options.protocol = brpc::PROTOCOL_REDIS;
+    std::unique_ptr<brpc::Channel> sub_channel(new brpc::Channel);
+    ASSERT_EQ(0, sub_channel->Init(server.listen_address(), &channel_options));
+
+    brpc::Controller cntl;
+    brpc::RedisRequest request;
+    brpc::RedisResponse response;
+    ASSERT_TRUE(request.AddCommand("ping"));
+
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+    ASSERT_EQ(0, channel.AddChannel(sub_channel.release(), nullptr));
+
+    cntl.set_timeout_ms(1000);
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(1, response.reply_size());
+    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+    ASSERT_EQ("PONG", response.reply(0).data());
 }
 
 class BadCall : public brpc::CallMapper {
@@ -3199,6 +3436,183 @@ TEST_F(ChannelTest, selective_channel_ignores_late_subdone_after_timeout) {
     EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
     server.Stop(0);
     server.Join();
+}
+
+static void TestSelectiveLateSubDone(int terminal_error, int late_error,
+                                     bool backup_first, bool delete_in_done) {
+    SCOPED_TRACE(testing::Message() << "terminal_error=" << terminal_error
+                 << " late_error=" << late_error
+                 << " backup_first=" << backup_first
+                 << " delete_in_done=" << delete_in_done);
+    SelectiveRetryPolicy retry_policy;
+    brpc::ChannelOptions options;
+    options.timeout_ms = -1;
+    options.max_retry = 3;
+    options.retry_policy = &retry_policy;
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", &options));
+    for (int i = 0; i < 2; ++i) {
+        ASSERT_EQ(0, channel.AddChannel(
+                         new DeferredSelectiveChannel(&calls), nullptr));
+    }
+
+    std::unique_ptr<brpc::Controller> cntl(new brpc::Controller);
+    const brpc::CallId cid = cntl->call_id();
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message("late subcall");
+    res.set_message("original response");
+    int done_count = 0;
+    auto on_done = [](int* count, std::unique_ptr<brpc::Controller>* owner,
+                      bool destroy) {
+        ++*count;
+        if (destroy) {
+            owner->reset();
+        }
+    };
+    test::EchoService::Stub(&channel).Echo(
+        cntl.get(), &req, &res,
+        brpc::NewCallback(+on_done, &done_count, &cntl, delete_in_done));
+    ASSERT_EQ(1u, calls.size());
+
+    // Drive the backup and timeout/cancel paths under the same call-id lock
+    // as timer callbacks, without depending on timer scheduling or sleeps.
+    const brpc::Controller::CompletionInfo info = {cid, false};
+    ASSERT_EQ(0, bthread_id_trylock(cid, nullptr));
+    cntl->SetFailed(brpc::EBACKUPREQUEST, "trigger backup");
+    cntl->OnVersionedRPCReturned(info, false, 0);
+    ASSERT_EQ(2u, calls.size());
+    ASSERT_TRUE(cntl->has_backup_request());
+
+    const int first = backup_first ? 1 : 0;
+    if (late_error != 0) {
+        calls[first].cntl->SetFailed(late_error, "late subcall error");
+    }
+    static_cast<test::EchoResponse*>(calls[first].cntl->_response)
+        ->set_message("late response");
+    calls[first].cntl->response_attachment().append("late attachment");
+    cntl->response_attachment().append("original attachment");
+
+    ASSERT_EQ(0, bthread_id_trylock(cid, nullptr));
+    cntl->SetFailed(terminal_error, "main RPC finished");
+    cntl->OnVersionedRPCReturned(info, false, 0);
+    ASSERT_TRUE(cntl->is_ending_rpc());
+    ASSERT_EQ(nullptr, cntl->_lb.get());
+    ASSERT_EQ(0, done_count);
+    const std::string error_text = cntl->ErrorText();
+    const int retry_calls = retry_policy.calls;
+    const int retried_count = cntl->retried_count();
+
+    calls[first].Run();
+    EXPECT_EQ(0, done_count);
+    EXPECT_EQ(2u, calls.size());
+    EXPECT_EQ(retry_calls, retry_policy.calls);
+    EXPECT_EQ(retried_count, cntl->retried_count());
+    EXPECT_EQ(terminal_error, cntl->ErrorCode());
+    EXPECT_EQ(error_text, cntl->ErrorText());
+    EXPECT_EQ("original response", res.message());
+    EXPECT_EQ("original attachment", cntl->response_attachment().to_string());
+
+    // Fail promptly if the non-final callback forgot to release the lock.
+    ASSERT_EQ(0, bthread_id_trylock(cid, nullptr));
+    ASSERT_EQ(0, bthread_id_unlock(cid));
+    calls[1 - first].Run();
+    EXPECT_EQ(1, done_count);
+    EXPECT_EQ(2u, calls.size());
+    EXPECT_EQ(retry_calls, retry_policy.calls);
+    EXPECT_EQ(EINVAL, bthread_id_trylock(cid, nullptr));
+    if (cntl) {
+        EXPECT_EQ(terminal_error, cntl->ErrorCode());
+        EXPECT_EQ(error_text, cntl->ErrorText());
+        EXPECT_EQ("original attachment", cntl->response_attachment().to_string());
+    }
+    EXPECT_EQ("original response", res.message());
+    EXPECT_EQ(delete_in_done, cntl == nullptr);
+}
+
+TEST_F(ChannelTest, selective_channel_preserves_result_after_late_subdone) {
+    const int terminal_errors[] = {brpc::ERPCTIMEDOUT, ECANCELED};
+    for (int terminal_error : terminal_errors) {
+        for (int late_error : {5013, EINVAL, 0}) {
+            for (bool backup_first : {false, true}) {
+                for (bool delete_in_done : {false, true}) {
+                    TestSelectiveLateSubDone(terminal_error, late_error,
+                                             backup_first, delete_in_done);
+                }
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, selective_channel_retries_before_completion) {
+    SelectiveRetryPolicy retry_policy;
+    brpc::ChannelOptions options;
+    options.timeout_ms = -1;
+    options.max_retry = 3;
+    options.retry_policy = &retry_policy;
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", &options));
+    ASSERT_EQ(0, channel.AddChannel(
+                     new DeferredSelectiveChannel(&calls), nullptr));
+
+    brpc::Controller cntl;
+    const brpc::CallId cid = cntl.call_id();
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message("retry before completion");
+    bool done_called = false;
+    test::EchoService::Stub(&channel).Echo(
+        &cntl, &req, &res, brpc::NewCallback(&MarkCalled, &done_called));
+    ASSERT_EQ(1u, calls.size());
+    calls[0].cntl->SetFailed(5013, "retryable subcall");
+    // Retrying appends to calls and may reallocate the vector.
+    const DeferredSelectiveChannel::SubCall first = calls[0];
+    first.Run();
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_FALSE(done_called);
+    EXPECT_EQ(1, retry_policy.calls);
+    EXPECT_EQ(1, cntl.retried_count());
+
+    static_cast<test::EchoResponse*>(calls[1].cntl->_response)
+        ->set_message("retried successfully");
+    calls[1].Run();
+    EXPECT_TRUE(done_called);
+    EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_EQ("retried successfully", res.message());
+    EXPECT_EQ(EINVAL, bthread_id_trylock(cid, nullptr));
+}
+
+TEST_F(ChannelTest, selective_channel_reports_subcall_error_before_completion) {
+    SelectiveRetryPolicy retry_policy;
+    brpc::ChannelOptions options;
+    options.timeout_ms = -1;
+    options.retry_policy = &retry_policy;
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", &options));
+    ASSERT_EQ(0, channel.AddChannel(
+                     new DeferredSelectiveChannel(&calls), nullptr));
+
+    brpc::Controller cntl;
+    const brpc::CallId cid = cntl.call_id();
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message("subcall error before completion");
+    bool done_called = false;
+    test::EchoService::Stub(&channel).Echo(
+        &cntl, &req, &res, brpc::NewCallback(&MarkCalled, &done_called));
+    ASSERT_EQ(1u, calls.size());
+    calls[0].cntl->SetFailed(EINVAL, "non-retryable subcall error");
+    calls[0].Run();
+    EXPECT_TRUE(done_called);
+    EXPECT_EQ(EINVAL, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_NE(std::string::npos,
+              cntl.ErrorText().find("non-retryable subcall error"));
+    EXPECT_EQ(1, retry_policy.calls);
+    EXPECT_EQ(0, cntl.retried_count());
+    EXPECT_EQ(EINVAL, bthread_id_trylock(cid, nullptr));
 }
 
 TEST_F(ChannelTest, multiple_threads_single_channel) {

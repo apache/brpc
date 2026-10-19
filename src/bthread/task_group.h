@@ -22,12 +22,13 @@
 #ifndef BTHREAD_TASK_GROUP_H
 #define BTHREAD_TASK_GROUP_H
 
-#include "butil/time.h"                             // cpuwide_time_ns
+#include "butil/time.h"
+#include "butil/synchronization/seqlock.h"
 #include "bthread/task_control.h"
-#include "bthread/task_meta.h"                     // bthread_t, TaskMeta
-#include "bthread/work_stealing_queue.h"           // WorkStealingQueue
-#include "bthread/remote_task_queue.h"             // RemoteTaskQueue
-#include "butil/resource_pool.h"                    // ResourceId
+#include "bthread/task_meta.h"
+#include "bthread/work_stealing_queue.h"
+#include "bthread/remote_task_queue.h"
+#include "butil/resource_pool.h"
 #include "bthread/parking_lot.h"
 #include "bthread/prime_offset.h"
 
@@ -46,37 +47,6 @@ public:
     }
 private:
     void* _value;
-};
-
-// Refer to https://rigtorp.se/isatomic/, On the modern CPU microarchitectures
-// (Skylake and Zen 2) AVX/AVX2 128b/256b aligned loads and stores are atomic
-// even though Intel and AMD officially doesn’t guarantee this.
-// On X86, SSE instructions can ensure atomic loads and stores.
-// Starting from Armv8.4-A, neon can ensure atomic loads and stores.
-// Otherwise, use mutex to guarantee atomicity.
-class AtomicInteger128 {
-public:
-    struct BAIDU_CACHELINE_ALIGNMENT Value {
-        int64_t v1;
-        int64_t v2;
-    };
-
-    AtomicInteger128() = default;
-    explicit AtomicInteger128(Value value) : _value(value) {}
-
-    Value load() const;
-    Value load_unsafe() const {
-        return _value;
-    }
-
-    void store(Value value);
-
-private:
-    Value _value{};
-    // Used to protect `_cpu_time_stat' on architectures without lock-free 128-bit atomics.
-    FastPthreadMutex _mutex;
-    // Sequence counter for RISC-V seqlock implementation.
-    uint64_t _seq = 0;
 };
 
 // Thread-local group of tasks.
@@ -237,66 +207,83 @@ friend class TaskControl;
 
     // Last scheduling time, task type and cumulated CPU time.
     class CPUTimeStat {
-        static constexpr int64_t LAST_SCHEDULING_TIME_MASK = 0x7FFFFFFFFFFFFFFFLL;
-        static constexpr int64_t TASK_TYPE_MASK = 0x8000000000000000LL;
     public:
-        CPUTimeStat() : _last_run_ns_and_type(0), _cumulated_cputime_ns(0) {}
-        CPUTimeStat(AtomicInteger128::Value value)
-            : _last_run_ns_and_type(value.v1), _cumulated_cputime_ns(value.v2) {}
+        CPUTimeStat() : CPUTimeStat(0, 0, false) {}
 
-        // Convert to AtomicInteger128::Value for atomic operations.
-        explicit operator AtomicInteger128::Value() const {
-            return {_last_run_ns_and_type, _cumulated_cputime_ns};
+        CPUTimeStat(int64_t last_run_ns, int64_t cumulated_cputime_ns, bool main_task)
+            : _cumulated_cputime_ns(cumulated_cputime_ns)
+            , _last_run_ns(last_run_ns)
+            , _main_task(main_task) {}
+
+        CPUTimeStat(const CPUTimeStat& other)
+            : CPUTimeStat(other.last_run_ns(),
+                          other.cumulated_cputime_ns(),
+                          other.is_main_task()) {}
+
+        CPUTimeStat& operator=(const CPUTimeStat& other) {
+            if (this != &other) {
+                _last_run_ns.store(other.last_run_ns(),
+                                   butil::memory_order_relaxed);
+                _cumulated_cputime_ns.store(other.cumulated_cputime_ns(),
+                                            butil::memory_order_relaxed);
+                _main_task.store(other.is_main_task(), butil::memory_order_relaxed);
+            }
+            return *this;
         }
 
         void set_last_run_ns(int64_t last_run_ns, bool main_task) {
-            _last_run_ns_and_type = (last_run_ns & LAST_SCHEDULING_TIME_MASK) |
-                                    (static_cast<int64_t>(main_task) << 63);
+            _last_run_ns.store(last_run_ns, butil::memory_order_relaxed);
+            _main_task.store(main_task, butil::memory_order_relaxed);
         }
         int64_t last_run_ns() const {
-            return _last_run_ns_and_type & LAST_SCHEDULING_TIME_MASK;
-        }
-        int64_t last_run_ns_and_type() const {
-            return _last_run_ns_and_type;
+            return _last_run_ns.load(butil::memory_order_relaxed);
         }
 
         bool is_main_task() const {
-            return _last_run_ns_and_type & TASK_TYPE_MASK;
+            return _main_task.load(butil::memory_order_relaxed);
         }
 
         void add_cumulated_cputime_ns(int64_t cputime_ns, bool main_task) {
             if (main_task) {
                 return;
             }
-            _cumulated_cputime_ns += cputime_ns;
+
+            _cumulated_cputime_ns.store(cumulated_cputime_ns() + cputime_ns,
+                                        butil::memory_order_relaxed);
         }
         int64_t cumulated_cputime_ns() const {
-            return _cumulated_cputime_ns;
+            return _cumulated_cputime_ns.load(butil::memory_order_relaxed);
         }
 
     private:
-        // The higher bit for task type, main task is 1, otherwise 0.
-        // Lowest 63 bits for last scheduling time.
-        int64_t _last_run_ns_and_type;
-        // Cumulated CPU time in nanoseconds.
-        int64_t _cumulated_cputime_ns;
+        // Cumulated non-main-task elapsed time in nanoseconds.
+        butil::atomic<int64_t> _cumulated_cputime_ns;
+        butil::atomic<int64_t> _last_run_ns;
+        butil::atomic<bool> _main_task;
     };
 
     class AtomicCPUTimeStat {
     public:
         CPUTimeStat load() const {
-            return  _cpu_time_stat.load();
+            return _seqlock.load([&]() -> CPUTimeStat {
+                return _stat;
+            });
         }
-        CPUTimeStat load_unsafe() const {
-            return _cpu_time_stat.load_unsafe();
+        // For the owning writer only, with no concurrent writes. Copies fields
+        // with relaxed atomic loads but skips sequence validation.
+        CPUTimeStat load_for_writer() const {
+            return _stat;
         }
 
-        void store(CPUTimeStat cpu_time_stat) {
-            _cpu_time_stat.store(AtomicInteger128::Value(cpu_time_stat));
+        void store(const CPUTimeStat& stat) {
+            _seqlock.store([this, &stat]() {
+                _stat = stat;
+            });
         }
 
     private:
-        AtomicInteger128 _cpu_time_stat;
+        CPUTimeStat _stat;
+        butil::Seqlock<> _seqlock;
     };
 
     // You shall use TaskControl::create_group to create new instance.

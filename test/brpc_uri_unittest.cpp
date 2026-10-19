@@ -15,9 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "brpc/uri.h"
+
+namespace brpc {
+DECLARE_uint32(http_max_query_count);
+}
 
 TEST(URITest, everything) {
     brpc::URI uri;
@@ -341,10 +346,69 @@ TEST(URITest, invalid_spaces) {
     ASSERT_STREQ("Invalid space in fragment", uri.status().error_cstr());
 }
 
+TEST(URITest, invalid_crlf) {
+    brpc::URI uri;
+    // A CR/LF that reaches _host, _path, _query or _fragment is written
+    // verbatim into the "Host" header and the request line, which appends
+    // headers to the outbound request or starts a second one. None of these
+    // contains a space, so the "Invalid space" checks cannot catch them.
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com\r\nX-Injected:1/s"));
+    ASSERT_STREQ("Invalid CR/LF in url", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s\r\nX-Injected:1"));
+    ASSERT_STREQ("Invalid CR/LF in url", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s?wd=uri\r\nX-Injected:1"));
+    ASSERT_STREQ("Invalid CR/LF in url", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s#frag\r\nX-Injected:1"));
+    ASSERT_STREQ("Invalid CR/LF in url", uri.status().error_cstr());
+    // A bare CR or LF is enough, the pair is not required.
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s\nX-Injected:1"));
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s\rX-Injected:1"));
+    // Nothing of the rejected URL is left behind.
+    ASSERT_EQ("", uri.host());
+    ASSERT_EQ("", uri.path());
+
+    ASSERT_EQ(-1, uri.SetH2Path("/s\r\nX-Injected:1"));
+    ASSERT_STREQ("Invalid CR/LF in :path", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetH2Path("/s?wd=uri\r\nX-Injected:1"));
+    ASSERT_STREQ("Invalid CR/LF in :path", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetH2Path("/s#frag\r\nX-Injected:1"));
+    ASSERT_STREQ("Invalid CR/LF in :path", uri.status().error_cstr());
+    ASSERT_EQ("", uri.path());
+    // The next path clears the failure rather than inheriting it.
+    ASSERT_EQ(0, uri.SetH2Path("/s?wd=uri")) << uri.status();
+}
+
 TEST(URITest, invalid_query) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL("http://a.b.c/?a-b-c:def"));
     ASSERT_EQ("a-b-c:def", uri.query());
+}
+
+TEST(URITest, too_many_queries) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_http_max_query_count = 4;
+
+    brpc::URI uri;
+    ASSERT_EQ(0, uri.SetHttpURL("http://a.com/s?a=1&b=2&c=3&d=4")) << uri.status();
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s?a=1&b=2&c=3&d=4&e=5"));
+    ASSERT_STREQ("More than 4 query parameters in url", uri.status().error_cstr());
+    // Repeated keys collapse into one map entry, but the splitter still walks
+    // every segment, so they count.
+    ASSERT_EQ(-1, uri.SetHttpURL("http://a.com/s?a=1&a=2&a=3&a=4&a=5"));
+    // An empty query is not one parameter.
+    brpc::FLAGS_http_max_query_count = 1;
+    ASSERT_EQ(0, uri.SetHttpURL("http://a.com/s?")) << uri.status();
+
+    brpc::FLAGS_http_max_query_count = 4;
+    ASSERT_EQ(0, uri.SetH2Path("/s?a=1&b=2&c=3&d=4")) << uri.status();
+    ASSERT_EQ(-1, uri.SetH2Path("/s?a=1&b=2&c=3&d=4&e=5"));
+    ASSERT_STREQ("More than 4 query parameters in :path", uri.status().error_cstr());
+    // The next path clears the failure rather than inheriting it.
+    ASSERT_EQ(0, uri.SetH2Path("/s?a=1")) << uri.status();
+
+    brpc::FLAGS_http_max_query_count = 0;
+    ASSERT_EQ(0, uri.SetHttpURL("http://a.com/s?a=1&b=2&c=3&d=4&e=5")) << uri.status();
+    ASSERT_EQ(0, uri.SetH2Path("/s?a=1&b=2&c=3&d=4&e=5")) << uri.status();
 }
 
 TEST(URITest, high_bit_bytes) {

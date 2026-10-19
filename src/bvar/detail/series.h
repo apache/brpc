@@ -31,6 +31,15 @@
 namespace bvar {
 namespace detail {
 
+// Whether a series of `T` is worth keeping. A series is a list of numbers, which
+// /vars hands to flot.js to plot. A value that describes itself as anything else
+// (a json object, as a distribution has to) draws no plot and would only cost
+// the 174 samples that SeriesBase keeps of it. Specialize to false_type for such
+// a value type and Window<> will not sample a series of it, see
+// WindowBase::expose_impl().
+template <typename T>
+struct HasPlottableSeries : butil::true_type {};
+
 template <typename T, typename Op, typename Enabler = void>
 struct DivideOnAddition {
     static void inplace_divide(T& /*obj*/, const Op&, int /*number*/) {

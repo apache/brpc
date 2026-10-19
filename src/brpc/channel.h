@@ -106,7 +106,8 @@ struct ChannelOptions {
     const ChannelSSLOptions& ssl_options() const { return *_ssl_options; }
     ChannelSSLOptions* mutable_ssl_options();
 
-    // Let this channel Choose to use a certain socket: 0 SOCKET_MODE_TCP, 1 SOCKET_MODE_RDMA.
+    // Let this channel choose a transport.
+    // See SocketMode for supported values.
     // Default: SOCKET_MODE_TCP
     SocketMode socket_mode;
 

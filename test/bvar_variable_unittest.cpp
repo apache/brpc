@@ -19,16 +19,21 @@
 
 #include <pthread.h>                                // pthread_*
 #include <unistd.h>                                 // usleep
-
+#include <sys/utsname.h>                            // uname
+#include <clocale>                                  // setlocale
+#include <cstring>                                 // strlen
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <thread>
 #include <iostream>
 #include <sstream>
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/memory/scope_guard.h"
 
 #include "bvar/bvar.h"
+#include "bvar/default_variables.h"                // make_kernel_version_string
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -195,6 +200,29 @@ TEST_F(VariableTest, expose) {
     
     ASSERT_EQ(0, c1.expose("c1"));
     ASSERT_EQ("c1", c1.name());
+    ASSERT_EQ(1UL, bvar::Variable::count_exposed());
+
+    // A name already taken cannot be re-used: expose fails, the loser stays
+    // hidden and nameless, the owner is untouched and the count is unchanged.
+    bvar::Status<int> c2;
+    ASSERT_EQ(-1, c2.expose("c1"));
+    ASSERT_TRUE(c2.is_hidden());
+    ASSERT_TRUE(c2.name().empty());
+    ASSERT_EQ("c1", c1.name());
+    ASSERT_EQ(1UL, bvar::Variable::count_exposed());
+
+    // Collisions also survive separator normalization: "foo.bar::Apple" and
+    // "foo::bar::Apple" both fold onto foo_bar_apple_c1.
+    ASSERT_EQ(0, c1.expose_as("foo::bar::Apple", "c1"));
+    ASSERT_EQ("foo_bar_apple_c1", c1.name());
+    ASSERT_EQ(-1, c2.expose_as("foo.bar.Apple", "c1"));
+    ASSERT_TRUE(c2.is_hidden());
+    ASSERT_EQ(1UL, bvar::Variable::count_exposed());
+
+    // Once the owner releases the name, the waiting variable can take it.
+    ASSERT_TRUE(c1.hide());
+    ASSERT_EQ(0, c2.expose("foo_bar_apple_c1"));
+    ASSERT_EQ("foo_bar_apple_c1", c2.name());
     ASSERT_EQ(1UL, bvar::Variable::count_exposed());
 }
 
@@ -393,6 +421,64 @@ TEST_F(VariableTest, latency_recorder) {
     GFLAGS_NAMESPACE::SetCommandLineOption("bvar_latency_p3", saved_bvar_latency_p3.c_str());
 }
 
+// Exposing a LatencyRecorder is all-or-nothing. A half exposed one is not just
+// incomplete in /vars: the prometheus exporter recognizes the summary from its
+// `_max_latency` alone and would write out quantile lines whose value is the
+// empty string, which invalidates the whole scrape.
+TEST_F(VariableTest, latency_recorder_expose_is_all_or_nothing) {
+    // `_count` is exposed after `_latency` and `_max_latency`, so the two of
+    // them are already in the map when this name turns expose() back.
+    bvar::Adder<int> taken("rollback_count");
+    ASSERT_EQ("rollback_count", taken.name());
+
+    bvar::LatencyRecorder rec;
+    ASSERT_EQ(-1, rec.expose("Rollback"));
+    ASSERT_TRUE(rec.latency_name().empty());
+    ASSERT_TRUE(rec.max_latency_name().empty());
+    ASSERT_TRUE(rec.qps_name().empty());
+    std::vector<std::string> names;
+    bvar::Variable::list_exposed(&names);
+    ASSERT_EQ(1UL, names.size()) << vec2string(names);
+    ASSERT_EQ("rollback_count", names[0]);
+}
+
+// Collects every sample a composite metric writes, in order.
+class SampleCollector : public bvar::Dumper {
+public:
+    bool dump(const std::string& name,
+              const butil::StringPiece& desc) override {
+        return dump_mvar(name, desc);
+    }
+    bool dump_mvar(const std::string& name,
+                   const butil::StringPiece& desc) override {
+        samples.push_back(name + " " + desc.as_string());
+        return true;
+    }
+
+    std::vector<std::string> samples;
+};
+
+// The prometheus text format spells a double in one single way, whatever the
+// value and whatever the locale of the process.
+TEST_F(VariableTest, prometheus_double_to_string) {
+    ASSERT_EQ("0.99", bvar::detail::prometheus_double_to_string(0.99));
+    // With the integer part left in, so that it reads the same as the values
+    // the scalar path prints through an ostream.
+    ASSERT_EQ("0.5", bvar::detail::prometheus_double_to_string(0.5));
+    ASSERT_EQ("-0.5", bvar::detail::prometheus_double_to_string(-0.5));
+    ASSERT_EQ("10", bvar::detail::prometheus_double_to_string(10));
+    // "Infinity" and "NaN", which butil::DoubleToString writes, are not part
+    // of the sample value grammar. A line carrying one of them is dropped from
+    // the scrape, and a histogram then keeps the `_bucket` and `_count` that
+    // its `_sum` is read against while losing the `_sum` itself.
+    ASSERT_EQ("+Inf", bvar::detail::prometheus_double_to_string(
+                          std::numeric_limits<double>::infinity()));
+    ASSERT_EQ("-Inf", bvar::detail::prometheus_double_to_string(
+                          -std::numeric_limits<double>::infinity()));
+    ASSERT_EQ("NaN", bvar::detail::prometheus_double_to_string(
+                         std::numeric_limits<double>::quiet_NaN()));
+}
+
 TEST_F(VariableTest, recursive_mutex) {
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
@@ -461,6 +547,48 @@ TEST_F(VariableTest, dtor_waits_for_inflight_describe) {
     destroyer.join();
 
     ASSERT_TRUE(destructed.load());
+}
+
+TEST_F(VariableTest, kernel_version_contains_uname_fields) {
+    struct utsname buf;
+    ASSERT_EQ(0, uname(&buf));
+
+    // Each field should be non-empty
+    ASSERT_GT(std::strlen(buf.sysname), 0u);
+    ASSERT_GT(std::strlen(buf.nodename), 0u);
+    ASSERT_GT(std::strlen(buf.release), 0u);
+    ASSERT_GT(std::strlen(buf.version), 0u);
+    ASSERT_GT(std::strlen(buf.machine), 0u);
+
+    // Exercise the exact formatter that backs the kernel_version bvar. It is a
+    // header-only helper shared with default_variables.cpp, so this validates
+    // the real production formatting without depending on default_variables.o
+    // being linked into the unit-test binary: that object is stripped via
+    // BVAR_NOT_LINK_DEFAULT_VARIABLES, so the bvar is not registered here and
+    // describe_exposed("kernel_version") would return nothing.
+    const std::string content = bvar::make_kernel_version_string(buf);
+    ASSERT_FALSE(content.empty());
+
+    // The formatted value should contain all the key uname fields.
+    ASSERT_NE(content.find(buf.sysname), std::string::npos);
+    ASSERT_NE(content.find(buf.nodename), std::string::npos);
+    ASSERT_NE(content.find(buf.release), std::string::npos);
+    ASSERT_NE(content.find(buf.version), std::string::npos);
+    ASSERT_NE(content.find(buf.machine), std::string::npos);
+
+    // The trailing newline must be preserved to match the previous
+    // popen("uname -ap") output that this bvar used to expose.
+    ASSERT_EQ('\n', content[content.size() - 1]);
+
+    // On Linux, sysname is "Linux" and the OS suffix is appended; on macOS,
+    // sysname is "Darwin" and there is no OS suffix (both match `uname -ap`).
+#if defined(__linux__)
+    ASSERT_STREQ(buf.sysname, "Linux");
+    ASSERT_NE(content.find("GNU/Linux"), std::string::npos);
+#elif defined(__APPLE__)
+    ASSERT_STREQ(buf.sysname, "Darwin");
+    ASSERT_EQ(content.find("GNU/Linux"), std::string::npos);
+#endif
 }
 } // namespace
 

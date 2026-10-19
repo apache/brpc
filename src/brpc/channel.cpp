@@ -139,6 +139,8 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         }
         if (opt.socket_mode == SOCKET_MODE_RDMA) {
             buf.append("|rdma");
+        } else if (opt.socket_mode == SOCKET_MODE_URMA) {
+            buf.append("|urma");
         }
         butil::MurmurHash3_x64_128_Update(&mm_ctx, buf.data(), buf.size());
         buf.clear();

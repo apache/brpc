@@ -56,6 +56,7 @@ enum ProfilingType {
 };
 
 DECLARE_string(rpc_profiling_dir);
+DECLARE_int32(max_profiling_seconds);
 
 bool UseHTML(const HttpHeader& header);
 bool MatchAnyWildcard(const std::string& name,

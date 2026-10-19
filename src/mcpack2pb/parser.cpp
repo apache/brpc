@@ -89,13 +89,13 @@ void ObjectIterator::operator++() {
             // skipping untouched values is acceptible.
             _stream->popn(_current_field.value.size());
         } else if (_stream->popped_bytes() < _expected_popped_bytes) {
-            CHECK(false) << "value of name=" << _current_field.name
-                         << " is not fully consumed, expected="
-                         << _expected_popped_bytes << " actually="
-                         << _stream->popped_bytes();
+            LOG(ERROR) << "value of name=" << _current_field.name
+                       << " is not fully consumed, expected="
+                       << _expected_popped_bytes << " actually="
+                       << _stream->popped_bytes();
             return set_bad();
         } else {
-            CHECK(false) << "Over popped in value of name=" << _current_field.name
+            LOG(ERROR) << "Over popped in value of name=" << _current_field.name
                        << " expected=" << _expected_popped_bytes << " actually="
                        << _stream->popped_bytes();
             return set_bad();
@@ -109,7 +109,7 @@ void ObjectIterator::operator++() {
         FieldFixedHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldFixedHead) ||
             left_size() < head.full_size()) {
-            CHECK(false) << "buffer(size=" << left_size() << ") is not enough";
+            LOG(ERROR) << "buffer(size=" << left_size() << ") is not enough";
             return set_bad();
         }
         _expected_popped_bytes = _stream->popped_bytes() + head.full_size()
@@ -127,7 +127,7 @@ void ObjectIterator::operator++() {
         FieldShortHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldShortHead) ||
             left_size() < head.full_size()) {
-            CHECK(false) << "buffer(size=" << left_size() << ") is not enough";
+            LOG(ERROR) << "buffer(size=" << left_size() << ") is not enough";
             return set_bad();
         }
         _expected_popped_bytes = _stream->popped_bytes() + head.full_size()
@@ -148,7 +148,7 @@ void ObjectIterator::operator++() {
         FieldLongHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldLongHead) ||
             left_size() < head.full_size()) {
-            CHECK(false) << "buffer(size=" << left_size() << ") is not enough";
+            LOG(ERROR) << "buffer(size=" << left_size() << ") is not enough";
             return set_bad();
         }
         _expected_popped_bytes = _stream->popped_bytes() + head.full_size()
@@ -173,12 +173,12 @@ void ArrayIterator::operator++() {
             // skipping untouched values is acceptible.
             _stream->popn(_current_field.size());
         } else if (_stream->popped_bytes() < _expected_popped_bytes) {
-            CHECK(false) << "previous value is not fully consumed, expected="
+            LOG(ERROR) << "previous value is not fully consumed, expected="
                          << _expected_popped_bytes << " actually="
                          << _stream->popped_bytes();
             return set_bad();
         } else {
-            CHECK(false) << "Over popped in previous value, expected="
+            LOG(ERROR) << "Over popped in previous value, expected="
                        << _expected_popped_bytes << " actually="
                        << _stream->popped_bytes();
             return set_bad();
@@ -192,7 +192,7 @@ void ArrayIterator::operator++() {
         FieldFixedHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldFixedHead) ||
             left_size() < head.full_size()) {
-            CHECK(false) << "buffer(size=" << left_size() << ") is not enough";
+            LOG(ERROR) << "buffer(size=" << left_size() << ") is not enough";
             return set_bad();
         }
         _expected_popped_bytes = _stream->popped_bytes() + head.full_size()
@@ -211,7 +211,7 @@ void ArrayIterator::operator++() {
         FieldShortHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldShortHead) ||
             left_size() < head.full_size()) {
-            CHECK(false) << "buffer(size=" << left_size() << ") is not enough";
+            LOG(ERROR) << "buffer(size=" << left_size() << ") is not enough";
             return set_bad();
         }
         _expected_popped_bytes = _stream->popped_bytes() + head.full_size()
@@ -232,7 +232,7 @@ void ArrayIterator::operator++() {
         FieldLongHead head;
         if (_stream->cut_packed_pod(&head) != sizeof(FieldLongHead) ||
             left_size() < head.full_size()) {
-            CHECK(false) << "buffer(size=" << left_size() << ") is not enough";
+            LOG(ERROR) << "buffer(size=" << left_size() << ") is not enough";
             return set_bad();
         }
         _expected_popped_bytes = _stream->popped_bytes() + head.full_size()
@@ -252,20 +252,27 @@ void ArrayIterator::operator++() {
 
 size_t unbox(InputStream* stream) {
     FieldLongHead head;
+    // Note that these are wire-controlled inputs, so reject (set_bad +
+    // return 0, which the generated code checks) rather than CHECK-fatal,
+    // which would let a single malformed request terminate the process.
     if (stream->cut_packed_pod(&head) != sizeof(FieldLongHead)) {
-        CHECK(false) << "Input buffer is not enough";
+        LOG(ERROR) << "Input buffer is not enough";
+        stream->set_bad();
         return 0;
     }
     if (head.type() != FIELD_OBJECT) {
-        CHECK(false) << "type=" << type2str(head.type()) << " is not object";
+        LOG(ERROR) << "type=" << type2str(head.type()) << " is not object";
+        stream->set_bad();
         return 0;
     }
     if (!(head.type() & FIELD_NON_DELETED_MASK)) {
-        CHECK(false) << "The item is deleted";
+        LOG(ERROR) << "The item is deleted";
+        stream->set_bad();
         return 0;
     }
     if (head.name_size() != 0) {
-        CHECK(false) << "The object should not have name";
+        LOG(ERROR) << "The object should not have name";
+        stream->set_bad();
         return 0;
     }
     return head.value_size();
@@ -299,24 +306,24 @@ int64_t UnparsedValue::as_int64(const char* var) {
         if (value <= (uint64_t)std::numeric_limits<int64_t>::max()) {
             return (int64_t)value;
         }
-        CHECK(false) << "uint64=" << value << " to " << var << " overflows";
+        LOG(ERROR) << "uint64=" << value << " to " << var << " overflows";
         _stream->set_bad();
         return std::numeric_limits<int64_t>::max();
     }
     case PRIMITIVE_FIELD_BOOL:
         return _stream->cut_packed_pod<bool>();
     case PRIMITIVE_FIELD_FLOAT:
-        CHECK(false) << "Can't set float=" << _stream->cut_packed_pod<float>()
+        LOG(ERROR) << "Can't set float=" << _stream->cut_packed_pod<float>()
                      << " to " << var;
         _stream->set_bad();
         return 0;
     case PRIMITIVE_FIELD_DOUBLE:
-        CHECK(false) << "Can't set double=" << _stream->cut_packed_pod<double>()
+        LOG(ERROR) << "Can't set double=" << _stream->cut_packed_pod<double>()
                      << " to " << var;
         _stream->set_bad();
         return 0;
     }
-    CHECK(false) << "Can't set type=" << type2str(_type) << " to " << var;
+    LOG(ERROR) << "Can't set type=" << type2str(_type) << " to " << var;
     _stream->set_bad();
     return 0;
 }
@@ -328,7 +335,7 @@ uint64_t UnparsedValue::as_uint64(const char* var) {
         if (value >= 0) {
             return (uint64_t)value;
         }
-        CHECK(false) << "Can't set int8=" << value << " to " << var;
+        LOG(ERROR) << "Can't set int8=" << value << " to " << var;
         _stream->set_bad();
         return 0;
     }
@@ -337,7 +344,7 @@ uint64_t UnparsedValue::as_uint64(const char* var) {
         if (value >= 0) {
             return (uint64_t)value;
         }
-        CHECK(false) << "Can't set int16=" << value << " to " << var;
+        LOG(ERROR) << "Can't set int16=" << value << " to " << var;
         _stream->set_bad();
         return 0;
     }
@@ -346,7 +353,7 @@ uint64_t UnparsedValue::as_uint64(const char* var) {
         if (value >= 0) {
             return (uint64_t)value;
         }
-        CHECK(false) << "Can't set int32=" << value << " to " << var;
+        LOG(ERROR) << "Can't set int32=" << value << " to " << var;
         _stream->set_bad();
         return 0;
     }
@@ -355,7 +362,7 @@ uint64_t UnparsedValue::as_uint64(const char* var) {
         if (value >= 0) {
             return (uint64_t)value;
         }
-        CHECK(false) << "Can't set int64=" << value << " to " << var;
+        LOG(ERROR) << "Can't set int64=" << value << " to " << var;
         _stream->set_bad();
         return 0;
     }
@@ -370,17 +377,17 @@ uint64_t UnparsedValue::as_uint64(const char* var) {
     case PRIMITIVE_FIELD_BOOL:
         return _stream->cut_packed_pod<bool>();
     case PRIMITIVE_FIELD_FLOAT:
-        CHECK(false) << "Can't set float=" << _stream->cut_packed_pod<float>()
+        LOG(ERROR) << "Can't set float=" << _stream->cut_packed_pod<float>()
                      << " to " << var;
         _stream->set_bad();
         return 0;
     case PRIMITIVE_FIELD_DOUBLE:
-        CHECK(false) << "Can't set double=" << _stream->cut_packed_pod<double>()
+        LOG(ERROR) << "Can't set double=" << _stream->cut_packed_pod<double>()
                      << " to " << var;
         _stream->set_bad();
         return 0;
     }
-    CHECK(false) << "Can't set type=" << type2str(_type) << " to " << var;
+    LOG(ERROR) << "Can't set type=" << type2str(_type) << " to " << var;
     _stream->set_bad();
     return 0;
 }
@@ -396,11 +403,11 @@ int32_t UnparsedValue::as_int32(const char* var) {
     case PRIMITIVE_FIELD_INT64: {
         const int64_t value = _stream->cut_packed_pod<int64_t>();
         if (value > std::numeric_limits<int32_t>::max()) {
-            CHECK(false) << "int64=" << value << " to " << var << " overflows";
+            LOG(ERROR) << "int64=" << value << " to " << var << " overflows";
             _stream->set_bad();
             return std::numeric_limits<int32_t>::max();
         } else if (value < std::numeric_limits<int32_t>::min()) {
-            CHECK(false) << "int64=" << value << " to " << var << " underflows";
+            LOG(ERROR) << "int64=" << value << " to " << var << " underflows";
             _stream->set_bad();
             return std::numeric_limits<int32_t>::min();
         }
@@ -415,7 +422,7 @@ int32_t UnparsedValue::as_int32(const char* var) {
         if (value <= (uint32_t)std::numeric_limits<int32_t>::max()) {
             return (int32_t)value;
         }
-        CHECK(false) << "uint32=" << value << " to " << var << " overflows";
+        LOG(ERROR) << "uint32=" << value << " to " << var << " overflows";
         _stream->set_bad();
         return std::numeric_limits<int32_t>::max();
     }
@@ -424,24 +431,24 @@ int32_t UnparsedValue::as_int32(const char* var) {
         if (value <= (uint64_t)std::numeric_limits<int32_t>::max()) {
             return (int32_t)value;
         }
-        CHECK(false) << "uint64=" << value << " to " << var << " overflows";
+        LOG(ERROR) << "uint64=" << value << " to " << var << " overflows";
         _stream->set_bad();
         return std::numeric_limits<int32_t>::max();
     }
     case PRIMITIVE_FIELD_BOOL:
         return _stream->cut_packed_pod<bool>();
     case PRIMITIVE_FIELD_FLOAT:
-        CHECK(false) << "Can't set float=" << _stream->cut_packed_pod<float>()
+        LOG(ERROR) << "Can't set float=" << _stream->cut_packed_pod<float>()
                      << " to " << var;
         _stream->set_bad();
         return 0;
     case PRIMITIVE_FIELD_DOUBLE:
-        CHECK(false) << "Can't set double=" << _stream->cut_packed_pod<double>()
+        LOG(ERROR) << "Can't set double=" << _stream->cut_packed_pod<double>()
                      << " to " << var;
         _stream->set_bad();
         return 0;
     }
-    CHECK(false) << "Can't set type=" << type2str(_type) << " to " << var;
+    LOG(ERROR) << "Can't set type=" << type2str(_type) << " to " << var;
     _stream->set_bad();
     return 0;
 }
@@ -453,7 +460,7 @@ uint32_t UnparsedValue::as_uint32(const char* var) {
         if (value >= 0) {
             return (uint32_t)value;
         }
-        CHECK(false) << "Can't set int8=" << value << " to " << var;
+        LOG(ERROR) << "Can't set int8=" << value << " to " << var;
         _stream->set_bad();
         return 0;
     }
@@ -462,7 +469,7 @@ uint32_t UnparsedValue::as_uint32(const char* var) {
         if (value >= 0) {
             return (uint32_t)value;
         }
-        CHECK(false) << "Can't set int16=" << value << " to " << var;
+        LOG(ERROR) << "Can't set int16=" << value << " to " << var;
         _stream->set_bad();
         return 0;
     }
@@ -471,7 +478,7 @@ uint32_t UnparsedValue::as_uint32(const char* var) {
         if (value >= 0) {
             return (uint32_t)value;
         }
-        CHECK(false) << "Can't set int32=" << value << " to " << var;
+        LOG(ERROR) << "Can't set int32=" << value << " to " << var;
         _stream->set_bad();
         return 0;
     }
@@ -481,7 +488,7 @@ uint32_t UnparsedValue::as_uint32(const char* var) {
             value <= (int64_t)std::numeric_limits<uint32_t>::max()) {
             return (uint32_t)value;
         }
-        CHECK(false) << "Can't set int64=" << value << " to " << var;
+        LOG(ERROR) << "Can't set int64=" << value << " to " << var;
         _stream->set_bad();
         return 0;
     }
@@ -496,24 +503,24 @@ uint32_t UnparsedValue::as_uint32(const char* var) {
         if (value <= std::numeric_limits<uint32_t>::max()) {
             return (uint32_t)value;
         }
-        CHECK(false) << "uint64=" << value << " to " << var << " overflows";
+        LOG(ERROR) << "uint64=" << value << " to " << var << " overflows";
         _stream->set_bad();
         return std::numeric_limits<uint32_t>::max();
     }
     case PRIMITIVE_FIELD_BOOL:
         return _stream->cut_packed_pod<bool>();
     case PRIMITIVE_FIELD_FLOAT:
-        CHECK(false) << "Can't set float=" << _stream->cut_packed_pod<float>()
+        LOG(ERROR) << "Can't set float=" << _stream->cut_packed_pod<float>()
                      << " to " << var;
         _stream->set_bad();
         return 0;
     case PRIMITIVE_FIELD_DOUBLE:
-        CHECK(false) << "Can't set double=" << _stream->cut_packed_pod<double>()
+        LOG(ERROR) << "Can't set double=" << _stream->cut_packed_pod<double>()
                      << " to " << var;
         _stream->set_bad();
         return 0;
     }
-    CHECK(false) << "Can't set type=" << type2str(_type) << " to " << var;
+    LOG(ERROR) << "Can't set type=" << type2str(_type) << " to " << var;
     _stream->set_bad();
     return 0;
 }
@@ -539,17 +546,17 @@ bool UnparsedValue::as_bool(const char* var) {
     case PRIMITIVE_FIELD_BOOL:
         return _stream->cut_packed_pod<bool>();
     case PRIMITIVE_FIELD_FLOAT:
-        CHECK(false) << "Can't set float=" << _stream->cut_packed_pod<float>()
+        LOG(ERROR) << "Can't set float=" << _stream->cut_packed_pod<float>()
                      << " to " << var;
         _stream->set_bad();
         return false;
     case PRIMITIVE_FIELD_DOUBLE:
-        CHECK(false) << "Can't set double=" << _stream->cut_packed_pod<double>()
+        LOG(ERROR) << "Can't set double=" << _stream->cut_packed_pod<double>()
                      << " to " << var;
         _stream->set_bad();
         return false;
     }
-    CHECK(false) << "Can't set type=" << type2str(_type) << " to " << var;
+    LOG(ERROR) << "Can't set type=" << type2str(_type) << " to " << var;
     _stream->set_bad();
     return false;
 }
@@ -560,7 +567,7 @@ float UnparsedValue::as_float(const char* var) {
     } else if (_type == FIELD_FLOAT) {
         return _stream->cut_packed_pod<float>();
     }
-    CHECK(false) << "Can't set type=" << type2str(_type) << " to " << var;
+    LOG(ERROR) << "Can't set type=" << type2str(_type) << " to " << var;
     _stream->set_bad();
     return 0;
 }
@@ -571,9 +578,36 @@ double UnparsedValue::as_double(const char* var) {
     } else if (_type == FIELD_FLOAT) {
         return _stream->cut_packed_pod<float>();
     }
-    CHECK(false) << "Can't set type=" << type2str(_type) << " to " << var;
+    LOG(ERROR) << "Can't set type=" << type2str(_type) << " to " << var;
     _stream->set_bad();
     return 0;
+}
+
+// Copy `size' bytes from `stream' into `out'. `size' is wire-controlled and
+// may far exceed the bytes actually present, so grow `out' by at most one
+// chunk at a time and cut directly into it (single copy): an eager
+// resize(size) could throw an uncaught std::bad_alloc/std::length_error on
+// attacker-crafted sizes and terminate the process. Returns false and marks
+// the stream bad on a short read.
+static bool cut_bytes_to_string(InputStream* stream, std::string* out,
+                                size_t size, const char* var) {
+    out->clear();
+    const size_t kChunkSize = 8192;
+    size_t total = 0;
+    while (total < size) {
+        const size_t left = size - total;
+        const size_t chunk = left < kChunkSize ? left : kChunkSize;
+        out->resize(total + chunk);
+        const size_t n = stream->cutn(&(*out)[total], chunk);
+        if (n != chunk) {
+            LOG(ERROR) << "Not enough data for " << var;
+            stream->set_bad();
+            out->clear();
+            return false;
+        }
+        total += n;
+    }
+    return true;
 }
 
 void UnparsedValue::as_string(std::string* out, const char* var) {
@@ -586,12 +620,19 @@ void UnparsedValue::as_string(std::string* out, const char* var) {
         _stream->set_bad();
         return;
     }
-    out->resize(_size - 1);
-    if (_stream->cutn(&(*out)[0], _size - 1) != _size - 1) {
-        CHECK(false) << "Not enough data for " << var;
+    if (!cut_bytes_to_string(_stream, out, _size - 1, var)) {
         return;
     }
-    _stream->popn(1);
+    // The string must end with a trailing '\0'. Read and validate it,
+    // otherwise a stream that ends exactly before the terminator accepts a
+    // truncated string with the stream still good.
+    char terminator = 0;
+    if (_stream->cutn(&terminator, 1) != 1 || terminator != '\0') {
+        LOG(ERROR) << "Invalid string terminator for " << var;
+        _stream->set_bad();
+        out->clear();
+        return;
+    }
 }
 
 std::string UnparsedValue::as_string(const char* var) {
@@ -601,11 +642,7 @@ std::string UnparsedValue::as_string(const char* var) {
 }
 
 void UnparsedValue::as_binary(std::string* out, const char* var) {
-    out->resize(_size);
-    if (_stream->cutn(&(*out)[0], _size) != _size) {
-        CHECK(false) << "Not enough data for " << var;
-        return;
-    }
+    cut_bytes_to_string(_stream, out, _size, var);
 }
 
 std::string UnparsedValue::as_binary(const char* var) {

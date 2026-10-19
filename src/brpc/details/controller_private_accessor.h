@@ -58,6 +58,26 @@ public:
         return _cntl->_current_call.sending_sock.get();
     }
 
+    bool does_response_match_request_socket(
+            CallId cid, SocketId response_socket_id) const {
+        const Controller::Call* call = nullptr;
+        if (cid == _cntl->current_id() ||
+            (cid == _cntl->_correlation_id &&
+             _cntl->_current_call.sending_sock == nullptr)) {
+            call = &_cntl->_current_call;
+        } else if (_cntl->_unfinished_call != nullptr &&
+                   cid == _cntl->get_id(_cntl->_unfinished_call->nretry)) {
+            call = _cntl->_unfinished_call;
+        } else {
+            return false;
+        }
+        // A regular client request always records the socket used to send it.
+        // Keep direct response injection available to internal tools and tests
+        // that do not issue a request through Controller::IssueRPC().
+        return call->sending_sock == nullptr ||
+               call->sending_sock->id() == response_socket_id;
+    }
+
     int64_t real_timeout_ms() {
         return _cntl->_real_timeout_ms;
     }
@@ -71,31 +91,31 @@ public:
         return _cntl->_current_call.stream_user_data;
     }
 
-    ControllerPrivateAccessor &set_security_mode(bool security_mode) {
+    ControllerPrivateAccessor& set_security_mode(bool security_mode) {
         _cntl->set_flag(Controller::FLAGS_SECURITY_MODE, security_mode);
         return *this;
     }
 
-    ControllerPrivateAccessor &set_remote_side(const butil::EndPoint& pt) {
+    ControllerPrivateAccessor& set_remote_side(const butil::EndPoint& pt) {
         _cntl->_remote_side = pt;
         return *this;
     }
 
-    ControllerPrivateAccessor &set_local_side(const butil::EndPoint& pt) {
+    ControllerPrivateAccessor& set_local_side(const butil::EndPoint& pt) {
         _cntl->_local_side = pt;
         return *this;
     }
  
-    ControllerPrivateAccessor &set_auth_context(const AuthContext* ctx) {
+    ControllerPrivateAccessor& set_auth_context(const AuthContext* ctx) {
         _cntl->set_auth_context(ctx);
         return *this;
     }
 
     // Overloaded set_span methods to support both shared_ptr and raw pointer
-    ControllerPrivateAccessor &set_span(const std::shared_ptr<Span>& span);
-    ControllerPrivateAccessor &set_span(Span* span);
+    ControllerPrivateAccessor& set_span(const std::shared_ptr<Span>& span);
+    ControllerPrivateAccessor& set_span(Span* span);
     
-    ControllerPrivateAccessor &set_request_protocol(ProtocolType protocol) {
+    ControllerPrivateAccessor& set_request_protocol(ProtocolType protocol) {
         _cntl->_request_protocol = protocol;
         return *this;
     }
@@ -196,7 +216,7 @@ private:
 // utility only useable by brpc developers.
 class RPCSender {
 public:
-    virtual ~RPCSender() {}
+    virtual ~RPCSender() = default;
     virtual int IssueRPC(int64_t start_realtime_us) = 0;
 };
 

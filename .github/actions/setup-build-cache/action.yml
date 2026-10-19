@@ -61,7 +61,6 @@ runs:
         key: ${{ runner.os }}-bazel-disk-${{ github.job }}-${{ github.sha }}
         restore-keys: |
           ${{ runner.os }}-bazel-disk-${{ github.job }}-
-          ${{ runner.os }}-bazel-disk-
 
     - name: Configure Bazel caches
       if: inputs.kind == 'bazel'

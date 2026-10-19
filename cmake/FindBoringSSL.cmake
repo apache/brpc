@@ -63,8 +63,9 @@ set(BORINGSSL_LIBRARIES ${BORINGSSL_SSL_LIBRARY} ${BORINGSSL_CRYPTO_LIBRARY}
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(BoringSSL DEFAULT_MSG
-                                  BORINGSSL_LIBRARIES
-                                  BORINGSSL_INCLUDE_DIR)
+                                  BORINGSSL_INCLUDE_DIR
+                                  BORINGSSL_SSL_LIBRARY
+                                  BORINGSSL_CRYPTO_LIBRARY)
 
 mark_as_advanced(
         BORINGSSL_ROOT_DIR

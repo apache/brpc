@@ -47,6 +47,7 @@
 #include "brpc/builtin/rpcz_service.h"         // RpczService
 #include "brpc/builtin/dir_service.h"          // DirService
 #include "brpc/builtin/pprof_service.h"        // PProfService
+#include "brpc/builtin/hotspots_service.h"     // HotspotsService
 #include "brpc/builtin/bthreads_service.h"     // BthreadsService
 #include "brpc/builtin/ids_service.h"          // IdsService
 #include "brpc/builtin/sockets_service.h"      // SocketsService
@@ -59,6 +60,17 @@
 
 DEFINE_bool(foo, false, "Flags for UT");
 BRPC_VALIDATE_GFLAG(foo, brpc::PassValidate);
+
+// A reloadable string gflag so that FlagsService is able to modify its
+// value via ?setvalue=. String flags must register the validator manually,
+// see comments in butil/reloadable_flags.h.
+DEFINE_string(reloadable_string_flag_for_ut, "", "Flags for UT");
+static bool PassValidateStringFlag(const char*, const std::string&) {
+    return true;
+}
+const bool ALLOW_UNUSED dummy_validate_reloadable_string_flag_for_ut =
+    GFLAGS_NAMESPACE::RegisterFlagValidator(
+        &FLAGS_reloadable_string_flag_for_ut, PassValidateStringFlag);
 
 namespace brpc {
 DECLARE_bool(enable_rpcz);
@@ -551,13 +563,13 @@ TEST_F(BuiltinServiceTest, customized_health) {
     brpc::ServerOptions opt;
     MyHealthReporter hr;
     opt.health_reporter = &hr;
-    ASSERT_EQ(0, _server.Start(9798, &opt));
+    ASSERT_EQ(0, _server.Start(0, &opt));
     brpc::HealthRequest req;
     brpc::HealthResponse res;
     brpc::ChannelOptions copt;
     copt.protocol = brpc::PROTOCOL_HTTP;
     brpc::Channel chan;
-    ASSERT_EQ(0, chan.Init("127.0.0.1:9798", &copt));
+    ASSERT_EQ(0, chan.Init(_server.listen_address(), &copt));
     brpc::Controller cntl;
     cntl.http_request().uri() = "/health";
     chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
@@ -586,7 +598,7 @@ public:
 
 TEST_F(BuiltinServiceTest, normal_grpc_health) {
     brpc::ServerOptions opt;
-    ASSERT_EQ(0, _server.Start(9798, &opt));
+    ASSERT_EQ(0, _server.Start(0, &opt));
 
     grpc::health::v1::HealthCheckResponse response;
     grpc::health::v1::HealthCheckRequest request;
@@ -595,7 +607,7 @@ TEST_F(BuiltinServiceTest, normal_grpc_health) {
     brpc::ChannelOptions copt;
     copt.protocol = "h2:grpc";
     brpc::Channel chan;
-    ASSERT_EQ(0, chan.Init("127.0.0.1:9798", &copt));
+    ASSERT_EQ(0, chan.Init(_server.listen_address(), &copt));
     grpc::health::v1::Health_Stub stub(&chan);
     stub.Check(&cntl, &request, &response, nullptr);
     EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -613,7 +625,7 @@ TEST_F(BuiltinServiceTest, customized_grpc_health) {
     brpc::ServerOptions opt;
     MyGrpcHealthReporter hr;
     opt.health_reporter = &hr;
-    ASSERT_EQ(0, _server.Start(9798, &opt));
+    ASSERT_EQ(0, _server.Start(0, &opt));
 
     grpc::health::v1::HealthCheckResponse response;
     grpc::health::v1::HealthCheckRequest request;
@@ -623,7 +635,7 @@ TEST_F(BuiltinServiceTest, customized_grpc_health) {
     brpc::ChannelOptions copt;
     copt.protocol = "h2:grpc";
     brpc::Channel chan;
-    ASSERT_EQ(0, chan.Init("127.0.0.1:9798", &copt));
+    ASSERT_EQ(0, chan.Init(_server.listen_address(), &copt));
 
     grpc::health::v1::Health_Stub stub(&chan);
     stub.Check(&cntl, &request, &response, nullptr);
@@ -686,6 +698,124 @@ TEST_F(BuiltinServiceTest, flags) {
     TestFlags(true);
 }
 
+TEST_F(BuiltinServiceTest, flags_escaping) {
+    // Save all flags and restore them on any exit of this test, since the
+    // /flags service below modifies `reloadable_string_flag_for_ut'.
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FlagsService service;
+    const std::string payload = "<svg onload=alert(1)>&\"'";
+    const std::string escaped = brpc::WebEscape(payload);
+
+    // Reflected: the ?setvalue= value is echoed into the html page.
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
+        SetUpController(&cntl, true);
+        cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
+        cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, payload);
+        service.default_method(&cntl, &req, &res, &done);
+        EXPECT_FALSE(cntl.Failed());
+        const std::string& body = cntl.response_attachment().to_string();
+        EXPECT_EQ(std::string::npos, body.find(payload))
+            << "unescaped payload in html: " << body;
+        CheckContent(cntl, escaped.c_str());
+    }
+    // Stored: ?setvalue&withform renders the flag value stored above.
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
+        SetUpController(&cntl, true);
+        cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
+        cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, "");
+        cntl.http_request().uri().SetQuery("withform", "");
+        service.default_method(&cntl, &req, &res, &done);
+        EXPECT_FALSE(cntl.Failed());
+        const std::string& body = cntl.response_attachment().to_string();
+        EXPECT_EQ(std::string::npos, body.find(payload))
+            << "unescaped payload in html: " << body;
+        CheckContent(cntl, escaped.c_str());
+    }
+    // Plain text output is not html-escaped.
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::FlagsRequest req;
+        brpc::FlagsResponse res;
+        SetUpController(&cntl, false);
+        cntl.http_request()._unresolved_path = "reloadable_string_flag_for_ut";
+        cntl.http_request().uri().SetQuery(brpc::SETVALUE_STR, payload);
+        service.default_method(&cntl, &req, &res, &done);
+        EXPECT_FALSE(cntl.Failed());
+        CheckContent(cntl, payload.c_str());
+    }
+}
+
+TEST_F(BuiltinServiceTest, hotspots_query_escaping) {
+    // `view' and `base' are written into the inline script of the page and
+    // are forwarded to /hotspots/*_non_responsive, which rejects them with
+    // ValidProfilePath.
+    const std::string payload =
+        "\" + alert(1) + \"</script><script>alert(2)</script>";
+    brpc::HotspotsService service;
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::HotspotsRequest req;
+        brpc::HotspotsResponse res;
+        SetUpController(&cntl, true);
+        cntl.http_request().uri().SetQuery("view", payload);
+        service.cpu(&cntl, &req, &res, &done);
+        EXPECT_TRUE(cntl.Failed());
+        EXPECT_EQ(EINVAL, cntl.ErrorCode());
+        const std::string body = cntl.response_attachment().to_string();
+        EXPECT_EQ(std::string::npos, body.find(payload))
+            << "unescaped payload in html: " << body;
+    }
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        brpc::HotspotsRequest req;
+        brpc::HotspotsResponse res;
+        SetUpController(&cntl, true);
+        // A well-formed `view' so that `base' is reached.
+        cntl.http_request().uri().SetQuery(
+            "view", brpc::FLAGS_rpc_profiling_dir + "/0/20240101.000000.cpu");
+        cntl.http_request().uri().SetQuery("base", payload);
+        service.cpu(&cntl, &req, &res, &done);
+        EXPECT_TRUE(cntl.Failed());
+        EXPECT_EQ(EINVAL, cntl.ErrorCode());
+        const std::string body = cntl.response_attachment().to_string();
+        EXPECT_EQ(std::string::npos, body.find(payload))
+            << "unescaped payload in html: " << body;
+    }
+}
+
+TEST_F(BuiltinServiceTest, rpcz_query_escaping) {
+    // Restore -enable_rpcz on any exit of this test.
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+                     "enable_rpcz", "true").empty());
+    const std::string payload = "<svg onload=alert(1)>&\"'";
+    const std::string escaped = brpc::WebEscape(payload);
+    ClosureChecker done;
+    brpc::Controller cntl;
+    brpc::RpczRequest req;
+    brpc::RpczResponse res;
+    brpc::RpczService service;
+    SetUpController(&cntl, true);
+    cntl.http_request().uri().SetQuery(brpc::TIME_STR, payload);
+    service.default_method(&cntl, &req, &res, &done);
+    EXPECT_FALSE(cntl.Failed());
+    const std::string body = cntl.response_attachment().to_string();
+    EXPECT_EQ(std::string::npos, body.find(payload))
+        << "unescaped payload in html: " << body;
+    CheckContent(cntl, escaped.c_str());
+}
+
 TEST_F(BuiltinServiceTest, bad_method) {
     TestBadMethod(false);
     TestBadMethod(true);
@@ -693,19 +823,66 @@ TEST_F(BuiltinServiceTest, bad_method) {
 
 TEST_F(BuiltinServiceTest, vars) {
     // Start server to show bvars inside 
-    ASSERT_EQ(0, _server.Start("127.0.0.1:9798", nullptr));
+    ASSERT_EQ(0, _server.Start(0, nullptr));
     brpc::VarsService service;
     brpc::VarsRequest req;
     brpc::VarsResponse res;
+    bvar::Adder<int64_t> myvar;
+    myvar.expose("myvar");
+    myvar << 9;
     {
         ClosureChecker done;
         brpc::Controller cntl;
-        bvar::Adder<int64_t> myvar;
-        myvar.expose("myvar");
-        myvar << 9;
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
+        EXPECT_EQ("text/plain", cntl.http_response().content_type());
         CheckFieldInContent(cntl, "myvar : ", 9);
+        EXPECT_EQ(std::string::npos,
+                  cntl.response_attachment().to_string().find("<table"));
+    }
+    {
+        ClosureChecker done;
+        brpc::Controller cntl;
+        SetUpController(&cntl, true);
+        cntl.http_request()._unresolved_path = "myvar";
+        service.default_method(&cntl, &req, &res, &done);
+        EXPECT_FALSE(cntl.Failed());
+        EXPECT_EQ("text/html", cntl.http_response().content_type());
+        CheckContent(cntl,
+                     "<table class=\"gridtable\" border=\"1\"><tr><th>Name</th><th>Value</th></tr>");
+        CheckContent(cntl,
+                     "<tr class=\"variable\"><td>myvar</td><td><span id=\"value-myvar\">9</span></td></tr>");
+        CheckContent(cntl,
+                     "<tr class=\"detail-row\"><td colspan=\"2\"><div class=\"detail\"><div id=\"myvar\" class=\"flot-placeholder\"></div></div></td></tr>");
+    }
+    {
+        // A Histogram writes one metric per bucket and the name of each carries
+        // a `le` label. Quotes cannot go into an html id, and no series is
+        // exposed under such a name anyway, so the value must come out plainly
+        // instead of inside a <span id="value-...">.
+        bvar::Histogram myhist("myhist", bvar::Histogram::BucketSchema({10, 20}));
+        myhist << 5;
+        ClosureChecker done;
+        brpc::Controller cntl;
+        SetUpController(&cntl, true);
+        cntl.http_request()._unresolved_path = "myhist";
+        service.default_method(&cntl, &req, &res, &done);
+        ASSERT_FALSE(cntl.Failed());
+        CheckContent(cntl, "<tr class=\"nonplot-variable\">"
+                           "<td>myhist_bucket{le=\"10\"}</td><td>1</td></tr>");
+        ASSERT_EQ(std::string::npos, cntl.response_attachment().to_string()
+                  .find("id=\"value-myhist_bucket"));
+        // `_sum` and `_count` carry no label and so no quotes, but they are no
+        // more a bvar of their own than the buckets are: the script refreshes
+        // a span by looking its name up among the exposed bvars, so one here
+        // would sit at the value of the page load forever, next to neighbours
+        // that do tick.
+        CheckContent(cntl, "<td>myhist_sum</td><td>5</td></tr>");
+        CheckContent(cntl, "<td>myhist_count</td><td>1</td></tr>");
+        ASSERT_EQ(std::string::npos, cntl.response_attachment().to_string()
+                  .find("id=\"value-myhist_sum"));
+        ASSERT_EQ(std::string::npos, cntl.response_attachment().to_string()
+                  .find("id=\"value-myhist_count"));
     }
     {
         ClosureChecker done;

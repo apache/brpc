@@ -53,6 +53,7 @@ protected:
 
 private:
 friend class InputMessenger;
+friend class InputMessengerProcessor;
 friend void* ProcessInputMessage(void*);
 friend class Stream;
 friend class Transport;

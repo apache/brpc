@@ -22,7 +22,7 @@
 #include "butil/memory/manual_constructor.h"
 
 // The `optional` for managing an optional contained value,
-// i.e. a value that may or may not be present, is a C++11
+// i.e. a value that may or may not be present, is a C++14
 // compatible version of the C++17 `std::optional` abstraction.
 // After C++17, `optional` is an alias for `std::optional`.
 
@@ -145,33 +145,33 @@ public:
 
     optional(optional&& rhs) noexcept = default;
 
-    template <typename U, typename std::enable_if<
+    template <typename U, std::enable_if_t<
         !std::is_same<T, U>::value &&
         std::is_constructible<T, const U&>::value &&
         !internal::is_constructible_convertible_from_optional<T, U>::value &&
-        std::is_convertible<const U&, T>::value, bool>::type = false>
+        std::is_convertible<const U&, T>::value, bool> = false>
     optional(const optional<U>& rhs) : _engaged(rhs.has_value()) {
         if (_engaged) {
             _storage.Init(*rhs);
         }
     }
 
-    template <typename U, typename std::enable_if<
+    template <typename U, std::enable_if_t<
         !std::is_same<T, U>::value &&
         std::is_constructible<T, const U&>::value &&
         !internal::is_constructible_convertible_from_optional<T, U>::value &&
-        !std::is_convertible<const U&, T>::value, bool>::type = false>
+        !std::is_convertible<const U&, T>::value, bool> = false>
     explicit optional(const optional<U>& rhs) : _engaged(rhs.has_value()) {
         if (_engaged) {
             _storage.Init(*rhs);
         }
     }
 
-    template <typename U, typename std::enable_if<
+    template <typename U, std::enable_if_t<
         !std::is_same<T, U>::value &&
         std::is_constructible<T, U&&>::value &&
         !internal::is_constructible_convertible_from_optional<T, U>::value &&
-        std::is_convertible<U&&, T>::value, bool>::type = false>
+        std::is_convertible<U&&, T>::value, bool> = false>
     optional(optional<U>&& rhs) : _engaged(rhs.has_value()) {
         if (_engaged) {
             _storage.Init(std::move(*rhs));
@@ -179,11 +179,11 @@ public:
         }
     }
 
-    template <typename U, typename std::enable_if<
+    template <typename U, std::enable_if_t<
         !std::is_same<T, U>::value &&
         std::is_constructible<T, U&&>::value &&
         !internal::is_constructible_convertible_from_optional<T, U>::value &&
-        !std::is_convertible<U&&, T>::value, bool>::type = false>
+        !std::is_convertible<U&&, T>::value, bool> = false>
     explicit optional(optional<U>&& rhs) : _engaged(rhs.has_value()) {
         if (_engaged) {
             _storage.Init(std::move(*rhs));
@@ -199,33 +199,34 @@ public:
         _storage.Init(std::move(value));
     }
 
-    template <typename... Args,
-              std::enable_if<std::is_constructible<T, Args&&...>::value>* = nullptr>
-    explicit optional(const in_place_t, Args&&... args) : _engaged(true) {
+    template <typename... Args, std::enable_if_t<
+        std::is_constructible<T, Args&&...>::value, bool> = false>
+    explicit optional(in_place_t, Args&&... args) : _engaged(true) {
         _storage.Init(std::forward<Args>(args)...);
     }
 
-    template <typename U, typename... Args, typename std::enable_if<
-        std::is_constructible<T, std::initializer_list<U>&, Args&&...>::value>::type>
+    template <typename U, typename... Args, std::enable_if_t<
+        std::is_constructible<T, std::initializer_list<U>&, Args&&...>::value,
+        bool> = false>
     optional(in_place_t, std::initializer_list<U> il, Args&&... args)
         : _engaged(true) {
         _storage.Init(il, std::forward<Args>(args)...);
     }
 
-    template <typename U = T, typename std::enable_if<
+    template <typename U = T, std::enable_if_t<
         !std::is_same<in_place_t, typename std::decay<U>::type>::value &&
         !std::is_same<optional<T>, typename std::decay<U>::type>::value &&
         std::is_constructible<T, U&&>::value &&
-        std::is_convertible<U&&, T>::value, bool>::type = false>
+        std::is_convertible<U&&, T>::value, bool> = false>
     optional(U&& v) : _engaged(true) {
         _storage.Init(std::forward<U>(v));
     }
 
-    template <typename U = T, typename std::enable_if<
+    template <typename U = T, std::enable_if_t<
         !std::is_same<in_place_t, typename std::decay<U>::type>::value &&
         !std::is_same<optional<T>, typename std::decay<U>::type>::value &&
         std::is_constructible<T, U&&>::value &&
-        !std::is_convertible<U&&, T>::value, bool>::type = false>
+        !std::is_convertible<U&&, T>::value, bool> = false>
     explicit optional(U&& v) : _engaged(true) {
         _storage.Init(std::forward<U>(v));
     }
@@ -244,11 +245,11 @@ public:
     optional& operator=(optional&& rhs) = default;
 
     // Value assignment operators
-    template <typename U = T, typename = typename std::enable_if<
+    template <typename U = T, typename = std::enable_if_t<
         !std::is_same<optional<T>, typename std::decay<U>::type>::value &&
         !std::is_same<optional<T>, typename remove_cvref<U>::type>::value &&
         std::is_constructible<T, U>::value && std::is_assignable<T&, U>::value &&
-        (!std::is_scalar<T>::value || !std::is_same<T, typename std::decay<U>::type>::value)>::type>
+        (!std::is_scalar<T>::value || !std::is_same<T, typename std::decay<U>::type>::value)>>
     optional& operator=(U&& v) {
         reset();
         _storage.Init(std::forward<U>(v));
@@ -256,11 +257,11 @@ public:
         return *this;
     }
 
-    template <typename U, typename = typename std::enable_if<
+    template <typename U, typename = std::enable_if_t<
         !std::is_same<T, U>::value &&
         !internal::is_constructible_convertible_assignable_from_optional<T, U>::value &&
         std::is_constructible<T, const U&>::value &&
-        std::is_assignable<T&, const U&>::value>::type>
+        std::is_assignable<T&, const U&>::value>>
     optional& operator=(const optional<U>& rhs) {
         if (rhs) {
             operator=(*rhs);
@@ -270,11 +271,11 @@ public:
         return *this;
     }
 
-    template <typename U, typename = typename std::enable_if<
+    template <typename U, typename = std::enable_if_t<
         !std::is_same<T, U>::value &&
         !internal::is_constructible_convertible_assignable_from_optional<T, U>::value &&
         std::is_constructible<T, U>::value &&
-        std::is_assignable<T&, U>::value>::type>
+        std::is_assignable<T&, U>::value>>
     optional& operator=(optional<U>&& rhs) {
         if (rhs) {
             operator=(std::move(*rhs));
