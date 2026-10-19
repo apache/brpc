@@ -1348,13 +1348,18 @@ TEST(RtmpTest, not_served_on_internal_port) {
     ASSERT_EQ(0, memcmp(resp, status_prefix, prefix_len));
 
     // internal_port serves builtin and Tabbed services only, an RTMP
-    // handshake on the same connection must not reach rtmp_service.
+    // handshake on the same connection must not reach rtmp_service. No
+    // protocol accepts the bytes there, so the server closes the connection
+    // and read() sees EOF. S0 (1 byte) means rtmp_service answered and -1
+    // is the receive timeout, i.e. the connection was left open; both fail.
     char c0c1[1 + 1536];
     memset(c0c1, 0, sizeof(c0c1));
     c0c1[0] = 0x03;
     ASSERT_EQ((ssize_t)sizeof(c0c1), write(fd, c0c1, sizeof(c0c1)));
     char s0 = 0;
-    ASSERT_NE(1, read(fd, &s0, 1));
+    const ssize_t n = read(fd, &s0, 1);
+    const int saved_errno = errno;
+    ASSERT_EQ(0, n) << "n=" << n << " errno=" << saved_errno;
 
     server.Stop(0);
     server.Join();
