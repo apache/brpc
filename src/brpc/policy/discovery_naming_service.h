@@ -82,6 +82,8 @@ private:
     DiscoveryClient _client;
 };
 
+// Reset the process-wide discovery channel. This function is intended for tests.
+void ResetDiscoveryChannelForTesting();
 
 } // namespace policy
 } // namespace brpc

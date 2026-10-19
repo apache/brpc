@@ -171,6 +171,17 @@ ParseResult ParseMongoMessage(butil::IOBuf* source,
     return MakeMessage(msg);
 }
 
+bool VerifyMongoRequest(const InputMessageBase* msg_base) {
+    Server* server = (Server*)msg_base->arg();
+    if (server->options().auth) {
+        // The mongo protocol carries no credential that ServerOptions.auth
+        // could verify.
+        LOG(WARNING) << "mongo does not support authentication";
+        return false;
+    }
+    return true;
+}
+
 // Defined in baidu_rpc_protocol.cpp
 void EndRunningCallMethodInPool(
     ::google::protobuf::Service* service,
@@ -197,11 +208,11 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
                      << " of MongoService should be equal to 1!";
     }
 
-    const Server::MethodProperty *mp =
-            ServerPrivateAccessor(server)
-            .FindMethodPropertyByFullName(srv_des->method(0)->full_name());
+    ServerPrivateAccessor server_accessor(server);
+    const Server::MethodProperty *mp = server_accessor.FindMethodPropertyByFullName(
+        srv_des->method(0)->full_name());
 
-    MongoContextMessage *context_msg =
+    MongoContextMessage* context_msg =
         dynamic_cast<MongoContextMessage*>(socket->parsing_context());
     if (nullptr == context_msg) {
         LOG(WARNING) << "socket context wasn't set correctly";
@@ -212,8 +223,10 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
     mongo_done->cntl.set_mongo_session_data(context_msg->context());
 
     ControllerPrivateAccessor accessor(&(mongo_done->cntl));
+    const bool security_mode = server->options().security_mode() &&
+                               socket->user() == server_accessor.acceptor();
     accessor.set_server(server)
-        .set_security_mode(server->options().security_mode())
+        .set_security_mode(security_mode)
         .set_peer_id(socket->id())
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
@@ -233,7 +246,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
             break;
         }
 
-        if (!ServerPrivateAccessor(server).AddConcurrency(&(mongo_done->cntl))) {
+        if (!server_accessor.AddConcurrency(&(mongo_done->cntl))) {
             mongo_done->cntl.SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
                 server->options().max_concurrency);
@@ -248,6 +261,9 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         if (nullptr == mp ||
             mp->service->GetDescriptor() == BadMethodService::descriptor()) {
             mongo_done->cntl.SetFailed(ENOMETHOD, "Fail to find default_method");
+            break;
+        }
+        if (RejectNonBuiltinAccessFromInternalPort(&mongo_done->cntl, *server, mp)) {
             break;
         }
         // Switch to service-specific error.

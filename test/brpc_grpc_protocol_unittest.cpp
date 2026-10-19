@@ -41,7 +41,6 @@ int main(int argc, char* argv[]) {
 
 namespace {
 
-const std::string g_server_addr = "127.0.0.1:8011";
 const std::string g_prefix = "Hello, ";
 const std::string g_req = "wyt";
 const int64_t g_timeout_ms = 1000;
@@ -103,11 +102,11 @@ class GrpcTest : public ::testing::Test {
 protected:
     GrpcTest() {
         EXPECT_EQ(0, _server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-        EXPECT_EQ(0, _server.Start(g_server_addr.c_str(), nullptr));
+        EXPECT_EQ(0, _server.Start(0, nullptr));
         brpc::ChannelOptions options;
         options.protocol = g_protocol;
         options.timeout_ms = g_timeout_ms;
-        EXPECT_EQ(0, _channel.Init(g_server_addr.c_str(), "", &options));
+        EXPECT_EQ(0, _channel.Init(_server.listen_address(), &options));
     }
 
     virtual ~GrpcTest() {};
@@ -191,7 +190,7 @@ TEST_F(GrpcTest, RpcTimedOut) {
     brpc::ChannelOptions options;
     options.protocol = g_protocol;
     options.timeout_ms = g_timeout_ms;
-    EXPECT_EQ(0, channel.Init(g_server_addr.c_str(), "", &options));
+    EXPECT_EQ(0, channel.Init(_server.listen_address(), &options));
 
     test::GrpcRequest req;
     test::GrpcResponse res;
@@ -234,7 +233,15 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         "HHHH", "-1",
         "112", "-1",
         "H999m", "-1",
-        "", "-1"
+        "", "-1",
+        // out of range: more digits than the gRPC wire format allows, or
+        // negative. The large ones overflowed the conversion to microseconds.
+        "100000000S", "-1",
+        "18446744073710S", "-1",
+        "2562047789H", "-1",
+        "9223372036854775807u", "-1",
+        "9223372036854775807n", "-1",
+        "-1S", "-1"
     };
 
     // test all timeout format

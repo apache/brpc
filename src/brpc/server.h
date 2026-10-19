@@ -132,6 +132,17 @@ struct ServerOptions {
     // Default: 0 (unlimited)
     int max_concurrency;
 
+    // Maximum number of simultaneous connections on the public listener,
+    // shared by all protocols and services, including builtin services.
+    // Idle connections and connections awaiting TLS handshakes count too.
+    // Excess connections are closed before protocol parsing or TLS, without
+    // a response. The internal listener has a separate, unlimited count.
+    // Other Server instances have independent limits, even if they share
+    // the same service object on different ports.
+    // Use Server::SetMaxConnections() to update the limit at runtime.
+    // Default: 0 (unlimited)
+    size_t max_connections;
+
     // Default value of method-level max concurrencies,
     // Overridable by Server.MaxConcurrencyOf().
     AdaptiveMaxConcurrency method_max_concurrency;
@@ -202,6 +213,9 @@ struct ServerOptions {
     // hiding them from public. Setting this option also enables security
     // protection code which we may add constantly.
     // Update: this option affects Tabbed services as well.
+    // Update: this port carries builtin and Tabbed services only, requests
+    // for ordinary services are rejected with EPERM and must be sent to the
+    // port passed to Start().
     // Default: -1
     int internal_port;
 
@@ -224,7 +238,7 @@ struct ServerOptions {
     // Force ssl for all connections of the port to Start().
     bool force_ssl;
 
-    // the server socket mode uses tcp or rdma or other
+    // Transport used by accepted sockets.
     // Default: SOCKET_MODE_TCP
     SocketMode socket_mode;
 
@@ -260,6 +274,10 @@ struct ServerOptions {
 
     // Only enable these protocols, separated by spaces.
     // All names inside must be valid, check protocols name in global.cpp
+    // http/h2 and rdma_handshake are served whatever this field says:
+    // the builtin services are only reachable over http/h2, and
+    // rdma_handshake is a transport level handshake dispatching no request.
+    // Naming them here is allowed and changes nothing.
     // Default: empty (all protocols)
     std::string enabled_protocols;
 
@@ -302,7 +320,10 @@ private:
 // This struct is originally designed to contain basic statistics of the
 // server. But bvar contains more stats and is more convenient.
 struct ServerStatistics {
+    // Total connections on the public and internal listeners.
     size_t connection_count;
+    // Cumulative connections rejected by the public listener's limit.
+    size_t rejected_connection_count;
     int user_service_count;
     int builtin_service_count;
 };
@@ -538,6 +559,13 @@ public:
 
     // Get statistics of this server
     void GetStat(ServerStatistics* stat) const;
+
+    // Atomically update the connection limit of the running public listener.
+    // Existing connections are not closed when the limit is lowered.
+    // Set to 0 to disable the limit. Does not change options().max_connections,
+    // which records the startup setting.
+    // Returns 0 on success, -1 if this Server is not running.
+    int SetMaxConnections(size_t max_connections);
 
     // Get the options passed to Start().
     const ServerOptions& options() const { return _options; }

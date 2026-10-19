@@ -17,22 +17,30 @@
 
 #include "brpc/policy/redis_authenticator.h"
 
-#include "butil/base64.h"
 #include "butil/iobuf.h"
-#include "butil/string_printf.h"
-#include "butil/sys_byteorder.h"
-#include "brpc/redis_command.h"
+#include "brpc/redis.h"
 
 namespace brpc {
 namespace policy {
 
 int RedisAuthenticator::GenerateCredential(std::string* auth_str) const {
-    butil::IOBuf buf;
+    RedisRequest request;
     if (!passwd_.empty()) {
-        brpc::RedisCommandFormat(&buf, "AUTH %s", passwd_.c_str());
+        const std::vector<butil::StringPiece> components = {"AUTH", passwd_};
+        if (!request.AddCommandByComponents(components)) {
+            return -1;
+        }
     }
     if (db_ >= 0) {
-        brpc::RedisCommandFormat(&buf, "SELECT %d", db_);
+        const std::string db = std::to_string(db_);
+        const std::vector<butil::StringPiece> components = {"SELECT", db};
+        if (!request.AddCommandByComponents(components)) {
+            return -1;
+        }
+    }
+    butil::IOBuf buf;
+    if (!request.SerializeTo(&buf)) {
+        return -1;
     }
     *auth_str = buf.to_string();
     return 0;

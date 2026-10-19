@@ -19,9 +19,12 @@
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
+#include <limits>
+#include <memory>
 #include <gtest/gtest.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
@@ -48,8 +51,11 @@
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/bad_method_service.h"
 #include "brpc/server.h"
+#include "brpc/nshead_service.h"
+#include "brpc/acceptor.h"
 #include "brpc/restful.h"
 #include "brpc/channel.h"
+#include "brpc/redis.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
 #include "brpc/compress.h"
@@ -57,6 +63,7 @@
 #include "v1.pb.h"
 #include "v2.pb.h"
 #include "v3.pb.h"
+#include "health_check.pb.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
@@ -70,6 +77,7 @@ DECLARE_bool(enable_dir_service);
 
 namespace policy {
 DECLARE_bool(use_http_error_code);
+DECLARE_bool(http_allow_empty_path_segments);
 
 extern bool SerializeRpcMessage(const google::protobuf::Message& serializer,
                                 Controller& cntl, ContentType content_type,
@@ -95,6 +103,22 @@ void* RunClosure(void* arg) {
 
 bool g_verify_success = true;
 const std::string g_unauthorized_error_text = "unauthorized";
+
+// Paths with empty segments (consecutive slashes) are rejected by default,
+// see -http_allow_empty_path_segments. Turns the leniency back on for the
+// duration of the scope.
+class AllowEmptyPathSegmentsScope {
+public:
+    AllowEmptyPathSegmentsScope()
+        : _saved(brpc::policy::FLAGS_http_allow_empty_path_segments) {
+        brpc::policy::FLAGS_http_allow_empty_path_segments = true;
+    }
+    ~AllowEmptyPathSegmentsScope() {
+        brpc::policy::FLAGS_http_allow_empty_path_segments = _saved;
+    }
+private:
+    const bool _saved;
+};
 
 class MyAuthenticator : public brpc::Authenticator {
 public:
@@ -443,9 +467,68 @@ TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     stub.Echo(&cntl, &req, &res, nullptr);
     ASSERT_TRUE(cntl.Failed());
     ASSERT_TRUE(cntl.ErrorText().find("Got EOF of ") != std::string::npos);
-    
+
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
+}
+
+// http, h2 and rdma_handshake are served whatever enabled_protocols says, but
+// naming them in it used to make Start() fail: the exemption was tested
+// before whitelist.erase() and `&&' short-circuited it, so the names survived
+// into the leftover check and came back as "unknown protocols=`http '".
+TEST_F(ServerTest, enabled_protocols_can_name_always_enabled_protocols) {
+    std::string cases[] = {
+        "baidu_std http",
+        "baidu_std h2",
+        "baidu_std rdma_handshake",
+        "baidu_std http h2 rdma_handshake",
+    };
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        brpc::Server server;
+        EchoServiceImpl echo_svc;
+        ASSERT_EQ(0, server.AddService(
+                      &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+        brpc::ServerOptions opt;
+        opt.enabled_protocols = cases[i];
+        ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt)) << cases[i];
+        butil::EndPoint ep = server.listen_address();
+
+        brpc::ChannelOptions copt;
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
+
+        // The protocol that actually needed whitelisting still serves.
+        copt.protocol = "baidu_std";
+        brpc::Channel chan;
+        ASSERT_EQ(0, chan.Init(ep, &copt));
+        test::EchoService_Stub stub(&chan);
+        stub.Echo(&cntl, &req, &res, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cases[i] << ": " << cntl.ErrorText();
+
+        // And so does http, as it does for any whitelist.
+        copt.protocol = "http";
+        brpc::Channel http_channel;
+        ASSERT_EQ(0, http_channel.Init(ep, &copt));
+        cntl.Reset();
+        cntl.http_request().uri() = "/version";
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cases[i] << ": " << cntl.ErrorText();
+
+        // A protocol left out of the whitelist is still refused.
+        copt.protocol = "hulu_pbrpc";
+        brpc::Channel hulu_channel;
+        ASSERT_EQ(0, hulu_channel.Init(ep, &copt));
+        cntl.Reset();
+        test::EchoService_Stub hulu_stub(&hulu_channel);
+        hulu_stub.Echo(&cntl, &req, &res, nullptr);
+        ASSERT_TRUE(cntl.Failed()) << cases[i];
+        LOG(INFO) << "Expected error: " << cntl.ErrorText();
+
+        ASSERT_EQ(0, server.Stop(0));
+        ASSERT_EQ(0, server.Join());
+    }
 }
 
 TEST_F(ServerTest, services_in_different_ns) {
@@ -527,8 +610,21 @@ TEST_F(ServerTest, various_forms_of_uri_paths) {
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"foo\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << cntl.response_attachment();
-    ASSERT_EQ(2, service_v1.ncalled.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(1, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = "/EchoService///Echo//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"foo\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << cntl.response_attachment();
+        ASSERT_EQ(2, service_v1.ncalled.load());
+    }
 
     cntl.Reset();
     cntl.http_request().uri() = "/EchoService /Echo/";
@@ -783,15 +879,31 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_EQ(2, service_v1.ncalled.load());
     ASSERT_EQ("{\"message\":\"bar_v1\"}", cntl.response_attachment());
 
-    // Adding extra slashes (and heading/trailing spaces) is OK.
+    // Heading/trailing spaces are OK, extra slashes are not: //v1/echo and
+    // /v1/echo are different paths per RFC 3986, and dispatching both to the
+    // same method lets a request slip past a front proxy whose ACL only
+    // matches the collapsed form.
     cntl.Reset();
     cntl.http_request().uri() = " //v1///echo////  ";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"hello\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ(3, service_v1.ncalled.load());
-    ASSERT_EQ("{\"message\":\"hello_v1\"}", cntl.response_attachment());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(2, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = " //v1///echo////  ";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"hello\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(3, service_v1.ncalled.load());
+        ASSERT_EQ("{\"message\":\"hello_v1\"}", cntl.response_attachment());
+    }
 
     // /v3/echo must be exactly matched.
     cntl.Reset();
@@ -896,24 +1008,53 @@ TEST_F(ServerTest, restful_mapping) {
     ASSERT_EQ("{\"message\":\"1.flv_v1_Echo4\"}", cntl.response_attachment());
     ASSERT_EQ(1, service_v1.ncalled_echo4.load());
 
+    // A path with empty segments is rejected by default, even when a restful
+    // mapping would match the collapsed form: //v6/d.flv and /v6/d.flv are
+    // different paths per RFC 3986, and dispatching both to the same method
+    // lets a request slip past a front proxy whose ACL only matches the
+    // collapsed form.
     cntl.Reset();
     cntl.http_request().uri() = "//v6//d.flv//";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"d.flv\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ("{\"message\":\"d.flv_v1_Echo5\"}", cntl.response_attachment());
-    ASSERT_EQ(1, service_v1.ncalled_echo5.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(0, service_v1.ncalled_echo5.load());
 
-    // matched the global restful map.
+    // Ditto for the global restful map.
     cntl.Reset();
     cntl.http_request().uri() = "//d.flv//";
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.request_attachment().append("{\"message\":\"d.flv\"}");
     http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ("{\"message\":\"d.flv_v1\"}", cntl.response_attachment());
-    ASSERT_EQ(9, service_v1.ncalled.load());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << "Expected error: " << cntl.ErrorText();
+    ASSERT_EQ(8, service_v1.ncalled.load());
+
+    {
+        AllowEmptyPathSegmentsScope allow_empty_path_segments;
+        cntl.Reset();
+        cntl.http_request().uri() = "//v6//d.flv//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"d.flv\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ("{\"message\":\"d.flv_v1_Echo5\"}", cntl.response_attachment());
+        ASSERT_EQ(1, service_v1.ncalled_echo5.load());
+
+        // matched the global restful map.
+        cntl.Reset();
+        cntl.http_request().uri() = "//d.flv//";
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.request_attachment().append("{\"message\":\"d.flv\"}");
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ("{\"message\":\"d.flv_v1\"}", cntl.response_attachment());
+        ASSERT_EQ(9, service_v1.ncalled.load());
+    }
 
     cntl.Reset();
     cntl.http_request().uri() = "/v7/e.flv";
@@ -1290,6 +1431,410 @@ TEST_F(ServerTest, close_idle_connections) {
     ASSERT_EQ(0ul, stat.connection_count);
 }
 
+// Returns a port nothing is listening on, or -1. `ServerOptions.internal_port`
+// has to be an explicit number, Server::Start() rejects 0 because it stands
+// for an ephemeral port, so ask the system for a free one rather than hardcode
+// a port that another test may be listening on.
+int PickUnusedPort() {
+    butil::fd_guard sockfd(butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
+    if (sockfd < 0) {
+        return -1;
+    }
+    butil::EndPoint point;
+    if (butil::get_local_side(sockfd, &point) != 0) {
+        return -1;
+    }
+    return point.port;
+}
+
+// Starts `server` on an ephemeral port and fills `options->internal_port` with
+// another one. Both are released before Start() binds them and something else
+// may take one in between, hence the retries. Returns 0 on success.
+int StartWithInternalPort(brpc::Server* server, brpc::ServerOptions* options) {
+    for (int i = 0; i < 10; ++i) {
+        int internal_port = PickUnusedPort();
+        if (internal_port < 0) {
+            continue;
+        }
+        options->internal_port = internal_port;
+        if (0 == server->Start("127.0.0.1:0", options)) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static testing::AssertionResult WaitForServerConnections(
+    const brpc::Server& server, size_t expected) {
+    brpc::ServerStatistics stat;
+    const int64_t deadline = butil::gettimeofday_us() + 1000000;
+    do {
+        server.GetStat(&stat);
+        if (stat.connection_count == expected) {
+            return testing::AssertionSuccess();
+        }
+        usleep(1000);
+    } while (butil::gettimeofday_us() < deadline);
+    return testing::AssertionFailure()
+        << "Expected " << expected << " connections, got "
+        << stat.connection_count;
+}
+
+static void ExpectConnectionClosed(int fd) {
+    const struct timeval timeout = {1, 0};
+    ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO,
+                           &timeout, sizeof(timeout)));
+    char response;
+    ssize_t nr;
+    do {
+        nr = recv(fd, &response, sizeof(response), 0);
+    } while (nr < 0 && errno == EINTR);
+    // Fresh idle clients have sent no data: rejection must close the fd
+    // without sending a protocol-specific error or waiting for a request.
+    EXPECT_EQ(0, nr);
+}
+
+class ConnectionLimitPingHandler : public brpc::RedisCommandHandler {
+public:
+    brpc::RedisCommandHandlerResult Run(
+        brpc::RedisConnContext*, const std::vector<butil::StringPiece>&,
+        brpc::RedisReply* output, bool) override {
+        output->SetStatus("PONG");
+        return brpc::REDIS_CMD_HANDLED;
+    }
+};
+
+TEST_F(ServerTest, connection_limit_with_mixed_protocols) {
+    ConnectionLimitPingHandler ping_handler;
+    EchoServiceImpl echo_service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(
+        &echo_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.redis_service = new brpc::RedisService;
+    opt.redis_service->AddCommandHandler("ping", &ping_handler);
+    opt.max_connections = 3;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+
+    // Each protocol uses a separate persistent connection on the same port.
+    brpc::ChannelOptions copt;
+    copt.connection_type = "single";
+    copt.timeout_ms = 1000;
+    copt.max_retry = 0;
+    copt.connection_group = "connection_limit_rpc";
+    brpc::Channel rpc_channel;
+    ASSERT_EQ(0, rpc_channel.Init(server.listen_address(), &copt));
+    brpc::Controller rpc_cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&rpc_channel);
+    stub.Echo(&rpc_cntl, &req, &res, nullptr);
+    ASSERT_FALSE(rpc_cntl.Failed()) << rpc_cntl.ErrorText();
+
+    copt.protocol = "redis";
+    copt.connection_group = "connection_limit_redis";
+    brpc::Channel redis_channel;
+    ASSERT_EQ(0, redis_channel.Init(server.listen_address(), &copt));
+    brpc::RedisRequest redis_req;
+    brpc::RedisResponse redis_res;
+    brpc::Controller redis_cntl;
+    ASSERT_TRUE(redis_req.AddCommand("ping"));
+    redis_channel.CallMethod(
+        nullptr, &redis_cntl, &redis_req, &redis_res, nullptr);
+    ASSERT_FALSE(redis_cntl.Failed()) << redis_cntl.ErrorText();
+    ASSERT_EQ(1, redis_res.reply_size());
+    ASSERT_STREQ("PONG", redis_res.reply(0).c_str());
+
+    copt.protocol = "http";
+    copt.connection_type = "pooled";
+    copt.connection_group = "connection_limit_http";
+    brpc::Channel http_channel;
+    ASSERT_EQ(0, http_channel.Init(server.listen_address(), &copt));
+    brpc::Controller http_cntl;
+    http_cntl.http_request().uri() = "/status";
+    http_channel.CallMethod(nullptr, &http_cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(http_cntl.Failed()) << http_cntl.ErrorText();
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+
+    butil::fd_guard rejected_client(
+        tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(rejected_client, 0);
+    ExpectConnectionClosed(rejected_client);
+    brpc::ServerStatistics stat;
+    server.GetStat(&stat);
+    EXPECT_EQ(3ul, stat.connection_count);
+    EXPECT_EQ(1ul, stat.rejected_connection_count);
+
+    // Requests on admitted sockets still work when the listener is full.
+    rpc_cntl.Reset();
+    stub.Echo(&rpc_cntl, &req, &res, nullptr);
+    ASSERT_FALSE(rpc_cntl.Failed()) << rpc_cntl.ErrorText();
+}
+
+TEST_F(ServerTest, connection_limit_runtime_updates) {
+    brpc::Server server;
+    EXPECT_EQ(-1, server.SetMaxConnections(1));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    const butil::EndPoint ep = server.listen_address();
+    butil::fd_guard first_client(tcp_connect(ep, nullptr));
+    butil::fd_guard second_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(first_client, 0);
+    ASSERT_GE(second_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 2));
+
+    // Enabling a limit must count clients admitted while it was unlimited.
+    ASSERT_EQ(0, server.SetMaxConnections(1));
+    butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(rejected_client, 0);
+    ExpectConnectionClosed(rejected_client);
+    ASSERT_TRUE(WaitForServerConnections(server, 2));
+
+    // A separate Server remains reachable while this public listener is full.
+    EchoServiceImpl rpc_service;
+    brpc::Server rpc_server;
+    ASSERT_EQ(0, rpc_server.AddService(
+        &rpc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, rpc_server.Start("127.0.0.1:0", nullptr));
+    SendSleepRPC(rpc_server.listen_address(), 0, true);
+
+    ASSERT_EQ(0, server.SetMaxConnections(3));
+    butil::fd_guard third_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(third_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+
+    // Lowering the limit leaves established clients connected, but rejects
+    // new clients until the active count drops strictly below the limit.
+    ASSERT_EQ(0, server.SetMaxConnections(1));
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+    butil::fd_guard lowered_limit_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(lowered_limit_client, 0);
+    ExpectConnectionClosed(lowered_limit_client);
+    first_client.reset(-1);
+    second_client.reset(-1);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+    butil::fd_guard at_limit_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(at_limit_client, 0);
+    ExpectConnectionClosed(at_limit_client);
+
+    third_client.reset(-1);
+    ASSERT_TRUE(WaitForServerConnections(server, 0));
+    butil::fd_guard recovered_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(recovered_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+
+    ASSERT_EQ(0, server.SetMaxConnections(0));
+    first_client.reset(tcp_connect(ep, nullptr));
+    second_client.reset(tcp_connect(ep, nullptr));
+    ASSERT_GE(first_client, 0);
+    ASSERT_GE(second_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+    brpc::ServerStatistics stat;
+    server.GetStat(&stat);
+    EXPECT_EQ(3ul, stat.rejected_connection_count);
+    EXPECT_EQ(0ul, server.options().max_connections);
+
+    ASSERT_EQ(0, server.Stop(0));
+    EXPECT_EQ(-1, server.SetMaxConnections(1));
+    ASSERT_EQ(0, server.Join());
+    ASSERT_TRUE(WaitForServerConnections(server, 0));
+}
+
+TEST_F(ServerTest, connection_limit_keeps_internal_listener_available) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
+    butil::fd_guard public_client(
+        tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(public_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+
+    butil::EndPoint internal_ep = server.listen_address();
+    internal_ep.port = opt.internal_port;
+    butil::fd_guard first_internal(tcp_connect(internal_ep, nullptr));
+    butil::fd_guard second_internal(tcp_connect(internal_ep, nullptr));
+    ASSERT_GE(first_internal, 0);
+    ASSERT_GE(second_internal, 0);
+    // GetStat includes both listeners; only the public count is limited.
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+    brpc::ChannelOptions copt;
+    copt.protocol = "http";
+    copt.connection_type = "short";
+    copt.timeout_ms = 1000;
+    copt.max_retry = 0;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(internal_ep, &copt));
+    brpc::Controller cntl;
+    cntl.http_request().uri() = "/status";
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+
+    butil::fd_guard rejected_client(
+        tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(rejected_client, 0);
+    ExpectConnectionClosed(rejected_client);
+    brpc::ServerStatistics stat;
+    server.GetStat(&stat);
+    EXPECT_EQ(3ul, stat.connection_count);
+    EXPECT_EQ(1ul, stat.rejected_connection_count);
+
+    // Internal connections must not prevent public connection slot recovery.
+    public_client.reset(-1);
+    ASSERT_TRUE(WaitForServerConnections(server, 2));
+    public_client.reset(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(public_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 3));
+}
+
+TEST_F(ServerTest, connection_limit_is_per_listener) {
+    // One business service is shared by two Servers listening on different
+    // ports. Each port must have its own limit, count and runtime updates.
+    EchoServiceImpl shared_service;
+    brpc::Server servers[2];
+    for (size_t i = 0; i < 2; ++i) {
+        ASSERT_EQ(0, servers[i].AddService(
+            &shared_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+        brpc::ServerOptions opt;
+        opt.max_connections = i + 1;
+        ASSERT_EQ(0, servers[i].Start("127.0.0.1:0", &opt));
+    }
+    butil::fd_guard first_client(
+        tcp_connect(servers[0].listen_address(), nullptr));
+    ASSERT_GE(first_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(servers[0], 1));
+    butil::fd_guard second_port_clients[2];
+    for (auto& client : second_port_clients) {
+        client.reset(tcp_connect(servers[1].listen_address(), nullptr));
+        ASSERT_GE(client, 0);
+    }
+    ASSERT_TRUE(WaitForServerConnections(servers[1], 2));
+
+    for (auto& server : servers) {
+        butil::fd_guard rejected_client(
+            tcp_connect(server.listen_address(), nullptr));
+        ASSERT_GE(rejected_client, 0);
+        ExpectConnectionClosed(rejected_client);
+        brpc::ServerStatistics stat;
+        server.GetStat(&stat);
+        EXPECT_EQ(1ul, stat.rejected_connection_count);
+    }
+
+    ASSERT_EQ(0, servers[0].SetMaxConnections(2));
+    butil::fd_guard extra_client(
+        tcp_connect(servers[0].listen_address(), nullptr));
+    ASSERT_GE(extra_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(servers[0], 2));
+    butil::fd_guard still_rejected(
+        tcp_connect(servers[1].listen_address(), nullptr));
+    ASSERT_GE(still_rejected, 0);
+    ExpectConnectionClosed(still_rejected);
+    brpc::ServerStatistics stat;
+    servers[1].GetStat(&stat);
+    EXPECT_EQ(2ul, stat.connection_count);
+    EXPECT_EQ(2ul, stat.rejected_connection_count);
+}
+
+TEST_F(ServerTest, connection_limit_restarts_with_startup_setting) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.SetMaxConnections(0));
+    EXPECT_EQ(1ul, server.options().max_connections);
+    butil::fd_guard clients[2];
+    for (auto& client : clients) {
+        client.reset(tcp_connect(server.listen_address(), nullptr));
+        ASSERT_GE(client, 0);
+    }
+    ASSERT_TRUE(WaitForServerConnections(server, 2));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+    ASSERT_TRUE(WaitForServerConnections(server, 0));
+
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    clients[0].reset(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(clients[0], 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+    clients[1].reset(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(clients[1], 0);
+    ExpectConnectionClosed(clients[1]);
+}
+
+TEST_F(ServerTest, connection_limit_rejects_before_tls_handshake) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
+    opt.force_ssl = true;
+    brpc::CertInfo& cert = opt.mutable_ssl_options()->default_cert;
+    cert.certificate = "cert1.crt";
+    cert.private_key = "cert1.key";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+
+    const butil::EndPoint ep = server.listen_address();
+    // An idle TCP socket consumes a slot without initiating a TLS handshake.
+    butil::fd_guard first_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(first_client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+    butil::fd_guard rejected_client(tcp_connect(ep, nullptr));
+    ASSERT_GE(rejected_client, 0);
+    // EOF without a ClientHello verifies rejection before TLS authentication.
+    ExpectConnectionClosed(rejected_client);
+    brpc::ServerStatistics stat;
+    server.GetStat(&stat);
+    EXPECT_EQ(1ul, stat.connection_count);
+    EXPECT_EQ(1ul, stat.rejected_connection_count);
+}
+
+TEST_F(ServerTest, connection_limit_socket_creation_failure) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    brpc::Acceptor* acceptor = server._am;
+    ASSERT_TRUE(acceptor->TryAcquireConnectionSlot());
+
+    brpc::SocketOptions socket_opt;
+    socket_opt.user = acceptor;
+    // Avoid STREAM_FAKE_FD, which is intentionally accepted without an OS fd.
+    socket_opt.fd = std::numeric_limits<int>::max() - 1;
+    brpc::SocketId id;
+    ASSERT_NE(0, brpc::Socket::Create(socket_opt, &id));
+    // Socket::Create can call BeforeRecycle on failure. Since the socket was
+    // never inserted into the map, the accept loop must still own the slot.
+    ASSERT_EQ(1ul, acceptor->ConnectionCount());
+    acceptor->ReleaseConnectionSlot();
+    butil::fd_guard client(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+}
+
+TEST_F(ServerTest, connection_limit_socket_recycled_before_registration) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.max_connections = 1;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    brpc::Acceptor* acceptor = server._am;
+    ASSERT_TRUE(acceptor->TryAcquireConnectionSlot());
+
+    brpc::SocketOptions socket_opt;
+    socket_opt.user = acceptor;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(socket_opt, &id));
+    // Exercise a socket recycled after successful creation, before the accept
+    // loop can address it and insert it into the connection map.
+    ASSERT_EQ(0, brpc::Socket::SetFailed(id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(-1, brpc::Socket::AddressFailedAsWell(id, &socket));
+    ASSERT_EQ(1ul, acceptor->ConnectionCount());
+    acceptor->ReleaseConnectionSlot();
+
+    butil::fd_guard client(tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(client, 0);
+    ASSERT_TRUE(WaitForServerConnections(server, 1));
+}
+
 TEST_F(ServerTest, logoff_and_multiple_start) {
     butil::Timer timer;
     butil::EndPoint ep;
@@ -1483,6 +2028,341 @@ TEST_F(ServerTest, add_builtin_service) {
     }
 }
 
+// Call the builtin `brpc.version` service through a pb protocol.
+void CallVersionByPb(const butil::EndPoint& ep,
+                     brpc::ProtocolType protocol,
+                     brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = protocol;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    brpc::VersionRequest req;
+    brpc::VersionResponse res;
+    brpc::version_Stub stub(&chan);
+    stub.default_method(cntl, &req, &res, nullptr);
+}
+
+// Call the same builtin service the way a browser would.
+void CallVersionByHttp(const butil::EndPoint& ep,
+                       brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl->http_request().uri() = "/version";
+    chan.CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
+}
+
+// Call an ordinary (non-builtin) service through a pb protocol.
+void CallEchoByPb(const butil::EndPoint& ep,
+                  brpc::ProtocolType protocol,
+                  brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = protocol;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&chan);
+    stub.Echo(cntl, &req, &res, nullptr);
+}
+
+// Builtin services must be gated by ServerOptions.internal_port no matter
+// which protocol carries the request.
+TEST_F(ServerTest, builtin_services_are_gated_by_internal_port) {
+    const struct {
+        brpc::ProtocolType protocol;
+        const char* name;
+    } cases[] = {
+        { brpc::PROTOCOL_BAIDU_STD, "baidu_std" },
+        { brpc::PROTOCOL_HULU_PBRPC, "hulu_pbrpc" },
+        { brpc::PROTOCOL_SOFA_PBRPC, "sofa_pbrpc" },
+    };
+
+    butil::EndPoint ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
+    butil::EndPoint internal_ep;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:8614", &internal_ep));
+
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.internal_port = internal_ep.port;
+    ASSERT_EQ(0, server.Start(ep, &opt));
+    ASSERT_TRUE(server.options().security_mode());
+
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        // Not reachable from the public port ...
+        brpc::Controller cntl;
+        CallVersionByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(EPERM, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        // ... but reachable from internal_port.
+        cntl.Reset();
+        CallVersionByPb(internal_ep, cases[i].protocol, &cntl);
+        ASSERT_FALSE(cntl.Failed())
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        // Ordinary services on the public port are unaffected.
+        cntl.Reset();
+        CallEchoByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_FALSE(cntl.Failed())
+            << cases[i].name << ": " << cntl.ErrorText();
+    }
+
+    // http was gated before, make sure it stays that way.
+    brpc::Controller cntl;
+    CallVersionByHttp(ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    cntl.Reset();
+    CallVersionByHttp(internal_ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// Call the same ordinary service the way a browser would.
+void CallEchoByHttp(const butil::EndPoint& ep, brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    cntl->http_request().uri() = "/EchoService/Echo";
+    cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl->http_request().set_content_type("application/json");
+    chan.CallMethod(nullptr, cntl, &req, &res, nullptr);
+}
+
+TEST_F(ServerTest, ordinary_services_are_not_served_on_internal_port) {
+    const struct {
+        brpc::ProtocolType protocol;
+        const char* name;
+    } cases[] = {
+        { brpc::PROTOCOL_BAIDU_STD, "baidu_std" },
+        { brpc::PROTOCOL_HULU_PBRPC, "hulu_pbrpc" },
+        { brpc::PROTOCOL_SOFA_PBRPC, "sofa_pbrpc" },
+    };
+
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
+    butil::EndPoint ep = server.listen_address();
+    butil::EndPoint internal_ep(ep.ip, opt.internal_port);
+
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        brpc::Controller cntl;
+        CallEchoByPb(internal_ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(EPERM, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        // The public port is where ordinary services live.
+        cntl.Reset();
+        CallEchoByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_FALSE(cntl.Failed())
+            << cases[i].name << ": " << cntl.ErrorText();
+    }
+
+    brpc::Controller cntl;
+    CallEchoByHttp(internal_ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    cntl.Reset();
+    CallEchoByHttp(ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// NsheadService is dispatched to without a MethodProperty, the gate has to be
+// applied by the protocol itself. The service echoes back what the framework
+// decided so that the client can tell an acceptance from a rejection: nshead
+// carries no error field.
+class EchoNsheadService : public brpc::NsheadService {
+public:
+    void ProcessNsheadRequest(const brpc::Server&,
+                              brpc::Controller* cntl,
+                              const brpc::NsheadMessage& request,
+                              brpc::NsheadMessage* response,
+                              brpc::NsheadClosure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        if (cntl->Failed()) {
+            response->body.append(butil::string_printf("%d", cntl->ErrorCode()));
+            return;
+        }
+        response->body.append(EXP_RESPONSE);
+    }
+};
+
+// Same gate as ordinary_services_are_not_served_on_internal_port, for the
+// protocols that dispatch to a service which is never builtin. Their verify()
+// refuses every request when ServerOptions.auth is set, so the connection
+// latched by an exempted builtin request is the only way to reach them.
+TEST_F(ServerTest, nshead_service_is_not_served_on_internal_port) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.nshead_service = new EchoNsheadService;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
+    butil::EndPoint ep = server.listen_address();
+    butil::EndPoint internal_ep(ep.ip, opt.internal_port);
+
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_NSHEAD;
+    copt.connection_type = brpc::CONNECTION_TYPE_POOLED;
+    copt.max_retry = 0;
+
+    brpc::Channel internal_chan;
+    ASSERT_EQ(0, internal_chan.Init(internal_ep, &copt));
+    brpc::NsheadMessage req;
+    brpc::NsheadMessage res;
+    brpc::Controller cntl;
+    req.body.append(EXP_REQUEST);
+    internal_chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(butil::string_printf("%d", EPERM), res.body.to_string());
+
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl.Reset();
+    res.body.clear();
+    chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(EXP_RESPONSE, res.body.to_string());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// A service-name-only URL is dispatched to the builtin BadMethodService which
+// lists the methods of the service.
+void CallServiceWithoutMethodByHttp(const butil::EndPoint& ep,
+                                    brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl->http_request().uri() = "/EchoService";
+    chan.CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
+}
+
+// Ask for the builtin BadMethodService on purpose, which a pb client can do
+// since the service is registered like any other builtin service.
+void CallBadMethodByPb(const butil::EndPoint& ep,
+                       brpc::ProtocolType protocol,
+                       brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = protocol;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    brpc::BadMethodRequest req;
+    brpc::BadMethodResponse res;
+    req.set_service_name("EchoService");
+    brpc::badmethod_Stub stub(&chan);
+    stub.no_method(cntl, &req, &res, nullptr);
+}
+
+// BadMethodService is builtin as well and it lists the methods of a service,
+// so it must not be reachable from the public port in security mode. The http
+// fallback to BadMethodService is an exception: it must keep reporting the
+// missing method name, only without listing the methods.
+TEST_F(ServerTest, bad_method_does_not_leak_methods_in_security_mode) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
+    ASSERT_TRUE(server.options().security_mode());
+    butil::EndPoint ep = server.listen_address();
+    butil::EndPoint internal_ep(ep.ip, opt.internal_port);
+
+    const struct {
+        brpc::ProtocolType protocol;
+        const char* name;
+    } cases[] = {
+        { brpc::PROTOCOL_BAIDU_STD, "baidu_std" },
+        { brpc::PROTOCOL_HULU_PBRPC, "hulu_pbrpc" },
+        { brpc::PROTOCOL_SOFA_PBRPC, "sofa_pbrpc" },
+    };
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        brpc::Controller cntl;
+        CallBadMethodByPb(ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(EPERM, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+        ASSERT_EQ(std::string::npos, cntl.ErrorText().find("Available methods"))
+            << cases[i].name << ": " << cntl.ErrorText();
+
+        cntl.Reset();
+        CallBadMethodByPb(internal_ep, cases[i].protocol, &cntl);
+        ASSERT_EQ(brpc::ENOMETHOD, cntl.ErrorCode())
+            << cases[i].name << ": " << cntl.ErrorText();
+        ASSERT_NE(std::string::npos, cntl.ErrorText().find("Available methods"))
+            << cases[i].name << ": " << cntl.ErrorText();
+    }
+
+    // http still tells that the method name is missing, but without listing
+    // the methods of the service.
+    brpc::Controller cntl;
+    CallServiceWithoutMethodByHttp(ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_NOT_FOUND, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    ASSERT_NE(std::string::npos, cntl.ErrorText().find("Missing method name"))
+        << cntl.ErrorText();
+    ASSERT_EQ(std::string::npos, cntl.ErrorText().find("Available methods"))
+        << cntl.ErrorText();
+
+    cntl.Reset();
+    CallServiceWithoutMethodByHttp(internal_ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_NOT_FOUND, cntl.http_response().status_code())
+        << cntl.ErrorText();
+    ASSERT_NE(std::string::npos, cntl.ErrorText().find("Available methods"))
+        << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// Without internal_port the server is not in security mode and builtin
+// services stay reachable from the only port, which is the default behavior.
+TEST_F(ServerTest, builtin_services_are_open_without_internal_port) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    ASSERT_FALSE(server.options().security_mode());
+    butil::EndPoint ep = server.listen_address();
+
+    brpc::Controller cntl;
+    CallVersionByPb(ep, brpc::PROTOCOL_BAIDU_STD, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    cntl.Reset();
+    CallVersionByHttp(ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
 TEST_F(ServerTest, base64_to_string) {
     // We test two cases as following. If these two tests can be passed, we
     // can prove that the pb_bytes_to_base64 flag is working in both client side
@@ -1562,11 +2442,13 @@ TEST_F(ServerTest, single_repeated_to_array) {
 }
 
 TEST_F(ServerTest, too_big_message) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_max_body_size = 1024;
     EchoServiceImpl echo_svc;
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&echo_svc,
                                    brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start(8613, nullptr));
+    ASSERT_EQ(0, server.Start(0, nullptr));
 
 #if !BRPC_WITH_GLOG
     logging::StringSink log_str;
@@ -1574,7 +2456,7 @@ TEST_F(ServerTest, too_big_message) {
 #endif
 
     brpc::Channel chan;
-    ASSERT_EQ(0, chan.Init("localhost:8613", nullptr));
+    ASSERT_EQ(0, chan.Init(server.listen_address(), nullptr));
     brpc::Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
@@ -1779,6 +2661,87 @@ TEST_F(ServerTest, baidu_master_service) {
         TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_ZLIB);
         TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_GZIP);
         TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_SNAPPY);
+        TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_NONE);
+    }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+class HttpMasterServiceImpl : public test::HealthCheckTestService {
+public:
+    void default_method(google::protobuf::RpcController* cntl_base,
+                        const test::HealthCheckRequest*,
+                        test::HealthCheckResponse*,
+                        google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(EXP_RESPONSE);
+    }
+};
+
+// http_master_service answers every URL and carries the payload in the
+// attachments rather than in pb messages.
+void CallEchoByHttpWithoutPb(const butil::EndPoint& ep, brpc::Controller* cntl) {
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_HTTP;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    cntl->http_request().uri() = "/EchoService/Echo";
+    chan.CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
+}
+
+TEST_F(ServerTest, master_services_are_not_served_on_internal_port) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.baidu_master_service = new BaiduMasterServiceImpl;
+    opt.http_master_service = new HttpMasterServiceImpl;
+    ASSERT_EQ(0, StartWithInternalPort(&server, &opt));
+    butil::EndPoint ep = server.listen_address();
+    butil::EndPoint internal_ep(ep.ip, opt.internal_port);
+
+    // The master services answer on the public port.
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_BAIDU_STD;
+    copt.max_retry = 0;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(ep, &copt));
+    TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_NONE);
+
+    brpc::Controller cntl;
+    CallEchoByHttpWithoutPb(ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(EXP_RESPONSE, cntl.response_attachment().to_string());
+
+    // Not on internal_port though, where the request falls back to the normal
+    // resolution and EchoService is rejected as any other ordinary service.
+    cntl.Reset();
+    CallEchoByPb(internal_ep, brpc::PROTOCOL_BAIDU_STD, &cntl);
+    ASSERT_EQ(EPERM, cntl.ErrorCode()) << cntl.ErrorText();
+
+    cntl.Reset();
+    CallEchoByHttpWithoutPb(internal_ep, &cntl);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::HTTP_STATUS_FORBIDDEN, cntl.http_response().status_code())
+        << cntl.ErrorText();
+
+    // The builtin services are still served there, which is what the port is
+    // for. Rejecting the master service outright would have hidden them.
+    cntl.Reset();
+    CallVersionByPb(internal_ep, brpc::PROTOCOL_BAIDU_STD, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    cntl.Reset();
+    CallVersionByHttp(internal_ep, &cntl);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    // The requests above did not go through the master service and their
+    // messages must not have been recycled as if they did, otherwise the pool
+    // of the master service is left with objects of another type in it.
+    for (int i = 0; i < 10; ++i) {
         TestBaiduMasterService(channel, brpc::COMPRESS_TYPE_NONE);
     }
 

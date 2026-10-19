@@ -666,7 +666,7 @@ bool RedisClusterChannel::SendToEndpoint(const std::string& endpoint,
         for (size_t i = 0; i < args.size(); ++i) {
             components.push_back(args[i]);
         }
-        if (!request.AddCommandByComponents(&components[0], components.size())) {
+        if (!request.AddCommandByComponents(components)) {
             cntl->SetFailed(EREQUEST, "Fail to build redis command");
             return false;
         }
@@ -1064,7 +1064,7 @@ bool RedisClusterChannel::BuildRedisRequest(const std::vector<std::string>& args
     for (size_t i = 0; i < args.size(); ++i) {
         components.push_back(args[i]);
     }
-    return request->AddCommandByComponents(&components[0], components.size());
+    return request->AddCommandByComponents(components);
 }
 
 void RedisClusterChannel::AppendIntegerReply(butil::IOBuf* buf, int64_t value) {

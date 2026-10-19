@@ -375,6 +375,16 @@ If [-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connec
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
 | log_idle_connection_close | false | Print log when an idle connection is closed | src/brpc/socket.cpp |
 
+## Limit server connections
+
+Set `ServerOptions.max_connections` to limit simultaneous connections on the Server's public listener. The default value is 0 (unlimited). All protocols and services on that listener share the same limit, including RPC, HTTP, Redis, and builtin services. No dedicated protocol configuration is required.
+
+The acceptor reserves a slot before creating a brpc Socket, so idle connections and connections awaiting TLS handshakes count toward the limit. Connections over the limit are closed immediately without a protocol-specific response, before protocol parsing or TLS authentication. Connection slots are released when sockets are recycled.
+
+The internal listener configured by `ServerOptions.internal_port` is unlimited and does not consume public connection slots, so builtin services on that port remain available when the public listener is full. A business service registered with multiple Server instances on different ports has an independent limit on each public listener, even when those Servers share the same service object. `ServerStatistics.connection_count` includes both public and internal connections and may therefore exceed `max_connections`; `ServerStatistics.rejected_connection_count` reports the cumulative number of connections rejected by the public listener's limit.
+
+Call `Server::SetMaxConnections()` to atomically update the limit on a running Server, including one started without a limit. Raising the limit affects subsequent admission checks. Lowering it does not close existing connections; new connections are accepted again after the active public connection count falls below the limit. Set the limit to 0 to disable it. The setter returns -1 if the Server is not running and leaves `options().max_connections` at its startup value. Each `Start()` uses the limit in the options passed to that call.
+
 ## pid_file
 
 If this field is non-empty, Server creates a file named so at start-up, with pid as the content. Empty by default.
@@ -680,8 +690,18 @@ Builtin services are useful, on the other hand include a lot of internal informa
 - Set internal port. Set ServerOptions.internal_port to a port which can **only be accessible from internal**. You can view builtin services via internal_port, while accesses from the public port (the one passed to Server.Start) should see following error:
 
   ```
-  [a27eda84bcdeef529a76f22872b78305] Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside internal network
+  Not allowed to access builtin and Tabbed services, try ServerOptions.internal_port=... instead if you're in internal network
   ```
+
+  Conversely internal_port serves builtin (and Tabbed) services only, requests for ordinary services sent to it are rejected with:
+
+  ```
+  Only builtin and Tabbed services are accessible on ServerOptions.internal_port=..., send the request to the port passed to Server::Start() instead
+  ```
+
+  This is necessary: builtin requests on internal_port skip the authentication of ServerOptions.auth, and the verdict is remembered per connection since a connection is only authenticated once, on its first request. Were ordinary services served there as well, sending a builtin request first would mark the whole connection as authenticated and every later request on it would bypass authentication entirely.
+
+  Two kinds of services do not take the error path above. ServerOptions.http_master_service and ServerOptions.baidu_master_service answer for every URL and service name, the builtin ones included, so they are ignored on internal_port and the request falls back to the normal lookup, which keeps the builtin services reachable from that port. ServerOptions.redis_service handles the commands inside the parser and has no Controller to carry the EPERM, so internal_port does not speak redis at all and the connection is closed instead.
 
 - http proxies only proxy specified URLs. nginx etc is able to configure how to map different URLs to back-end servers. For example the configure below maps public traffic to /MyAPI to `/ServiceName/MethodName` of `target-server`. If builtin services like /status are accessed from public, nginx rejects the attempts directly.
 ```nginx

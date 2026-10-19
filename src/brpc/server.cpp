@@ -17,6 +17,7 @@
 
 
 #include <iomanip>
+#include <unordered_set>
 #include <arpa/inet.h>                              // inet_aton
 #include <fcntl.h>                                  // O_CREAT
 #include <sys/stat.h>                               // mkdir
@@ -137,6 +138,7 @@ ServerOptions::ServerOptions()
     , server_owns_interceptor(false)
     , num_threads(8)
     , max_concurrency(0)
+    , max_connections(0)
     , session_local_data_factory(nullptr)
     , reserved_session_local_data(0)
     , thread_local_data_factory(nullptr)
@@ -619,7 +621,7 @@ BUTIL_FORCE_INLINE bool is_rdma_handshake_protocol(const char* name) {
 }
 
 Acceptor* Server::BuildAcceptor() {
-    std::set<std::string> whitelist;
+    std::unordered_set<std::string> whitelist;
     for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
          sp; ++sp) {
         std::string protocol(sp.field(), sp.length());
@@ -635,10 +637,13 @@ Acceptor* Server::BuildAcceptor() {
             // The protocol does not support server-side.
             continue;
         }
-        if (has_whitelist &&
+        // Erase whatever the exemptions below say. http, h2 and
+        // rdma_handshake are always served, but they are still
+        // valid names for the whitelist.
+        bool in_whitelist = (whitelist.erase(protocols[i].name) != 0);
+        if (has_whitelist && !in_whitelist &&
             !is_http_protocol(protocols[i].name) &&
-            !is_rdma_handshake_protocol(protocols[i].name) &&
-            !whitelist.erase(protocols[i].name)) {
+            !is_rdma_handshake_protocol(protocols[i].name)) {
             // the protocol is not allowed to serve.
             RPC_VLOG << "Skip protocol=" << protocols[i].name;
             continue;
@@ -659,9 +664,8 @@ Acceptor* Server::BuildAcceptor() {
     if (!whitelist.empty()) {
         std::ostringstream err;
         err << "ServerOptions.enabled_protocols has unknown protocols=`";
-        for (std::set<std::string>::const_iterator it = whitelist.begin();
-             it != whitelist.end(); ++it) {
-            err << *it << ' ';
+        for (const auto& protocol : whitelist) {
+            err << protocol << ' ';
         }
         err << '\'';
         delete acceptor;
@@ -1164,7 +1168,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         // Pass ownership of `sockfd' to `_am'
         if (_am->StartAccept(sockfd, _options.idle_timeout_sec,
                              _default_ssl_ctx,
-                             _options.force_ssl) != 0) {
+                             _options.force_ssl,
+                             _options.max_connections) != 0) {
             LOG(ERROR) << "Fail to start acceptor";
             return -1;
         }
@@ -1206,7 +1211,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         // Pass ownership of `sockfd' to `_internal_am'
         if (_internal_am->StartAccept(sockfd, _options.idle_timeout_sec,
                                       _default_ssl_ctx,
-                                      false) != 0) {
+                                      false,
+                                      0) != 0) {
             LOG(ERROR) << "Fail to start internal_acceptor";
             return -1;
         }
@@ -1788,14 +1794,26 @@ google::protobuf::Service* Server::FindServiceByName(
 
 void Server::GetStat(ServerStatistics* stat) const {
     stat->connection_count = 0;
+    stat->rejected_connection_count = 0;
     if (_am) {
         stat->connection_count += _am->ConnectionCount();
+        stat->rejected_connection_count +=
+            _am->RejectedConnectionCount();
     }
     if (_internal_am) {
         stat->connection_count += _internal_am->ConnectionCount();
     }
     stat->user_service_count = service_count();
     stat->builtin_service_count = builtin_service_count();
+}
+
+int Server::SetMaxConnections(size_t max_connections) {
+    if (!IsRunning() || _am == nullptr) {
+        LOG(WARNING) << "SetMaxConnections requires a running Server";
+        return -1;
+    }
+    _am->SetMaxConnections(max_connections);
+    return 0;
 }
 
 void Server::ListServices(std::vector<google::protobuf::Service*> *services) {

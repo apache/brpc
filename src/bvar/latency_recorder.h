@@ -146,6 +146,14 @@ public:
     // E.g. 0.99 means 99%-ile
     int64_t latency_percentile(double ratio) const;
 
+    // The composite metric contract, see bvar/variable.h
+    // The five metrics below are five families of their own: nothing ties
+    // an average latency to a qps the way a bucket is tied to its count.
+    static const std::vector<MetricFamily>& list_metric_families();
+    bool dump_samples(Dumper* dumper, size_t family_index,
+                      const std::string& name,
+                      butil::StringPiece labels) const;
+
     // Get name of a sub-bvar.
     const std::string& latency_name() const { return _latency_window.name(); }
     const std::string& latency_percentiles_name() const

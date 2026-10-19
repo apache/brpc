@@ -25,7 +25,7 @@ extern "C" int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     if (size < kMinInputLength || size > kMaxInputLength){
-        return 1;
+        return 0;
     }
 
     uint8_t mode = data[0] % 3;

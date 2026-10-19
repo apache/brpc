@@ -20,9 +20,14 @@
 #include <gflags/gflags.h>
 #include "butil/unique_ptr.h"
 #include "butil/reloadable_flags.h"
+#include "butil/memory/scope_guard.h"
+#include "butil/strings/string_number_conversions.h" // butil::Int64ToString
 #include "bvar/latency_recorder.h"
 
 namespace bvar {
+
+DEFINE_uint64(latency_scale_factor, 1, "latency scale factor, used by method status, etc., "
+                                       "latency_us = latency * latency_scale_factor");
 
 #if !WITH_BABYLON_COUNTER
 // Verify how ReducerSampler picks its data source, using the very hosts that
@@ -235,6 +240,18 @@ int LatencyRecorder::expose(const butil::StringPiece& prefix1,
     _latency.set_debug_name(prefix);
     _latency_percentile.set_debug_name(prefix);
 
+    // Exposing a LatencyRecorder is all-or-nothing: the prometheus exporter
+    // folds the sub-bvars below back into one summary and swallows each of
+    // them on the way. A half exposed recorder therefore does not show fewer
+    // metrics, it shows none of them, the incomplete summary is skipped and
+    // the sub-bvars that did make it were already consumed.
+    bool expose_succeeded = false;
+    BUTIL_SCOPE_EXIT {
+        if (!expose_succeeded) {
+            hide();
+        }
+    };
+
     if (_latency_window.expose_as(prefix, "latency") != 0) {
         return -1;
     }
@@ -278,6 +295,7 @@ int LatencyRecorder::expose(const butil::StringPiece& prefix1,
                  (int)FLAGS_bvar_latency_p3);
         CHECK_EQ(0, _latency_percentiles.set_vector_names(namebuf));
     }
+    expose_succeeded = true;
     return 0;
 }
 
@@ -301,14 +319,84 @@ void LatencyRecorder::hide() {
     _latency_percentiles.hide();
 }
 
-DEFINE_uint64(latency_scale_factor, 1, "latency scale factor, used by method status, etc., latency_us = latency * latency_scale_factor");
-
 LatencyRecorder& LatencyRecorder::operator<<(int64_t latency) {
     latency = latency / FLAGS_latency_scale_factor;
     _latency << latency;
     _max_latency << latency;
     _latency_percentile << latency;
     return *this;
+}
+
+const std::vector<MetricFamily>& LatencyRecorder::list_metric_families() {
+    // Deliberately leaked, see Histogram::list_metric_families() for why.
+    static auto families = new std::vector<MetricFamily>{
+        {"_latency", "gauge", {"quantile"}},
+        {"_avg_latency", "gauge", {}},
+        {"_max_latency", "gauge", {}},
+        {"_qps", "gauge", {}},
+        {"_count", "counter", {}},
+    };
+    return *families;
+}
+
+// `name` + the labels in braces, omitting the braces when there are none, plus
+// a `quantile` label of its own when `quantile` is positive.
+static bool dump_labeled(Dumper* dumper, const std::string& name,
+                         butil::StringPiece labels,
+                         double quantile, int64_t value) {
+    std::string key(name);
+    if (!labels.empty() || quantile > 0) {
+        key.push_back('{');
+        key.append(labels.data(), labels.size());
+        if (quantile > 0) {
+            if (!labels.empty()) {
+                key.push_back(',');
+            }
+            key.append("quantile=\"");
+            key.append(detail::prometheus_double_to_string(quantile));
+            key.push_back('"');
+        }
+        key.push_back('}');
+    }
+    return dumper->dump_mvar(key, butil::Int64ToString(value));
+}
+
+bool LatencyRecorder::dump_samples(Dumper* dumper, size_t family_index,
+                                   const std::string& name,
+                                   butil::StringPiece labels) const {
+    switch (family_index) {
+    case 0: {
+        // p1/p2/p3 are configurable, 0.999 and 0.9999 are not. These are the
+        // very ratios the server side summary writes, see
+        // PrometheusMetricsDumper::DumpLatencyRecorderSuffix().
+        double ratios[] = {
+            FLAGS_bvar_latency_p1 / 100.0,
+            FLAGS_bvar_latency_p2 / 100.0,
+            FLAGS_bvar_latency_p3 / 100.0,
+            0.999,
+            0.9999,
+        };
+        for (double ratio : ratios) {
+            if (!dump_labeled(dumper, name, labels, ratio,
+                              latency_percentile(ratio))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+    case 1:
+        return dump_labeled(dumper, name, labels, 0, latency());
+    case 2:
+        return dump_labeled(dumper, name, labels, 0, max_latency());
+    case 3:
+        return dump_labeled(dumper, name, labels, 0, qps());
+    case 4:
+        return dump_labeled(dumper, name, labels, 0, count());
+    default:
+        LOG(ERROR) << "Unexpected family_index=" << family_index;
+        return false;
+    }
 }
 
 std::ostream& operator<<(std::ostream& os, const LatencyRecorder& rec) {

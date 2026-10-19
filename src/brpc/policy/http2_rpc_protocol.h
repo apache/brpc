@@ -165,20 +165,8 @@ private:
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
-    H2UnsentRequest(Controller* c)
-        : _nref(1)
-        , _size(0)
-        , _stream_id(0)
-        , _cntl(c) {
-#ifndef NDEBUG
-        get_h2_bvars()->h2_unsent_request_count << 1;
-#endif
-    }
-    ~H2UnsentRequest() {
-#ifndef NDEBUG
-        get_h2_bvars()->h2_unsent_request_count << -1;
-#endif
-    }
+    H2UnsentRequest(Controller* c);
+    ~H2UnsentRequest();
     H2UnsentRequest(const H2UnsentRequest&);
     void operator=(const H2UnsentRequest&);
     void Destroy();
@@ -234,7 +222,9 @@ public:
 
     // Decode headers in HPACK from *it and set into this->header(). The input
     // does not need to complete.
-    // Returns 0 on success, -1 otherwise.
+    // Returns 0 on success, -1 on a connection-level error. A message that is
+    // merely malformed or unacceptable does not fail here, it sets
+    // `_rejected_error` instead, see the comment on that field.
     int ConsumeHeaders(butil::IOBufBytesIterator& it);
     H2ParseResult OnEndStream();
 
@@ -281,6 +271,19 @@ friend class H2Context;
     // (name + value + 32 per field, RFC 7540 section 10.5.1), checked
     // against the local max_header_list_size in ConsumeHeaders().
     uint64_t _decoded_header_list_size;
+    // Set when this message must be refused although the connection itself is
+    // still healthy: it is malformed (invalid or unknown pseudo-header, RFC
+    // 9113 section 8.1.1 mandates a stream error of type PROTOCOL_ERROR) or it
+    // violates a local limit (too many headers, too many query parameters in
+    // :path). Only the stream is reset so that the other streams keep working,
+    // but the error cannot be raised where it is detected: HPACK keeps a
+    // dynamic table per connection, so leaving the rest of the block undecoded
+    // would desynchronize it from the encoding table of the peer and corrupt
+    // every header block that follows. RFC 9113 section 10.5.1: "The field
+    // block MUST be processed to ensure a consistent connection state, unless
+    // the connection is closed." Hence the rejection is remembered here and
+    // turned into a RST_STREAM once END_HEADERS is reached.
+    H2Error _rejected_error;
     butil::IOBuf _remaining_header_fragment;
     // Request body which cannot be sent yet due to remote flow control.
     // Accessed under H2Context::_stream_mutex.

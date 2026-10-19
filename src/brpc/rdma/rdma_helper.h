@@ -77,6 +77,9 @@ uint8_t GetRdmaPortNum();
 // Get max_sge supported by the device
 int GetRdmaMaxSge();
 
+// Get the vendor ID of the device
+uint32_t GetRdmaVendorId();
+
 // Get suggested comp_vector for a new CQ
 int GetCompVector();
 

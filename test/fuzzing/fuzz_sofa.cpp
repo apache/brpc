@@ -27,7 +27,7 @@ extern "C" int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     if (size < kMinInputLength || size > kMaxInputLength){
-        return 1;
+        return 0;
     }
 
     std::string input(reinterpret_cast<const char*>(data), size);

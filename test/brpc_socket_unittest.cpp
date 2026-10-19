@@ -29,7 +29,10 @@
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
 #include "butil/debug/leak_annotations.h"
+#include "butil/memory/scope_guard.h"
+#include "butil/files/scoped_temp_dir.h"
 #include <butil/fd_guard.h>
+#include "bthread/countdown_event.h"
 #include "bthread/unstable.h"
 #include "bthread/task_control.h"
 #include "brpc/socket.h"
@@ -117,6 +120,35 @@ class CheckRecycle : public brpc::SocketUser {
         delete this;
     }
 };
+
+// Acceptor::Join() returns as soon as Acceptor::BeforeRecycle() cleared
+// _listened_fd, which Socket::BeforeRecycled() calls several statements before
+// it closes the fd, so the fd may still be open when Join() returns.
+void WaitForClosedFd(int fd) {
+    for (int i = 0; i < 100 && fcntl(fd, F_GETFD) != -1; ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_EQ(-1, fcntl(fd, F_GETFD));
+    ASSERT_EQ(EBADF, errno);
+}
+
+// Never hardcode a port in tests: it may be taken by another process or by
+// another test in this binary, making the test fail for unrelated reasons.
+// Listen on port 0 and ask the kernel which port it picked instead.
+void ListenOnFreePort(butil::EndPoint* point, butil::fd_guard* listening_fd) {
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", point));
+    listening_fd->reset(tcp_listen(*point));
+    ASSERT_GT(*listening_fd, 0) << berror();
+    ASSERT_EQ(0, butil::get_local_side(*listening_fd, point));
+}
+
+// Returns an EndPoint that nobody is listening on, for tests expecting
+// ECONNREFUSED or starting to listen later on. The port is allocated by the
+// kernel and released before returning.
+void PickUnusedEndPoint(butil::EndPoint* point) {
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(point, &listening_fd));
+}
 
 TEST_F(SocketTest, not_recycle_until_zero_nref) {
     std::cout << "sizeof(Socket)=" << sizeof(brpc::Socket) << std::endl;
@@ -342,16 +374,11 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
           EchoProcessHuluRequest, nullptr, nullptr, "dummy_hulu" }
     };
 
-    int listening_fd = -1;
-    butil::EndPoint point(butil::IP_ANY, 7878);
-    for (int i = 0; i < 100; ++i) {
-        point.port += i;
-        listening_fd = tcp_listen(point);
-        if (listening_fd >= 0) {
-            break;
-        }
-    }
-    ASSERT_GT(listening_fd, 0) << berror();
+    butil::EndPoint point;
+    butil::fd_guard listening_fd_guard;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd_guard));
+    // `StartAccept' takes over the fd below.
+    const int listening_fd = listening_fd_guard.release();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
@@ -430,8 +457,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     messenger->StopAccept(0);
     messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
-    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
-    ASSERT_EQ(EBADF, errno);
+    ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(listening_fd));
 
     // The socket object is likely to be reused,
     // and the local side should be initialized.
@@ -480,7 +506,8 @@ void* FailedWriter(void* void_arg) {
 
 TEST_F(SocketTest, fail_to_connect) {
     const size_t REP = 10;
-    butil::EndPoint point(butil::IP_ANY, 7563/*not listened*/);
+    butil::EndPoint point/*not listened*/;
+    ASSERT_NO_FATAL_FAILURE(PickUnusedEndPoint(&point));
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
     options.remote_side = point;
@@ -522,7 +549,8 @@ TEST_F(SocketTest, fail_to_connect) {
 
 TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
     brpc::SocketId id = 8888;
-    butil::EndPoint point(butil::IP_ANY, 7584/*not listened*/);
+    butil::EndPoint point/*not listened*/;
+    ASSERT_NO_FATAL_FAILURE(PickUnusedEndPoint(&point));
     brpc::SocketOptions options;
     options.remote_side = point;
     options.user = new CheckRecycle;
@@ -609,7 +637,8 @@ TEST_F(SocketTest, app_level_health_check) {
     GFLAGS_NAMESPACE::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
     GFLAGS_NAMESPACE::SetCommandLineOption("health_check_interval", "1");
 
-    butil::EndPoint point(butil::IP_ANY, 7777);
+    butil::EndPoint point/*not listened yet*/;
+    ASSERT_NO_FATAL_FAILURE(PickUnusedEndPoint(&point));
     brpc::ChannelOptions options;
     options.protocol = "http";
     options.max_retry = 0;
@@ -627,6 +656,7 @@ TEST_F(SocketTest, app_level_health_check) {
     // sending-rpc state. Because the remote is not down, so hc rpc would keep
     // sending.
     int listening_fd = tcp_listen(point);
+    ASSERT_GT(listening_fd, 0) << berror();
     bthread_usleep(2000000);
 
     // 2s to make sure HealthCheckTask find socket is failed and correct impl
@@ -672,12 +702,13 @@ TEST_F(SocketTest, health_check) {
     ANNOTATE_LEAKING_OBJECT_PTR(messenger);
 
     brpc::SocketId id = 8888;
-    butil::EndPoint point(butil::IP_ANY, 7878);
-    const int kCheckInteval = 1;
+    butil::EndPoint point;
+    ASSERT_NO_FATAL_FAILURE(PickUnusedEndPoint(&point));
+    const int kCheckInterval = 1;
     brpc::SocketOptions options;
     options.remote_side = point;
     options.user = new CheckRecycle;
-    options.health_check_interval_s = kCheckInteval/*s*/;
+    options.health_check_interval_s = kCheckInterval/*s*/;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
     brpc::Socket* s = nullptr;
     {
@@ -765,7 +796,7 @@ TEST_F(SocketTest, health_check) {
     while (brpc::Socket::Status(id, &nref) != 0) {
         bthread_usleep(1000);
         ASSERT_LT(butil::cpuwide_time_us(),
-                  start_time + kCheckInteval * 1000000L + 100000L/*100ms*/);
+                  start_time + kCheckInterval * 1000000L + 100000L/*100ms*/);
     }
     //ASSERT_EQ(2, nref);
     ASSERT_TRUE(global_sock);
@@ -801,8 +832,7 @@ TEST_F(SocketTest, health_check) {
     messenger->StopAccept(0);
     messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
-    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
-    ASSERT_EQ(EBADF, errno);
+    ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(listening_fd));
 
     ASSERT_EQ(0, brpc::Socket::SetFailed(id));
     // StartHealthCheck is possibly still addressing the Socket.
@@ -817,6 +847,273 @@ TEST_F(SocketTest, health_check) {
     brpc::SocketUniquePtr ptr;
     ASSERT_EQ(-1, brpc::Socket::Address(id, &ptr));
 }
+
+static void DoNothingOnEdgeTriggeredEvents(brpc::Socket*) {}
+
+// Regression test for https://github.com/apache/brpc/issues/3492
+// `CheckHealth` closes the fd that it probed with, thus a Socket revived by
+// the health check is addressable again while its fd is still -1, until the
+// next write connects it on demand. An input event of the old fd may have
+// been fetched by the event dispatcher before `WaitAndReset` closed the fd,
+// and get dispatched within that window. `OnInputEvent` must drop such a
+// stale event instead of crashing.
+TEST_F(SocketTest, input_event_on_revived_socket) {
+    const int kCheckInterval = 1;
+    butil::EndPoint point;
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd));
+
+    brpc::SocketId id = 8888;
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    options.health_check_interval_s = kCheckInterval;
+    // `OnInputEvent` returns early without an edge-triggered handler.
+    options.on_edge_triggered_events = DoNothingOnEdgeTriggeredEvents;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+
+    brpc::Socket* s = nullptr;
+    {
+        // `WaitAndReset' inside the health check waits until nref drops back
+        // to 2, thus no SocketUniquePtr may be held across `SetFailed'.
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        s = ptr.get();
+    }
+    ASSERT_EQ(-1, s->fd());
+
+    // Connect on demand so that the Socket owns a real fd watched by the
+    // event dispatcher, just like a Socket serving normal traffic.
+    butil::IOBuf src;
+    src.append("hello");
+    ASSERT_EQ(0, s->Write(&src));
+    int64_t start_time = butil::cpuwide_time_us();
+    while (s->fd() < 0) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L);
+    }
+
+    // `WaitAndReset` closes the fd and the health check revives the Socket
+    // right after a successful probe, leaving it addressable but fd-less.
+    ASSERT_EQ(0, s->SetFailed());
+    start_time = butil::cpuwide_time_us();
+    while (brpc::Socket::Status(id) != 0) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(),
+                  start_time + kCheckInterval * 1000000L + 1000000L);
+    }
+    ASSERT_EQ(-1, s->fd());
+
+    // A stale input event of the closed fd must be dropped silently.
+#if defined(OS_LINUX)
+    const uint32_t events = EPOLLIN;
+#elif defined(OS_MACOSX)
+    const uint32_t events = EVFILT_READ;
+#endif
+#if !BRPC_WITH_GLOG
+    // LOG(FATAL) does not abort unless -crash_on_fatal_log is on, catch the
+    // logs to tell a silently dropped event from a failed CHECK.
+    logging::StringSink log_str;
+    logging::LogSink* old_sink = logging::SetLogSink(&log_str);
+#endif
+    const int rc = brpc::Socket::OnInputEvent(reinterpret_cast<void*>(id),
+                                              events, BTHREAD_ATTR_NORMAL);
+#if !BRPC_WITH_GLOG
+    ASSERT_EQ(&log_str, logging::SetLogSink(old_sink));
+    ASSERT_EQ(std::string::npos, log_str.find("Check failed")) << log_str;
+#endif
+    ASSERT_EQ(-1, rc);
+    // The Socket is left intact.
+    ASSERT_EQ(0, brpc::Socket::Status(id));
+
+    s->ReleaseHCRelatedReference();
+    // Must close the listening fd before SetFailed, otherwise the health
+    // check still has chance to get reconnected and revive the id.
+    listening_fd.reset(-1);
+    ASSERT_EQ(0, brpc::Socket::SetFailed(id));
+}
+
+TEST_F(SocketTest, client_binding_endpoint_types) {
+    const char* inputs[] = {"127.0.0.1:12345", "[::1]:12345",
+                            "unix:client-binding-test.sock"};
+    const char* normalized[] = {"127.0.0.1:0", "[::1]:0",
+                                "unix:client-binding-test.sock"};
+    for (size_t i = 0; i < 3; ++i) {
+        SCOPED_TRACE(inputs[i]);
+        brpc::SocketOptions options;
+        // No connection is made: verify propagation without requiring a real
+        // network device or platform support for SO_BINDTODEVICE.
+        options.device_name = "test-device";
+        ASSERT_EQ(0, butil::str2endpoint(inputs[i], &options.local_side));
+        butil::EndPoint expected;
+        ASSERT_EQ(0, butil::str2endpoint(normalized[i], &expected));
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+        BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        ASSERT_EQ(expected, ptr->_bind_local_side);
+        ASSERT_EQ(options.device_name, ptr->_device_name);
+        // Normalization must not mutate a shared extended endpoint.
+        ASSERT_STREQ(inputs[i], butil::endpoint2str(options.local_side).c_str());
+
+        brpc::SocketUniquePtr short_socket;
+        ASSERT_EQ(0, ptr->GetShortSocket(&short_socket));
+        BRPC_SCOPE_EXIT { short_socket->SetFailed(); };
+        ASSERT_EQ(expected, short_socket->_bind_local_side);
+        ASSERT_EQ(options.device_name, short_socket->_device_name);
+        brpc::SocketUniquePtr pooled_socket;
+        ASSERT_EQ(0, ptr->GetPooledSocket(&pooled_socket));
+        BRPC_SCOPE_EXIT { pooled_socket->SetFailed(); };
+        ASSERT_EQ(expected, pooled_socket->_bind_local_side);
+        ASSERT_EQ(options.device_name, pooled_socket->_device_name);
+
+        ASSERT_EQ(0, ptr->SetFailed());
+        ptr->_is_hc_related_ref_held = true;
+        BRPC_SCOPE_EXIT { ptr->_is_hc_related_ref_held = false; };
+        ASSERT_EQ(0, ptr->WaitAndReset(1));
+        ASSERT_EQ(butil::EndPoint(), ptr->local_side());
+        ASSERT_EQ(expected, ptr->_bind_local_side);
+        ASSERT_EQ(options.device_name, ptr->_device_name);
+    }
+}
+
+TEST_F(SocketTest, client_binding_ipv6_connect) {
+    butil::EndPoint point;
+    ASSERT_EQ(0, butil::str2endpoint("[::1]:0", &point));
+    butil::fd_guard listening_fd(butil::tcp_listen(point));
+    ASSERT_GE(listening_fd, 0) << berror();
+    ASSERT_EQ(0, butil::get_local_side(listening_fd, &point));
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    // This port is already occupied by the listener. Binding must use port 0.
+    options.local_side = point;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+    for (int i = 0; i < 2; ++i) {
+        const timespec deadline = butil::milliseconds_from_now(1000);
+        butil::fd_guard fd(ptr->Connect(&deadline, nullptr, nullptr));
+        ASSERT_GE(fd, 0) << berror();
+        butil::EndPoint actual;
+        ASSERT_EQ(0, butil::get_local_side(fd, &actual));
+        sockaddr_storage addr{};
+        ASSERT_EQ(0, butil::endpoint2sockaddr(actual, &addr));
+        ASSERT_EQ(AF_INET6, addr.ss_family);
+        const sockaddr_in6* in6 = reinterpret_cast<const sockaddr_in6*>(&addr);
+        ASSERT_TRUE(IN6_IS_ADDR_LOOPBACK(&in6->sin6_addr));
+        ASSERT_NE(0, in6->sin6_port);
+    }
+}
+
+TEST_F(SocketTest, client_binding_uds_connect) {
+    butil::ScopedTempDir dir;
+    ASSERT_TRUE(dir.CreateUniqueTempDir());
+    // Deliberately use different path lengths for bind() and connect().
+    const std::string server = "unix:" + dir.path().Append("server-long.sock").value();
+    const std::string client = "unix:" + dir.path().Append("c.sock").value();
+    brpc::SocketOptions options;
+    ASSERT_EQ(0, butil::str2endpoint(server.c_str(), &options.remote_side));
+    ASSERT_EQ(0, butil::str2endpoint(client.c_str(), &options.local_side));
+    butil::fd_guard listening_fd(butil::tcp_listen(options.remote_side));
+    ASSERT_GE(listening_fd, 0) << berror();
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+    const timespec deadline = butil::milliseconds_from_now(1000);
+    butil::fd_guard fd(ptr->Connect(&deadline, nullptr, nullptr));
+    ASSERT_GE(fd, 0) << berror();
+    butil::EndPoint actual;
+    ASSERT_EQ(0, butil::get_local_side(fd, &actual));
+    ASSERT_EQ(AF_UNIX, butil::get_endpoint_type(actual));
+    ASSERT_STREQ(client.c_str(), butil::endpoint2str(actual).c_str());
+}
+
+#if defined(OS_LINUX)
+TEST_F(SocketTest, keep_client_bind_after_revive) {
+    int kCheckInterval = 1;
+    butil::EndPoint point;
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd));
+
+    butil::EndPoint bind_point;
+    // A distinct loopback source address (127.0.0.2) is used so that
+    // getsockname() can tell whether the explicit bind() actually happened: the
+    // kernel would pick 127.0.0.1 as the source for a 127.0.0.1 destination when
+    // no bind() is performed. This relies on the whole 127/8 being loopback,
+    // which is Linux specific.
+    ASSERT_EQ(0, str2endpoint("127.0.0.2:0", &bind_point));
+
+    brpc::SocketId id = 8888;
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    // The explicitly configured client source address (ChannelOptions::client_host).
+    options.local_side = bind_point;
+    options.health_check_interval_s = kCheckInterval;
+    options.on_edge_triggered_events = DoNothingOnEdgeTriggeredEvents;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+
+    brpc::Socket* s = nullptr;
+    {
+        // `WaitAndReset' inside the health check waits until nref drops back
+        // to 2, thus no SocketUniquePtr may be held across `SetFailed'.
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        s = ptr.get();
+    }
+    ASSERT_EQ(-1, s->fd());
+
+    // First connection: must bind to the configured source IP.
+    butil::IOBuf src;
+    src.append("hello");
+    ASSERT_EQ(0, s->Write(&src));
+    int64_t start_time = butil::cpuwide_time_us();
+    while (s->fd() < 0) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L);
+    }
+    ASSERT_EQ(bind_point.ip, s->local_side().ip);
+
+    // Fail the Socket and wait for the health check to revive it. This runs
+    // `WaitAndReset` which clears the runtime endpoint, not the binding config.
+    ASSERT_EQ(0, s->SetFailed());
+    start_time = butil::cpuwide_time_us();
+    while (brpc::Socket::Status(id) != 0) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(),
+                  start_time + kCheckInterval * 1000000L + 1000000L);
+    }
+
+    ASSERT_EQ(butil::EndPoint(), s->local_side());
+    ASSERT_EQ(bind_point, s->_bind_local_side);
+
+    // Reconnect on demand and verify the explicit source IP is still bound.
+    butil::EndPoint local_after_revive;
+    {
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+        butil::IOBuf src2;
+        src2.append("world");
+        ASSERT_EQ(0, ptr->Write(&src2));
+        start_time = butil::cpuwide_time_us();
+        while (ptr->fd() < 0) {
+            bthread_usleep(1000);
+            ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L);
+        }
+        local_after_revive = ptr->local_side();
+    }
+    ASSERT_EQ(bind_point.ip, local_after_revive.ip);
+
+    s->ReleaseHCRelatedReference();
+    // Must close the listening fd before SetFailed, otherwise the health
+    // check still has chance to get reconnected and revive the id.
+    listening_fd.reset(-1);
+    ASSERT_EQ(0, brpc::Socket::SetFailed(id));
+}
+#endif  // OS_LINUX
 
 void* Writer(void* void_arg) {
     WriterArg* arg = static_cast<WriterArg*>(void_arg);
@@ -1286,16 +1583,11 @@ TEST_F(SocketTest, keepalive_input_message) {
     // It is intentionally never deleted; mark it so it is not a reported leak.
     brpc::Acceptor* messenger = new brpc::Acceptor;
     ANNOTATE_LEAKING_OBJECT_PTR(messenger);
-    int listening_fd = -1;
-    butil::EndPoint point(butil::IP_ANY, 7878);
-    for (int i = 0; i < 100; ++i) {
-        point.port += i;
-        listening_fd = tcp_listen(point);
-        if (listening_fd >= 0) {
-            break;
-        }
-    }
-    ASSERT_GT(listening_fd, 0) << berror();
+    butil::EndPoint point;
+    butil::fd_guard listening_fd_guard;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd_guard));
+    // `StartAccept' takes over the fd below.
+    const int listening_fd = listening_fd_guard.release();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
 
@@ -1463,8 +1755,7 @@ TEST_F(SocketTest, keepalive_input_message) {
     messenger->StopAccept(0);
     messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
-    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
-    ASSERT_EQ(EBADF, errno);
+    ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(listening_fd));
 }
 
 TEST_F(SocketTest, socket_buffer_options_before_connect) {
@@ -1477,10 +1768,8 @@ TEST_F(SocketTest, socket_buffer_options_before_connect) {
     GetExpectedSocketBufferValues(buffer_size, &expected);
 
     butil::EndPoint point;
-    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &point));
-    butil::fd_guard listening_fd(tcp_listen(point));
-    ASSERT_GT(listening_fd, 0) << berror();
-    ASSERT_EQ(0, butil::get_local_side(listening_fd, &point));
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd));
 
     brpc::SocketOptions options;
     options.remote_side = point;
@@ -1530,15 +1819,20 @@ TEST_F(SocketTest, socket_buffer_options_before_accept) {
     brpc::SocketId id = brpc::INVALID_SOCKET_ID;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
 
-    const int64_t start_time = butil::cpuwide_time_us();
-    while (messenger->ConnectionCount() < 1) {
-        bthread_usleep(1000);
-        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L)
-            << "Too long!";
-    }
-
+    // ConnectionCount includes reserved slots before the accepted sockets
+    // have been inserted into the connection map. Wait for publication, not
+    // just for the connection slot to be acquired.
     std::vector<brpc::SocketId> connections;
-    messenger->ListConnections(&connections);
+    int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    for (;;) {
+        messenger->ListConnections(&connections);
+        if (!connections.empty()) {
+            break;
+        }
+        ASSERT_LT(butil::cpuwide_time_us(), deadline)
+            << "Timed out waiting for the accepted socket to be published";
+        bthread_usleep(1000);
+    }
     ASSERT_EQ(1ul, connections.size());
 
     {
@@ -1570,16 +1864,11 @@ TEST_F(SocketTest, tcp_user_timeout) {
     // It is intentionally never deleted; mark it so it is not a reported leak.
     brpc::Acceptor* messenger = new brpc::Acceptor;
     ANNOTATE_LEAKING_OBJECT_PTR(messenger);
-    int listening_fd = -1;
-    butil::EndPoint point(butil::IP_ANY, 7878);
-    for (int i = 0; i < 100; ++i) {
-        point.port += i;
-        listening_fd = tcp_listen(point);
-        if (listening_fd >= 0) {
-            break;
-        }
-    }
-    ASSERT_GT(listening_fd, 0) << berror();
+    butil::EndPoint point;
+    butil::fd_guard listening_fd_guard;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd_guard));
+    // `StartAccept' takes over the fd below.
+    const int listening_fd = listening_fd_guard.release();
     ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, nullptr, false));
 
@@ -1638,8 +1927,7 @@ TEST_F(SocketTest, tcp_user_timeout) {
     messenger->StopAccept(0);
     messenger->Join();
     ASSERT_EQ(-1, messenger->listened_fd());
-    ASSERT_EQ(-1, fcntl(listening_fd, F_GETFD));
-    ASSERT_EQ(EBADF, errno);
+    ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(listening_fd));
 }
 #endif
 
@@ -1715,6 +2003,7 @@ TEST_F(SocketTest, notify_on_success) {
 struct ShutdownWriterArg {
     size_t times;
     brpc::SocketId socket_id;
+    bthread::CountdownEvent* done;
     butil::atomic<int> total_count;
     butil::atomic<int> success_count;
 };
@@ -1729,6 +2018,7 @@ int HandleSocketShutdownWrite(bthread_id_t id, void* data, int error_code,
         ++arg->success_count;
     }
     CHECK_EQ(0, bthread_id_unlock_and_destroy(id));
+    arg->done->signal();
     return 0;
 }
 
@@ -1790,10 +2080,13 @@ void TestShutdownWrite() {
     pthread_create(&rth, nullptr, reader, &reader_arg);
 
     bthread_t th[3];
+    const size_t expected_count = REP * ARRAY_SIZE(th);
+    bthread::CountdownEvent done(expected_count);
     ShutdownWriterArg args[ARRAY_SIZE(th)];
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         args[i].times = REP;
         args[i].socket_id = id;
+        args[i].done = &done;
         args[i].total_count = 0;
         args[i].success_count = 0;
         bthread_start_background(&th[i], nullptr, ShutdownWriter, &args[i]);
@@ -1802,11 +2095,15 @@ void TestShutdownWrite() {
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         ASSERT_EQ(0, bthread_join(th[i], nullptr));
     }
-    bthread_usleep(50 * 1000);
-
-    ASSERT_TRUE(s->IsWriteShutdown());
-    ASSERT_FALSE(s->Failed());
-    ASSERT_EQ(0, s->SetFailed());
+    const int wait_result = done.timed_wait(butil::seconds_from_now(5));
+    if (wait_result == 0) {
+        EXPECT_TRUE(s->IsWriteShutdown());
+        EXPECT_FALSE(s->Failed());
+        EXPECT_EQ(0, s->SetFailed());
+    } else {
+        s->SetFailed();
+        done.wait();
+    }
     s.release()->Dereference();
     pthread_join(rth, nullptr);
     ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
@@ -1814,11 +2111,12 @@ void TestShutdownWrite() {
 
     size_t total_count = 0;
     size_t success_count = 0;
-    for (auto & arg : args) {
+    for (const auto& arg : args) {
         total_count += arg.total_count;
         success_count += arg.success_count;
     }
-    ASSERT_EQ(REP * ARRAY_SIZE(th), total_count);
+    ASSERT_EQ(0, wait_result);
+    ASSERT_EQ(expected_count, total_count);
     EXPECT_EQ((size_t)1, reader_arg.nread);
     EXPECT_EQ((size_t)1, success_count);
 }
@@ -1826,6 +2124,9 @@ void TestShutdownWrite() {
 TEST_F(SocketTest, shutdown_write) {
     for (int i = 0; i < 100; ++i) {
         TestShutdownWrite();
+        if (::testing::Test::HasFailure()) {
+            return;
+        }
     }
 }
 

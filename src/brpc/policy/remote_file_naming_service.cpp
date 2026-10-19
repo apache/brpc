@@ -67,7 +67,12 @@ int RemoteFileNamingService::GetServers(const char *service_name_cstr,
         butil::StringPiece proto;
         if (pos != butil::StringPiece::npos) {
             proto = tmpname.substr(0, pos);
-            for (pos += 3; tmpname[pos] == '/'; ++pos) {}
+            for (pos += 3; pos < tmpname.size() && tmpname[pos] == '/'; ++pos) {}
+            if (pos == tmpname.size()) {
+                LOG(ERROR) << "No server address in service_name="
+                           << service_name_cstr;
+                return -1;
+            }
             tmpname.remove_prefix(pos);
         } else {
             proto = "http";

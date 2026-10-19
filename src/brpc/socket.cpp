@@ -465,10 +465,9 @@ Socket::Socket(Forbidden f)
     , _conn(nullptr)
     , _preferred_index(-1)
     , _hc_count(0)
-    , _last_msg_size(0)
-    , _avg_msg_size(0)
     , _last_readtime_us(0)
     , _parsing_context(nullptr)
+    , _parsing_stream_type(InputMessengerProcessor::STREAM_NONE)
     , _correlation_id(0)
     , _health_check_interval_s(-1)
     , _is_hc_related_ref_held(false)
@@ -499,6 +498,7 @@ Socket::Socket(Forbidden f)
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, nullptr);
     _epollout_butex = bthread::butex_create_checked<butil::atomic<int> >();
+    _fd_input_processor.Init(this, InputMessengerProcessor::STREAM_TCP_FD);
 }
 
 Socket::~Socket() {
@@ -572,8 +572,7 @@ void Socket::ReleaseAllFailedWriteRequests(Socket::WriteRequest* req) {
 
 int Socket::ResetFileDescriptor(int fd) {
     // Reset message sizes when fd is changed.
-    _last_msg_size = 0;
-    _avg_msg_size = 0;
+    _fd_input_processor.ResetMsgSizeStats();
     // MUST store `_fd' before adding itself into epoll device to avoid
     // race conditions with the callback function inside epoll
     static butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT fd_version(0);
@@ -743,6 +742,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _tos = 0;
     _remote_side = options.remote_side;
     _local_side = options.local_side;
+    _bind_local_side = options.local_side;
     _device_name = options.device_name;
     _on_edge_triggered_events = options.on_edge_triggered_events;
     _need_on_edge_trigger = options.need_on_edge_trigger;
@@ -751,7 +751,9 @@ int Socket::OnCreated(const SocketOptions& options) {
     _app_connect = _transport->Connect();
     _preferred_index = -1;
     _hc_count = 0;
-    CHECK(_read_buf.empty());
+    CHECK(_fd_input_processor.read_buf().empty());
+    _parsing_stream_type.store(InputMessengerProcessor::STREAM_NONE,
+                               butil::memory_order_relaxed);
     const int64_t cpuwide_now = butil::cpuwide_time_us();
     _last_readtime_us.store(cpuwide_now, butil::memory_order_relaxed);
     reset_parsing_context(options.initial_parsing_context);
@@ -793,8 +795,28 @@ int Socket::OnCreated(const SocketOptions& options) {
     _unwritten_bytes.store(0, butil::memory_order_relaxed);
     _keepalive_options = options.keepalive_options;
     _tcp_user_timeout_ms = options.tcp_user_timeout_ms;
+    _http_request_method = HTTP_METHOD_GET;
     CHECK(nullptr == _write_head.load(butil::memory_order_relaxed));
     _is_write_shutdown = false;
+    // EndPoint::port is a type tag for IPv6/UDS, not a network port.
+    // Normalize only IP ports and leave Unix-domain addresses intact.
+    if (!butil::is_endpoint_extended(_bind_local_side)) {
+        _bind_local_side.port = 0;
+    } else if (butil::get_endpoint_type(_bind_local_side) == AF_INET6) {
+        sockaddr_storage addr{};
+        socklen_t addr_size = 0;
+        if (butil::endpoint2sockaddr(_bind_local_side, &addr, &addr_size) != 0) {
+            SetFailed(EINVAL, "Fail to get client binding sockaddr from %s",
+                      butil::endpoint2str(_bind_local_side).c_str());
+            return -1;
+        }
+        reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = 0;
+        if (butil::sockaddr2endpoint(&addr, addr_size, &_bind_local_side) != 0) {
+            SetFailed(ENOMEM, "Fail to create client binding endpoint from %s",
+                      butil::endpoint2str(_bind_local_side).c_str());
+            return -1;
+        }
+    }
     int fd = options.fd;
     if (!ValidFileDescriptor(fd) && options.connect_on_create) {
         // Connect on create.
@@ -861,7 +883,7 @@ void Socket::BeforeRecycled() {
     }
     _transport->Release();
     reset_parsing_context(nullptr);
-    _read_buf.clear();
+    _fd_input_processor.read_buf().clear();
 
     _auth_flag_error.store(0, butil::memory_order_relaxed);
     bthread_id_error(_auth_id, 0);
@@ -1013,6 +1035,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     }
     _transport->Reset(expected_nref);
 
+    // Clear the runtime endpoint, keeping the configured binding intact.
     _local_side = butil::EndPoint();
     if (_ssl_session) {
         SSL_free(_ssl_session);
@@ -1023,9 +1046,11 @@ int Socket::WaitAndReset(int32_t expected_nref) {
     // parsing_context is very likely to be associated with the fd,
     // removing it is a safer choice and required by http2.
     reset_parsing_context(nullptr);
-    // Must clear _read_buf otehrwise even if the connections is recovered,
-    // the kept old data is likely to make parsing fail.
-    _read_buf.clear();
+    _parsing_stream_type.store(InputMessengerProcessor::STREAM_NONE,
+                               butil::memory_order_relaxed);
+    // Must clear the read buffer otehrwise even if the connections is
+    // recovered, the kept old data is likely to make parsing fail.
+    _fd_input_processor.read_buf().clear();
     _ninprocess.store(1, butil::memory_order_relaxed);
     _auth_flag_error.store(0, butil::memory_order_relaxed);
     bthread_id_error(_auth_id, 0);
@@ -1261,8 +1286,8 @@ int Socket::Connect(const timespec* abstime,
         _ssl_state = SSL_OFF;
     }
     struct sockaddr_storage serv_addr;
-    socklen_t addr_size = 0;
-    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &addr_size) != 0) {
+    socklen_t serv_addr_size = 0;
+    if (butil::endpoint2sockaddr(remote_side(), &serv_addr, &serv_addr_size) != 0) {
         PLOG(ERROR) << "Fail to get sockaddr";
         return -1;
     }
@@ -1290,19 +1315,20 @@ int Socket::Connect(const timespec* abstime,
         return -1;
 #endif
     }
-    if (local_side().ip != butil::IP_ANY) {
-        struct sockaddr_storage cli_addr;
-        if (butil::endpoint2sockaddr(local_side(), &cli_addr, &addr_size) != 0) {
+    // Use the configured endpoint, not the runtime endpoint from getsockname().
+    if (butil::is_endpoint_extended(_bind_local_side) || _bind_local_side.ip != butil::IP_ANY) {
+        struct sockaddr_storage cli_addr{};
+        socklen_t cli_addr_size = 0;
+        if (butil::endpoint2sockaddr(_bind_local_side, &cli_addr, &cli_addr_size) != 0) {
             PLOG(ERROR) << "Fail to get client sockaddr";
             return -1;
         }
-        if (::bind(sockfd, (struct sockaddr*)&cli_addr, addr_size) != 0) {
-            PLOG(ERROR) << "Fail to bind client socket, errno=" << strerror(errno);
+        if (::bind(sockfd, (struct sockaddr*)&cli_addr, cli_addr_size) != 0) {
+            PLOG(ERROR) << "Fail to bind client socket";
             return -1;
         }
     }
-    const int rc = ::connect(
-        sockfd, (struct sockaddr*)&serv_addr, addr_size);
+    const int rc = ::connect(sockfd, (struct sockaddr*)&serv_addr, serv_addr_size);
     if (rc != 0 && errno != EINPROGRESS) {
         PLOG(WARNING) << "Fail to connect to " << remote_side();
         return -1;
@@ -2080,7 +2106,7 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
     }
 }
 
-ssize_t Socket::DoRead(size_t size_hint) {
+ssize_t Socket::DoRead(butil::IOPortal* read_buf, size_t size_hint) {
     if (ssl_state() == SSL_UNKNOWN) {
         int error_code = 0;
         _ssl_state = DetectSSLState(fd(), &error_code);
@@ -2114,7 +2140,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
             errno = ESSL;
             return -1;
         }
-        return _read_buf.append_from_file_descriptor(fd(), size_hint);
+        return read_buf->append_from_file_descriptor(fd(), size_hint);
     }
 
     CHECK_EQ(SSL_CONNECTED, ssl_state());
@@ -2122,7 +2148,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
     ssize_t nr = 0;
     {
         BAIDU_SCOPED_LOCK(_ssl_session_mutex);
-        nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
+        nr = read_buf->append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
     }
     switch (ssl_error) {
     case SSL_ERROR_NONE:  // `nr' > 0
@@ -2236,11 +2262,13 @@ int Socket::OnInputEvent(void* user_data, uint32_t events,
         return 0;
     }
     if (s->fd() < 0) {
-#if defined(OS_LINUX)
-        CHECK(!(events & EPOLLIN)) << "epoll_events=" << events;
-#elif defined(OS_MACOSX)
-        CHECK((short)events != EVFILT_READ) << "kqueue filter=" << events;
-#endif
+        // The event is stale: the fd that it was reported on has been closed
+        // by `WaitAndReset` after the event dispatcher fetched the event but
+        // before the event was dispatched to here. `Address` succeeds again
+        // because a successful health check revived the Socket in between.
+        // There's nothing to read from a closed fd, just drop the event. The
+        // new fd (if any) is watched separately and reports its own events.
+        RPC_VLOG << "Ignore stale event on " << *s << ", events=" << events;
         return -1;
     }
 
@@ -2382,11 +2410,12 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         os << " (" << messenger->NameOfProtocol(preferred_index) << ')';
     }
     const int64_t cpuwide_now = butil::cpuwide_time_us();
+    InputMessengerProcessor& input_processor = ptr->fd_input_processor();
     os << "\nhc_count=" << ptr->_hc_count
-       << "\navg_input_msg_size=" << ptr->_avg_msg_size
+       << "\navg_input_msg_size=" << input_processor.avg_msg_size()
         // NOTE: We're assuming that butil::IOBuf.size() is thread-safe, it is now
         // however it's not guaranteed.
-       << "\nread_buf=" << ptr->_read_buf.size()
+       << "\nread_buf=" << input_processor.read_buf().size()
        << "\nlast_read_to_now=" << cpuwide_now - ptr->_last_readtime_us << "us"
        << "\nlast_write_to_now=" << cpuwide_now - ptr->_last_writetime_us << "us"
        << "\novercrowded=" << ptr->_overcrowded;
@@ -2790,7 +2819,10 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
     if (socket_pool == nullptr) {
         SocketOptions opt;
         opt.remote_side = remote_side();
-        opt.local_side = butil::EndPoint(local_side().ip, 0);
+        // Propagate the configured client binding (source IP + device) to
+        // pooled sub-sockets so that they keep the same binding policy.
+        opt.local_side = _bind_local_side;
+        opt.device_name = _device_name;
         opt.user = user();
         opt.on_edge_triggered_events = _on_edge_triggered_events;
         opt.need_on_edge_trigger = _need_on_edge_trigger;
@@ -2893,7 +2925,10 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     SocketId id;
     SocketOptions opt;
     opt.remote_side = remote_side();
-    opt.local_side = butil::EndPoint(local_side().ip, 0);
+    // Propagate the configured client binding (source IP + device) to short
+    // sub-sockets so that they keep the same binding policy.
+    opt.local_side = _bind_local_side;
+    opt.device_name = _device_name;
     opt.user = user();
     opt.on_edge_triggered_events = _on_edge_triggered_events;
     opt.need_on_edge_trigger = _need_on_edge_trigger;

@@ -117,11 +117,11 @@ void FlagsService::set_value_page(Controller* cntl,
     const bool is_string = (info.type == "string");
     os << "<!DOCTYPE html><html><body>"
         "<form action='' method='get'>"
-        " Set `" << name << "' from ";
+        " Set `" << WebEscape(name) << "' from ";
     if (is_string) {
         os << '"';
     }
-    os << info.current_value;
+    os << WebEscape(info.current_value);
     if (is_string) {
         os << '"';
     }
@@ -177,9 +177,12 @@ void FlagsService::default_method(::google::protobuf::RpcController* cntl_base,
             return;
         }
         butil::IOBufBuilder os;
-        os << "Set `" << constraint << "' to " << *value_str;
         if (use_html) {
+            os << "Set `" << WebEscape(constraint) << "' to "
+               << WebEscape(*value_str);
             os << "<br><a href='/flags'>[back to flags]</a>";
+        } else {
+            os << "Set `" << constraint << "' to " << *value_str;
         }
         os.move_to(cntl->response_attachment());
         return;

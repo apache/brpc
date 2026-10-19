@@ -375,6 +375,56 @@ write_latency << the_latency_of_write;
 
   ```
 
+# bvar::Histogram
+
+Counts the recorded values into a fixed set of buckets, namely the prometheus histogram.
+
+```c++
+// Explicit bucket bounds of your own, plus a +Inf bucket.
+bvar::Histogram g_write_latency("table2_my_table_write_latency",
+                                {10, 20, 50, 100, 500, 1000, 5000});
+// In your write function
+g_write_latency << the_latency_of_write;
+```
+
+A Histogram has no default constructor either: the bucket bounds must be given at construction (initializer_list / vector):
+
+```c++
+bvar::Histogram g_size("foo_size", {128, 1024, 8192, 65536});
+
+std::vector<double> bounds = LoadBoundsFromConfig();
+bvar::Histogram g_size2("foo_size2", bvar::Histogram::BucketSchema(bounds));
+```
+
+The upper bounds of the buckets are described by a Histogram::BucketSchema, following the semantics of the prometheus `le` label: the bucket at index i counts the values v satisfying `bound_at(i-1) < v <= bound_at(i)`, and one extra `+Inf` bucket counts the rest.
+
+At most `MAX_HISTOGRAM_BUCKETS` (32, the `+Inf` one included) buckets are allowed. Bounds and observations are doubles, and bounds must be finite, strictly ascending and non-empty; otherwise Histogram::BucketSchema logs an error and drops the offending bounds (falling back to `{1}` if nothing is left), and non-finite observations are ignored.
+
+A Histogram exports a family of prometheus metrics rather than a single value:
+```
+# HELP table2_my_table_write_latency
+# TYPE table2_my_table_write_latency histogram
+table2_my_table_write_latency_bucket{le="10"} 3
+table2_my_table_write_latency_bucket{le="20"} 17
+...
+table2_my_table_write_latency_bucket{le="+Inf"} 4021
+table2_my_table_write_latency_sum 1234567
+table2_my_table_write_latency_count 4021
+```
+
+Bucket counts accumulate since construction and never decrease; when exported, they are converted to the cumulative `le` counts that prometheus expects. Quantiles are computed by the prometheus monitoring system: `histogram_quantile(0.99, sum by (le)(rate(table2_my_table_write_latency_bucket[1m])))`.
+
+To read a recent distribution in process, wrap it in a Window and read the bucket counts off its value:
+```c++
+bvar::Window<bvar::Histogram> g_write_latency_1m(&g_write_latency, 60);
+// The distribution over the last 60 seconds: counts[i] holds the number of
+// values in one bucket interval, not a cumulative prometheus bucket count.
+bvar::Histogram::Value v = g_write_latency_1m.get_value();
+```
+Note: Window<Histogram>::describe() can only write json, so prometheus never scrapes a Window<Histogram>.
+
+A Histogram can also go into a MultiDimension, see the [mbvar document](mbvar_c++.md#bvarhistogram).
+
 # bvar::Window
 
 Get data within a time window. Window cannot exist alone, it relies on a counter. Window will auto-update, we don't have to send data to it. For the sake of performance, the data comes from every-second sampling over the original counter, in the worst case, Window has one-second latency

@@ -306,8 +306,8 @@ public:
 
     // Get the chunk stream by its id. The stream is created by need.
     RtmpChunkStream* GetChunkStream(uint32_t cs_id);
-    // Reset the chunk stream associated with the id.
-    void ClearChunkStream(uint32_t cs_id);
+    // Discard the incomplete message on the chunk stream, if it exists.
+    void AbortChunkStream(uint32_t cs_id);
 
     // Allocate/deallocate id for a chunk stream.
     void AllocateChunkStreamId(uint32_t* chunk_stream_id);
@@ -424,6 +424,8 @@ public:
 
     int SerializeMessage(butil::IOBuf* buf, const RtmpMessageHeader& mh,
                          butil::IOBuf* body);
+
+    void OnAbort();
     
     bool OnMessage(
         const RtmpBasicHeader& bh, const RtmpMessageHeader& mh,

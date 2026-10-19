@@ -43,6 +43,7 @@
 #include "brpc/versioned_ref_with_id.h"
 #include "brpc/health_check_option.h"
 #include "brpc/socket_mode.h"
+#include "brpc/input_messenger_processor.h"  // InputMessengerProcessor
 
 namespace brpc {
 namespace policy {
@@ -61,10 +62,21 @@ class RdmaHandshakeServerV2;
 class RdmaHandshakeClientV3;
 class RdmaHandshakeServerV3;
 }
+
+namespace urma {
+class UrmaEndpoint;
+class UrmaConnect;
+class UrmaHandshakeClientV2;
+class UrmaHandshakeServerV2;
+class UrmaHandshakeClientV3;
+class UrmaHandshakeServerV3;
+}
+
 namespace ubring {
     class UBShmEndpoint;
     class UBConnect;
 }
+
 class Socket;
 class AuthContext;
 class EventDispatcher;
@@ -262,6 +274,9 @@ struct SocketOptions {
     // user->BeforeRecycle() before recycling.
     int fd{-1};
     butil::EndPoint remote_side;
+    // Client source address. For IPv4/IPv6, the port is ignored for binding
+    // and the OS allocates a source port. IPv4 IP_ANY disables explicit binding.
+    // Unix-domain addresses are preserved, including their paths.
     butil::EndPoint local_side;
     std::string device_name;
     // If `connect_on_create' is true and `fd' is less than 0,
@@ -317,6 +332,7 @@ struct SocketOptions {
 class BAIDU_CACHELINE_ALIGNMENT/*note*/ Socket : public VersionedRefWithId<Socket> {
 friend class EventDispatcher;
 friend class InputMessenger;
+friend class InputMessengerProcessor;
 friend class Acceptor;
 friend class ConnectionsService;
 friend class SocketUser;
@@ -334,6 +350,12 @@ friend class rdma::RdmaHandshakeClientV2;
 friend class rdma::RdmaHandshakeServerV2;
 friend class rdma::RdmaHandshakeClientV3;
 friend class rdma::RdmaHandshakeServerV3;
+friend class urma::UrmaEndpoint;
+friend class urma::UrmaConnect;
+friend class urma::UrmaHandshakeClientV2;
+friend class urma::UrmaHandshakeServerV2;
+friend class urma::UrmaHandshakeClientV3;
+friend class urma::UrmaHandshakeServerV3;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
@@ -344,6 +366,7 @@ friend void DereferenceSocket(Socket*);
 friend class Transport;
 friend class TcpTransport;
 friend class RdmaTransport;
+friend class UrmaTransport;
 friend class TransportFactory;
     class SharedPart;
     struct WriteRequest;
@@ -722,11 +745,24 @@ private:
     // Returns 0 on success, -1 otherwise
     int SSLHandshake(int fd, bool server_mode);
 
+    // The input stream carried by `_fd`.
+    InputMessengerProcessor& fd_input_processor() { return _fd_input_processor; }
+    void set_parsing_stream_type(InputMessengerProcessor::StreamType type) {
+        _parsing_stream_type.store(type, butil::memory_order_relaxed);
+    }
+
+    // Which of this Socket's input streams the parse callbacks running right
+    // now were called for, STREAM_NONE while none are. Only meaningful with a
+    // parse callback on the stack.
+    InputMessengerProcessor::StreamType parsing_stream_type() const {
+        return _parsing_stream_type.load(butil::memory_order_relaxed);
+    }
+
     // Based upon whether the underlying channel is using SSL (if
     // SSLState is SSL_UNKNOWN, try to detect at first), read data
-    // using the corresponding method into `_read_buf'. Returns read
+    // using the corresponding method into `read_buf`. Returns read
     // bytes on success, 0 on EOF, -1 otherwise and errno is set
-    ssize_t DoRead(size_t size_hint);
+    ssize_t DoRead(butil::IOPortal* read_buf, size_t size_hint);
 
     // Based upon whether the underlying channel is using SSL, write
     // `req' using the corresponding method. Returns written bytes on
@@ -866,8 +902,14 @@ private:
     // Address of peer. Initialized by SocketOptions.remote_side.
     butil::EndPoint _remote_side;
 
-    // Address of self. Initialized in ResetFileDescriptor().
+    // Runtime local endpoint. Updated in ResetFileDescriptor() and cleared
+    // in WaitAndReset().
     butil::EndPoint _local_side;
+
+    // Client binding address from SocketOptions.local_side, preserved across
+    // health-check/revive. IPv4/IPv6 network ports are normalized to 0;
+    // Unix-domain addresses and extended endpoint type tags are preserved.
+    butil::EndPoint _bind_local_side;
 
     // The device name of the client's network adapter.
     std::string _device_name;
@@ -890,7 +932,7 @@ private:
 
     IOEvent<Socket> _io_event;
 
-    // last chosen index of the protocol as a heuristic value to avoid
+    // Last chosen index of the protocol as a heuristic value to avoid
     // iterating all protocol handlers each time.
     int _preferred_index;
 
@@ -898,19 +940,19 @@ private:
     // socket is revived. Only set in HealthCheckTask::OnTriggeringTask()
     int _hc_count;
 
-    // Size of current incomplete message, set to 0 on complete.
-    uint32_t _last_msg_size;
-    // Average message size of last #MSG_SIZE_WINDOW messages (roughly)
-    uint32_t _avg_msg_size;
-
-    // Storing data read from `_fd' but cut-off yet.
-    butil::IOPortal _read_buf;
+    // The input stream carried by `_fd`, holding the data read from it but not cut off
+    // yet. Only the bthread draining the fd (InputMessenger:: OnNewMessages) may touch
+    // it, see InputMessengerProcessor.
+    InputMessengerProcessor _fd_input_processor;
 
     // Set with cpuwide_time_us() at last read operation
     butil::atomic<int64_t> _last_readtime_us;
 
     // Saved context for parsing, reset before trying other protocols.
     butil::atomic<Destroyable*> _parsing_context;
+
+    // The stream whose data the handlers are currently cutting.
+    butil::atomic<InputMessengerProcessor::StreamType> _parsing_stream_type;
 
     // Saving the correlation_id of RPC on protocols that cannot put
     // correlation_id on-wire and do not send multiple requests on one

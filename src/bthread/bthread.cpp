@@ -141,7 +141,10 @@ bthread_t init_for_pthread_stack_trace() {
     }
 
     pthread_fake_meta->attr = BTHREAD_ATTR_PTHREAD;
-    pthread_fake_meta->tid = make_tid(*pthread_fake_meta->version_butex, slot);
+    auto* version = reinterpret_cast<butil::atomic<int>*>(
+        pthread_fake_meta->version_butex);
+    pthread_fake_meta->tid = make_tid(static_cast<uint32_t>(
+        version->load(butil::memory_order_relaxed)), slot);
     // Make TaskTracer use signal trace mode for pthread.
     c->_task_tracer.set_running_status(syscall(SYS_gettid), pthread_fake_meta);
 
@@ -152,11 +155,17 @@ bthread_t init_for_pthread_stack_trace() {
         {
             BAIDU_SCOPED_LOCK(pthread_fake_meta->version_lock);
             tracing = TaskTracer::set_end_status_unsafe(pthread_fake_meta);
-            // If resulting version is 0,
-            // change it to 1 to make bthread_t never be 0.
-            if (0 == ++*pthread_fake_meta->version_butex) {
-                ++*pthread_fake_meta->version_butex;
+            // Publish the version atomically, just like task_runner(), since
+            // lock-free readers may still access this TaskMeta.
+            auto* version = reinterpret_cast<butil::atomic<int>*>(
+                pthread_fake_meta->version_butex);
+            uint32_t next_version = static_cast<uint32_t>(
+                version->load(butil::memory_order_relaxed)) + 1;
+            // Skip zero to make bthread_t never be 0.
+            if (0 == next_version) {
+                ++next_version;
             }
+            version->store(static_cast<int>(next_version), butil::memory_order_release);
         }
 
         if (tracing) {

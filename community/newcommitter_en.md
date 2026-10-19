@@ -1,4 +1,4 @@
-# Here is the doc for the process and reference website information of developing committee and PPMC members.
+# Here is the doc for the process and reference website information of developing committee and PMC members.
 
 
 ## 1. How to develop committers
@@ -13,7 +13,7 @@
 
 1. The nominator sends an email to private@brpc to initiate discussion and begins to voting. If the voting is passed, it is OK (at least 3 +1, +1 >- 1). (See the [Vote email template](https://community.apache.org/newcommitter.html#committer-vote-template))
 2. The nominator sends a close vote email to private@brpc, the title can be subject [RESULT] [VOTE]. (See the [close email template](https://community.apache.org/newcommitter.html#close-vote))
-3. The nominator sends an invitation letter to the nominee ([email template](https://community.apache.org/newcommitter.html#committer-invite-template)) and prompts him to submit ICLA after receiving a reply ([email template](https://community.apache.org/newcommitter.html#committer-accept-template))
+3. The nominator sends an invitation letter to the nominee and prompts him to submit ICLA([email template](https://community.apache.org/templates/committer-invite.txt)).
 4. The nominee fills in [ICLA](https://www.apache.org/licenses/contributor-agreements.html), individual contributors need to download [ICLA](https://www.apache.org/licenses/icla.pdf) Fill in personal information and sign, and send the electronic version to secretary@apache.org 。 (Note: 1. ICLA needs to fill in complete information, including mailing address and signature, otherwise it will be returned by ASF's secretary. 2. ICLA contains personal information, it should be send to secretary@apache.org only, not to the PMC or other mail list) The personal information entry (except for the signature) can be filled in with a PDF reader or browser, and then saved for signature. Signature method support:
    * Print pdf documents and scan them into electronic version after handwritten signature;
    * Electronic signature using devices that support handwriting;
@@ -23,7 +23,7 @@
 
 ### How to grant a committer permission on github
 
-1. Add as committer ([https://whimsy.apache.org/roster/ppmc/brpc](https://whimsy.apache.org/roster/ppmc/brpc))
+1. Add as committer (<https://whimsy.apache.org/roster/committee/brpc>)
 2. Let him set github id  ([https://id.apache.org/](https://id.apache.org/))
 3. Let him visit the website and get github permission([https://gitbox.apache.org/setup/](https://id.apache.org/))
 
@@ -42,19 +42,17 @@ Please do these things:
 
 Doing these things will make everyone's job easier.
 
-## 2. How to upgrade a committer into a PPMC
+## 2. How to upgrade a committer into a PMC
 
 ### Process reference: Apache official website document
 
-* https://incubator.apache.org/guides/ppmc.html#voting_in_a_new_ppmc_member
-* https://community.apache.org/newcommitter.html
-* https://incubator.apache.org/guides/ppmc.html#podling_project_management_committee_ppmc
+* https://community.apache.org/pmc/adding-pmc-members.html
 
 ### Actual process
 
 1. Initiate discussion in the private@brpc . If there is no objection, continue
 2. Open a Vote in private@brpc 
 3. Send an email to close the voting and notify private@incubator.apache.org
-4. Announce new PPMC On private@brpc 
-5. Set his authority by visiting https://whimsy.apache.org/roster/ppmc/brpc
+4. Announce new PMC On private@brpc 
+5. Set his authority by visiting https://whimsy.apache.org/roster/committee/brpc
 6. Help him subscribe to a private email group. See https://whimsy.apache.org/committers/moderationhelper.cgi

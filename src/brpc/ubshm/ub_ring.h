@@ -112,16 +112,36 @@ public:
         return UBRING_OK;
     }
 
-    int UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm);
+    int UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm,
+                             UbrDataFormat format);
 
-    int UbrMapRemoteShm(SHM *local_trx_shm, const char *local_name);
+    // Prepare the IPC_V2 queue layout and connection-local cursors. This does
+    // not start timers, publish CONNECTED or enable the data path.
+    int UbrPrepareIpcV2Format();
+
+    UbrDataFormat data_format() const {
+        return _trx == nullptr ? UBR_DATA_FORMAT_NONE : _trx->data_format;
+    }
+
+#ifdef UNIT_TEST
+    void SetTrxForTest(UbrTrx* trx) { _trx = trx; }
+#endif
+
+    int UbrMapRemoteShm(SHM *local_trx_shm, const char *local_name,
+                       uint64_t remote_shm_len, UbrDataFormat format);
 
     int UbrAllocateLocalShm(SHM *local_trx_shm, const char *shm_name);
 
-    RETURN_CODE UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *local_name);
+    RETURN_CODE UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *local_name,
+                                      uint64_t remote_shm_len,
+                                      UbrDataFormat format);
 
     static inline RETURN_CODE CheckTrxSendPreCheck(UbrTrx *trx)
     {
+        if (BAIDU_UNLIKELY(trx == nullptr)) {
+            LOG(ERROR) << "Trx send failed, trx is null.";
+            return UBRING_ERR;
+        }
         if (BAIDU_UNLIKELY(trx->ubr_tx.trx_state != UBR_STATE_CONNECTED)) {
             LOG(ERROR) << "Trx send failed, trx is not connected state.";
             return UBRING_ERR;
@@ -207,6 +227,10 @@ public:
     }
 
 private:
+    ssize_t UbrIpcV2Writev(const struct iovec* iov, int iovcnt);
+    ssize_t UbrIpcV2Readv(const struct iovec* iov, int iovcnt);
+    RETURN_CODE IsIpcV2Readable(uint32_t ep_event);
+    RETURN_CODE IsIpcV2Writeable(uint32_t ep_event);
     // Only UbrAddTimer may call these: arming outside its manager-held
     // exclusion would break the UbrMgrFini invariant described above.
     RETURN_CODE UbrAddCloseTimer();
@@ -221,7 +245,13 @@ private:
     ssize_t StartReadv(UbrTrx *trx, const struct iovec *iov, int iovcnt, size_t remain_buf_len);
     void PreWriteAddr(uint8_t *addr, size_t len);
     RETURN_CODE WritevHasEnoughSpace(size_t buf_len);
-    RETURN_CODE UbrServerTrxInit(SHM *local_shm, SHM *remote_shm);
+    RETURN_CODE UbrServerTrxInit(SHM* local_shm, SHM* remote_shm,
+                                 UbrDataFormat format);
+    RETURN_CODE InitializeServerLegacyFormat();
+    RETURN_CODE InitializeClientLocalLegacyFormat();
+    void InitializeClientRemoteLegacyFormat();
+    void InitializeClientLegacyFormat();
+    void ActivateClientFormat();
     static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx);
     static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t expect_ubr_id);
 

@@ -27,6 +27,7 @@
 #include "brpc/channel.h"
 #include "brpc/controller.h"
 #include "brpc/policy/discovery_naming_service.h"
+#include "brpc/policy/naming_service_json.h"
 
 namespace brpc {
 namespace policy {
@@ -72,7 +73,10 @@ static int ListDiscoveryNodes(const char* discovery_api_addr, std::string* serve
 
     const std::string response = cntl.response_attachment().to_string();
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    d.Parse(response.c_str());
+    if (!ParseNamingServiceJson(response, &d)) {
+        LOG(ERROR) << "Fail to parse response of discovery nodes as json";
+        return -1;
+    }
     if (!d.IsObject()) {
         LOG(ERROR) << "Fail to parse " << response << " as json object";
         return -1;
@@ -89,6 +93,9 @@ static int ListDiscoveryNodes(const char* discovery_api_addr, std::string* serve
     }
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < data.Size(); ++i) {
         const BUTIL_RAPIDJSON_NAMESPACE::Value& addr_item = data[i];
+        if (!addr_item.IsObject()) {
+            continue;
+        }
         auto itr_addr = addr_item.FindMember("addr");
         auto itr_status = addr_item.FindMember("status");
         if (itr_addr == addr_item.MemberEnd() ||
@@ -131,6 +138,12 @@ inline Channel* GetOrNewDiscoveryChannel() {
     return s_discovery_channel;
 }
 
+void ResetDiscoveryChannelForTesting() {
+    delete s_discovery_channel;
+    s_discovery_channel = nullptr;
+    s_init_discovery_channel_once = PTHREAD_ONCE_INIT;
+}
+
 bool DiscoveryRegisterParam::IsValid() const {
     return !appid.empty() && !hostname.empty() && !addrs.empty() &&
             !env.empty() && !zone.empty() && !version.empty();
@@ -151,7 +164,10 @@ DiscoveryClient::~DiscoveryClient() {
 static int ParseCommonResult(const butil::IOBuf& buf, std::string* error_text) {
     const std::string s = buf.to_string();
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    d.Parse(s.c_str());
+    if (!ParseNamingServiceJson(s, &d)) {
+        LOG(ERROR) << "Fail to parse " << buf << " as json";
+        return -1;
+    }
     if (!d.IsObject()) {
         LOG(ERROR) << "Fail to parse " << buf << " as json object";
         return -1;
@@ -374,7 +390,10 @@ int DiscoveryNamingService::GetServers(const char* service_name,
 
     const std::string response = cntl.response_attachment().to_string();
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    d.Parse(response.c_str());
+    if (!ParseNamingServiceJson(response, &d)) {
+        LOG(ERROR) << "Fail to parse response of /discovery/fetchs as json";
+        return -1;
+    }
     if (!d.IsObject()) {
         LOG(ERROR) << "Fail to parse " << response << " as json object";
         return -1;
@@ -385,12 +404,21 @@ int DiscoveryNamingService::GetServers(const char* service_name,
         return -1;
     }
     const BUTIL_RAPIDJSON_NAMESPACE::Value& data = itr_data->value;
+    if (!data.IsObject()) {
+        LOG(ERROR) << "data field for service " << service_name
+                   << " is not a json object";
+        return -1;
+    }
     auto itr_service = data.FindMember(service_name);
     if (itr_service == data.MemberEnd()) {
         LOG(ERROR) << "No " << service_name << " field in discovery response";
         return -1;
     }
     const BUTIL_RAPIDJSON_NAMESPACE::Value& services = itr_service->value;
+    if (!services.IsObject()) {
+        LOG(ERROR) << "Service " << service_name << " is not a json object";
+        return -1;
+    }
     auto itr_instances = services.FindMember("instances");
     if (itr_instances == services.MemberEnd()) {
         LOG(ERROR) << "Fail to find instances";
@@ -403,6 +431,11 @@ int DiscoveryNamingService::GetServers(const char* service_name,
     }
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < instances.Size(); ++i) {
+        if (!instances[i].IsObject()) {
+            LOG(ERROR) << "instance[" << i << "] for service " << service_name
+                       << " is not a json object";
+            continue;
+        }
         std::string metadata;
         // convert metadata in object to string
         auto itr_metadata = instances[i].FindMember("metadata");

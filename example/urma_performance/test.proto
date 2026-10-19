@@ -15,28 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Date: 2023/05/06 15:10:00
+syntax = "proto2";
 
-#include <gtest/gtest.h>
+option cc_generic_services = true;
 
-#include "butil/strings/string_piece.h"
-#include "butil/iobuf.h"
-#include "brpc/builtin/prometheus_metrics_service.h"
+package test;
 
-namespace {
-
-class PrometheusMetricsDumperTest : public testing::Test {
-protected:
-    void SetUp() {}
-    void TearDown() {}
-};
-
-TEST_F(PrometheusMetricsDumperTest, GetMetricsName) {
-  EXPECT_EQ("", brpc::GetMetricsName(""));
-
-  EXPECT_EQ("commit_count", brpc::GetMetricsName("commit_count"));
-
-  EXPECT_EQ("commit_count", brpc::GetMetricsName("commit_count{region=\"1000\"}"));
+message PerfTestRequest {
+    required bool echo_attachment = 1;
 }
 
+message PerfTestResponse {
+    required string cpu_usage = 1;
+}
+
+service PerfTestService {
+    rpc Test(PerfTestRequest) returns (PerfTestResponse);
 }
