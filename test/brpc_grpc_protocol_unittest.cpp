@@ -233,7 +233,15 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         "HHHH", "-1",
         "112", "-1",
         "H999m", "-1",
-        "", "-1"
+        "", "-1",
+        // out of range: more digits than the gRPC wire format allows, or
+        // negative. The large ones overflowed the conversion to microseconds.
+        "100000000S", "-1",
+        "18446744073710S", "-1",
+        "2562047789H", "-1",
+        "9223372036854775807u", "-1",
+        "9223372036854775807n", "-1",
+        "-1S", "-1"
     };
 
     // test all timeout format

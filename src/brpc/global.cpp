@@ -579,7 +579,7 @@ static void GlobalInitializeOrDieImpl() {
     Protocol mongo_protocol = { ParseMongoMessage,
                                 nullptr, nullptr,
                                 ProcessMongoRequest, nullptr,
-                                nullptr, nullptr, nullptr,
+                                VerifyMongoRequest, nullptr, nullptr,
                                 CONNECTION_TYPE_POOLED, "mongo" };
     if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol) != 0) {
         exit(1);

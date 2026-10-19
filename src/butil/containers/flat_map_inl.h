@@ -352,7 +352,7 @@ void FlatMap<_K, _T, _H, _E, _S, _A, _M>::swap(
             _buckets = rhs._buckets;
             _thumbnail = rhs._thumbnail;
             rhs._buckets = rhs._default_buckets;
-            rhs._thumbnail = rhs._thumbnail;
+            rhs._thumbnail = rhs._default_thumbnail;
         } // else both are default buckets which has been swapped, so no need to swap `_buckets'.
     }
 
@@ -470,8 +470,8 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(
             }
             Bucket* temp = p;
             p = p->next;
-            temp->destroy_element();
             if (temp != &first_node) {
+                temp->destroy_element();
                 _pool.back(temp);
             }
             --_size;
@@ -490,7 +490,8 @@ FlatMap<_K, _T, _H, _E, _S, _A, _M>::erase(
         new_tail->next = nullptr;
     }
     if (nullptr == new_head) {
-        // Erase all element.
+        // Erase all elements.
+        first_node.destroy_element();
         first_node.set_invalid();
         if (_S) {
             bit_array_unset(_thumbnail, index);
