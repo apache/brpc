@@ -46,6 +46,12 @@ descriptors and interfaces. `BRPC_WITH_FLATBUFFERS` in `butil/config.h` is
 Older flatc 2.0.x may emit unqualified names. Keep business schemas outside
 the `brpc` namespace and do not rely on include order.
 
+To use another FlatBuffers version, update the version checks in the runtime,
+the generator and the codegen tests, then run `tools/flatbuffers/verify.sh`
+against that version. See the generator
+[README](../../tools/flatbuffers/README.md#using-another-flatbuffers-version)
+for the steps, using 23.5.26 as an example. They apply to CMake builds only.
+
 ## Message construction and ownership
 
 Generate `*_generated.h` with upstream `flatc --cpp`. Pass a

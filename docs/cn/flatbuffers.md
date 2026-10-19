@@ -41,6 +41,11 @@ Make 使用 `config_brpc.sh --with-flatbuffers`，测试时可通过
 
 旧版 flatc 2.0.x 可能生成未全限定名称。业务 schema 不要使用 `brpc` 命名空间，也不要依赖 include 顺序。
 
+如需使用其他 FlatBuffers 版本，需要修改运行库、生成器和 codegen 测试中的版本检查，
+再用该版本完整运行 `tools/flatbuffers/verify.sh`。步骤见生成器
+[README](../../tools/flatbuffers/README.md#using-another-flatbuffers-version)，
+其中以 23.5.26 为例，仅适用于 CMake 构建。
+
 ## 消息构造和所有权
 
 先用上游 `flatc --cpp` 生成 `*_generated.h`，再将

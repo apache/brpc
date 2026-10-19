@@ -113,6 +113,58 @@ file-locking semantics, including on Linux and macOS.
   implementations remain possible. User methods and channel implementations
   must themselves honor the exactly-once completion contract.
 
+## Using another FlatBuffers version
+
+The runtime uses FlatBuffers builder internals that may change between upstream
+releases, so the source accepts only 25.2.10. To use another version, build it
+into a private prefix, update the version checks, and run the full
+verification against that prefix. The steps below use 23.5.26 and were tested
+on macOS ARM64 (AppleClang 15) and Ubuntu 22.04 (GCC 11.4, Clang 14). They
+cover CMake only; the 23.5.26 Bazel files load `@aspect_rules_js` and `@npm`,
+which bRPC does not configure.
+
+Build FlatBuffers. `CMAKE_INSTALL_LIBDIR=lib` keeps the library where
+`verify.sh` looks for it:
+
+```sh
+git clone --depth 1 --branch v23.5.26 https://github.com/google/flatbuffers.git /tmp/flatbuffers-23.5.26
+cmake -S /tmp/flatbuffers-23.5.26 -B /tmp/flatbuffers-23.5.26/build \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/tmp/flatbuffers-23.5.26-install \
+  -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DFLATBUFFERS_BUILD_TESTS=OFF
+cmake --build /tmp/flatbuffers-23.5.26/build --target install -j4
+```
+
+In the bRPC source tree, update the version checks in
+`src/brpc/flatbuffers/message.h`, `tools/flatbuffers/brpc_flatc.cpp` and
+`test/flatbuffers_codegen/CMakeLists.txt`:
+
+```sh
+perl -pi -e 's/25\.2\.10/23.5.26/g;
+  s/(FLATBUFFERS_VERSION_MAJOR != )25\b/${1}23/;
+  s/(FLATBUFFERS_VERSION_MINOR != )2\b/${1}5/;
+  s/(FLATBUFFERS_VERSION_REVISION != )10\b/${1}26/' \
+  src/brpc/flatbuffers/message.h tools/flatbuffers/brpc_flatc.cpp \
+  test/flatbuffers_codegen/CMakeLists.txt
+git diff --stat
+```
+
+The diff should touch 13 lines in these three files. If it does not, the source
+has changed since this example was written; review the remaining version
+checks by hand.
+
+Then run the verification with the new prefix:
+
+```sh
+FLATBUFFERS_PREFIX=/tmp/flatbuffers-23.5.26-install \
+  bash tools/flatbuffers/verify.sh /tmp/brpc-fb23-verify
+```
+
+Without `FLATBUFFERS_PREFIX`, the script downloads 25.2.10, which the updated
+checks reject. Test your own schemas as well. Other versions may need more than
+new version numbers, for example changes for Builder internals or the
+generator's naming rules.
+
 ## Pre-submit verification
 
 Local runs and the Linux/macOS codegen CI jobs use the same entry point:
