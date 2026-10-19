@@ -161,6 +161,10 @@ TEST(MPSCQueueTest, destroys_dequeued_element) {
 TEST(MPSCQueueTest, enqueue_move_only) {
   butil::MPSCQueue<std::unique_ptr<int>> q;
   q.Enqueue(std::make_unique<int>(1));
+  std::unique_ptr<int> out;
+  ASSERT_TRUE(q.Dequeue(out));
+  ASSERT_NE(nullptr, out);
+  ASSERT_EQ(1, *out);
 }
 
 TEST(MPSCQueueTest, mpsc_test_allocator) {
