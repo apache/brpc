@@ -816,6 +816,11 @@ TEST_F(HelloMessageTest, large_len_value) {
 }
 
 TEST_F(HelloMessageTest, full_shm_name) {
+    // A peer that fills every byte of shm_name leaves no terminator on the
+    // wire. Deserialize must still hand back a valid C-string, because the
+    // handshake feeds the decoded name straight into strncpy/strrchr/
+    // snprintf("%s") and the shm allocate/map calls; without a terminator
+    // those scan past shm_name.
     memset(msg.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN);
     msg.msg_len = 64;
     msg.hello_ver = 2;
@@ -827,7 +832,11 @@ TEST_F(HelloMessageTest, full_shm_name) {
     memset(&decoded, 0, sizeof(decoded));
     decoded.Deserialize(&buffer[0]);
 
-    EXPECT_EQ(0, memcmp(msg.shm_name, decoded.shm_name, SHM_MAX_NAME_BUFF_LEN));
+    EXPECT_EQ('\0', decoded.shm_name[SHM_MAX_NAME_BUFF_LEN - 1]);
+    EXPECT_EQ(static_cast<size_t>(SHM_MAX_NAME_BUFF_LEN - 1),
+              strnlen(decoded.shm_name, SHM_MAX_NAME_BUFF_LEN));
+    EXPECT_EQ(0, memcmp(msg.shm_name, decoded.shm_name,
+                        SHM_MAX_NAME_BUFF_LEN - 1));
 }
 
 TEST_F(HelloMessageTest, toString_contains_fields) {
@@ -923,6 +932,26 @@ TEST(UBShmHandshakeAdapterTest, rejects_unterminated_remote_name) {
     EXPECT_EQ(brpc::handshake::STEP_ERROR,
               adapter.ParseHello(payload, &decoded));
     EXPECT_EQ(EPROTO, errno);
+}
+
+TEST(UBShmHandshakeAdapterTest, accepts_name_terminated_at_wire_boundary) {
+    brpc::ubring::HelloMessage message{};
+    message.msg_len = 64;
+    message.hello_ver = 3;
+    message.impl_ver = 1;
+    message.len = 4096;
+    memset(message.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN - 1);
+    std::string payload(sizeof(HelloMessageLayout), '\0');
+    message.Serialize(&payload[0]);
+
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    brpc::ubring::HelloMessage decoded{};
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(static_cast<size_t>(SHM_MAX_NAME_BUFF_LEN - 1),
+              strlen(decoded.shm_name));
+    EXPECT_EQ(0, memcmp(message.shm_name, decoded.shm_name,
+                        SHM_MAX_NAME_BUFF_LEN));
 }
 
 TEST(UBShmHandshakeAdapterTest, disabled_hello_requests_tcp_fallback) {

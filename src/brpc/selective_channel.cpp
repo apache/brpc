@@ -142,6 +142,9 @@ public:
     ~Sender() { Clear(); }
     int IssueRPC(int64_t start_realtime_us);
     Resource PopFree();
+    // Called with the main call-id lock held. On false, the lock has been
+    // released or cleanup completed; the caller must return immediately
+    // without accessing the Sender, SubDone, or main Controller.
     bool PushFree(const Resource& r);
     const Controller* SubController(int index) const;
     void Run();
@@ -485,8 +488,15 @@ inline Resource Sender::PopFree() {
 inline bool Sender::PushFree(const Resource& r) {
     if (_nfree < 2) {
         _free_resources[_nfree++] = r;
-        if (_finished && _nfree == _nalloc) {
-            Clear();
+        if (_finished) {
+            if (_nfree == _nalloc) {
+                Clear();
+            } else {
+                // Let the remaining sub callbacks return their resources.
+                const CallId cid = _main_cntl->call_id();
+                CHECK_EQ(0, bthread_id_unlock(cid));
+            }
+            // Clear() or another callback after unlock may destroy us.
             return false;
         }
         return true;

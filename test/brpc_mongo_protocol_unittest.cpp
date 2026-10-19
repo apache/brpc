@@ -67,6 +67,13 @@ class MyEchoService : public ::brpc::policy::MongoService {
 class MyContext : public ::brpc::MongoContext {
 };
 
+class MyAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string*) const override { return 0; }
+    int VerifyCredential(const std::string&, const butil::EndPoint&,
+                         brpc::AuthContext*) const override { return 0; }
+};
+
 class MyMongoAdaptor : public brpc::MongoServiceAdaptor {
 public:
     virtual void SerializeError(int /*response_to*/, butil::IOBuf* out_buf) const {
@@ -202,6 +209,35 @@ TEST_F(MongoTest, process_request_from_internal_port) {
     // MyEchoService was never reached, the request was counted as an error of
     // the server rather than as a call of the method.
     ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
+}
+
+TEST_F(MongoTest, verify_request) {
+    brpc::mongo_head_t header = { 0, 0, 0, 0 };
+    header.op_code = brpc::MONGO_OPCODE_REPLY;
+    header.message_length = sizeof(header) + EXP_REQUEST.length();
+    butil::IOBuf total_buf;
+    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    total_buf.append(EXP_REQUEST);
+    brpc::ParseResult req_pr = brpc::policy::ParseMongoMessage(
+        &total_buf, _socket.get(), false, &_server);
+    ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
+    brpc::InputMessageBase* msg = req_pr.message();
+    if (msg->_socket == nullptr) {
+        _socket->ReAddress(&msg->_socket);
+    }
+    msg->_arg = &_server;
+
+    // Without ServerOptions.auth every request passes.
+    ASSERT_TRUE(brpc::policy::VerifyMongoRequest(msg));
+
+    // The mongo protocol carries no credential for ServerOptions.auth to
+    // verify, so requests on an authenticated server must be rejected.
+    MyAuthenticator auth;
+    _server._options.auth = &auth;
+    ASSERT_FALSE(brpc::policy::VerifyMongoRequest(msg));
+    _server._options.auth = nullptr;
+
+    msg->Destroy();
 }
 
 TEST_F(MongoTest, complete_flow) {

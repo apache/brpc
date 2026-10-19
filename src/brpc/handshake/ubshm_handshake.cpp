@@ -153,6 +153,8 @@ void HelloMessage::Deserialize(const void* data) {
     len = butil::NetToHost64(net_len);
     current_pos += sizeof(net_len);
     memcpy(shm_name, current_pos, SHM_MAX_NAME_BUFF_LEN);
+    // The decoded name is also used directly as a C-string by callers.
+    shm_name[SHM_MAX_NAME_BUFF_LEN - 1] = '\0';
 }
 
 std::string HelloMessage::toString() const {
@@ -271,8 +273,11 @@ handshake::StepResult UBShmHandshakeAdapter::ParseHello(
     if (!NegotiationValid(*message)) {
         return handshake::STEP_FALLBACK;
     }
-    if (strnlen(message->shm_name, SHM_MAX_NAME_BUFF_LEN) ==
-        SHM_MAX_NAME_BUFF_LEN) {
+    // Deserialize terminates the decoded name for safe C-string use. Inspect
+    // the original wire bytes so that truncation cannot hide a malformed name.
+    const char* wire_name =
+        payload.data() + payload.size() - SHM_MAX_NAME_BUFF_LEN;
+    if (memchr(wire_name, '\0', SHM_MAX_NAME_BUFF_LEN) == NULL) {
         errno = EPROTO;
         return handshake::STEP_ERROR;
     }
