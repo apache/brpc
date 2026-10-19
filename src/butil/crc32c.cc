@@ -814,6 +814,15 @@ static bool isSSE42() {
 
 typedef uint32_t (*Function)(uint32_t, const char*, size_t);
 
+#if defined(__riscv) && (__riscv_xlen == 64) && defined(__riscv_zbc) && defined(__riscv_zvbc)
+// Both Zbc and Zvbc: scalar is cheaper for small inputs, the vector fold
+// wins from ~256 B on.
+static constexpr size_t kRiscvVclmulThresholdBytes = 256;
+static uint32_t RiscvExtend(uint32_t crc, const char* buf, size_t size) {
+  return (size >= kRiscvVclmulThresholdBytes ? rv_crc32c_vclmul : rv_crc32c_clmul)(crc, buf, size);
+}
+#endif
+
 static inline Function Choose_Extend() {
 #ifdef __SSE4_2__
   if (isSSE42()) {
@@ -821,12 +830,25 @@ static inline Function Choose_Extend() {
   }
 #endif
 #if defined(__riscv) && (__riscv_xlen == 64) && (defined(__riscv_zbc) || defined(__riscv_zvbc))
-#if defined(__riscv_zvbc)
+#if defined(__riscv_zbc) && defined(__riscv_zvbc)
+  {
+    static const bool has_zbc = is_zbc();
+    static const bool has_zvbc = is_zvbc();
+    if (has_zbc && has_zvbc) {
+      return (Function)RiscvExtend;
+    }
+    if (has_zvbc) {
+      return (Function)rv_crc32c_vclmul;
+    }
+    if (has_zbc) {
+      return (Function)rv_crc32c_clmul;
+    }
+  }
+#elif defined(__riscv_zvbc)
   if (is_zvbc()) {
     return (Function)rv_crc32c_vclmul;
   }
-#endif
-#if defined(__riscv_zbc)
+#elif defined(__riscv_zbc)
   if (is_zbc()) {
     return (Function)rv_crc32c_clmul;
   }
