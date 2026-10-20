@@ -29,7 +29,14 @@ jobs:
     
     - name: install dependences
       run: |
-           brew install openssl gnu-getopt coreutils gflags leveldb protobuf@21
+           brew install openssl gnu-getopt coreutils gflags leveldb
+           # Homebrew disabled protobuf@21 on 2026-01-08 and removes disabled formulae one year
+           # after that date. Install it from a local tap holding the homebrew-core formula,
+           # pinned to a commit and without its deprecate!/disable! lines.
+           brew tap-new --no-git local/pins
+           curl -fsSL https://raw.githubusercontent.com/Homebrew/homebrew-core/cced3ef1d489fce4eba453a333619722c3a8dd17/Formula/p/protobuf@21.rb \
+             | grep -v -E '^[[:space:]]*(deprecate|disable)!' > "$(brew --repository local/pins)/Formula/protobuf@21.rb"
+           brew install local/pins/protobuf@21
 
     - name: compile with make
       run: |
