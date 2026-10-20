@@ -20,6 +20,8 @@ add_executable(cmake_bundle_link_check consumer.cpp)
 target_link_libraries(cmake_bundle_link_check PRIVATE brpc-static)
 add_executable(cmake_logging_link_check logging.cpp)
 target_link_libraries(cmake_logging_link_check PRIVATE brpc-static)
+add_executable(cmake_leveldb_link_check leveldb.cpp)
+target_link_libraries(cmake_leveldb_link_check PRIVATE brpc_leveldb)
 
 add_custom_target(cmake_link_checks
     COMMAND ${CMAKE_COMMAND}
@@ -30,5 +32,6 @@ add_custom_target(cmake_link_checks
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_pkgconfig.cmake
     COMMAND $<TARGET_FILE:cmake_bundle_link_check>
     COMMAND $<TARGET_FILE:cmake_logging_link_check>
-    DEPENDS cmake_bundle_link_check cmake_logging_link_check
+    COMMAND $<TARGET_FILE:cmake_leveldb_link_check>
+    DEPENDS cmake_bundle_link_check cmake_logging_link_check cmake_leveldb_link_check
     VERBATIM)

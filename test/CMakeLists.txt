@@ -223,7 +223,7 @@ add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
 add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB)
 target_link_libraries(BUTIL_DEBUG_LIB PRIVATE brpc_test_config)
-target_link_libraries(SOURCES_DEBUG_LIB PRIVATE brpc_test_config)
+target_link_libraries(SOURCES_DEBUG_LIB PRIVATE brpc_test_config brpc_leveldb)
 
 # shared library needs POSITION_INDEPENDENT_CODE
 set_property(TARGET ${BUTIL_DEBUG_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)

@@ -61,25 +61,61 @@ endif()
 find_package(ZLIB REQUIRED)
 list(APPEND BRPC_INCLUDE_DIRS ${ZLIB_INCLUDE_DIRS})
 
-find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
-find_library(LEVELDB_LIB NAMES leveldb)
-if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
-    message(FATAL_ERROR "Fail to find leveldb")
-endif()
-
-# A static LevelDB may require Snappy even when brpc's option is disabled.
-# Read that package's dependency metadata without inheriting its compiler flags.
-set(brpc_needs_snappy ${WITH_SNAPPY})
+# Older LevelDB packages reference Threads::Threads without finding it.
+find_package(Threads REQUIRED)
 find_package(leveldb CONFIG QUIET)
+add_library(brpc_leveldb INTERFACE)
+set(brpc_pkgconfig_needs_snappy ${WITH_SNAPPY})
 if(TARGET leveldb::leveldb)
+    # LevelDB 1.23 exports its private -Werror/-Wthread-safety diagnostics.
+    # Filter only these known packaging mistakes from the imported target's
+    # in-memory interface, without editing the installed package.
+    get_target_property(leveldb_compile_options leveldb::leveldb INTERFACE_COMPILE_OPTIONS)
+    if(leveldb_compile_options)
+        list(REMOVE_ITEM leveldb_compile_options -Werror -Wthread-safety)
+        set_property(TARGET leveldb::leveldb PROPERTY
+            INTERFACE_COMPILE_OPTIONS "${leveldb_compile_options}")
+    endif()
+    target_link_libraries(brpc_leveldb INTERFACE leveldb::leveldb)
+
+    # The legacy .pc file needs its own representation of the dependency.
     get_target_property(leveldb_dependencies leveldb::leveldb INTERFACE_LINK_LIBRARIES)
+    get_target_property(leveldb_type leveldb::leveldb TYPE)
+    if(leveldb_type STREQUAL "SHARED_LIBRARY" AND leveldb_dependencies)
+        # LevelDB 1.23 also exports bare "snappy" for shared libraries.
+        # The loader resolves that dependency; consumers do not need
+        # Snappy's development library. Keep it for static/unknown library types.
+        list(REMOVE_ITEM leveldb_dependencies snappy "$<LINK_ONLY:snappy>")
+        set_property(TARGET leveldb::leveldb PROPERTY
+            INTERFACE_LINK_LIBRARIES "${leveldb_dependencies}")
+    endif()
     foreach(dependency IN LISTS leveldb_dependencies)
         if(dependency MATCHES "(^|[:;])([Ss]nappy::)?snappy($|[;>])")
-            set(brpc_needs_snappy ON)
+            set(brpc_pkgconfig_needs_snappy ON)
+        endif()
+        if((dependency STREQUAL "snappy" OR
+            dependency STREQUAL "$<LINK_ONLY:snappy>") AND NOT TARGET snappy)
+            # Old exports use bare "snappy" without finding it or supplying a
+            # search directory. Resolve that link item for non-system prefixes.
+            find_library(SNAPPY_LIB NAMES snappy)
+            if(NOT SNAPPY_LIB)
+                message(FATAL_ERROR "LevelDB requires Snappy, but it was not found")
+            endif()
+            add_library(snappy UNKNOWN IMPORTED)
+            set_property(TARGET snappy PROPERTY IMPORTED_LOCATION "${SNAPPY_LIB}")
         endif()
     endforeach()
+else()
+    # Keep supporting installations without a CMake package configuration.
+    find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
+    find_library(LEVELDB_LIB NAMES leveldb)
+    if((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
+        message(FATAL_ERROR "Fail to find leveldb")
+    endif()
+    target_include_directories(brpc_leveldb SYSTEM INTERFACE ${LEVELDB_INCLUDE_PATH})
+    target_link_libraries(brpc_leveldb INTERFACE ${LEVELDB_LIB})
 endif()
-if(brpc_needs_snappy)
+if(WITH_SNAPPY)
     find_library(SNAPPY_LIB NAMES snappy)
     if(NOT SNAPPY_LIB)
         message(FATAL_ERROR "Fail to find snappy")
@@ -165,7 +201,6 @@ if(WITH_URMA)
         list(APPEND BRPC_INCLUDE_DIRS ${URMA_BOND_INCLUDE_PATH})
     endif()
 endif()
-list(APPEND BRPC_INCLUDE_DIRS ${LEVELDB_INCLUDE_PATH})
 add_library(brpc_build_config INTERFACE)
 target_link_libraries(brpc_build_config INTERFACE bthread_build_config)
 if(WITH_URMA AND URMA_USE_MOCK_ENABLED)
@@ -259,14 +294,16 @@ add_library(PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 set_property(TARGET PROTO_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
 target_link_libraries(PROTO_LIB PRIVATE brpc_build_config)
 
-set(brpc_libraries ${LEVELDB_LIB})
+set(brpc_libraries brpc_leveldb)
 set(brpc_private_libs "-lleveldb")
 if(WITH_THRIFT)
     list(APPEND brpc_libraries ${THRIFT_LIB})
     string(APPEND brpc_private_libs " -lthrift")
 endif()
-if(brpc_needs_snappy)
+if(WITH_SNAPPY)
     list(APPEND brpc_libraries ${SNAPPY_LIB})
+endif()
+if(brpc_pkgconfig_needs_snappy)
     string(APPEND brpc_private_libs " -lsnappy")
 endif()
 if(WITH_RDMA)
@@ -296,7 +333,7 @@ add_library(brpc_system_dependencies INTERFACE)
 target_link_libraries(brpc_system_dependencies INTERFACE ZLIB::ZLIB)
 
 add_library(BRPC_LIB OBJECT ${BRPC_SOURCES})
-target_link_libraries(BRPC_LIB PRIVATE brpc_build_config)
+target_link_libraries(BRPC_LIB PRIVATE brpc_build_config brpc_leveldb)
 set_property(TARGET BRPC_LIB PROPERTY POSITION_INDEPENDENT_CODE 1)
 set_property(TARGET BRPC_LIB PROPERTY BRPC_BUNDLE_LIBRARIES brpc_runtime_dependencies)
 set_property(TARGET BRPC_LIB PROPERTY BRPC_PRIVATE_LIBS "${brpc_private_libs}")
