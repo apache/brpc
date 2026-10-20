@@ -93,11 +93,55 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         //   brpc)
         flush_nosignal_tasks();
         LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << _rq.capacity();
-        // TODO(gejun): May cause deadlock when all workers are spinning here.
-        // A better solution is to pop and run existing bthreads, however which
-        // make set_remained()-callbacks do context switches and need extensive
-        // reviews on related code.
-        ::usleep(1000);
+        if (is_current_pthread_task() && !is_current_main_task()) {
+            // A pthread-mode bthread runs on _main_stack and cannot be
+            // scheduled out, fall back to waiting.
+            ::usleep(1000);
+            continue;
+        }
+        bthread_t run_tid = 0;
+#ifndef BTHREAD_FAIR_WSQ
+        const bool popped = _rq.pop(&run_tid);
+#else
+        const bool popped = _rq.steal(&run_tid);
+#endif
+        if (!popped) {
+            // The queue was drained by stealers between the failed push and
+            // the pop, retrying the push will succeed.
+            continue;
+        }
+        if (is_current_main_task() &&
+            address_meta(run_tid)->attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
+            // pthread-mode tasks are run inline on _main_stack by the
+            // dispatch loops (run_main_task/task_runner). Switching to one
+            // from the main task itself causes no stack jump and would
+            // silently drop it, put it back and wait; stealers may run it
+            // on other workers.
+            _rq.push(run_tid);
+            ::usleep(1000);
+            continue;
+        }
+        // Run the popped bthread in place instead of spinning, otherwise
+        // all workers may spin here and no one drains the queues any more.
+        // The pop also frees one slot, which guarantees that the push of
+        // the current task below succeeds: _rq has a single producer (the
+        // owning worker) and stealers never push.
+        if (!is_current_main_task()) {
+            // Preserve the task being scheduled out. Note that it is
+            // current_tid() rather than |tid|: push_rq() can be re-entered
+            // from remained-callbacks which run on the stack of the next
+            // task, where the task to preserve is the one whose context
+            // sched_to() is about to freeze.
+            _rq.push(current_tid());
+        }
+        // The main task is never queued; ending_sched() resumes it via
+        // _main_tid when the queue drains. Jumping to a pthread-mode task
+        // from a normal bthread resumes the dispatch loop on _main_stack
+        // which runs it inline, same as ending_sched() does.
+        TaskGroup* g = this;
+        sched_to(&g, run_tid);
+        // Resume here after the popped bthread (and possibly others) ran,
+        // then retry the push of |tid|.
     }
 }
 
