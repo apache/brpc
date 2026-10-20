@@ -105,9 +105,17 @@ cmake -B build && cmake --build build -j6
 
 **用cmake运行样例**
 
+先在仓库根目录安装 brpc。CMake 会直接安装头文件和库，不再在编译时将
+头文件暂存到 `output/include`。在配置阶段设置安装前缀，确保生成的
+pkg-config 元数据使用相同的前缀，再将此前缀传给样例：
+
 ```shell
+$ cmake -S . -B build -DCMAKE_INSTALL_PREFIX="$PWD/build/output"
+$ cmake --build build -j6
+$ cmake --install build
 $ cd example/echo_c++
-$ cmake -B build && cmake --build build -j4
+$ cmake -B build -DCMAKE_PREFIX_PATH="$PWD/../../build/output"
+$ cmake --build build -j4
 $ cd build
 $ ./echo_server &
 $ ./echo_client
