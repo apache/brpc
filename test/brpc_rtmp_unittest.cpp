@@ -30,6 +30,8 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_guard.h"
+#include "butil/file_util.h"
+#include "butil/posix/eintr_wrapper.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
@@ -1331,9 +1333,10 @@ TEST(RtmpTest, not_served_on_internal_port) {
 
     // Builtin services on internal_port pass authentication without any
     // credential, which latches the connection as authenticated.
-    const std::string http_req = "GET /version HTTP/1.1\r\n\r\n";
-    ASSERT_EQ((ssize_t)http_req.size(),
-              write(fd, http_req.data(), http_req.size()));
+    const std::string http_req =
+        "GET /version HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+    ASSERT_EQ((int)http_req.size(), butil::WriteFileDescriptor(
+        fd, http_req.data(), http_req.size()));
     // The reply may arrive in several segments, read until the status
     // line prefix is complete.
     const char status_prefix[] = "HTTP/1.1 200";
@@ -1341,7 +1344,8 @@ TEST(RtmpTest, not_served_on_internal_port) {
     char resp[1024];
     size_t nread = 0;
     while (nread < prefix_len) {
-        const ssize_t n = read(fd, resp + nread, sizeof(resp) - nread);
+        const ssize_t n =
+            HANDLE_EINTR(read(fd, resp + nread, sizeof(resp) - nread));
         ASSERT_GT(n, 0);
         nread += n;
     }
@@ -1355,9 +1359,10 @@ TEST(RtmpTest, not_served_on_internal_port) {
     char c0c1[1 + 1536];
     memset(c0c1, 0, sizeof(c0c1));
     c0c1[0] = 0x03;
-    ASSERT_EQ((ssize_t)sizeof(c0c1), write(fd, c0c1, sizeof(c0c1)));
+    ASSERT_EQ((int)sizeof(c0c1),
+              butil::WriteFileDescriptor(fd, c0c1, sizeof(c0c1)));
     char s0 = 0;
-    const ssize_t n = read(fd, &s0, 1);
+    const ssize_t n = HANDLE_EINTR(read(fd, &s0, 1));
     const int saved_errno = errno;
     ASSERT_EQ(0, n) << "n=" << n << " errno=" << saved_errno;
 
