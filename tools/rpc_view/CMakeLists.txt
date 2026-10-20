@@ -20,5 +20,5 @@ protobuf_generate_cpp(PROTO_SRC PROTO_HEADER view.proto)
 
 add_executable(rpc_view rpc_view.cpp ${PROTO_SRC})
 target_include_directories(rpc_view PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(rpc_view PRIVATE brpc-static ${DYNAMIC_LIB})
+target_link_libraries(rpc_view PRIVATE brpc-static)
 install(TARGETS rpc_view RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

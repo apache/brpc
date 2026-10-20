@@ -114,6 +114,7 @@ jobs:
         cmake -S . -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
           "${cmake_options[@]}"
         cmake --build build -j ${{env.proc_num}}
+        cmake --build build --target cmake_link_checks -j ${{env.proc_num}}
 
     - name: Show ccache statistics
       if: always()
