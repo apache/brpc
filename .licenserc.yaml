@@ -222,4 +222,7 @@ header:
     # bazel-central-registry
     - 'registry/**'
 
+    # Homebrew (BSD 2-Clause)
+    - 'homebrew-formula/protobuf@21.rb'
+
   comment: on-failure
