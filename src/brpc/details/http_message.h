@@ -61,7 +61,7 @@ public:
     ssize_t ParseFromArray(const char *data, const size_t length);
 
     // Parse from butil::IOBuf.
-    // Emtpy `buf' is sliently ignored, which is different from ParseFromArray.
+    // Empty `buf' is silently ignored, which is different from ParseFromArray.
     // Parsing stops at the end of the message as in ParseFromArray.
     // Returns bytes parsed, -1 on failure.
     ssize_t ParseFromIOBuf(const butil::IOBuf &buf);

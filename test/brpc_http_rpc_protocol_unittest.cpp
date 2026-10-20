@@ -3112,7 +3112,7 @@ TEST_F(HttpTest, pipelined_requests_get_one_response_each) {
     start_time = butil::cpuwide_time_us();
     while (bodies.size() < 2) {
         const ssize_t nr = read_buf.append_from_file_descriptor(sock->fd(), 4096);
-        if (nr < 0 && errno == EAGAIN) {
+        if (nr < 0 && (errno == EAGAIN || errno == EINTR)) {
             ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L)
                 << "Too long! bodies.size()=" << bodies.size();
             bthread_usleep(1000);
