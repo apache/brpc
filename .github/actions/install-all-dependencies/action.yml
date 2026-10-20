@@ -4,7 +4,7 @@ runs:
     - uses: ./.github/actions/install-essential-dependencies
       with:
         extra-packages: >-
-          ccache libunwind-dev libgoogle-glog-dev automake bison flex
+          ccache libsnappy-dev libunwind-dev libgoogle-glog-dev automake bison flex
           libboost-all-dev libevent-dev libtool pkg-config
     - run: | 
         wget https://archive.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz && tar -xf thrift-0.11.0.tar.gz && cd thrift-0.11.0/

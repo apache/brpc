@@ -245,7 +245,7 @@ endif
 
 %.pb.cc %.pb.h:%.proto
 	@echo "> Generating $@"
-	$(PROTOC) --cpp_out=. --proto_path=. --proto_path=../src --proto_path=$(PROTOBUF_HDR) $<
+	$(PROTOC) --cpp_out=. --proto_path=. --proto_path=../src --proto_path=../src/mcpack2pb --proto_path=$(PROTOBUF_HDR) $<
 
 baidu_time_unittest.o:baidu_time_unittest.cpp | libbrpc.dbg.$(SOEXT)
 	@echo "> Compiling $@"
