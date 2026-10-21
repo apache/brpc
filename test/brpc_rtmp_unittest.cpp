@@ -1046,37 +1046,62 @@ TEST(RtmpTest, avc_seq_header_sps_exp_golomb) {
     ASSERT_EQ(80, avc.height);
 }
 
-// Create() stored lengthSizeMinusOne into the record before rejecting the
-// reserved value 2, so a rejected sequence header clobbered the field of a
-// record that had been parsed successfully before. TsWriter keeps muxing with
-// its record after a rejected header, and AVCNaluIterator then trips
-// CHECK_NE(_length_size_minus1, 2u) on the next video frame. A rejected
-// header must leave the record untouched.
+// Create() wrote fields of the record (lengthSizeMinusOne, profile, level,
+// SPS/PPS lists) before all of its checks had passed, so a rejected sequence
+// header clobbered a record that had been parsed successfully before.
+// TsWriter keeps muxing with its record after a rejected header, and
+// AVCNaluIterator then trips CHECK_NE(_length_size_minus1, 2u) on the next
+// video frame. A rejected header must leave the record untouched.
 TEST(RtmpTest, avc_seq_header_rejected_length_size_keeps_record) {
     // Same baseline SPS as the exp-golomb test above, lengthSizeMinusOne=3.
     const char sps[7] = { 0x67, 0x42, 0x00, 0x1E, (char)0xdc, 0x52, (char)0xc0 };
-    const char len_be[2] = { 0x00, (char)sizeof(sps) };
+    const char sps_len_be[2] = { 0x00, (char)sizeof(sps) };
+    const char pps[4] = { 0x68, (char)0xce, 0x38, (char)0x80 };
+    const char pps_len_be[2] = { 0x00, (char)sizeof(pps) };
     butil::IOBuf good;
     const char good_head[6] = { 0x01, 0x42, 0x00, 0x1E, (char)0xff, (char)0xe1 };
     good.append(good_head, sizeof(good_head));
-    good.append(len_be, sizeof(len_be));
+    good.append(sps_len_be, sizeof(sps_len_be));
     good.append(sps, sizeof(sps));
-    good.push_back('\0'); // numPPS=0
+    good.push_back('\1'); // numPPS=1
+    good.append(pps_len_be, sizeof(pps_len_be));
+    good.append(pps, sizeof(pps));
 
     brpc::AVCDecoderConfigurationRecord avc;
     ASSERT_TRUE(avc.Create(good).ok());
     ASSERT_EQ(3, avc.length_size_minus1);
+    ASSERT_EQ(brpc::AVC_PROFILE_BASELINE, avc.avc_profile);
+    ASSERT_EQ(1u, avc.sps_list.size());
+    ASSERT_EQ(1u, avc.pps_list.size());
 
     // The same record with lengthSizeMinusOne=2, which Create() rejects.
     butil::IOBuf bad;
-    const char bad_head[6] = { 0x01, 0x42, 0x00, 0x1E, (char)0xfe, (char)0xe1 };
+    const char bad_head[6] = { 0x01, 0x4d, 0x00, 0x1F, (char)0xfe, (char)0xe1 };
     bad.append(bad_head, sizeof(bad_head));
-    bad.append(len_be, sizeof(len_be));
+    bad.append(sps_len_be, sizeof(sps_len_be));
     bad.append(sps, sizeof(sps));
     bad.push_back('\0'); // numPPS=0
 
     ASSERT_FALSE(avc.Create(bad).ok());
     ASSERT_EQ(3, avc.length_size_minus1);
+    ASSERT_EQ(brpc::AVC_PROFILE_BASELINE, avc.avc_profile);
+    ASSERT_EQ(1u, avc.sps_list.size());
+    ASSERT_EQ(1u, avc.pps_list.size());
+
+    // A valid lengthSizeMinusOne=1 but truncated before numPPS, so Create()
+    // fails after the SPS has been parsed.
+    butil::IOBuf truncated;
+    const char trunc_head[6] = { 0x01, 0x4d, 0x00, 0x1F, (char)0xfd, (char)0xe1 };
+    truncated.append(trunc_head, sizeof(trunc_head));
+    truncated.append(sps_len_be, sizeof(sps_len_be));
+    truncated.append(sps, sizeof(sps));
+
+    ASSERT_FALSE(avc.Create(truncated).ok());
+    ASSERT_EQ(3, avc.length_size_minus1);
+    ASSERT_EQ(brpc::AVC_PROFILE_BASELINE, avc.avc_profile);
+    ASSERT_EQ(1u, avc.sps_list.size());
+    ASSERT_EQ(1u, avc.pps_list.size());
+    ASSERT_EQ(std::string(pps, sizeof(pps)), avc.pps_list[0]);
 }
 
 static void AppendBigEndian3Bytes(std::string* s, uint32_t v) {
