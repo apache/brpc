@@ -1539,7 +1539,8 @@ private:
             if ((parseFlags & kParseStopWhenDoneFlag) && state == IterativeParsingFinishState) {
                 // wwb: Update parseResult_.Offset() when kParseStopWhenDoneFlag
                 // is set which means the user needs to know where to resume
-                // parsing in next calls to JsonToProtoMessage()
+                // parsing in next calls to JsonToProtoMessage(), including
+                // when the root ends exactly at EOF.
                 SetParseError(kParseErrorNone, is.Tell());
                 break;
             }

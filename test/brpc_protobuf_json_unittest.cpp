@@ -1693,20 +1693,21 @@ TEST_F(ProtobufJsonTest, parse_json_offset_at_eof) {
     const struct {
         const char* json;
         size_t expected_offset;
+        bool array_to_single_repeated;
     } cases[] = {
-        {"{}", 2},
-        {" \t{}", 4},
-        {R"({"person":[]})", 13},
-        {"[]", 2},
-        {"{} \n", 2},
-        {"{}{}", 2},
+        {"{}", 2, false},
+        {" \t{}", 4, false},
+        {R"({"person":[]})", 13, false},
+        {"[]", 2, true},
+        {"{} \n", 2, false},
+        {"{}{}", 2, false},
     };
-    json2pb::Json2PbOptions options;
-    options.allow_remaining_bytes_after_parsing = true;
-    options.array_to_single_repeated = true;
 
     for (const auto& test_case : cases) {
         SCOPED_TRACE(test_case.json);
+        json2pb::Json2PbOptions options;
+        options.allow_remaining_bytes_after_parsing = true;
+        options.array_to_single_repeated = test_case.array_to_single_repeated;
         AddressBook message;
         std::string error;
         size_t offset = 0;
@@ -1742,35 +1743,36 @@ TEST_F(ProtobufJsonTest, parse_multiple_json_at_eof) {
     options.allow_remaining_bytes_after_parsing = true;
     test::EchoRequest message;
     std::string error;
-    size_t offset = 0;
+    size_t string_offset = 0;
+    size_t stream_offset = 0;
     size_t total_offset = 0;
 
     for (size_t i = 0; i < 2; ++i) {
         SCOPED_TRACE(i);
         message.Clear();
         ASSERT_TRUE(json2pb::JsonToProtoMessage(
-            remaining, &message, options, &error, &offset)) << error;
+            remaining, &message, options, &error, &string_offset)) << error;
         EXPECT_EQ(expected_messages[i], message.message());
-        EXPECT_EQ(jsons[i].size(), offset);
-        remaining = remaining.substr(offset);
+        EXPECT_EQ(jsons[i].size(), string_offset);
+        remaining = remaining.substr(string_offset);
 
         message.Clear();
         ASSERT_TRUE(json2pb::JsonToProtoMessage(
-            &reader, &message, options, &error, &offset)) << error;
+            &reader, &message, options, &error, &stream_offset)) << error;
         EXPECT_EQ(expected_messages[i], message.message());
         total_offset += jsons[i].size();
-        EXPECT_EQ(total_offset, offset);
+        EXPECT_EQ(total_offset, stream_offset);
         EXPECT_EQ(total_offset, reader.Tell());
     }
     EXPECT_TRUE(remaining.empty());
     EXPECT_FALSE(json2pb::JsonToProtoMessage(
-        remaining, &message, options, &error, &offset));
+        remaining, &message, options, &error, &string_offset));
     EXPECT_TRUE(error.empty());
-    EXPECT_EQ(0ul, offset);
+    EXPECT_EQ(0ul, string_offset);
     EXPECT_FALSE(json2pb::JsonToProtoMessage(
-        &reader, &message, options, &error, &offset));
+        &reader, &message, options, &error, &stream_offset));
     EXPECT_TRUE(error.empty());
-    EXPECT_EQ(total_offset, offset);
+    EXPECT_EQ(total_offset, stream_offset);
 }
 
 TEST_F(ProtobufJsonTest, parse_multiple_json) {
