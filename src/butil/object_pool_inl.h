@@ -357,6 +357,7 @@ public:
 private:
     ObjectPool() {
         _free_chunks.reserve(OP_INITIAL_FREE_LIST_SIZE);
+        _nfree_chunks.store(0, butil::memory_order_relaxed);
         pthread_mutex_init(&_free_chunks_mutex, nullptr);
 #if defined(BUTIL_USE_ASAN) && \
     !defined(BAIDU_CLEAR_OBJECT_POOL_AFTER_ALL_THREADS_QUIT)
@@ -536,6 +537,12 @@ private:
 
 private:
     bool pop_free_chunk(FreeChunk& c) {
+        // This relaxed load is only a hint that avoids contending on the
+        // mutex when the shared free list is empty. The list itself remains
+        // protected by _free_chunks_mutex below.
+        if (_nfree_chunks.load(butil::memory_order_relaxed) == 0) {
+            return false;
+        }
         // LocalPool is thread-local, while _free_chunks is shared.
         // Protect all accesses to _free_chunks with _free_chunks_mutex.
         pthread_mutex_lock(&_free_chunks_mutex);
@@ -545,6 +552,7 @@ private:
         }
         DynamicFreeChunk* p = _free_chunks.back();
         _free_chunks.pop_back();
+        _nfree_chunks.fetch_sub(1, butil::memory_order_relaxed);
         pthread_mutex_unlock(&_free_chunks_mutex);
         c.nfree = p->nfree;
         memcpy(c.ptrs, p->ptrs, sizeof(*p->ptrs) * p->nfree);
@@ -562,6 +570,7 @@ private:
         memcpy(p->ptrs, c.ptrs, sizeof(*c.ptrs) * c.nfree);
         pthread_mutex_lock(&_free_chunks_mutex);
         _free_chunks.push_back(p);
+        _nfree_chunks.fetch_add(1, butil::memory_order_relaxed);
         pthread_mutex_unlock(&_free_chunks_mutex);
         return true;
     }
@@ -577,6 +586,7 @@ private:
 
     std::vector<DynamicFreeChunk*> _free_chunks;
     pthread_mutex_t _free_chunks_mutex;
+    butil::static_atomic<size_t> _nfree_chunks;
 
 #ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
     static butil::static_atomic<size_t> _global_nfree;

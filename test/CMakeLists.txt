@@ -177,6 +177,7 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/crc32c_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/iobuf_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/object_pool_unittest.cpp
+    ${PROJECT_SOURCE_DIR}/test/resource_pool_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/test_switches.cc
     ${PROJECT_SOURCE_DIR}/test/scoped_locale.cc
     ${PROJECT_SOURCE_DIR}/test/scope_guard_unittest.cpp
