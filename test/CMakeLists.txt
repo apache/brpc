@@ -254,6 +254,17 @@ target_link_libraries(test_butil PRIVATE
 
 add_test(NAME test_butil COMMAND test_butil)
 
+string(REPLACE ";" "|" protobuf_include_dirs_for_test
+    "${Protobuf_INCLUDE_DIRS}")
+string(REPLACE ";" "|" gflags_include_dirs_for_test
+    "${GFLAGS_INCLUDE_PATH}")
+add_test(NAME cmake_protobuf_include_order
+    COMMAND ${CMAKE_COMMAND}
+        "-DINCLUDE_DIRS_FILE=${PROJECT_BINARY_DIR}/src/butil/butil_build_config_include_dirs.txt"
+        "-DPROTOBUF_INCLUDE_DIRS=${protobuf_include_dirs_for_test}"
+        "-DGENERIC_INCLUDE_DIRS=${gflags_include_dirs_for_test}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_protobuf_include_order.cmake)
+
 # test_bvar
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
 get_filename_component(bvar_default_variables
