@@ -116,7 +116,10 @@ public:
     // To support cache-aligned objects, align Block.items by cacheline.
     struct BAIDU_CACHELINE_ALIGNMENT Block {
         BlockItem items[BLOCK_NITEM];
-        size_t nitem;
+        // Written by the owning LocalPool and read by address_resource() from
+        // other threads. Publishing the increment after construction keeps the
+        // bounds check data-race-free.
+        butil::atomic<size_t> nitem;
 
         Block() : nitem(0) {}
     };
@@ -184,28 +187,32 @@ public:
         }                                                                   \
         T* p = nullptr;                                                        \
         /* Fetch memory from local block */                                 \
-        if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {                \
-            id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
-            auto item = _cur_block->items + _cur_block->nitem;              \
-            p = new (item->void_data()) T CTOR_ARGS;                        \
-            if (!ResourcePoolValidator<T>::validate(p)) {                   \
-                p->~T();                                                    \
-                return nullptr;                                                \
+        if (_cur_block) {                                                    \
+            const size_t nitem = _cur_block->nitem.load(butil::memory_order_relaxed); \
+            if (nitem < BLOCK_NITEM) {                                      \
+                id->value = _cur_block_index * BLOCK_NITEM + nitem;         \
+                auto item = _cur_block->items + nitem;                      \
+                p = new (item->void_data()) T CTOR_ARGS;                    \
+                if (!ResourcePoolValidator<T>::validate(p)) {               \
+                    p->~T();                                                \
+                    return nullptr;                                         \
+                }                                                           \
+                _cur_block->nitem.fetch_add(1, butil::memory_order_release); \
+                return p;                                                   \
             }                                                               \
-            ++_cur_block->nitem;                                            \
-            return p;                                                       \
         }                                                                   \
         /* Fetch a Block from global */                                     \
         _cur_block = add_block(&_cur_block_index);                          \
         if (_cur_block != nullptr) {                                           \
-            id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
-            auto item = _cur_block->items + _cur_block->nitem;              \
+            const size_t nitem = _cur_block->nitem.load(butil::memory_order_relaxed); \
+            id->value = _cur_block_index * BLOCK_NITEM + nitem;             \
+            auto item = _cur_block->items + nitem;                          \
             p = new (item->void_data()) T CTOR_ARGS;                        \
             if (!ResourcePoolValidator<T>::validate(p)) {                   \
                 p->~T();                                                    \
                 return nullptr;                                                \
             }                                                               \
-            ++_cur_block->nitem;                                            \
+            _cur_block->nitem.fetch_add(1, butil::memory_order_release);    \
             return p;                                                       \
         }                                                                   \
         return nullptr;                                                        \
@@ -267,7 +274,8 @@ public:
                            .load(butil::memory_order_consume);
                 if (__builtin_expect(b != nullptr, 1)) {
                     const size_t offset = id.value - block_index * BLOCK_NITEM;
-                    if (__builtin_expect(offset < b->nitem, 1)) {
+                    if (__builtin_expect(
+                            offset < b->nitem.load(butil::memory_order_acquire), 1)) {
                         return (T*)b->items + offset;
                     }
                 }
