@@ -1689,6 +1689,90 @@ TEST_F(ProtobufJsonTest, string_to_int64) {
     ASSERT_EQ(person.data(), 1234567);
 }
 
+TEST_F(ProtobufJsonTest, parse_json_offset_at_eof) {
+    const struct {
+        const char* json;
+        size_t expected_offset;
+    } cases[] = {
+        {"{}", 2},
+        {" \t{}", 4},
+        {R"({"person":[]})", 13},
+        {"[]", 2},
+        {"{} \n", 2},
+        {"{}{}", 2},
+    };
+    json2pb::Json2PbOptions options;
+    options.allow_remaining_bytes_after_parsing = true;
+    options.array_to_single_repeated = true;
+
+    for (const auto& test_case : cases) {
+        SCOPED_TRACE(test_case.json);
+        AddressBook message;
+        std::string error;
+        size_t offset = 0;
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(
+            test_case.json, &message, options, &error, &offset)) << error;
+        EXPECT_EQ(test_case.expected_offset, offset);
+        EXPECT_TRUE(error.empty());
+
+        butil::IOBuf buf;
+        buf.append(test_case.json);
+        butil::IOBufAsZeroCopyInputStream stream(buf);
+        message.Clear();
+        offset = 0;
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(
+            &stream, &message, options, &error, &offset)) << error;
+        EXPECT_EQ(test_case.expected_offset, offset);
+        EXPECT_TRUE(error.empty());
+    }
+}
+
+TEST_F(ProtobufJsonTest, parse_multiple_json_at_eof) {
+    const std::string jsons[] = {
+        R"({"message":"first"})",
+        R"({"message":"second"})",
+    };
+    const char* expected_messages[] = {"first", "second"};
+    std::string remaining = jsons[0] + jsons[1];
+    butil::IOBuf buf;
+    buf.append(remaining);
+    butil::IOBufAsZeroCopyInputStream stream(buf);
+    json2pb::ZeroCopyStreamReader reader(&stream);
+    json2pb::Json2PbOptions options;
+    options.allow_remaining_bytes_after_parsing = true;
+    test::EchoRequest message;
+    std::string error;
+    size_t offset = 0;
+    size_t total_offset = 0;
+
+    for (size_t i = 0; i < 2; ++i) {
+        SCOPED_TRACE(i);
+        message.Clear();
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(
+            remaining, &message, options, &error, &offset)) << error;
+        EXPECT_EQ(expected_messages[i], message.message());
+        EXPECT_EQ(jsons[i].size(), offset);
+        remaining = remaining.substr(offset);
+
+        message.Clear();
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(
+            &reader, &message, options, &error, &offset)) << error;
+        EXPECT_EQ(expected_messages[i], message.message());
+        total_offset += jsons[i].size();
+        EXPECT_EQ(total_offset, offset);
+        EXPECT_EQ(total_offset, reader.Tell());
+    }
+    EXPECT_TRUE(remaining.empty());
+    EXPECT_FALSE(json2pb::JsonToProtoMessage(
+        remaining, &message, options, &error, &offset));
+    EXPECT_TRUE(error.empty());
+    EXPECT_EQ(0ul, offset);
+    EXPECT_FALSE(json2pb::JsonToProtoMessage(
+        &reader, &message, options, &error, &offset));
+    EXPECT_TRUE(error.empty());
+    EXPECT_EQ(total_offset, offset);
+}
+
 TEST_F(ProtobufJsonTest, parse_multiple_json) {
     const int COUNT = 4;
     std::vector<std::string> expectedNames = { "tom", "bob", "jerry", "lucy" };

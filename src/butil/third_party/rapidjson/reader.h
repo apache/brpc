@@ -1540,9 +1540,7 @@ private:
                 // wwb: Update parseResult_.Offset() when kParseStopWhenDoneFlag
                 // is set which means the user needs to know where to resume
                 // parsing in next calls to JsonToProtoMessage()
-                if (is.Peek() != '\0') {
-                    SetParseError(kParseErrorNone, is.Tell());
-                }
+                SetParseError(kParseErrorNone, is.Tell());
                 break;
             }
             SkipWhitespace(is);
