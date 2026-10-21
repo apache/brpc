@@ -103,7 +103,7 @@ template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::Enqueue(T&& data) {
     auto node = (MPSCQueueNode<T>*)_alloc.Alloc();
     node->next = MPSCQueueNode<T>::UNCONNECTED;
-    node->data_mem.Init(data);
+    node->data_mem.Init(std::move(data));
     EnqueueImpl(node);
 }
 
@@ -144,6 +144,7 @@ bool MPSCQueue<T, Alloc>::DequeueImpl(T* data) {
         ReverseList(node);
     }
     _cur_dequeue_node = node->next;
+    node->data_mem.Destroy();
     _alloc.Free(old_node);
 
     return true;

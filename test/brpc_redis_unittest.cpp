@@ -164,6 +164,31 @@ TEST(RedisCommandFormatTest, vector_components_preserve_binary_payload) {
     EXPECT_EQ(expected, buf.to_string());
 }
 
+TEST(RedisCommandFormatTest, format_preserves_binary_payload) {
+    const std::string value("a\0b", 3);
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(
+                    &buf, "SET key %b", value.data(), value.size())
+                    .ok());
+
+    std::string expected = "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$3\r\n";
+    expected.append(value).append("\r\n");
+    EXPECT_EQ(expected, buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, no_format_encodes_components) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandNoFormat(&buf, "SET key value").ok());
+    EXPECT_EQ("*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n",
+              buf.to_string());
+}
+
+TEST(RedisCommandFormatTest, empty_format_encodes_empty_array) {
+    butil::IOBuf buf;
+    ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "").ok());
+    EXPECT_EQ("*0\r\n", buf.to_string());
+}
+
 TEST(RedisCommandFormatTest, authenticator_encodes_password_and_database) {
     brpc::policy::RedisAuthenticator authenticator("a b", 3);
     std::string credential;
@@ -1571,6 +1596,52 @@ TEST_F(RedisTest, server_is_not_served_on_internal_port) {
     ASSERT_EQ(1, response.reply_size());
     ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
     ASSERT_STREQ("OK", response.reply(0).c_str());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+class MyServerAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string*) const override { return 0; }
+    int VerifyCredential(const std::string&, const butil::EndPoint&,
+                         brpc::AuthContext*) const override { return 0; }
+};
+
+TEST_F(RedisTest, server_rejects_unauthenticated_commands) {
+    std::string password = GeneratePassword();
+    RedisServiceImpl* rsimpl = new RedisServiceImpl(password);
+    std::unique_ptr<SetCommandHandler> sh(new SetCommandHandler(rsimpl));
+    std::unique_ptr<AuthCommandHandler> ah(new AuthCommandHandler(rsimpl));
+    rsimpl->AddCommandHandler("set", sh.get());
+    rsimpl->AddCommandHandler("auth", ah.get());
+
+    // Redis commands are handled inside ParseRedisMessage() and never reach
+    // InputMessenger's authentication hook. With ServerOptions.auth set they
+    // must be rejected, like VerifyNsheadRequest/VerifyThriftRequest do for
+    // the other protocols that carry no credential.
+    MyServerAuthenticator auth;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.redis_service = rsimpl;
+    server_options.auth = &auth;
+    brpc::PortRange pr(8081, 8900);
+    ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    options.max_retry = 0;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(
+        "127.0.0.1", server.listen_address().port, &options));
+
+    brpc::RedisRequest request;
+    brpc::RedisResponse response;
+    brpc::Controller cntl;
+    ASSERT_TRUE(request.AddCommand("set key1 value1"));
+    channel.CallMethod(nullptr, &cntl, &request, &response, nullptr);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(0, response.reply_size());
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
