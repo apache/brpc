@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 #include <iostream>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <google/protobuf/text_format.h>
 #include "butil/iobuf.h"
@@ -1764,15 +1765,24 @@ TEST_F(ProtobufJsonTest, parse_multiple_json_at_eof) {
         EXPECT_EQ(total_offset, stream_offset);
         EXPECT_EQ(total_offset, reader.Tell());
     }
-    EXPECT_TRUE(remaining.empty());
+    ASSERT_TRUE(remaining.empty());
+    // Seed outputs to verify that EOF parsing overwrites them.
+    message.Clear();
+    error = "previous error";
+    string_offset = std::numeric_limits<size_t>::max();
     EXPECT_FALSE(json2pb::JsonToProtoMessage(
         remaining, &message, options, &error, &string_offset));
     EXPECT_TRUE(error.empty());
     EXPECT_EQ(0ul, string_offset);
+
+    message.Clear();
+    error = "previous error";
+    stream_offset = std::numeric_limits<size_t>::max();
     EXPECT_FALSE(json2pb::JsonToProtoMessage(
         &reader, &message, options, &error, &stream_offset));
     EXPECT_TRUE(error.empty());
     EXPECT_EQ(total_offset, stream_offset);
+    EXPECT_EQ(total_offset, reader.Tell());
 }
 
 TEST_F(ProtobufJsonTest, parse_multiple_json) {
