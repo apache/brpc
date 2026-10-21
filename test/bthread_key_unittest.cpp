@@ -571,6 +571,7 @@ struct ConcurrentPoolData {
     bthread_keytable_pool_t pool;
     CountdownEvent ready;
     CountdownEvent start;
+    CountdownEvent destroyed;
     Counters counters;
 
     explicit ConcurrentPoolData(int nworkers) : ready(nworkers) {}
@@ -598,6 +599,7 @@ static void* borrow_and_return_during_pool_destruction(void* arg) {
         KeyTable* kt = borrow_keytable(&data->pool);
         return_keytable(&data->pool, kt);
     }
+    data->destroyed.wait();
     return_keytable(&data->pool, held);
     return nullptr;
 }
@@ -627,6 +629,7 @@ TEST(KeyTest, borrow_and_return_keytable_during_pool_destruction) {
     data.ready.wait();
     data.start.signal();
     EXPECT_EQ(0, bthread_keytable_pool_destroy(&data.pool));
+    data.destroyed.signal();
     for (size_t i = 0; i < nstarted; ++i) {
         EXPECT_EQ(0, pthread_join(workers[i], nullptr));
     }
