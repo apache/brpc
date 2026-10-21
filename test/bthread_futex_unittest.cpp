@@ -20,7 +20,6 @@
 #include <stdio.h>
 #include <signal.h>
 #include <pthread.h>
-#include <sched.h>
 #include <gtest/gtest.h>
 #include <vector>
 #include "butil/time.h"
@@ -117,16 +116,23 @@ TEST(FutexTest, futex_wake_before_wait) {
     ASSERT_EQ(ETIMEDOUT, errno);
 }
 
+const int kWakeCountIterations = 256;
+const int64_t kWakeCountTimeoutUs = 5 * 1000 * 1000L;
+const useconds_t kWakeCountRetryIntervalUs = 50;
+
 struct WakeCountWaiterArg {
     butil::atomic<int>* word;
     butil::atomic<bool>* finished;
+    int64_t deadline_us;
     int rc;
     int error;
 };
 
 void* wake_count_waiter(void* void_arg) {
     WakeCountWaiterArg* arg = static_cast<WakeCountWaiterArg*>(void_arg);
-    const timespec timeout = { 2, 0 };
+    const int64_t remaining_us = arg->deadline_us - butil::cpuwide_time_us();
+    const timespec timeout = butil::microseconds_to_timespec(
+        remaining_us > 0 ? remaining_us : 0);
     arg->rc = bthread::futex_wait_private(arg->word, 0, &timeout);
     arg->error = errno;
     arg->finished->store(true, butil::memory_order_release);
@@ -138,22 +144,28 @@ void* wake_count_waiter(void* void_arg) {
 // Repeat to exercise both orders of reacquiring the simulated futex's mutex.
 void check_wake_count_after_notification(bool expire_another_waiter) {
     int notified = 0;
-    for (int i = 0; i < 256; ++i) {
+    // Share one deadline across all iterations and the waiter itself, so slow
+    // scheduling cannot renew the timeout on every iteration.
+    const int64_t deadline_us = butil::cpuwide_time_us() + kWakeCountTimeoutUs;
+    for (int i = 0; i < kWakeCountIterations; ++i) {
+        ASSERT_LT(butil::cpuwide_time_us(), deadline_us)
+            << "Timed out after " << i << " iterations";
         butil::atomic<int> word(0);
         butil::atomic<bool> finished(false);
-        WakeCountWaiterArg arg = { &word, &finished, -1, 0 };
+        WakeCountWaiterArg arg = { &word, &finished, deadline_us, -1, 0 };
         pthread_t waiter;
         ASSERT_EQ(0, pthread_create(&waiter, nullptr, wake_count_waiter, &arg));
 
         int first_wake = 0;
-        const int64_t deadline = butil::cpuwide_time_us() + 5000000L;
-        do {
+        // A readiness flag published before futex_wait does not prove that the
+        // waiter is queued. Use the wake result, with a pause between retries.
+        while (butil::cpuwide_time_us() < deadline_us) {
             first_wake = bthread::futex_wake_private(&word, 1);
             if (first_wake != 0 || finished.load(butil::memory_order_acquire)) {
                 break;
             }
-            sched_yield();
-        } while (butil::cpuwide_time_us() < deadline);
+            usleep(kWakeCountRetryIntervalUs);
+        }
 
         int expired_rc = 0;
         int expired_errno = 0;
@@ -207,7 +219,7 @@ TEST(FutexTest, timed_out_waiter_is_removed) {
 TEST(FutexTest, mismatched_value_does_not_queue_a_waiter) {
     butil::atomic<int> word(1);
     ASSERT_EQ(-1, bthread::futex_wait_private(&word, 0, nullptr));
-    ASSERT_EQ(EWOULDBLOCK, errno);
+    ASSERT_EQ(EAGAIN, errno);
     ASSERT_EQ(0, bthread::futex_wake_private(&word, INT_MAX));
 }
 
