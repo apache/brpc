@@ -40,6 +40,7 @@
 #include "butil/logging.h"
 #include "butil/files/scoped_file.h"
 #include "butil/fd_guard.h"
+#include "butil/fd_utility.h"
 #include "butil/file_util.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
@@ -2319,21 +2320,41 @@ TEST_F(HttpTest, h2_ping_ack_respects_socket_write_cap) {
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
 }
 
-TEST_F(HttpTest, socket_overcrowded_state_follows_unwritten_bytes) {
+TEST_F(HttpTest, socket_overcrowded_state_tracks_pending_writes) {
+    int fds[2];
+    ASSERT_EQ(0, pipe(fds));
+    butil::fd_guard read_fd(fds[0]);
+    ASSERT_EQ(0, butil::make_non_blocking(read_fd));
+    brpc::SocketOptions options;
+    options.fd = fds[1];
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr sock;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
+
     GFLAGS_NAMESPACE::FlagSaver flag_saver;
     brpc::FLAGS_socket_max_unwritten_bytes = 64;
 
-    _socket->_unwritten_bytes.store(0, butil::memory_order_relaxed);
-    ASSERT_FALSE(_socket->is_overcrowded());
+    butil::IOBuf data;
+    data.append(std::string(1024 * 1024, 'x'));
+    ASSERT_EQ(0, sock->Write(&data));
+    ASSERT_TRUE(sock->is_overcrowded());
 
-    _socket->_unwritten_bytes.store(63, butil::memory_order_relaxed);
-    ASSERT_FALSE(_socket->is_overcrowded());
+    brpc::FLAGS_socket_max_unwritten_bytes = 0;
+    ASSERT_FALSE(sock->is_overcrowded());
+    brpc::FLAGS_socket_max_unwritten_bytes = 64;
 
-    _socket->_unwritten_bytes.store(64, butil::memory_order_relaxed);
-    ASSERT_TRUE(_socket->is_overcrowded());
-
-    _socket->_unwritten_bytes.store(65, butil::memory_order_relaxed);
-    ASSERT_TRUE(_socket->is_overcrowded());
+    char buf[8192];
+    const int max_wait_iterations = 1000;
+    for (int i = 0;
+         i < max_wait_iterations && sock->is_overcrowded(); ++i) {
+        ssize_t nread;
+        while ((nread = read(read_fd, buf, sizeof(buf))) > 0) {}
+        ASSERT_EQ(-1, nread);
+        ASSERT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK);
+        bthread_usleep(1000);
+    }
+    ASSERT_FALSE(sock->is_overcrowded());
 }
 
 TEST_F(HttpTest, http2_goaway_with_debug_data) {

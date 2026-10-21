@@ -89,8 +89,9 @@ DEFINE_int32(ssl_handshake_timeout_ms, 5000,
 BRPC_VALIDATE_GFLAG(ssl_handshake_timeout_ms, PassValidate);
 
 DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
-             "Max unwritten bytes in each socket, if the limit is reached,"
-             " Socket.Write fails with EOVERCROWDED");
+             "Max unwritten bytes in each socket. Socket.Write fails with "
+             "EOVERCROWDED when the limit is reached; non-positive disables "
+             "the limit.");
 
 DEFINE_int64(socket_max_streams_unconsumed_bytes, 0,
              "Max stream receivers' unconsumed bytes in one socket,"
@@ -1872,8 +1873,9 @@ void* Socket::KeepWrite(void* void_arg) {
         //if (nw <= 0 || req->data.empty()/*note*/) {
         if (nw <= 0) {
             // NOTE: Waiting epollout within timeout is a must to force
-            // KeepWrite to check and setup pending WriteRequests periodically,
-            // which may turn on _overcrowded to stop pending requests from
+            // KeepWrite to check and setup pending WriteRequests periodically
+            // so their bytes contribute to _unwritten_bytes. Subsequent
+            // writes then observe the limit and stop the pending queue from
             // growing infinitely.
             const timespec duetime = butil::milliseconds_from_now(WAIT_EPOLLOUT_TIMEOUT_MS);
             bool pollin = s->_transport->HasOnEdgeTrigger();
@@ -3003,7 +3005,7 @@ void Socket::CancelUnwrittenBytes(size_t bytes) {
 bool Socket::is_overcrowded() const {
     const int64_t unwritten_bytes =
         _unwritten_bytes.load(butil::memory_order_relaxed);
-    return unwritten_bytes > 0 &&
+    return FLAGS_socket_max_unwritten_bytes > 0 &&
            unwritten_bytes >= FLAGS_socket_max_unwritten_bytes;
 }
 void Socket::AddOutputBytes(size_t bytes) {
