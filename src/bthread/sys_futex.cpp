@@ -36,9 +36,11 @@ struct SimuFutexWaiter : public butil::LinkNode<SimuFutexWaiter> {
     }
     ~SimuFutexWaiter() {
         // The futex mutex is still held when the stack waiter is destroyed.
-        // A notified waiter is already detached; otherwise remove it on timeout
-        // or error.
-        RemoveFromList();
+        // Notified waiters were detached by futex_wake_private. Remove only
+        // waiters that leave on timeout or error.
+        if (!signaled) {
+            RemoveFromList();
+        }
         pthread_cond_destroy(&cond);
     }
 

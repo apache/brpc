@@ -143,7 +143,6 @@ void* wake_count_waiter(void* void_arg) {
 // waits again, so every subsequent wake must return zero, even before it runs.
 // Repeat to exercise both orders of reacquiring the simulated futex's mutex.
 void check_wake_count_after_notification(bool expire_another_waiter) {
-    int notified = 0;
     // Share one deadline across all iterations and the waiter itself, so slow
     // scheduling cannot renew the timeout on every iteration.
     const int64_t deadline_us = butil::cpuwide_time_us() + kWakeCountTimeoutUs;
@@ -171,33 +170,27 @@ void check_wake_count_after_notification(bool expire_another_waiter) {
         int expired_errno = 0;
         int second_wake = 0;
         if (first_wake == 1) {
-            ++notified;
             if (expire_another_waiter) {
                 const timespec timeout = { 0, 0 };
                 expired_rc = bthread::futex_wait_private(&word, 0, &timeout);
                 expired_errno = errno;
             }
             second_wake = bthread::futex_wake_private(&word, 1);
-        } else {
-            // Rescue a waiter that had not registered before the deadline.
-            word.store(1);
-            bthread::futex_wake_private(&word, INT_MAX);
         }
-        // Join before checking results so a failed assertion cannot leave a
-        // waiter referring to this iteration's stack objects.
+        // The waiter has a timeout even if no wake succeeds. Join before
+        // checking results so a failed assertion cannot leave it referring to
+        // this iteration's stack objects.
         ASSERT_EQ(0, pthread_join(waiter, nullptr));
-        ASSERT_GE(first_wake, 0);
-        ASSERT_LE(first_wake, 1);
+        ASSERT_EQ(1, first_wake)
+            << "No waiter was notified before the deadline: iteration=" << i
+            << " waiter_rc=" << arg.rc << " errno=" << arg.error;
         ASSERT_EQ(0, arg.rc) << "errno=" << arg.error;
-        if (first_wake == 1) {
-            if (expire_another_waiter) {
-                ASSERT_EQ(-1, expired_rc);
-                ASSERT_EQ(ETIMEDOUT, expired_errno);
-            }
-            ASSERT_EQ(0, second_wake) << "iteration=" << i;
+        if (expire_another_waiter) {
+            ASSERT_EQ(-1, expired_rc);
+            ASSERT_EQ(ETIMEDOUT, expired_errno);
         }
+        ASSERT_EQ(0, second_wake) << "iteration=" << i;
     }
-    ASSERT_GT(notified, 0);
 }
 
 TEST(FutexTest, notified_waiter_is_not_counted_twice) {
