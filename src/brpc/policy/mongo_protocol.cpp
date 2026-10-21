@@ -20,6 +20,7 @@
 #include <gflags/gflags.h>
 
 #include "butil/iobuf.h"                         // butil::IOBuf
+#include "butil/object_pool.h"
 #include "butil/strings/string_util.h"
 #include "butil/time.h"
 
@@ -118,8 +119,17 @@ struct MongoInputMessage : public InputMessageBase {
     butil::IOBuf payload;
     butil::intrusive_ptr<MongoContext> context;
 
+    inline static MongoInputMessage* Get() {
+        return butil::get_object<MongoInputMessage>();
+    }
+
     // @InputMessageBase
-    void DestroyImpl() { delete this; }
+    void DestroyImpl() override {
+        meta.clear();
+        payload.clear();
+        context.reset();
+        butil::return_object(this);
+    }
 };
 
 ParseResult ParseMongoMessage(butil::IOBuf* source,
@@ -173,7 +183,7 @@ ParseResult ParseMongoMessage(butil::IOBuf* source,
         socket_context_msg = new MongoContextMessage(context);
         socket->reset_parsing_context(socket_context_msg);
     }
-    MongoInputMessage* msg = new MongoInputMessage;
+    MongoInputMessage* msg = MongoInputMessage::Get();
     source->cutn(&msg->meta, sizeof(buf));
     size_t act_body_len = source->cutn(&msg->payload, body_len - sizeof(buf));
     if (act_body_len != body_len - sizeof(buf)) {
