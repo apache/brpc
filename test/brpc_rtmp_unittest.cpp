@@ -1250,6 +1250,42 @@ TEST(RtmpTest, rejected_create_stream_with_response_write_failure) {
     server.Join();
 }
 
+class MyServerAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string*) const override { return 0; }
+    int VerifyCredential(const std::string&, const butil::EndPoint&,
+                         brpc::AuthContext*) const override { return 0; }
+};
+
+TEST(RtmpTest, reject_unauthenticated_connection) {
+    PlayingDummyService rtmp_service;
+    MyServerAuthenticator auth;
+    brpc::Server server;
+    brpc::ServerOptions server_opt;
+    server_opt.rtmp_service = &rtmp_service;
+    server_opt.auth = &auth;
+    ASSERT_EQ(0, server.Start(0, &server_opt));
+
+    brpc::SocketId socket_id;
+    brpc::SocketOptions socket_options;
+    ASSERT_EQ(0, brpc::Socket::Create(socket_options, &socket_id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+
+    // RTMP messages are handled inside the parser and never reach
+    // InputMessenger's authentication hook. With ServerOptions.auth set the
+    // connection must be rejected before any handshaking happens.
+    butil::IOBuf buf;
+    buf.append("\x03", 1);  // C0 (version)
+    brpc::ParseResult pr = brpc::policy::ParseRtmpMessage(
+        &buf, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
+    ASSERT_EQ(nullptr, socket->parsing_context());
+
+    server.Stop(0);
+    server.Join();
+}
+
 TEST(RtmpTest, successfully_play_streams) {
     PlayingDummyService rtmp_service;
     brpc::Server server;

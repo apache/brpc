@@ -3490,6 +3490,15 @@ ParseResult ParseRtmpMessage(butil::IOBuf* source, Socket *socket, bool read_eof
         if (!r.is_ok()) {
             return r;
         }
+        if (server->options().auth != nullptr && !socket->IsAuthenticated()) {
+            // RTMP messages are handled inside Feed() rather than in a
+            // Process function, so they never reach InputMessenger's
+            // authentication hook, and the protocol carries no credential
+            // that ServerOptions.auth could verify.
+            LOG(WARNING) << "Reject rtmp connection from unauthenticated "
+                         << *socket;
+            return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+        }
         rtmp_ctx = new RtmpContext(nullptr, server);
         socket->reset_parsing_context(rtmp_ctx);
         // We don't need to customize app_connect at server-side.

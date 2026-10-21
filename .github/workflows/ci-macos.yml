@@ -29,7 +29,13 @@ jobs:
     
     - name: install dependences
       run: |
-           brew install openssl gnu-getopt coreutils gflags leveldb protobuf@21
+           brew install openssl gnu-getopt coreutils gflags leveldb
+           # Homebrew disabled protobuf@21 on 2026-01-08 and removes disabled formulae one year
+           # after that date. Install it from a local tap holding homebrew-formula/protobuf@21.rb,
+           # the homebrew-core formula pinned to a commit and without its deprecate!/disable! lines.
+           brew tap-new --no-git local/pins
+           cp homebrew-formula/protobuf@21.rb "$(brew --repository local/pins)/Formula/"
+           brew install local/pins/protobuf@21
 
     - name: compile with make
       run: |
@@ -42,7 +48,9 @@ jobs:
       run: |
         echo "CMAKE_PREFIX_PATH=$(brew --prefix protobuf@21)"
         mkdir build && cd build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DWITH_UBRING=ON -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@21) ..
-        make -j ${{env.proc_num}} && make clean
+        make -j ${{env.proc_num}}
+        cmake --build . --target cmake_link_checks -j ${{env.proc_num}}
+        make clean
 
     - name: Show ccache statistics
       if: always()
@@ -71,7 +79,9 @@ jobs:
       - name: compile with cmake
         run: |
           mkdir build && cd build && cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DWITH_UBRING=ON -DCMAKE_PREFIX_PATH=$(brew --prefix protobuf@29) ..
-          make -j ${{env.proc_num}} && make clean
+          make -j ${{env.proc_num}}
+          cmake --build . --target cmake_link_checks -j ${{env.proc_num}}
+          make clean
 
       - name: Show ccache statistics
         if: always()

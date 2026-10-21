@@ -122,6 +122,51 @@ TEST(MPSCQueueTest, mpsc_multi_thread) {
 
 struct MyObject {};
 
+struct DestructionTracked {
+    static int alive;
+
+    DestructionTracked() { ++alive; }
+    DestructionTracked(const DestructionTracked&) { ++alive; }
+    DestructionTracked(DestructionTracked&&) { ++alive; }
+    DestructionTracked& operator=(const DestructionTracked&) { return *this; }
+    DestructionTracked& operator=(DestructionTracked&&) { return *this; }
+    ~DestructionTracked() { --alive; }
+};
+
+int DestructionTracked::alive = 0;
+
+TEST(MPSCQueueTest, destroys_pending_element) {
+    DestructionTracked::alive = 0;
+    {
+        butil::MPSCQueue<DestructionTracked> q;
+        DestructionTracked item;
+        q.Enqueue(item);
+        ASSERT_EQ(2, DestructionTracked::alive);
+    }
+    ASSERT_EQ(0, DestructionTracked::alive);
+}
+
+TEST(MPSCQueueTest, destroys_dequeued_element) {
+    DestructionTracked::alive = 0;
+    {
+        butil::MPSCQueue<DestructionTracked> q;
+        DestructionTracked item;
+        DestructionTracked out;
+        q.Enqueue(item);
+        ASSERT_TRUE(q.Dequeue(out));
+    }
+    ASSERT_EQ(0, DestructionTracked::alive);
+}
+
+TEST(MPSCQueueTest, enqueue_move_only) {
+  butil::MPSCQueue<std::unique_ptr<int>> q;
+  q.Enqueue(std::make_unique<int>(1));
+  std::unique_ptr<int> out;
+  ASSERT_TRUE(q.Dequeue(out));
+  ASSERT_NE(nullptr, out);
+  ASSERT_EQ(1, *out);
+}
+
 TEST(MPSCQueueTest, mpsc_test_allocator) {
     butil::ObjectPoolAllocator<MyObject> alloc;
 
