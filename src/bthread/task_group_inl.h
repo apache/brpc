@@ -123,16 +123,26 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         }
         // Run the popped bthread in place instead of spinning, otherwise
         // all workers may spin here and no one drains the queues any more.
-        // The pop also frees one slot, which guarantees that the push of
-        // the current task below succeeds: _rq has a single producer (the
+        // The pop also frees one slot, which guarantees that the deferred
+        // push of the current task succeeds: _rq has a single producer (the
         // owning worker) and stealers never push.
+        // |args| lives on the stack that sched_to() is about to freeze and is
+        // read by the remained-callback after the switch, so it must stay in
+        // this scope: if it were declared inside the branch below, its slot
+        // could be reused before sched_to() reads it.
+        ReadyToRunArgs args = { tag(), nullptr, false };
         if (!is_current_main_task()) {
-            // Preserve the task being scheduled out. Note that it is
-            // current_tid() rather than |tid|: push_rq() can be re-entered
-            // from remained-callbacks which run on the stack of the next
-            // task, where the task to preserve is the one whose context
-            // sched_to() is about to freeze.
-            _rq.push(current_tid());
+            // Preserve the task being scheduled out. The push is deferred to
+            // a remained-callback: publishing a still-running task into _rq
+            // lets a stealer jump into it and run the same context
+            // concurrently on another worker. The callback runs on the stack
+            // of |run_tid| after sched_to() has frozen the current context,
+            // same as exchange(). Capture the meta now, current_tid() is
+            // |run_tid| by the time the callback runs. Note that push_rq()
+            // can be re-entered from remained-callbacks, in which case the
+            // task to preserve is still the one being frozen here.
+            args.meta = _cur_meta;
+            set_remained(ready_to_run_in_worker_ignoresignal, &args);
         }
         // The main task is never queued; ending_sched() resumes it via
         // _main_tid when the queue drains. Jumping to a pthread-mode task
