@@ -879,6 +879,20 @@ TEST(HttpMessageTest, http_header) {
     header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value3);
     value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
     ASSERT_TRUE(value && *value == set_cookie_value3);
+
+    // set-cookie and user-agent collide in the default HeaderMap bucket
+    // layout. Updating Set-Cookie must not corrupt the surviving header.
+    brpc::HttpHeader collision_header;
+    collision_header.SetHeader(brpc::HttpHeader::SET_COOKIE,
+                               set_cookie_value1);
+    collision_header.SetHeader("user-agent", "brpc");
+    collision_header.SetHeader(brpc::HttpHeader::SET_COOKIE,
+                               set_cookie_value2);
+    value = collision_header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value2);
+    value = collision_header.GetHeader("user-agent");
+    ASSERT_TRUE(value && *value == "brpc");
+
     std::vector<const std::string*> all_set_cookie
         = header.GetAllSetCookieHeader();
     ASSERT_EQ(2u, all_set_cookie.size());
