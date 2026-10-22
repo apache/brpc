@@ -122,6 +122,11 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             // forever, hiding any runnable task sitting deeper in the
             // queue. Hold pthread-mode tasks aside and keep popping until
             // a runnable one shows up.
+            // Bounded budget: the array must live on the worker's stack
+            // (no allocation on a resource-exhaustion path), and held
+            // tasks are invisible to stealers, so keeping the list short
+            // limits how long they can be delayed. 16 * sizeof(bthread_t)
+            // == 128 bytes == two cache lines.
             bthread_t pending[16];
             int npending = 0;
             pending[npending++] = run_tid;
