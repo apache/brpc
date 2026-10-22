@@ -279,12 +279,16 @@ int str2endpoint(const char* str, EndPoint* point) {
         return -1;
     }
     buf[i] = '\0';
-    if (str2ip(buf, &point->ip) != 0) {
+    // Parse into locals and touch `point' only on success: an out-of-range
+    // port (e.g. EXTENDED_ENDPOINT_PORT) left in `point' would make it look
+    // like an extended endpoint whose resource id is the parsed ip.
+    ip_t ip;
+    if (str2ip(buf, &ip) != 0) {
         return -1;
     }
     ++i;
     char* end = nullptr;
-    point->port = strtol(str + i, &end, 10);
+    const long port = strtol(str + i, &end, 10);
     if (end == str + i) {
         return -1;
     } else if (*end) {
@@ -293,9 +297,11 @@ int str2endpoint(const char* str, EndPoint* point) {
             return -1;
         }
     }
-    if (point->port < 0 || point->port > 65535) {
+    if (port < 0 || port > 65535) {
         return -1;
     }
+    point->ip = ip;
+    point->port = port;
     return 0;
 }
 
@@ -331,14 +337,16 @@ int hostname2endpoint(const char* str, EndPoint* point) {
     }
 
     buf[i] = '\0';
-    if (hostname2ip(buf, &point->ip) != 0) {
+    // See str2endpoint() above for why `point' is assigned only on success.
+    ip_t ip;
+    if (hostname2ip(buf, &ip) != 0) {
         return -1;
     }
     if (str[i] == ':') {
         ++i;
     }
     char* end = nullptr;
-    point->port = strtol(str + i, &end, 10);
+    const long port = strtol(str + i, &end, 10);
     if (end == str + i) {
         return -1;
     } else if (*end) {
@@ -347,9 +355,11 @@ int hostname2endpoint(const char* str, EndPoint* point) {
             return -1;
         }
     }
-    if (point->port < 0 || point->port > 65535) {
+    if (port < 0 || port > 65535) {
         return -1;
     }
+    point->ip = ip;
+    point->port = port;
     return 0;
 }
 
