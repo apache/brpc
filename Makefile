@@ -204,6 +204,9 @@ JSON2PB_SOURCES = $(foreach d,$(JSON2PB_DIRS),$(wildcard $(addprefix $(d)/*,$(SR
 JSON2PB_OBJS = $(addsuffix .o, $(basename $(JSON2PB_SOURCES))) 
 
 BRPC_DIRS = src/brpc src/brpc/details src/brpc/builtin src/brpc/policy src/brpc/policy/mysql src/brpc/rdma
+ifeq ($(WITH_FLATBUFFERS),1)
+BRPC_DIRS += src/brpc/flatbuffers
+endif
 ifeq ($(WITH_URMA),1)
 BRPC_DIRS += src/brpc/urma
 endif
