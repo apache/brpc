@@ -518,8 +518,6 @@ private:
         if (_nfree_chunks.load(butil::memory_order_relaxed) == 0) {
             return false;
         }
-        // LocalPool is thread-local, while _free_chunks is shared.
-        // Protect all accesses to _free_chunks with _free_chunks_mutex.
         pthread_mutex_lock(&_free_chunks_mutex);
         if (_free_chunks.empty()) {
             pthread_mutex_unlock(&_free_chunks_mutex);
