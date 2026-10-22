@@ -99,13 +99,15 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             ::usleep(1000);
             continue;
         }
-        bthread_t run_tid = 0;
+        const auto pop_task = [this](bthread_t* t) -> bool {
 #ifndef BTHREAD_FAIR_WSQ
-        const bool popped = _rq.pop(&run_tid);
+            return _rq.pop(t);
 #else
-        const bool popped = _rq.steal(&run_tid);
+            return _rq.steal(t);
 #endif
-        if (!popped) {
+        };
+        bthread_t run_tid = 0;
+        if (!pop_task(&run_tid)) {
             // The queue was drained by stealers between the failed push and
             // the pop, retrying the push will succeed.
             continue;
@@ -115,11 +117,39 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             // pthread-mode tasks are run inline on _main_stack by the
             // dispatch loops (run_main_task/task_runner). Switching to one
             // from the main task itself causes no stack jump and would
-            // silently drop it, put it back and wait; stealers may run it
-            // on other workers.
-            _rq.push(run_tid);
-            ::usleep(1000);
-            continue;
+            // silently drop it, so it cannot be run here. But pushing it
+            // straight back makes the LIFO pop() return this same task
+            // forever, hiding any runnable task sitting deeper in the
+            // queue. Hold pthread-mode tasks aside and keep popping until
+            // a runnable one shows up.
+            bthread_t pending[16];
+            int npending = 0;
+            pending[npending++] = run_tid;
+            bool found = false;
+            while (npending < 16 && pop_task(&run_tid)) {
+                if (address_meta(run_tid)->attr.stack_type !=
+                        BTHREAD_STACKTYPE_PTHREAD) {
+                    found = true;
+                    break;
+                }
+                pending[npending++] = run_tid;
+            }
+            // Push the held tasks back. The pops above freed at least
+            // |npending| slots, _rq has a single producer (this worker)
+            // and stealers never push, so these pushes must succeed.
+            // Reverse order restores their relative order in the queue.
+            for (int i = npending - 1; i >= 0; --i) {
+                const bool pushed = _rq.push(pending[i]);
+                CHECK(pushed) << "push_rq: failed to put back held task";
+            }
+            if (!found) {
+                // Everything within reach is pthread-mode: wait for
+                // stealers to drain the queue.
+                ::usleep(1000);
+                continue;
+            }
+            // Fall through: run_tid is a runnable task, run it inline
+            // below to free a slot for |tid|.
         }
         // Run the popped bthread in place instead of spinning, otherwise
         // all workers may spin here and no one drains the queues any more.
