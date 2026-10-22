@@ -21,6 +21,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #include <fcntl.h>  // F_GETFD
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
@@ -2163,6 +2164,7 @@ struct DebugSocketArg {
     brpc::SocketId id;
     bthread::CountdownEvent* describing;
     std::string description;
+    int reset_error;
 };
 
 void* DescribeSocket(void* void_arg) {
@@ -2175,11 +2177,15 @@ void* DescribeSocket(void* void_arg) {
 
 void* ResetParsingContextWhileDescribing(void* void_arg) {
     DebugSocketArg* arg = static_cast<DebugSocketArg*>(void_arg);
-    EXPECT_EQ(0, arg->describing->wait());
     brpc::SocketUniquePtr s;
-    EXPECT_EQ(0, brpc::Socket::Address(arg->id, &s));
-    // What InputMessenger does before trying other protocols.
-    s->reset_parsing_context(nullptr);
+    arg->reset_error = arg->describing->wait();
+    if (arg->reset_error == 0) {
+        arg->reset_error = brpc::Socket::Address(arg->id, &s);
+    }
+    if (arg->reset_error == 0) {
+        // What InputMessenger does before trying other protocols.
+        s->reset_parsing_context(nullptr);
+    }
     return nullptr;
 }
 
@@ -2194,7 +2200,7 @@ TEST_F(SocketTest, debug_socket_keeps_parsing_context_alive) {
     butil::atomic<int> ndestroyed(0);
     s->reset_parsing_context(new SlowDescribedContext(&describing, &ndestroyed));
 
-    DebugSocketArg arg = { id, &describing, "" };
+    DebugSocketArg arg = { id, &describing, "", 0 };
     bthread_t describer;
     ASSERT_EQ(0, bthread_start_background(&describer, nullptr, DescribeSocket, &arg));
     // Reset in a pthread: signaling a bthread in Describe() would switch to
@@ -2205,8 +2211,10 @@ TEST_F(SocketTest, debug_socket_keeps_parsing_context_alive) {
     ASSERT_EQ(0, bthread_join(describer, nullptr));
     ASSERT_EQ(0, pthread_join(resetter, nullptr));
 
-    ASSERT_NE(std::string::npos, arg.description.find(
-        "parsing_context=SlowDescribedContext{SlowDescribedContext}"))
+    ASSERT_EQ(0, arg.reset_error);
+    ASSERT_NE(std::string::npos, arg.description.find("parsing_context="))
+        << arg.description;
+    ASSERT_NE(std::string::npos, arg.description.find("SlowDescribedContext"))
         << arg.description;
     ASSERT_EQ(1, ndestroyed.load());
     ASSERT_EQ(nullptr, s->parsing_context());

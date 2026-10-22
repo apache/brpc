@@ -245,6 +245,8 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
     }
 
     SendMongoResponse* mongo_done = new SendMongoResponse(server);
+    // The controller takes its own strong reference of the context, which
+    // outlives this message.
     mongo_done->cntl.set_mongo_session_data(msg->context.get());
 
     ControllerPrivateAccessor accessor(&(mongo_done->cntl));
