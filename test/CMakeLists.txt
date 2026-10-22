@@ -23,7 +23,9 @@ find_package(Gperftools)
 
 add_library(brpc_test_config INTERFACE)
 target_link_libraries(brpc_test_config INTERFACE brpc_build_config)
-target_include_directories(brpc_test_config INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(brpc_test_config BEFORE INTERFACE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS})
 target_compile_definitions(brpc_test_config INTERFACE
     UNIT_TEST
     BVAR_NOT_LINK_DEFAULT_VARIABLES
@@ -32,6 +34,7 @@ target_compile_options(brpc_test_config INTERFACE -fno-access-control)
 if(GPERFTOOLS_INCLUDE_DIR)
     target_include_directories(brpc_test_config INTERFACE ${GPERFTOOLS_INCLUDE_DIR})
 endif()
+brpc_assert_protobuf_include_order(brpc_test_config ${GPERFTOOLS_INCLUDE_DIR})
 
 include(CompileProto)
 set(TEST_PROTO_FILES addressbook.proto
@@ -128,7 +131,6 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/non_thread_safe_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/nullable_string16_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/object_pool_unittest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/resource_pool_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/observer_list_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/optional_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/platform_thread_unittest.cc
@@ -253,17 +255,6 @@ target_link_libraries(test_butil PRIVATE
     ${GPERFTOOLS_LIBRARIES})
 
 add_test(NAME test_butil COMMAND test_butil)
-
-string(REPLACE ";" "|" protobuf_include_dirs_for_test
-    "${Protobuf_INCLUDE_DIRS}")
-string(REPLACE ";" "|" gflags_include_dirs_for_test
-    "${GFLAGS_INCLUDE_PATH}")
-add_test(NAME cmake_protobuf_include_order
-    COMMAND ${CMAKE_COMMAND}
-        "-DINCLUDE_DIRS_FILE=${PROJECT_BINARY_DIR}/src/butil/butil_build_config_include_dirs.txt"
-        "-DPROTOBUF_INCLUDE_DIRS=${protobuf_include_dirs_for_test}"
-        "-DGENERIC_INCLUDE_DIRS=${gflags_include_dirs_for_test}"
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_protobuf_include_order.cmake)
 
 # test_bvar
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests

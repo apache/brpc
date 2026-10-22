@@ -90,14 +90,7 @@ target_include_directories(butil_build_config BEFORE INTERFACE
     ${butil_generated_include_dir}
     ${Protobuf_INCLUDE_DIRS})
 target_include_directories(butil_build_config INTERFACE ${BUTIL_INCLUDE_DIRS})
-
-get_target_property(butil_build_config_include_dirs
-    butil_build_config INTERFACE_INCLUDE_DIRECTORIES)
-string(REPLACE ";" "\n" butil_build_config_include_dirs
-    "${butil_build_config_include_dirs}")
-file(GENERATE
-    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/butil_build_config_include_dirs.txt"
-    CONTENT "${butil_build_config_include_dirs}\n")
+brpc_assert_protobuf_include_order(butil_build_config ${BUTIL_INCLUDE_DIRS})
 
 set(butil_crc32c_options)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")

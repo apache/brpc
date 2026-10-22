@@ -150,6 +150,39 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 find_package(Protobuf REQUIRED)
+
+# A dependency found in a generic prefix (for example /opt/homebrew/include)
+# can expose google/protobuf headers from a different installation than the
+# selected Protobuf package. Keep the selected package ahead of such prefixes
+# on every configuration target that compiles BRPC sources.
+function(brpc_assert_protobuf_include_order target)
+    get_target_property(target_include_dirs ${target}
+        INTERFACE_INCLUDE_DIRECTORIES)
+    if(NOT target_include_dirs)
+        message(FATAL_ERROR "${target} has no interface include directories")
+    endif()
+
+    foreach(protobuf_include_dir IN LISTS Protobuf_INCLUDE_DIRS)
+        list(FIND target_include_dirs "${protobuf_include_dir}" protobuf_index)
+        if(protobuf_index EQUAL -1)
+            message(FATAL_ERROR
+                "${target} is missing selected Protobuf include directory: "
+                "${protobuf_include_dir}")
+        endif()
+        foreach(generic_include_dir IN LISTS ARGN)
+            if(generic_include_dir STREQUAL protobuf_include_dir)
+                continue()
+            endif()
+            list(FIND target_include_dirs "${generic_include_dir}" generic_index)
+            if(NOT generic_index EQUAL -1 AND protobuf_index GREATER generic_index)
+                message(FATAL_ERROR
+                    "${target} must search selected Protobuf headers before: "
+                    "${generic_include_dir}")
+            endif()
+        endforeach()
+    endforeach()
+endfunction()
+
 foreach(protobuf_include_dir IN LISTS Protobuf_INCLUDE_DIRS)
     list(APPEND PROTOC_FLAGS -I${protobuf_include_dir})
 endforeach()
