@@ -1713,7 +1713,7 @@ int UrmaEndpoint::PollingModeInitialize(
 
 void UrmaEndpoint::PollingModeRelease(bthread_tag_t tag) {
     auto& poller_groups = PollerGroups();
-    if (!FLAGS_urma_use_polling || tag >= poller_groups.size()) {
+    if (tag >= poller_groups.size()) {
         return;
     }
     auto& group = poller_groups[tag];

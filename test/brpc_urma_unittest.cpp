@@ -138,6 +138,7 @@ TEST(UrmaPollingDeathTest, global_shutdown_joins_all_tags) {
                 [] { ++g_exit_pollers_released; }) != 0) {
             std::_Exit(92);
         }
+        urma::FLAGS_urma_use_polling = false;
         urma::UrmaEndpoint::GlobalPollingModeRelease();
         urma::UrmaEndpoint::GlobalPollingModeRelease();
         if (g_exit_pollers_released.load() != 4) {
@@ -191,6 +192,7 @@ TEST(UrmaPollingDeathTest, exit_stops_pollers_before_late_endpoint_cleanup) {
         g_exit_endpoint = new urma::UrmaEndpoint(nullptr);
         g_exit_endpoint->_resource = new urma::UrmaResource;
         g_exit_endpoint->_cq_sid = 7;
+        urma::FLAGS_urma_use_polling = false;
         std::exit(0);
     }, ::testing::ExitedWithCode(0), "");
 }
