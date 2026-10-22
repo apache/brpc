@@ -68,6 +68,9 @@ ibv_gid GetRdmaGid();
 // Return Global LID
 uint16_t GetRdmaLid();
 
+// Return active MTU of the RDMA port (IBV_MTU_256 .. IBV_MTU_4096).
+uint32_t GetRdmaActiveMtu();
+
 // Return suggested comp vector for CQ
 int GetRdmaCompVector();
 
