@@ -265,13 +265,16 @@ void* add_two_free_chunks(void* arg) {
 TEST_F(ObjectPoolTest, free_chunk_count_tracks_push_and_pop) {
     // Keep the main LocalPool alive so worker teardown does not clear chunks.
     FreeChunkCountObject* guard = get_object<FreeChunkCountObject>();
+    ASSERT_NE(nullptr, guard);
     FreeChunkCountArgs args = { nullptr, nullptr };
     pthread_t tid;
     ASSERT_EQ(0, pthread_create(&tid, nullptr, add_two_free_chunks, &args));
-    pthread_join(tid, nullptr);
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
 
     FreeChunkCountObject* first = get_object<FreeChunkCountObject>();
     FreeChunkCountObject* second = get_object<FreeChunkCountObject>();
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
     ASSERT_TRUE(first == args.first || first == args.second);
     ASSERT_TRUE(second == args.first || second == args.second);
     ASSERT_NE(first, second);

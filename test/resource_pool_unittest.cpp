@@ -303,7 +303,7 @@ TEST_F(ResourcePoolTest, free_chunk_count_tracks_push_and_pop) {
     FreeChunkCountArgs args = { { 0 }, { 0 } };
     pthread_t tid;
     ASSERT_EQ(0, pthread_create(&tid, nullptr, add_two_free_chunks, &args));
-    pthread_join(tid, nullptr);
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
 
     ResourceId<FreeChunkCountObject> first = { 0 };
     ResourceId<FreeChunkCountObject> second = { 0 };
