@@ -605,6 +605,8 @@ static void* borrow_and_return_during_pool_destruction(void* arg) {
 }
 
 TEST(KeyTest, borrow_and_return_keytable_during_pool_destruction) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    bthread::FLAGS_borrow_from_globle_size = 20;
     const size_t NWORKERS = 8;
     const size_t NTABLES = NWORKERS * bthread::FLAGS_borrow_from_globle_size;
     ConcurrentPoolData data(NWORKERS);
