@@ -120,6 +120,7 @@ TEST_F(UrmaSendCompletionTest, reject_full_window_before_reclaiming_buffer) {
                                    butil::memory_order_relaxed);
     ASSERT_EQ(0, endpoint._sbuf[0].append("keep"));
 
+    errno = 0;
     EXPECT_EQ(-1, endpoint.HandleCompletion(SendCompletion()));
     EXPECT_EQ(EPROTO, errno);
     EXPECT_EQ("keep", endpoint._sbuf[0].to_string());
