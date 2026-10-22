@@ -33,6 +33,7 @@ set_property(CACHE URMA_USE_MOCK PROPERTY STRINGS AUTO ON OFF)
 option(DOWNLOAD_URMA_HEADERS
        "Download UMDK headers when WITH_URMA is enabled and headers are absent"
        ON)
+option(WITH_GDR "With GPU Direct RDMA (requires WITH_RDMA and CUDA)" OFF)
 option(WITH_UBRING "With UB" OFF)
 option(WITH_DEBUG_BTHREAD_SCHE_SAFETY "With debugging bthread sche safety" OFF)
 option(WITH_DEBUG_LOCK "With debugging lock" OFF)
@@ -80,6 +81,41 @@ if(WITH_DEBUG_SYMBOLS)
     list(APPEND BRPC_COMMON_COMPILE_OPTIONS -g)
 endif()
 
+set(WITH_GDR_VAL "0")
+if(WITH_GDR)
+    # GDR is a special mode of RDMA; it implies RDMA.
+    if(NOT WITH_RDMA)
+        message(STATUS "WITH_GDR=ON implies WITH_RDMA=ON")
+        set(WITH_RDMA ON)
+    endif()
+    set(WITH_GDR_VAL "1")
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "GDR (GPU Direct RDMA) is only supported on Linux")
+    endif()
+    message(STATUS "brpc compile with gdr")
+    # Honor CUDA_HOME if set by the user, otherwise fall back to common defaults.
+    if(DEFINED ENV{CUDA_HOME} AND NOT CUDA_HOME)
+        set(CUDA_HOME $ENV{CUDA_HOME})
+    endif()
+    if(CUDA_HOME)
+        set(CUDA_INCLUDE_PATH ${CUDA_HOME}/include)
+        find_library(CUDA_LIB NAMES cuda PATHS ${CUDA_HOME}/lib64 ${CUDA_HOME}/lib NO_DEFAULT_PATH)
+        find_library(CUDART_LIB NAMES cudart PATHS ${CUDA_HOME}/lib64 ${CUDA_HOME}/lib NO_DEFAULT_PATH)
+    else()
+        find_path(CUDA_INCLUDE_PATH NAMES cuda_runtime.h
+                  PATHS /usr/local/cuda/include /usr/include)
+        find_library(CUDA_LIB NAMES cuda
+                     PATHS /usr/local/cuda/lib64 /usr/lib64)
+        find_library(CUDART_LIB NAMES cudart
+                     PATHS /usr/local/cuda/lib64 /usr/lib64)
+    endif()
+    if((NOT CUDA_INCLUDE_PATH) OR (NOT CUDA_LIB) OR (NOT CUDART_LIB))
+        message(FATAL_ERROR "Fail to find CUDA (set CUDA_HOME or install CUDA toolkit). "
+                            "Needed headers: cuda_runtime.h; libs: cuda, cudart")
+    endif()
+    list(APPEND BRPC_COMMON_INCLUDE_DIRS ${CUDA_INCLUDE_PATH})
+endif()
+
 include(GNUInstallDirs)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/bRPCHeaders.cmake)
 
@@ -109,6 +145,10 @@ list(APPEND BRPC_COMMON_DEFINITIONS
     __STDC_LIMIT_MACROS
     __STDC_CONSTANT_MACROS
 )
+
+if(WITH_GDR)
+    list(APPEND BRPC_COMMON_DEFINITIONS BRPC_WITH_GDR=${WITH_GDR_VAL})
+endif()
 
 if(WITH_ASAN)
     list(APPEND BRPC_COMMON_COMPILE_OPTIONS -fsanitize=address)

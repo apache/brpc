@@ -33,6 +33,10 @@ namespace rdma {
 // Exit if failed
 void GlobalRdmaInitializeOrDie();
 
+// Initialize GDR environment
+// Exit if failed
+void GlobalGdrInitializeOrDie();
+
 // Initialize RDMA polling mode with tag
 bool InitPollingModeWithTag(bthread_tag_t tag,
                             std::function<void(void)> callback = nullptr,
@@ -73,6 +77,9 @@ int GetRdmaCompVector();
 
 // Return current port number used
 uint8_t GetRdmaPortNum();
+
+// Get GPU index used
+int GetGPUIndex();
 
 // Get max_sge supported by the device
 int GetRdmaMaxSge();
