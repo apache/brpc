@@ -133,6 +133,15 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             // was not enabled on this port at all.
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
+        if (server->options().auth != nullptr && !socket->IsAuthenticated()) {
+            // Redis commands are handled right here rather than in
+            // ProcessRedisRequest(), so they never reach InputMessenger's
+            // authentication hook, and the protocol carries no credential
+            // that ServerOptions.auth could verify.
+            LOG(WARNING) << "Reject redis request from unauthenticated "
+                         << *socket;
+            return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+        }
         RedisConnContext* ctx = static_cast<RedisConnContext*>(socket->parsing_context());
         if (ctx == nullptr) {
             ctx = new RedisConnContext(rs);

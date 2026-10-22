@@ -137,7 +137,7 @@ Similar with "http" prefix besides that the connections will be encrypted with S
 
 Get a list of servers with the specified service-name through consul. The default address of consul is localhost:8500, which can be modified by setting -consul\_agent\_addr in gflags. The connection timeout of consul is 200ms by default, which can be modified by -consul\_connect\_timeout\_ms. 
 
-By default, [stale](https://www.consul.io/api/index.html#consistency-modes) and passing(only servers with passing in statuses are returned) are added to [parameters of the consul request]((https://www.consul.io/api/health.html#parameters-2)), which can be modified by -consul\_url\_parameter in gflags.
+By default, [stale](https://www.consul.io/api/index.html#consistency-modes) and passing(only servers with passing in statuses are returned) are added to [parameters of the consul request](https://www.consul.io/api/health.html#parameters-2), which can be modified by -consul\_url\_parameter in gflags.
 
 Except the first request to consul, the follow-up requests use the [long polling](https://www.consul.io/api/index.html#blocking-queries) feature. That is, the consul responds only when the server list is updated or the request times out. The timeout defaults to 60 seconds, which can be modified by -consul\_blocking\_query\_wait\_secs.
 

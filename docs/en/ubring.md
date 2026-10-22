@@ -54,12 +54,14 @@ To build brpc with UBRing support, use the following commands:
 ```bash
 # Build brpc with UBRing support
 cd /path/to/brpc
-cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DWITH_UBRING:BOOL=ON
+cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DWITH_UBRING:BOOL=ON \
+  -DCMAKE_INSTALL_PREFIX="$PWD/build/output"
 cmake --build build -j 8
+cmake --install build
 
 # Build the ubring_performance example
 cd /path/to/brpc/example/ubring_performance
-cmake -B build
+cmake -B build -DCMAKE_PREFIX_PATH="$PWD/../../build/output"
 cmake --build build -j 8
 ```
 
@@ -99,10 +101,12 @@ brpc provides a performance test example at `example/ubring_performance/`.
 
 #### Build the Example
 
+First build and install brpc as described in [Build with CMake](#build-with-cmake).
+
 ```bash
-cd example/ubring_performance
+cd /path/to/brpc/example/ubring_performance
 mkdir -p build && cd build
-cmake ..
+cmake .. -DCMAKE_PREFIX_PATH="$PWD/../../../build/output"
 make
 ```
 
