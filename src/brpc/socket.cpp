@@ -90,8 +90,7 @@ BRPC_VALIDATE_GFLAG(ssl_handshake_timeout_ms, PassValidate);
 
 DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
              "Max unwritten bytes in each socket. Socket.Write fails with "
-             "EOVERCROWDED when the limit is reached; non-positive disables "
-             "the limit.");
+             "EOVERCROWDED when the limit is reached.");
 
 DEFINE_int64(socket_max_streams_unconsumed_bytes, 0,
              "Max stream receivers' unconsumed bytes in one socket,"
@@ -3003,10 +3002,10 @@ void Socket::CancelUnwrittenBytes(size_t bytes) {
 }
 
 bool Socket::is_overcrowded() const {
+    const int64_t limit = FLAGS_socket_max_unwritten_bytes;
     const int64_t unwritten_bytes =
         _unwritten_bytes.load(butil::memory_order_relaxed);
-    return FLAGS_socket_max_unwritten_bytes > 0 &&
-           unwritten_bytes >= FLAGS_socket_max_unwritten_bytes;
+    return limit > 0 && unwritten_bytes >= limit;
 }
 void Socket::AddOutputBytes(size_t bytes) {
     GetOrNewSharedPart()->out_size.fetch_add(bytes, butil::memory_order_relaxed);
