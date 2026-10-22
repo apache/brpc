@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 #include <iostream>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <google/protobuf/text_format.h>
 #include "butil/iobuf.h"
@@ -1687,6 +1688,101 @@ TEST_F(ProtobufJsonTest, string_to_int64) {
     json = R"({"name":"hello", "id":9, "data": 1234567, "datadouble":2.2, "datafloat":1.0})";
     ASSERT_TRUE(json2pb::JsonToProtoMessage(json, &person));
     ASSERT_EQ(person.data(), 1234567);
+}
+
+TEST_F(ProtobufJsonTest, parse_json_offset_at_eof) {
+    const struct {
+        const char* json;
+        size_t expected_offset;
+        bool array_to_single_repeated;
+    } cases[] = {
+        {"{}", 2, false},
+        {" \t{}", 4, false},
+        {R"({"person":[]})", 13, false},
+        {"[]", 2, true},
+        {"{} \n", 2, false},
+        {"{}{}", 2, false},
+    };
+
+    for (const auto& test_case : cases) {
+        SCOPED_TRACE(test_case.json);
+        json2pb::Json2PbOptions options;
+        options.allow_remaining_bytes_after_parsing = true;
+        options.array_to_single_repeated = test_case.array_to_single_repeated;
+        AddressBook message;
+        std::string error;
+        size_t offset = 0;
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(
+            test_case.json, &message, options, &error, &offset)) << error;
+        EXPECT_EQ(test_case.expected_offset, offset);
+        EXPECT_TRUE(error.empty());
+
+        butil::IOBuf buf;
+        buf.append(test_case.json);
+        butil::IOBufAsZeroCopyInputStream stream(buf);
+        message.Clear();
+        offset = 0;
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(
+            &stream, &message, options, &error, &offset)) << error;
+        EXPECT_EQ(test_case.expected_offset, offset);
+        EXPECT_TRUE(error.empty());
+    }
+}
+
+TEST_F(ProtobufJsonTest, parse_multiple_json_at_eof) {
+    const std::string jsons[] = {
+        R"({"message":"first"})",
+        R"({"message":"second"})",
+    };
+    const char* expected_messages[] = {"first", "second"};
+    std::string remaining = jsons[0] + jsons[1];
+    butil::IOBuf buf;
+    buf.append(remaining);
+    butil::IOBufAsZeroCopyInputStream stream(buf);
+    json2pb::ZeroCopyStreamReader reader(&stream);
+    json2pb::Json2PbOptions options;
+    options.allow_remaining_bytes_after_parsing = true;
+    test::EchoRequest message;
+    std::string error;
+    size_t string_offset = 0;
+    size_t stream_offset = 0;
+    size_t total_offset = 0;
+
+    for (size_t i = 0; i < 2; ++i) {
+        SCOPED_TRACE(i);
+        message.Clear();
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(
+            remaining, &message, options, &error, &string_offset)) << error;
+        EXPECT_EQ(expected_messages[i], message.message());
+        EXPECT_EQ(jsons[i].size(), string_offset);
+        remaining = remaining.substr(string_offset);
+
+        message.Clear();
+        ASSERT_TRUE(json2pb::JsonToProtoMessage(
+            &reader, &message, options, &error, &stream_offset)) << error;
+        EXPECT_EQ(expected_messages[i], message.message());
+        total_offset += jsons[i].size();
+        EXPECT_EQ(total_offset, stream_offset);
+        EXPECT_EQ(total_offset, reader.Tell());
+    }
+    ASSERT_TRUE(remaining.empty());
+    // Seed outputs to verify that EOF parsing overwrites them.
+    message.Clear();
+    error = "previous error";
+    string_offset = std::numeric_limits<size_t>::max();
+    EXPECT_FALSE(json2pb::JsonToProtoMessage(
+        remaining, &message, options, &error, &string_offset));
+    EXPECT_TRUE(error.empty());
+    EXPECT_EQ(0ul, string_offset);
+
+    message.Clear();
+    error = "previous error";
+    stream_offset = std::numeric_limits<size_t>::max();
+    EXPECT_FALSE(json2pb::JsonToProtoMessage(
+        &reader, &message, options, &error, &stream_offset));
+    EXPECT_TRUE(error.empty());
+    EXPECT_EQ(total_offset, stream_offset);
+    EXPECT_EQ(total_offset, reader.Tell());
 }
 
 TEST_F(ProtobufJsonTest, parse_multiple_json) {
