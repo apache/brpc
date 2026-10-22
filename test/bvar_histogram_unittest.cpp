@@ -24,7 +24,7 @@
 #include <iomanip>                      // std::setprecision
 #include <limits>
 #include <map>
-#include <memory>                       // std::make_shared
+#include <memory>                       // std::unique_ptr, std::make_unique
 #include <sstream>
 #include <string>
 #include <vector>
@@ -707,9 +707,10 @@ TEST_F(HistogramTest, window) {
 
     // Window values are produced by the global sampler thread. Wait until it
     // observes all writes instead of assuming a fixed sleep covers a sampling
-    // round, which is not guaranteed when the test host is busy.
+    // round, which is not guaranteed when the test host is busy. Allow up to
+    // 30 seconds at 100 ms per retry.
     bvar::Histogram::Value wv;
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < 300; ++i) {
         wv = w.get_value();
         if (wv.num == 3) {
             break;
@@ -731,14 +732,33 @@ TEST_F(HistogramTest, window) {
 }
 
 TEST_F(HistogramTest, window_forgets_old_samples) {
+    // Own the unscheduled sampler until after h's destructor calls destroy().
+    std::unique_ptr<bvar::Histogram::sampler_type> sampler;
     bvar::Histogram h(bvar::Histogram::BucketSchema({10, 20, 30}));
+    sampler = std::make_unique<bvar::Histogram::sampler_type>(&h);
+    h._sampler = sampler.get();
     bvar::Window<bvar::Histogram> w(&h, 1);
+
+    // Drive sampling explicitly so that both states can be observed even when
+    // the test thread would miss a background sampling interval on a busy host.
     h << 5;
-    sleep(2);
-    // The value recorded 2 seconds ago has left the 1-second window.
-    ASSERT_EQ(0, w.get_value().num);
+    sampler->take_sample();
+    bvar::Histogram::Value wv = w.get_value();
+    ASSERT_EQ(1, wv.num);
+    ASSERT_DOUBLE_EQ(5.0, wv.sum);
+    ASSERT_EQ(1u, wv.counts[0]);
+
+    // The next round advances past the observation in the one-second window.
+    sampler->take_sample();
+    wv = w.get_value();
+    ASSERT_EQ(0, wv.num);
+    ASSERT_DOUBLE_EQ(0.0, wv.sum);
+    for (size_t i = 0; i < h.schema().num_buckets(); ++i) {
+        ASSERT_EQ(0u, wv.counts[i]) << "bucket=" << i;
+    }
     // But the histogram itself still remembers it.
     ASSERT_EQ(1, h.count());
+    ASSERT_DOUBLE_EQ(5.0, h.sum());
 }
 
 struct AddArgs {
