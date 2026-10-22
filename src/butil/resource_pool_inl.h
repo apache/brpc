@@ -197,7 +197,7 @@ public:
                     p->~T();                                                \
                     return nullptr;                                         \
                 }                                                           \
-                _cur_block->nitem.fetch_add(1, butil::memory_order_release); \
+                _cur_block->nitem.store(nitem + 1, butil::memory_order_release); \
                 return p;                                                   \
             }                                                               \
         }                                                                   \
@@ -212,7 +212,7 @@ public:
                 p->~T();                                                    \
                 return nullptr;                                                \
             }                                                               \
-            _cur_block->nitem.fetch_add(1, butil::memory_order_release);    \
+            _cur_block->nitem.store(nitem + 1, butil::memory_order_release); \
             return p;                                                       \
         }                                                                   \
         return nullptr;                                                        \
