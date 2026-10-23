@@ -22,6 +22,7 @@
 #include "bthread/sys_futex.h"
 #include "butil/scoped_lock.h"
 #include "butil/atomicops.h"
+#include "butil/containers/linked_list.h"
 #include <pthread.h>
 #include <unordered_map>
 
@@ -29,22 +30,35 @@
 
 namespace bthread {
 
-class SimuFutex {
-public:
-    SimuFutex() : counts(0)
-                , ref(0) {
-        pthread_mutex_init(&lock, nullptr);
+struct SimuFutexWaiter : public butil::LinkNode<SimuFutexWaiter> {
+    SimuFutexWaiter() : signaled(false) {
         pthread_cond_init(&cond, nullptr);
     }
-    ~SimuFutex() {
-        pthread_mutex_destroy(&lock);
+    ~SimuFutexWaiter() {
+        // The futex mutex is still held when the stack waiter is destroyed.
+        // Notified waiters were detached by futex_wake_private. Remove only
+        // waiters that leave on timeout or error.
+        if (!signaled) {
+            RemoveFromList();
+        }
         pthread_cond_destroy(&cond);
     }
 
-public:
-    pthread_mutex_t lock;
     pthread_cond_t cond;
-    int32_t counts;
+    bool signaled;
+};
+
+struct SimuFutex {
+    SimuFutex() : ref(0) {
+        pthread_mutex_init(&lock, nullptr);
+    }
+    ~SimuFutex() {
+        pthread_mutex_destroy(&lock);
+    }
+
+    pthread_mutex_t lock;
+    // Only waiters that have not been notified are in this queue.
+    butil::LinkedList<SimuFutexWaiter> waiters;
     int32_t ref;
 };
 
@@ -70,20 +84,28 @@ int futex_wait_private(void* addr1, int expected, const timespec* timeout) {
     {
         std::unique_lock<pthread_mutex_t> mu1(simu_futex.lock);
         if (static_cast<butil::atomic<int>*>(addr1)->load() == expected) {
-            ++simu_futex.counts;
+            SimuFutexWaiter waiter;
+            simu_futex.waiters.Append(&waiter);
+            timespec timeout_abs = {};
             if (timeout) {
-                timespec timeout_abs = butil::timespec_from_now(*timeout);
-                if ((rc = pthread_cond_timedwait(&simu_futex.cond, &simu_futex.lock, &timeout_abs)) != 0) {
-                    errno = rc;
-                    rc = -1;
-                }
-            } else {
-                if ((rc = pthread_cond_wait(&simu_futex.cond, &simu_futex.lock)) != 0) {
-                    errno = rc;
-                    rc = -1;
-                }
+                timeout_abs = butil::timespec_from_now(*timeout);
             }
-            --simu_futex.counts;
+            do {
+                if (timeout) {
+                    rc = pthread_cond_timedwait(
+                        &waiter.cond, &simu_futex.lock, &timeout_abs);
+                } else {
+                    rc = pthread_cond_wait(&waiter.cond, &simu_futex.lock);
+                }
+            } while (rc == 0 && !waiter.signaled);
+            // A wake may win the mutex while a timed-out waiter is reacquiring
+            // it. Honor that notification so it cannot be counted and then lost.
+            if (waiter.signaled) {
+                rc = 0;
+            } else if (rc != 0) {
+                errno = rc;
+                rc = -1;
+            }
         } else {
             errno = EAGAIN;
             rc = -1;
@@ -117,14 +139,18 @@ int futex_wake_private(void* addr1, int nwake) {
     int rc = 0;
     {
         std::unique_lock<pthread_mutex_t> mu1(simu_futex.lock);
-        nwake = (nwake < simu_futex.counts)? nwake: simu_futex.counts;
-        for (int i = 0; i < nwake; ++i) {
-            if ((rc = pthread_cond_signal(&simu_futex.cond)) != 0) {
+        while (nwakedup < nwake && !simu_futex.waiters.empty()) {
+            SimuFutexWaiter* waiter = simu_futex.waiters.head()->value();
+            if ((rc = pthread_cond_signal(&waiter->cond)) != 0) {
                 errno = rc;
                 break;
-            } else {
-                ++nwakedup;
             }
+            // Commit the notification to this waiter before releasing the
+            // mutex. Later wakes cannot count it again while it is rescheduled,
+            // and another waiter's timeout cannot consume its notification.
+            waiter->signaled = true;
+            waiter->RemoveFromList();
+            ++nwakedup;
         }
     }
 
