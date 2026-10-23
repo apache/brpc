@@ -27,10 +27,12 @@
 #include "butil/fd_guard.h"
 #include "butil/sys_byteorder.h"
 #include "brpc/adapter_transport.h"
+#include "brpc/global.h"
 #include "brpc/handshake/handshake_io.h"
 #include "brpc/handshake/handshake_adapter.h"
 #include "brpc/input_messenger.h"
 #include "brpc/policy/transport_handshake_protocol.h"
+#include "brpc/protocol.h"
 #if BRPC_WITH_RDMA
 #include "brpc/rdma_transport.h"
 #endif
@@ -274,6 +276,20 @@ public:
             ->adapter.session.phase(butil::memory_order_acquire) == ESTABLISHED;
     }
 };
+
+TEST(TransportHandshakeTest, registered_protocol_uses_transport_name) {
+    GlobalInitializeOrDie();
+    EXPECT_EQ(1, PROTOCOL_TRANSPORT_HANDSHAKE);
+    EXPECT_EQ(PROTOCOL_TRANSPORT_HANDSHAKE,
+              StringToProtocolType("transport_handshake"));
+    EXPECT_STREQ("transport_handshake",
+                 ProtocolTypeToString(PROTOCOL_TRANSPORT_HANDSHAKE));
+
+    const Protocol* protocol = FindProtocol(PROTOCOL_TRANSPORT_HANDSHAKE);
+    ASSERT_NE(nullptr, protocol);
+    EXPECT_EQ(policy::ParseTransportHandshake, protocol->parse);
+    EXPECT_EQ(policy::ProcessTransportHandshake, protocol->process_request);
+}
 
 TEST(TransportHandshakeTest, adapter_retains_context_for_fragmented_extension) {
     int fds[2];
