@@ -1047,7 +1047,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                 &cntl->response_attachment() : nullptr;
             if (cntl->response()->GetDescriptor() == SerializedResponse::descriptor()) {
                 ((SerializedResponse*)cntl->response())->
-                    serialized_data().append(*res_buf_ptr);
+                    serialized_data().append(res_buf_ptr->movable());
             } else if (!DeserializeRpcMessage(*res_buf_ptr, *cntl, content_type,
                                               compress_type, checksum_type,
                                               cntl->response(),
