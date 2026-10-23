@@ -245,8 +245,9 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
     }
 
     SendMongoResponse* mongo_done = new SendMongoResponse(server);
-    // The controller takes its own strong reference of the context, which
-    // outlives this message.
+    // set_mongo_session_data() stores the pointer into a
+    // butil::intrusive_ptr, which takes its own reference. The controller
+    // therefore keeps the context alive after this message is destroyed.
     mongo_done->cntl.set_mongo_session_data(msg->context.get());
 
     ControllerPrivateAccessor accessor(&(mongo_done->cntl));

@@ -257,7 +257,7 @@ TEST_F(MongoTest, process_request_after_parsing_context_reset) {
     // The request is still processed with the context it was parsed with.
     ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
     int bytes_in_pipe = 0;
-    ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe);
+    ASSERT_EQ(0, ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe));
     ASSERT_LT(0, bytes_in_pipe);
 }
 
