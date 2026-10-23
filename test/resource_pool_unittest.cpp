@@ -213,13 +213,6 @@ TEST_F(ResourcePoolTest, get_int) {
     
     tm.start();
     for (size_t i = 0; i < N; ++i) {
-        *(new int) = i;
-    }    
-    tm.stop();
-    printf("new a int takes %luns\n", tm.n_elapsed()/N);
-
-    tm.start();
-    for (size_t i = 0; i < N; ++i) {
         id.value = i;
         *ResourcePool<int>::unsafe_address_resource(id) = i;
     }

@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <signal.h>
+#include <pthread.h>
 #include <gtest/gtest.h>
 #include <vector>
 #include "butil/time.h"
@@ -113,6 +114,106 @@ TEST(FutexTest, futex_wake_before_wait) {
     ASSERT_EQ(0, bthread::futex_wake_private(&lock1, INT_MAX));
     ASSERT_EQ(-1, bthread::futex_wait_private(&lock1, 0, &timeout));
     ASSERT_EQ(ETIMEDOUT, errno);
+}
+
+const int kWakeCountIterations = 256;
+const int64_t kWakeCountTimeoutUs = 5 * 1000 * 1000L;
+const useconds_t kWakeCountRetryIntervalUs = 50;
+
+struct WakeCountWaiterArg {
+    butil::atomic<int>* word;
+    butil::atomic<bool>* finished;
+    int64_t deadline_us;
+    int rc;
+    int error;
+};
+
+void* wake_count_waiter(void* void_arg) {
+    WakeCountWaiterArg* arg = static_cast<WakeCountWaiterArg*>(void_arg);
+    const int64_t remaining_us = arg->deadline_us - butil::cpuwide_time_us();
+    const timespec timeout = butil::microseconds_to_timespec(
+        remaining_us > 0 ? remaining_us : 0);
+    arg->rc = bthread::futex_wait_private(arg->word, 0, &timeout);
+    arg->error = errno;
+    arg->finished->store(true, butil::memory_order_release);
+    return nullptr;
+}
+
+// A successful wake confirms that the waiter was registered. The waiter never
+// waits again, so every subsequent wake must return zero, even before it runs.
+// Repeat to exercise both orders of reacquiring the simulated futex's mutex.
+void check_wake_count_after_notification(bool expire_another_waiter) {
+    // Share one deadline across all iterations and the waiter itself, so slow
+    // scheduling cannot renew the timeout on every iteration.
+    const int64_t deadline_us = butil::cpuwide_time_us() + kWakeCountTimeoutUs;
+    for (int i = 0; i < kWakeCountIterations; ++i) {
+        ASSERT_LT(butil::cpuwide_time_us(), deadline_us)
+            << "Timed out after " << i << " iterations";
+        butil::atomic<int> word(0);
+        butil::atomic<bool> finished(false);
+        WakeCountWaiterArg arg = { &word, &finished, deadline_us, -1, 0 };
+        pthread_t waiter;
+        ASSERT_EQ(0, pthread_create(&waiter, nullptr, wake_count_waiter, &arg));
+
+        int first_wake = 0;
+        // A readiness flag published before futex_wait does not prove that the
+        // waiter is queued. Use the wake result, with a pause between retries.
+        while (butil::cpuwide_time_us() < deadline_us) {
+            first_wake = bthread::futex_wake_private(&word, 1);
+            if (first_wake != 0 || finished.load(butil::memory_order_acquire)) {
+                break;
+            }
+            usleep(kWakeCountRetryIntervalUs);
+        }
+
+        int expired_rc = 0;
+        int expired_errno = 0;
+        int second_wake = 0;
+        if (first_wake == 1) {
+            if (expire_another_waiter) {
+                const timespec timeout = { 0, 0 };
+                expired_rc = bthread::futex_wait_private(&word, 0, &timeout);
+                expired_errno = errno;
+            }
+            second_wake = bthread::futex_wake_private(&word, 1);
+        }
+        // The waiter has a timeout even if no wake succeeds. Join before
+        // checking results so a failed assertion cannot leave it referring to
+        // this iteration's stack objects.
+        ASSERT_EQ(0, pthread_join(waiter, nullptr));
+        ASSERT_EQ(1, first_wake)
+            << "No waiter was notified before the deadline: iteration=" << i
+            << " waiter_rc=" << arg.rc << " errno=" << arg.error;
+        ASSERT_EQ(0, arg.rc) << "errno=" << arg.error;
+        if (expire_another_waiter) {
+            ASSERT_EQ(-1, expired_rc);
+            ASSERT_EQ(ETIMEDOUT, expired_errno);
+        }
+        ASSERT_EQ(0, second_wake) << "iteration=" << i;
+    }
+}
+
+TEST(FutexTest, notified_waiter_is_not_counted_twice) {
+    check_wake_count_after_notification(false);
+}
+
+TEST(FutexTest, timeout_does_not_consume_another_waiters_notification) {
+    check_wake_count_after_notification(true);
+}
+
+TEST(FutexTest, timed_out_waiter_is_removed) {
+    butil::atomic<int> word(0);
+    const timespec timeout = { 0, 0 };
+    ASSERT_EQ(-1, bthread::futex_wait_private(&word, 0, &timeout));
+    ASSERT_EQ(ETIMEDOUT, errno);
+    ASSERT_EQ(0, bthread::futex_wake_private(&word, INT_MAX));
+}
+
+TEST(FutexTest, mismatched_value_does_not_queue_a_waiter) {
+    butil::atomic<int> word(1);
+    ASSERT_EQ(-1, bthread::futex_wait_private(&word, 0, nullptr));
+    ASSERT_EQ(EAGAIN, errno);
+    ASSERT_EQ(0, bthread::futex_wake_private(&word, INT_MAX));
 }
 
 struct DummyWaiterArg {

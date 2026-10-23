@@ -21,6 +21,12 @@ if(WITH_GLOG)
     set(BRPC_WITH_GLOG 1)
 endif()
 
+# Recorded in config.h so installed brpc/flatbuffers headers see the choice.
+set(WITH_FLATBUFFERS_VAL "0")
+if(WITH_FLATBUFFERS)
+    set(WITH_FLATBUFFERS_VAL "1")
+endif()
+
 set(WITH_CPU_FREQUENCY_VAL "0")
 if(WITH_CPU_FREQUENCY)
     set(WITH_CPU_FREQUENCY_VAL "1")

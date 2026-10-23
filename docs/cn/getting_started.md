@@ -453,6 +453,10 @@ bRPC默认**不**链接 [libunwind](https://github.com/libunwind/libunwind)。�
 
 建议使用最新版本的libunwind。
 
+## flatbuffers: 25.2.10
+
+可选依赖，默认不启用。bRPC 使用了 FlatBuffers builder 的内部接口，只接受该版本；使用其他版本见 [FlatBuffers 消息](flatbuffers.md)。
+
 # 实例追踪
 
 我们提供了一个程序去帮助你追踪和监控所有brpc实例。 只需要在某处运行 [trackme_server](https://github.com/apache/brpc/tree/master/tools/trackme_server/) 然后再带着 -trackme_server=SERVER参数启动需要被追踪的实例。trackme_server将从实例周期性地收到ping消息然后打印日志。您可以从日志中聚合实例地址，并调用实例的内置服务以获取更多信息。
