@@ -89,7 +89,7 @@ static void* RunBlockingHandshakeRead(void* arg) {
     char byte = 0;
     read->result = read->io->ReadExact(&byte, sizeof(byte));
     read->error = errno;
-    return NULL;
+    return nullptr;
 }
 
 class TestAppConnect : public AppConnect {
@@ -110,7 +110,7 @@ static FrameSpec FixedSpec(const char* magic, size_t magic_len,
 
 class TestHandshakeProtocol : public HandshakeProtocol {
 public:
-    explicit TestHandshakeProtocol(std::string* calls = NULL)
+    explicit TestHandshakeProtocol(std::string* calls = nullptr)
         : _calls(calls), _with_extension(false),
           _extension_size(0) {}
 
@@ -120,7 +120,7 @@ public:
         return spec;
     }
     const FrameSpec& AckFrameSpec() const override {
-        static const FrameSpec spec = FixedSpec(NULL, 0, 1);
+        static const FrameSpec spec = FixedSpec(nullptr, 0, 1);
         return spec;
     }
     StepResult BuildHello(bool enabled, std::string* payload) override {
@@ -161,12 +161,12 @@ public:
     void EnableExtension(size_t size) {
         _with_extension = true;
         _extension_size = size;
-        _extension_spec = FixedSpec(NULL, 0, size);
+        _extension_spec = FixedSpec(nullptr, 0, size);
     }
 
 private:
     void Append(const char* value) {
-        if (_calls != NULL) {
+        if (_calls != nullptr) {
             *_calls += value;
         }
     }
@@ -179,7 +179,7 @@ private:
 
 class TestHandshakeTransport : public HandshakeTransport {
 public:
-    explicit TestHandshakeTransport(std::string* calls = NULL)
+    explicit TestHandshakeTransport(std::string* calls = nullptr)
         : prepare_result(STEP_OK), negotiate_result(STEP_OK),
           validate_result(STEP_OK), tcp_active(false),
           high_speed_active(false), failed(false), _calls(calls) {}
@@ -212,7 +212,7 @@ public:
 
 private:
     void Append(const char* value) {
-        if (_calls != NULL) {
+        if (_calls != nullptr) {
             *_calls += value;
         }
     }
@@ -411,7 +411,7 @@ TEST(TransportHandshakeTest, blocked_read_stops_after_socket_failure) {
     bthread_usleep(10000);
     ASSERT_EQ(0, socket->SetFailed(
         EFAILEDSOCKET, "cancel blocked handshake read"));
-    ASSERT_EQ(0, bthread_join(tid, NULL));
+    ASSERT_EQ(0, bthread_join(tid, nullptr));
 
     EXPECT_EQ(-1, read.result);
     EXPECT_EQ(EFAILEDSOCKET, read.error);
@@ -725,7 +725,7 @@ TEST(TransportHandshakeTest,
         source.append(invalid_prefixes[i]);
         const size_t original_size = source.size();
         const ParseResult result = policy::ParseTransportHandshake(
-            &source, socket.get(), false, NULL);
+            &source, socket.get(), false, nullptr);
         ASSERT_FALSE(result.is_ok());
         EXPECT_EQ(PARSE_ERROR_TRY_OTHERS, result.error())
             << invalid_prefixes[i];
@@ -758,7 +758,7 @@ TEST(TransportHandshakeTest,
         source.append(partial_prefixes[i]);
         const size_t original_size = source.size();
         const ParseResult result = policy::ParseTransportHandshake(
-            &source, socket.get(), false, NULL);
+            &source, socket.get(), false, nullptr);
         ASSERT_FALSE(result.is_ok());
         EXPECT_EQ(PARSE_ERROR_NOT_ENOUGH_DATA, result.error())
             << partial_prefixes[i];
@@ -787,7 +787,7 @@ TEST(TransportHandshakeTest,
     butil::IOBuf source;
     source.append(hello.data(), 1);
     ParseResult result = policy::ParseTransportHandshake(
-        &source, socket.get(), false, NULL);
+        &source, socket.get(), false, nullptr);
     ASSERT_FALSE(result.is_ok());
     ASSERT_EQ(PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
     ASSERT_EQ(1UL, source.size());
@@ -796,7 +796,7 @@ TEST(TransportHandshakeTest,
 
     source.append(hello.data() + 1, hello.size() - 1);
     result = policy::ParseTransportHandshake(
-        &source, socket.get(), false, NULL);
+        &source, socket.get(), false, nullptr);
     ASSERT_FALSE(result.is_ok());
     ASSERT_EQ(PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
     ASSERT_TRUE(source.empty());
@@ -816,7 +816,7 @@ TEST(TransportHandshakeTest,
     const uint32_t ack = 0;
     source.append(&ack, sizeof(ack));
     result = policy::ParseTransportHandshake(
-        &source, socket.get(), false, NULL);
+        &source, socket.get(), false, nullptr);
     ASSERT_FALSE(result.is_ok());
     ASSERT_EQ(PARSE_ERROR_TRY_OTHERS, result.error());
     ASSERT_TRUE(source.empty());
@@ -846,7 +846,7 @@ TEST(TransportHandshakeTest,
     source.append(application_data, sizeof(application_data) - 1);
 
     const ParseResult result = policy::ParseTransportHandshake(
-        &source, socket.get(), false, NULL);
+        &source, socket.get(), false, nullptr);
     ASSERT_FALSE(result.is_ok());
     ASSERT_EQ(PARSE_ERROR_TRY_OTHERS, result.error());
     ASSERT_EQ(sizeof(application_data) - 1, source.size());

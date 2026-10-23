@@ -66,7 +66,7 @@ private:
 
 class SocketHandshakeIO : public HandshakeIO {
 public:
-    explicit SocketHandshakeIO(Socket* socket = NULL);
+    explicit SocketHandshakeIO(Socket* socket = nullptr);
     ~SocketHandshakeIO() override;
 
     void Reset(Socket* socket);

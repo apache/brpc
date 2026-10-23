@@ -30,15 +30,15 @@ namespace brpc {
 namespace handshake {
 
 size_t IOBufHandshakeInput::Size() const {
-    return _source != NULL ? _source->size() : 0;
+    return _source != nullptr ? _source->size() : 0;
 }
 
 bool IOBufHandshakeInput::CopyTo(void* data, size_t len) const {
-    return _source != NULL && _source->copy_to(data, len) == len;
+    return _source != nullptr && _source->copy_to(data, len) == len;
 }
 
 bool IOBufHandshakeInput::Consume(size_t len) {
-    return _source != NULL && _source->pop_front(len) == len;
+    return _source != nullptr && _source->pop_front(len) == len;
 }
 
 static const int WAIT_TIMEOUT_MS = 50;
@@ -97,8 +97,8 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
 }
 
 int SocketHandshakeIO::ReadExact(void* data, size_t len) {
-    CHECK(data != NULL);
-    CHECK(_socket != NULL);
+    CHECK(data != nullptr);
+    CHECK(_socket != nullptr);
     const int fd = _socket->fd();
     return ReadExactLoop(_read_butex, _socket->id(), len,
         [data, fd](size_t offset, size_t remaining) {
@@ -136,8 +136,8 @@ static int WriteAllLoop(size_t len, WriteOnce write_once,
 }
 
 int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
-    CHECK(data != NULL);
-    CHECK(_socket != NULL);
+    CHECK(data != nullptr);
+    CHECK(_socket != nullptr);
     const int fd = _socket->fd();
     return WriteAllLoop(len,
         [data, fd](size_t offset, size_t remaining) {
@@ -151,7 +151,7 @@ int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
 }
 
 int SocketHandshakeIO::PushBack(const void* data, size_t len) {
-    CHECK(_socket != NULL);
+    CHECK(_socket != nullptr);
     if (len != 0) {
         return _socket->fd_input_processor().read_buf().append(data, len) == 0 ? 0 : -1;
     }

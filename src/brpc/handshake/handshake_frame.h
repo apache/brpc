@@ -42,7 +42,7 @@ struct FrameSpec {
     };
 
     FrameSpec()
-        : magic(NULL), magic_len(0), min_frame_len(0), max_frame_len(0),
+        : magic(nullptr), magic_len(0), min_frame_len(0), max_frame_len(0),
           length_encoding(FIXED) {}
 
     FrameSpec(const char* magic_in, size_t magic_len_in,
@@ -74,7 +74,7 @@ public:
     static FrameResult ParseBufferedFrame(HandshakeInput* input,
                                           const FrameSpec& spec,
                                           std::string* payload,
-                                          bool* magic_matched = NULL);
+                                          bool* magic_matched = nullptr);
     static FrameResult WriteFrame(HandshakeIO* io, const FrameSpec& spec,
                                   const std::string& payload);
     static FrameResult DrainFrame(HandshakeIO* io, const FrameSpec& spec);

@@ -70,7 +70,7 @@ inline const handshake::FrameSpec& RdmaHelloFrameSpec(int version) {
 
 inline const handshake::FrameSpec& RdmaAckFrameSpec() {
     static const handshake::FrameSpec spec(
-        NULL, 0, HELLO_ACK_LEN, HELLO_ACK_LEN,
+        nullptr, 0, HELLO_ACK_LEN, HELLO_ACK_LEN,
         handshake::FrameSpec::FIXED);
     return spec;
 }

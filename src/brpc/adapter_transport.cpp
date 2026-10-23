@@ -228,17 +228,17 @@ AdapterTransport::AdapterTransport(SocketMode mode)
 AdapterTransport::~AdapterTransport() = default;
 
 AdapterTransport* AdapterTransport::Get(Socket* socket) {
-    CHECK(socket != NULL);
+    CHECK(socket != nullptr);
     return static_cast<AdapterTransport*>(socket->_transport.get());
 }
 
 const AdapterTransport* AdapterTransport::Get(const Socket* socket) {
-    CHECK(socket != NULL);
+    CHECK(socket != nullptr);
     return static_cast<const AdapterTransport*>(socket->_transport.get());
 }
 
 bool AdapterTransport::upgrade_capable(SocketMode mode) const {
-    if (_mode != mode || _high_speed_transport == NULL) {
+    if (_mode != mode || _high_speed_transport == nullptr) {
         return false;
     }
     switch (mode) {
@@ -279,11 +279,11 @@ int AdapterTransport::StartClientUpgrade(const Socket* socket,
 
 ParseResult AdapterTransport::ProcessUpgradeReadable(butil::IOBuf* source) {
     ParseResult result(PARSE_ERROR_NOT_ENOUGH_DATA);
-    if (_socket->parsing_context() != NULL) {
+    if (_socket->parsing_context() != nullptr) {
         handshake::ServerHandshakeContext* context =
             static_cast<handshake::ServerHandshakeContext*>(
                 _socket->parsing_context());
-        CHECK(context->adapter() != NULL);
+        CHECK(context->adapter() != nullptr);
         result = context->adapter()->ExecuteServerHandshake(source, _socket);
     } else if (!source->empty()) {
         static const size_t MAX_MAGIC_LEN = 4;
@@ -345,12 +345,12 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
             adapter->FallbackToTcp();
             adapter->CompleteConnection(handshake::FALLBACK_TCP);
             task->done(0, task->data);
-            return NULL;
+            return nullptr;
         }
 
         std::unique_ptr<rdma::RdmaHandshakeAdapter> protocol =
             transport->CreateClientHandshakeAdapter();
-        CHECK(protocol != NULL);
+        CHECK(protocol != nullptr);
         RdmaClientHandshakeTransport participant(
             transport, protocol.get(), socket, &connect_error);
         const handshake::StepResult result = adapter->_handshake.RunClient(
@@ -372,7 +372,7 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         adapter->CompleteConnection(static_cast<handshake::Phase>(
             adapter->_handshake.phase(butil::memory_order_acquire)));
         task->done(connect_error, task->data);
-        return NULL;
+        return nullptr;
     }
 #endif
 
@@ -384,13 +384,13 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
             adapter->FallbackToTcp();
             adapter->CompleteConnection(handshake::FALLBACK_TCP);
             task->done(0, task->data);
-            return NULL;
+            return nullptr;
         }
 
         const size_t local_shm_len =
             static_cast<size_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
         ubring::SHM local_trx_shm = {
-            NULL, local_shm_len, 0, {0}, static_cast<uint32_t>(socket->fd())};
+            nullptr, local_shm_len, 0, {0}, static_cast<uint32_t>(socket->fd())};
         const auto shm_name_str =
             butil::endpoint2str(socket->local_side());
         ubring::UBShmHandshakeAdapter wire(
@@ -410,14 +410,14 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         adapter->CompleteConnection(static_cast<handshake::Phase>(
             adapter->_handshake.phase(butil::memory_order_acquire)));
         task->done(connect_error, task->data);
-        return NULL;
+        return nullptr;
     }
 #endif
 
     socket->SetFailed(EPROTO, "Unsupported client transport handshake");
     adapter->CompleteConnection(handshake::FAILED);
     task->done(EPROTO, task->data);
-    return NULL;
+    return nullptr;
 }
 
 void AdapterTransport::Init(Socket* socket, const SocketOptions& options) {
@@ -425,7 +425,7 @@ void AdapterTransport::Init(Socket* socket, const SocketOptions& options) {
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
-    if (options.need_on_edge_trigger && _on_edge_trigger == NULL) {
+    if (options.need_on_edge_trigger && _on_edge_trigger == nullptr) {
         if (_mode == SOCKET_MODE_TCP) {
             _on_edge_trigger = InputMessenger::OnNewMessages;
 #if BRPC_WITH_RDMA
@@ -493,7 +493,7 @@ std::shared_ptr<AppConnect> AdapterTransport::Connect() {
     }
     SocketUser* const client_messenger =
         static_cast<SocketUser*>(get_client_side_messenger());
-    if (client_messenger != NULL &&
+    if (client_messenger != nullptr &&
         _socket->user() == client_messenger) {
         FallbackToTcp();
         return AdapterConnect::Unwrap(_tcp_transport->Connect());
