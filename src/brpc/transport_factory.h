@@ -22,8 +22,8 @@
 #include "brpc/transport.h"
 
 namespace brpc {
-
-// Creates transport instances for a SocketMode.
+// Creates AdapterTransport for TCP, RDMA, and UBSHM sockets. URMA currently
+// uses its concrete transport directly.
 class TransportFactory {
 public:
     static int ContextInitOrDie(SocketMode mode, bool server_or_not,

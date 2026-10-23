@@ -528,7 +528,6 @@ filegroup(
     srcs = glob([
         "src/brpc/*.proto",
         "src/brpc/policy/*.proto",
-        "src/brpc/rdma/*.proto",
         "src/brpc/urma/*.proto",
     ]),
     visibility = ["//visibility:public"],
@@ -543,6 +542,7 @@ brpc_proto_library(
 )
 
 URMA_SRC_PATTERNS = [
+    "src/brpc/handshake/urma_handshake.cpp",
     "src/brpc/urma/*.cpp",
     "src/brpc/urma/**/*.cpp",
 ]
