@@ -50,6 +50,11 @@ void* CreateBthreadSpanAsVoid();
 void DestroyRpczParentSpan(void* ptr);
 void EndBthreadSpan();
 
+// Permanently stop span persistence and wait for any active dump to finish.
+// Further dump attempts are ignored, including already queued spans.
+// Called automatically before this module's global resources are destroyed.
+void StopSpanIndexing();
+
 DECLARE_bool(enable_rpcz);
 
 class Span;

@@ -506,10 +506,15 @@ static int64_t g_last_delete_tm = 0;
 
 // Following variables are monitored by builtin services, thus non-static.
 static pthread_mutex_t g_span_db_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Serializes persistence with shutdown.
+static pthread_mutex_t g_span_dump_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool g_span_ending = false;  // don't open span again if this var is true.
 // Can't use intrusive_ptr which has ctor/dtor issues.
 static SpanDB* g_span_db = nullptr;
-bool has_span_db() { return !!g_span_db; }
+bool has_span_db() {
+    BAIDU_SCOPED_LOCK(g_span_db_mutex);
+    return g_span_db != nullptr;
+}
 bvar::CollectorSpeedLimit g_span_sl = BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER;
 static bvar::DisplaySamplingRatio s_display_sampling_ratio(
     "rpcz_sampling_ratio", &g_span_sl);
@@ -543,10 +548,15 @@ bvar::CollectorPreprocessor* Span::preprocessor() {
     return g_span_prep;
 }
 
-static void ResetSpanDB(SpanDB* db) {
+static bool ResetSpanDB(SpanDB* db) {
     SpanDB* old_db = nullptr;
     {
         BAIDU_SCOPED_LOCK(g_span_db_mutex);
+        // Opening a DB can overlap with StopSpanIndexing(). Never publish it
+        // after shutdown has started.
+        if (db != nullptr && g_span_ending) {
+            return false;
+        }
         old_db = g_span_db;
         g_span_db = db;
         if (g_span_db) {
@@ -556,15 +566,32 @@ static void ResetSpanDB(SpanDB* db) {
     if (old_db) {
         old_db->RemoveRefManually();
     }
+    return true;
 }
 
-static void RemoveSpanDB() {
-    g_span_ending = true;
+void StopSpanIndexing() {
+    // Reject new dumps before waiting for the current one. Do not hold the DB
+    // mutex while acquiring the dump mutex: the dumper also needs the DB mutex.
+    {
+        BAIDU_SCOPED_LOCK(g_span_db_mutex);
+        g_span_ending = true;
+    }
+    BAIDU_SCOPED_LOCK(g_span_dump_mutex);
     ResetSpanDB(nullptr);
 }
 
+// Defined after the flags in this translation unit so this destructor runs
+// before their destructors. Registering cleanup lazily in StartSpanIndexing is
+// too late when the first dump starts during process exit.
+struct SpanIndexingExitGuard {
+    ~SpanIndexingExitGuard() { StopSpanIndexing(); }
+};
+// No explicit reference is needed: the compiler registers its destructor for
+// normal process exit (e.g. via __cxa_atexit). When this translation unit is
+// linked in, optimization must preserve the StopSpanIndexing() side effects.
+static SpanIndexingExitGuard g_span_indexing_exit_guard;
+
 static void StartSpanIndexing() {
-    atexit(RemoveSpanDB);
     g_span_prep = new SpanPreprocessor;
     started_span_indexing = true;
 }
@@ -847,22 +874,31 @@ leveldb::Status SpanDB::RemoveSpansBefore(int64_t tm) {
 
 // Write span into leveldb.
 void Span::dump_to_db() {
+    // This must outlive all locals, including the local DB reference: shutdown
+    // must wait for both persistence and any resulting DB destruction.
+    BAIDU_SCOPED_LOCK(g_span_dump_mutex);
+    {
+        BAIDU_SCOPED_LOCK(g_span_db_mutex);
+        if (g_span_ending) {
+            return;
+        }
+    }
     StartIndexingIfNeeded();
 
     std::string value_buf;
 
     butil::intrusive_ptr<SpanDB> db;
     if (GetSpanDB(&db) != 0) {
-        if (g_span_ending) {
-            return;
-        }
-        SpanDB* db2 = SpanDB::Open();
-        if (db2 == nullptr) {
+        // Own the DB before publishing it. If shutdown started during Open(),
+        // the rejected DB is released before we leave the dump mutex.
+        db.reset(SpanDB::Open());
+        if (!db) {
             LOG(WARNING) << "Fail to open SpanDB";
             return;
         }
-        ResetSpanDB(db2);
-        db.reset(db2);
+        if (!ResetSpanDB(db.get())) {
+            return;
+        }
     }
 
     leveldb::Status st = db->Index(shared_from_this(), &value_buf);
