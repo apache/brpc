@@ -141,9 +141,20 @@ public:
 
     optional(nullopt_t) : optional() {}
 
-    optional(const optional& rhs) = default;
+    optional(const optional& rhs) : _engaged(false) {
+        if (rhs._engaged) {
+            _storage.Init(*rhs._storage);
+            _engaged = true;
+        }
+    }
 
-    optional(optional&& rhs) noexcept = default;
+    optional(optional&& rhs) noexcept(std::is_nothrow_move_constructible<T>::value)
+        : _engaged(false) {
+        if (rhs._engaged) {
+            _storage.Init(std::move(*rhs._storage));
+            _engaged = true;
+        }
+    }
 
     template <typename U, std::enable_if_t<
         !std::is_same<T, U>::value &&
@@ -240,9 +251,35 @@ public:
         return *this;
     }
 
-    optional& operator=(const optional& rhs) = default;
+    optional& operator=(const optional& rhs) {
+        if (this != &rhs) {
+            if (!rhs._engaged) {
+                reset();
+            } else if (_engaged) {
+                *_storage = *rhs._storage;
+            } else {
+                _storage.Init(*rhs._storage);
+                _engaged = true;
+            }
+        }
+        return *this;
+    }
 
-    optional& operator=(optional&& rhs) = default;
+    optional& operator=(optional&& rhs) noexcept(
+        std::is_nothrow_move_constructible<T>::value &&
+        std::is_nothrow_move_assignable<T>::value) {
+        if (this != &rhs) {
+            if (!rhs._engaged) {
+                reset();
+            } else if (_engaged) {
+                *_storage = std::move(*rhs._storage);
+            } else {
+                _storage.Init(std::move(*rhs._storage));
+                _engaged = true;
+            }
+        }
+        return *this;
+    }
 
     // Value assignment operators
     template <typename U = T, typename = std::enable_if_t<

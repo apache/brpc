@@ -17,13 +17,38 @@
 
 
 #include <gtest/gtest.h>
+#include <memory>
+#include <type_traits>
 #include "butil/containers/optional.h"
+
+#if defined(BRPC_TEST_OPTIONAL_CXX14) && __cplusplus != 201402L
+#error "The C++14 optional test must use the C++14 implementation"
+#endif
 
 namespace {
 
 butil::optional<int> empty_optional() {
     return {};
 }
+
+struct LifetimeTracker {
+    static int live;
+    static int constructed;
+    static int destroyed;
+
+    LifetimeTracker() { ++live; ++constructed; }
+    LifetimeTracker(const LifetimeTracker&) { ++live; ++constructed; }
+    LifetimeTracker(LifetimeTracker&&) { ++live; ++constructed; }
+    LifetimeTracker& operator=(const LifetimeTracker&) { return *this; }
+    LifetimeTracker& operator=(LifetimeTracker&&) { return *this; }
+    ~LifetimeTracker() { --live; ++destroyed; }
+
+    static void Reset() { live = constructed = destroyed = 0; }
+};
+
+int LifetimeTracker::live = 0;
+int LifetimeTracker::constructed = 0;
+int LifetimeTracker::destroyed = 0;
 
 TEST(OptionalTest, sanity) {
     {
@@ -86,6 +111,15 @@ TEST(OptionalTest, copy) {
     non_empty = op;
     ASSERT_TRUE(non_empty);
     ASSERT_EQ(10, non_empty);
+
+    const std::string value(128, 'x');
+    butil::optional<std::string> string_source(value);
+    butil::optional<std::string> string_copied(string_source);
+    ASSERT_EQ(value, *string_source);
+    ASSERT_EQ(value, *string_copied);
+
+    string_copied = string_source;
+    ASSERT_EQ(value, *string_copied);
 }
 
 TEST(OptionalTest, move) {
@@ -105,6 +139,66 @@ TEST(OptionalTest, move) {
     butil::optional<int> empty_move_assign;
     empty_move_assign = std::move(empty);
     ASSERT_FALSE(empty_move_assign);
+
+    butil::optional<std::string> string_source(std::string(128, 'x'));
+    butil::optional<std::string> string_moved(std::move(string_source));
+    ASSERT_TRUE(string_source);
+    ASSERT_EQ(std::string(128, 'x'), *string_moved);
+
+    butil::optional<std::string> string_move_source(std::string(128, 'y'));
+    string_moved = std::move(string_move_source);
+    ASSERT_TRUE(string_move_source);
+    ASSERT_TRUE(string_moved);
+    ASSERT_EQ(std::string(128, 'y'), *string_moved);
+}
+
+TEST(OptionalTest, nontrivial_lifetime) {
+    LifetimeTracker::Reset();
+    {
+        butil::optional<LifetimeTracker> source(butil::in_place);
+        butil::optional<LifetimeTracker> copied(source);
+        butil::optional<LifetimeTracker> moved(std::move(source));
+        butil::optional<LifetimeTracker> assigned;
+        assigned = copied;
+        assigned = butil::nullopt;
+    }
+    ASSERT_EQ(0, LifetimeTracker::live);
+    ASSERT_EQ(LifetimeTracker::constructed, LifetimeTracker::destroyed);
+}
+
+TEST(OptionalTest, nontrivial_assignment_states) {
+    const std::string value(128, 'x');
+    butil::optional<std::string> source(value);
+    butil::optional<std::string> empty;
+    butil::optional<std::string> target;
+
+    target = empty;
+    ASSERT_FALSE(target);
+    target = source;
+    ASSERT_EQ(value, *target);
+    target = source;
+    ASSERT_EQ(value, *target);
+    target = empty;
+    ASSERT_FALSE(target);
+
+    target = std::move(empty);
+    ASSERT_FALSE(target);
+    target = std::move(source);
+    ASSERT_EQ(value, *target);
+    source = value;
+    target = std::move(source);
+    ASSERT_EQ(value, *target);
+    target = std::move(empty);
+    ASSERT_FALSE(target);
+}
+
+TEST(OptionalTest, move_only_value) {
+    butil::optional<std::unique_ptr<int>> source(std::unique_ptr<int>(new int(42)));
+    butil::optional<std::unique_ptr<int>> moved(std::move(source));
+    ASSERT_EQ(42, **moved);
+    butil::optional<std::unique_ptr<int>> assigned;
+    assigned = std::move(moved);
+    ASSERT_EQ(42, **assigned);
 }
 
 struct Obj {};
