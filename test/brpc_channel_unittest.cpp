@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <poll.h>
+#include <sstream>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
@@ -121,6 +122,65 @@ public:
 private:
     std::vector<SubCall>* _calls;
 };
+
+class BlockingDescribeChannel : public brpc::ChannelBase {
+public:
+    BlockingDescribeChannel() : _started(false), _release(false) {}
+
+    void CallMethod(const google::protobuf::MethodDescriptor*,
+                    google::protobuf::RpcController*,
+                    const google::protobuf::Message*,
+                    google::protobuf::Message*,
+                    google::protobuf::Closure*) override {}
+    int CheckHealth() override { return 0; }
+    int Weight() override { return 1; }
+    void Describe(std::ostream&, const brpc::DescribeOptions&) const override {
+        _started.store(true, butil::memory_order_release);
+        while (!_release.load(butil::memory_order_acquire)) {
+            bthread_usleep(1000);
+        }
+    }
+    bool started() const {
+        return _started.load(butil::memory_order_acquire);
+    }
+    void Release() { _release.store(true, butil::memory_order_release); }
+
+private:
+    mutable butil::atomic<bool> _started;
+    mutable butil::atomic<bool> _release;
+};
+
+struct SelectiveDescribeArgs {
+    brpc::SelectiveChannel* channel;
+    butil::atomic<bool> done;
+    SelectiveDescribeArgs() : channel(nullptr), done(false) {}
+};
+
+void* RunSelectiveDescribe(void* arg) {
+    SelectiveDescribeArgs* args = static_cast<SelectiveDescribeArgs*>(arg);
+    std::ostringstream os;
+    brpc::DescribeOptions options;
+    options.verbose = true;
+    args->channel->Describe(os, options);
+    args->done.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
+struct SelectiveAddArgs {
+    brpc::SelectiveChannel* channel;
+    brpc::SelectiveChannel::ChannelHandle handle;
+    butil::atomic<bool> done;
+    int rc;
+    SelectiveAddArgs() : channel(nullptr), done(false), rc(-1) {}
+};
+
+void* RunSelectiveAdd(void* arg) {
+    SelectiveAddArgs* args = static_cast<SelectiveAddArgs*>(arg);
+    args->rc = args->channel->AddChannel(new DeferredSelectiveChannel(nullptr),
+                                         &args->handle);
+    args->done.store(true, butil::memory_order_release);
+    return nullptr;
+}
 
 class SelectiveRetryPolicy : public brpc::RetryPolicy {
 public:
@@ -4084,6 +4144,45 @@ TEST_F(ChannelTest, selective_channel_add_failure_ownership) {
         EXPECT_EQ(0, CountingSubChannel::s_alive);
     }
     ASSERT_EQ(0, CountingSubChannel::s_alive);
+}
+
+TEST(SelectiveChannelTest, describe_does_not_block_add_channel) {
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+
+    BlockingDescribeChannel* blocking = new BlockingDescribeChannel;
+    brpc::SelectiveChannel::ChannelHandle first_handle;
+    ASSERT_EQ(0, channel.AddChannel(blocking, &first_handle));
+
+    SelectiveDescribeArgs describe_args;
+    describe_args.channel = &channel;
+    pthread_t describe_tid;
+    ASSERT_EQ(0, pthread_create(&describe_tid, nullptr,
+                                RunSelectiveDescribe, &describe_args));
+    for (int i = 0; i < 1000 && !blocking->started(); ++i) {
+        bthread_usleep(1000);
+    }
+    ASSERT_TRUE(blocking->started());
+
+    SelectiveAddArgs add_args;
+    add_args.channel = &channel;
+    pthread_t add_tid;
+    ASSERT_EQ(0, pthread_create(&add_tid, nullptr,
+                                RunSelectiveAdd, &add_args));
+    for (int i = 0; i < 100 && !add_args.done.load(
+             butil::memory_order_acquire); ++i) {
+        bthread_usleep(1000);
+    }
+    const bool add_finished = add_args.done.load(butil::memory_order_acquire);
+
+    blocking->Release();
+    ASSERT_EQ(0, pthread_join(describe_tid, nullptr));
+    ASSERT_EQ(0, pthread_join(add_tid, nullptr));
+    EXPECT_TRUE(add_finished);
+    ASSERT_EQ(0, add_args.rc);
+
+    channel.RemoveAndDestroyChannel(add_args.handle);
+    channel.RemoveAndDestroyChannel(first_handle);
 }
 
 } //namespace
