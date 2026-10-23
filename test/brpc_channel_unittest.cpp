@@ -174,6 +174,30 @@ struct SelectiveAddArgs {
     SelectiveAddArgs() : channel(nullptr), done(false), rc(-1) {}
 };
 
+class ScopedSelectiveChannelThreads {
+public:
+    explicit ScopedSelectiveChannelThreads(BlockingDescribeChannel* channel)
+        : _describe_started(false), _add_started(false), _channel(channel) {}
+
+    ~ScopedSelectiveChannelThreads() {
+        _channel->Release();
+        if (_describe_started) {
+            pthread_join(_describe_tid, nullptr);
+        }
+        if (_add_started) {
+            pthread_join(_add_tid, nullptr);
+        }
+    }
+
+    pthread_t _describe_tid;
+    pthread_t _add_tid;
+    bool _describe_started;
+    bool _add_started;
+
+private:
+    BlockingDescribeChannel* _channel;
+};
+
 void* RunSelectiveAdd(void* arg) {
     SelectiveAddArgs* args = static_cast<SelectiveAddArgs*>(arg);
     args->rc = args->channel->AddChannel(new DeferredSelectiveChannel(nullptr),
@@ -4153,35 +4177,41 @@ TEST(SelectiveChannelTest, describe_does_not_block_add_channel) {
     BlockingDescribeChannel* blocking = new BlockingDescribeChannel;
     brpc::SelectiveChannel::ChannelHandle first_handle;
     ASSERT_EQ(0, channel.AddChannel(blocking, &first_handle));
-
-    SelectiveDescribeArgs describe_args;
-    describe_args.channel = &channel;
-    pthread_t describe_tid;
-    ASSERT_EQ(0, pthread_create(&describe_tid, nullptr,
-                                RunSelectiveDescribe, &describe_args));
-    for (int i = 0; i < 1000 && !blocking->started(); ++i) {
-        bthread_usleep(1000);
-    }
-    ASSERT_TRUE(blocking->started());
-
     SelectiveAddArgs add_args;
-    add_args.channel = &channel;
-    pthread_t add_tid;
-    ASSERT_EQ(0, pthread_create(&add_tid, nullptr,
-                                RunSelectiveAdd, &add_args));
-    for (int i = 0; i < 100 && !add_args.done.load(
-             butil::memory_order_acquire); ++i) {
-        bthread_usleep(1000);
+
+    {
+        ScopedSelectiveChannelThreads threads(blocking);
+        SelectiveDescribeArgs describe_args;
+        describe_args.channel = &channel;
+        ASSERT_EQ(0, pthread_create(&threads._describe_tid, nullptr,
+                                    RunSelectiveDescribe, &describe_args));
+        threads._describe_started = true;
+        for (int i = 0; i < 1000 && !blocking->started(); ++i) {
+            bthread_usleep(1000);
+        }
+        EXPECT_TRUE(blocking->started());
+
+        if (blocking->started()) {
+            add_args.channel = &channel;
+            ASSERT_EQ(0, pthread_create(&threads._add_tid, nullptr,
+                                        RunSelectiveAdd, &add_args));
+            threads._add_started = true;
+            for (int i = 0; i < 100 && !add_args.done.load(
+                     butil::memory_order_acquire); ++i) {
+                bthread_usleep(1000);
+            }
+            const bool add_finished = add_args.done.load(
+                butil::memory_order_acquire);
+            EXPECT_TRUE(add_finished);
+            if (add_finished) {
+                EXPECT_EQ(0, add_args.rc);
+            }
+        }
     }
-    const bool add_finished = add_args.done.load(butil::memory_order_acquire);
 
-    blocking->Release();
-    ASSERT_EQ(0, pthread_join(describe_tid, nullptr));
-    ASSERT_EQ(0, pthread_join(add_tid, nullptr));
-    EXPECT_TRUE(add_finished);
-    ASSERT_EQ(0, add_args.rc);
-
-    channel.RemoveAndDestroyChannel(add_args.handle);
+    if (add_args.rc == 0) {
+        channel.RemoveAndDestroyChannel(add_args.handle);
+    }
     channel.RemoveAndDestroyChannel(first_handle);
 }
 
