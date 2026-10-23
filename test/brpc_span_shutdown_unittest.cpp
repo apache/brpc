@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <pthread.h>
 #include <thread>
 #include <unistd.h>
 #include <gflags/gflags.h>
@@ -112,7 +113,12 @@ protected:
     void SetUp() override {
         // Exec each child: forking an existing collector would leave its
         // mutexes and queues without their worker threads.
-        ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+#ifdef GTEST_FLAG_SET
+        GTEST_FLAG_SET(death_test_style, "threadsafe");
+#else
+        // GoogleTest 1.11 and earlier do not provide the setter macro.
+        ::testing::GTEST_FLAG(death_test_style) = "threadsafe";
+#endif
         if (getenv(kDirectoryEnv) == nullptr) {
             ASSERT_TRUE(_directory.CreateUniqueTempDir());
             ASSERT_EQ(0, setenv(kDirectoryEnv, _directory.path().value().c_str(), 1));

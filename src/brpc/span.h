@@ -50,8 +50,10 @@ void* CreateBthreadSpanAsVoid();
 void DestroyRpczParentSpan(void* ptr);
 void EndBthreadSpan();
 
+// Internal shutdown/test hook; not a supported user API.
 // Permanently stop span persistence and wait for any active dump to finish.
 // Further dump attempts are ignored, including already queued spans.
+// Thread-safe and idempotent; must not be called from an active span dump.
 // Called automatically before this module's global resources are destroyed.
 void StopSpanIndexing();
 

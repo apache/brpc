@@ -506,7 +506,9 @@ static int64_t g_last_delete_tm = 0;
 
 // Following variables are monitored by builtin services, thus non-static.
 static pthread_mutex_t g_span_db_mutex = PTHREAD_MUTEX_INITIALIZER;
-// Serializes persistence with shutdown.
+// The collector already dumps samples on a single thread. This mutex also
+// serializes persistence with shutdown and is intentionally never destroyed,
+// so collector callbacks can still acquire it after the exit guard has run.
 static pthread_mutex_t g_span_dump_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool g_span_ending = false;  // don't open span again if this var is true.
 // Can't use intrusive_ptr which has ctor/dtor issues.
