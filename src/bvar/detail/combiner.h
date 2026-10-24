@@ -341,7 +341,16 @@ friend class GlobalValue<self_type>;
         if (!agent->combiner.expired()) {
             return agent;
         }
-        agent->reset(_element_identity, this->shared_from_this());
+        self_shared_type self;
+        try {
+            self = this->shared_from_this();
+        } catch (const std::bad_weak_ptr&) {
+            // The combiner is no longer managed by any shared_ptr, which can
+            // happen when a bvar is being destroyed concurrently with a write.
+            // Silently skip this recording instead of crashing.
+            return NULL;
+        }
+        agent->reset(_element_identity, self);
         // TODO: Is uniqueness-checking necessary here?
         {
             butil::AutoLock guard(_lock);
