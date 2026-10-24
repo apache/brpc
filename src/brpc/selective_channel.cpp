@@ -17,6 +17,7 @@
 
 
 #include <map>
+#include <vector>
 #include <gflags/gflags.h>
 #include "bthread/bthread.h"                         // bthread_id_xx
 #include "brpc/socket.h"                             // SocketUser
@@ -286,11 +287,30 @@ inline int ChannelBalancer::SelectChannel(const LoadBalancer::SelectIn& in,
 }
 
 int ChannelBalancer::CheckHealth() {
-    BAIDU_SCOPED_LOCK(_mutex);
-    for (ChannelToIdMap::const_iterator it = _chan_map.begin();
-         it != _chan_map.end(); ++it) {
-        if (!it->second->Failed() &&
-            it->first->CheckHealth() == 0) {
+    std::vector<SocketId> ids;
+    {
+        BAIDU_SCOPED_LOCK(_mutex);
+        ids.reserve(_chan_map.size());
+        for (ChannelToIdMap::const_iterator it = _chan_map.begin();
+             it != _chan_map.end(); ++it) {
+            SubChannel* sub = static_cast<SubChannel*>(it->second->user());
+            if (sub->ownership == DOESNT_OWN_CHANNEL) {
+                // The caller may delete a non-owning channel as soon as
+                // RemoveAndDestroyChannel() returns. Keep the mutex while
+                // using it, so removal cannot return during this call.
+                if (!it->second->Failed() && sub->chan->CheckHealth() == 0) {
+                    return 0;
+                }
+            } else {
+                ids.push_back(it->second->id());
+            }
+        }
+    }
+    for (size_t i = 0; i < ids.size(); ++i) {
+        SocketUniquePtr ptr;
+        if (Socket::AddressFailedAsWell(ids[i], &ptr) >= 0 &&
+            !ptr->Failed() &&
+            static_cast<SubChannel*>(ptr->user())->chan->CheckHealth() == 0) {
             return 0;
         }
     }
@@ -299,17 +319,41 @@ int ChannelBalancer::CheckHealth() {
 
 void ChannelBalancer::Describe(std::ostream& os,
                                const DescribeOptions& options) {
-    BAIDU_SCOPED_LOCK(_mutex);
     if (!options.verbose) {
+        BAIDU_SCOPED_LOCK(_mutex);
         os << _chan_map.size();
         return;
     }
-    for (ChannelToIdMap::const_iterator it = _chan_map.begin();
-         it != _chan_map.end(); ++it) {
-        if (it != _chan_map.begin()) {
-            os << ' ';
+    std::vector<SocketId> ids;
+    bool first = true;
+    {
+        BAIDU_SCOPED_LOCK(_mutex);
+        ids.reserve(_chan_map.size());
+        for (ChannelToIdMap::const_iterator it = _chan_map.begin();
+             it != _chan_map.end(); ++it) {
+            SubChannel* sub = static_cast<SubChannel*>(it->second->user());
+            if (sub->ownership == DOESNT_OWN_CHANNEL) {
+                // Synchronization with removal protects the externally owned
+                // channel while Describe() is using it.
+                if (!first) {
+                    os << ' ';
+                }
+                sub->chan->Describe(os, options);
+                first = false;
+            } else {
+                ids.push_back(it->second->id());
+            }
         }
-        it->first->Describe(os, options);
+    }
+    for (size_t i = 0; i < ids.size(); ++i) {
+        SocketUniquePtr ptr;
+        if (Socket::AddressFailedAsWell(ids[i], &ptr) >= 0) {
+            if (!first) {
+                os << ' ';
+            }
+            static_cast<SubChannel*>(ptr->user())->chan->Describe(os, options);
+            first = false;
+        }
     }
 }
 
