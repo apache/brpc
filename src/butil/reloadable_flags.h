@@ -34,7 +34,7 @@
 //
 // This macro does not work for string-flags because they're thread-unsafe to
 // modify directly. To emphasize this, you have to write the validator by
-// yourself and use GFLAGS_NAMESPACE::GetCommandLineOption() to acess the flag.
+// yourself and use GFLAGS_NAMESPACE::GetCommandLineOption() to access the flag.
 #define BUTIL_VALIDATE_GFLAG(flag, validate_fn)                   \
     namespace butil_flags {}                                      \
     const int ALLOW_UNUSED register_FLAGS_ ## flag ## _dummy =    \
