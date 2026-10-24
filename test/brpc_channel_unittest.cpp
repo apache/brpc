@@ -30,6 +30,7 @@
 #include "butil/logging.h"
 #include "butil/files/temp_file.h"
 #include "butil/fd_guard.h"
+#include "butil/raw_pack.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -2415,6 +2416,129 @@ TEST(ResponseSocketTest, real_rpc_responses_match_sending_socket) {
                 EXPECT_EQ("received socket binding", response.message());
             }
         }
+    }
+    server.Stop(0);
+    server.Join();
+}
+
+// RpcMeta.attachment_size is a peer-controlled int32. Before it was
+// lower-bounded, a negative value passed the "larger than payload" guard and
+// `payload_size - attachment_size` overflowed (INT32_MIN) or produced a bogus
+// body/attachment split (any other negative value).
+TEST(BaiduAttachmentSizeTest, negative_response_attachment_size_is_rejected) {
+    const int32_t attachment_sizes[] = { INT32_MIN, -1 };
+    for (int32_t attachment_size : attachment_sizes) {
+        SCOPED_TRACE(attachment_size);
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        cntl._response = &res;
+        ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                         cntl.call_id(), nullptr, 2));
+        ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+        brpc::SocketId sending_id;
+        ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sending_id));
+        ASSERT_EQ(0, brpc::Socket::Address(
+                         sending_id, &cntl._current_call.sending_sock));
+        brpc::Socket* socket = cntl._current_call.sending_sock.get();
+
+        brpc::policy::RpcMeta meta;
+        meta.set_correlation_id(cntl.current_id().value);
+        meta.mutable_response()->set_error_code(0);
+        meta.set_attachment_size(attachment_size);
+        auto* msg = brpc::policy::MostCommonMessage::Get();
+        butil::IOBufAsZeroCopyOutputStream meta_stream(&msg->meta);
+        ASSERT_TRUE(meta.SerializeToZeroCopyStream(&meta_stream));
+        test::EchoResponse response;
+        response.set_message("must not be delivered");
+        butil::IOBufAsZeroCopyOutputStream payload_stream(&msg->payload);
+        ASSERT_TRUE(response.SerializeToZeroCopyStream(&payload_stream));
+        socket->ReAddress(&msg->_socket);
+        socket->PostponeEOF();
+
+        brpc::policy::ProcessRpcResponse(msg);
+        EXPECT_EQ(brpc::ERESPONSE, cntl.ErrorCode()) << cntl.ErrorText();
+        EXPECT_TRUE(res.message().empty());
+        EXPECT_TRUE(cntl.response_attachment().empty());
+    }
+}
+
+TEST(BaiduAttachmentSizeTest, negative_request_attachment_size_is_rejected) {
+    MyEchoService service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+
+    const int32_t attachment_sizes[] = { INT32_MIN, -1 };
+    for (int32_t attachment_size : attachment_sizes) {
+        SCOPED_TRACE(attachment_size);
+        int fds[2];
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        butil::fd_guard request_fd(fds[0]);
+        butil::fd_guard peer_fd(fds[1]);
+        brpc::SocketOptions options;
+        options.fd = request_fd;
+        brpc::SocketId socket_id;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &socket_id));
+        request_fd.release();
+        brpc::SocketUniquePtr socket;
+        ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+
+        brpc::policy::RpcMeta meta;
+        meta.set_correlation_id(1);
+        meta.mutable_request()->set_service_name(
+            test::EchoService::descriptor()->full_name());
+        meta.mutable_request()->set_method_name("Echo");
+        meta.set_attachment_size(attachment_size);
+        auto* msg = brpc::policy::MostCommonMessage::Get();
+        butil::IOBufAsZeroCopyOutputStream meta_stream(&msg->meta);
+        ASSERT_TRUE(meta.SerializeToZeroCopyStream(&meta_stream));
+        test::EchoRequest request;
+        request.set_message("must not be served");
+        butil::IOBufAsZeroCopyOutputStream payload_stream(&msg->payload);
+        ASSERT_TRUE(request.SerializeToZeroCopyStream(&payload_stream));
+        msg->_arg = &server;
+        socket->ReAddress(&msg->_socket);
+        socket->PostponeEOF();
+
+        brpc::policy::ProcessRpcRequest(msg);
+
+        // The error response is written back on the arrival socket:
+        // [PRPC][body_size][meta_size] followed by the serialized RpcMeta.
+        char header[12];
+        butil::IOBuf received;
+        const int64_t deadline = butil::cpuwide_time_ms() + 5000;
+        uint32_t body_size = 0;
+        uint32_t meta_size = 0;
+        while (received.size() < sizeof(header) ||
+               received.size() < sizeof(header) + body_size) {
+            const int64_t remaining = deadline - butil::cpuwide_time_ms();
+            ASSERT_GT(remaining, 0);
+            pollfd pfd = {peer_fd, POLLIN, 0};
+            ASSERT_EQ(1, poll(&pfd, 1, remaining));
+            char buf[1024];
+            const ssize_t n = read(peer_fd, buf, sizeof(buf));
+            ASSERT_GT(n, 0);
+            received.append(buf, n);
+            if (received.size() >= sizeof(header)) {
+                received.copy_to(header, sizeof(header));
+                ASSERT_EQ(0, memcmp(header, "PRPC", 4));
+                butil::RawUnpacker(header + 4)
+                    .unpack32(body_size).unpack32(meta_size);
+            }
+        }
+        received.pop_front(sizeof(header));
+        ASSERT_LE(meta_size, body_size);
+        butil::IOBuf response_meta_buf;
+        received.cutn(&response_meta_buf, meta_size);
+        brpc::policy::RpcMeta response_meta;
+        butil::IOBufAsZeroCopyInputStream wrapper(response_meta_buf);
+        ASSERT_TRUE(response_meta.ParseFromZeroCopyStream(&wrapper));
+        EXPECT_EQ(1, response_meta.correlation_id());
+        EXPECT_EQ(brpc::EREQUEST, response_meta.response().error_code())
+            << response_meta.response().error_text();
+        // The request must not have been served: a failed request carries
+        // no body after the meta.
+        EXPECT_EQ(body_size, meta_size);
     }
     server.Stop(0);
     server.Join();
