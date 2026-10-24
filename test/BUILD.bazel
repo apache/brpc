@@ -264,11 +264,30 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "brpc_flatbuffers_protocol_unittest",
+    srcs = [
+        "brpc_flatbuffers_protocol_unittest.cpp",
+        ":flatbuffers_test_messages",
+    ],
+    copts = COPTS,
+    includes = ["."],
+    tags = ["exclusive"],
+    target_compatible_with = FLATBUFFERS_COMPATIBILITY,
+    deps = [
+        "//:brpc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 generate_unittests(
     name = "brpc_unittests",
     srcs = glob(
         ["brpc_*_unittest.cpp"],
-        exclude = ["brpc_flatbuffers_unittest.cpp"],
+        exclude = [
+            "brpc_flatbuffers_unittest.cpp",
+            "brpc_flatbuffers_protocol_unittest.cpp",
+        ],
     ),
     deps = [
         ":gperftools_helper",
