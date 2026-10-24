@@ -93,11 +93,100 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         //   brpc)
         flush_nosignal_tasks();
         LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << _rq.capacity();
-        // TODO(gejun): May cause deadlock when all workers are spinning here.
-        // A better solution is to pop and run existing bthreads, however which
-        // make set_remained()-callbacks do context switches and need extensive
-        // reviews on related code.
-        ::usleep(1000);
+        if (is_current_pthread_task() && !is_current_main_task()) {
+            // A pthread-mode bthread runs on _main_stack and cannot be
+            // scheduled out, fall back to waiting.
+            ::usleep(1000);
+            continue;
+        }
+        const auto pop_task = [this](bthread_t* t) -> bool {
+#ifndef BTHREAD_FAIR_WSQ
+            return _rq.pop(t);
+#else
+            return _rq.steal(t);
+#endif
+        };
+        bthread_t run_tid = 0;
+        if (!pop_task(&run_tid)) {
+            // The queue was drained by stealers between the failed push and
+            // the pop, retrying the push will succeed.
+            continue;
+        }
+        if (is_current_main_task() &&
+            address_meta(run_tid)->attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
+            // pthread-mode tasks are run inline on _main_stack by the
+            // dispatch loops (run_main_task/task_runner). Switching to one
+            // from the main task itself causes no stack jump and would
+            // silently drop it, so it cannot be run here. But pushing it
+            // straight back makes the LIFO pop() return this same task
+            // forever, hiding any runnable task sitting deeper in the
+            // queue. Hold pthread-mode tasks aside and keep popping until
+            // a runnable one shows up.
+            // Bounded budget: the array must live on the worker's stack
+            // (no allocation on a resource-exhaustion path), and held
+            // tasks are invisible to stealers, so keeping the list short
+            // limits how long they can be delayed. 16 * sizeof(bthread_t)
+            // == 128 bytes == two cache lines.
+            bthread_t pending[16];
+            int npending = 0;
+            pending[npending++] = run_tid;
+            bool found = false;
+            while (npending < 16 && pop_task(&run_tid)) {
+                if (address_meta(run_tid)->attr.stack_type !=
+                        BTHREAD_STACKTYPE_PTHREAD) {
+                    found = true;
+                    break;
+                }
+                pending[npending++] = run_tid;
+            }
+            // Push the held tasks back. The pops above freed at least
+            // |npending| slots, _rq has a single producer (this worker)
+            // and stealers never push, so these pushes must succeed.
+            // Reverse order restores their relative order in the queue.
+            for (int i = npending - 1; i >= 0; --i) {
+                const bool pushed = _rq.push(pending[i]);
+                CHECK(pushed) << "push_rq: failed to put back held task";
+            }
+            if (!found) {
+                // Everything within reach is pthread-mode: wait for
+                // stealers to drain the queue.
+                ::usleep(1000);
+                continue;
+            }
+            // Fall through: run_tid is a runnable task, run it inline
+            // below to free a slot for |tid|.
+        }
+        // Run the popped bthread in place instead of spinning, otherwise
+        // all workers may spin here and no one drains the queues any more.
+        // The pop also frees one slot, which guarantees that the deferred
+        // push of the current task succeeds: _rq has a single producer (the
+        // owning worker) and stealers never push.
+        // |args| lives on the stack that sched_to() is about to freeze and is
+        // read by the remained-callback after the switch, so it must stay in
+        // this scope: if it were declared inside the branch below, its slot
+        // could be reused before sched_to() reads it.
+        ReadyToRunArgs args = { tag(), nullptr, false };
+        if (!is_current_main_task()) {
+            // Preserve the task being scheduled out. The push is deferred to
+            // a remained-callback: publishing a still-running task into _rq
+            // lets a stealer jump into it and run the same context
+            // concurrently on another worker. The callback runs on the stack
+            // of |run_tid| after sched_to() has frozen the current context,
+            // same as exchange(). Capture the meta now, current_tid() is
+            // |run_tid| by the time the callback runs. Note that push_rq()
+            // can be re-entered from remained-callbacks, in which case the
+            // task to preserve is still the one being frozen here.
+            args.meta = _cur_meta;
+            set_remained(ready_to_run_in_worker_ignoresignal, &args);
+        }
+        // The main task is never queued; ending_sched() resumes it via
+        // _main_tid when the queue drains. Jumping to a pthread-mode task
+        // from a normal bthread resumes the dispatch loop on _main_stack
+        // which runs it inline, same as ending_sched() does.
+        TaskGroup* g = this;
+        sched_to(&g, run_tid);
+        // Resume here after the popped bthread (and possibly others) ran,
+        // then retry the push of |tid|.
     }
 }
 
