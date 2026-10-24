@@ -712,7 +712,7 @@ public:
     }
 
     // Returns true if the remote side is overcrowded.
-    bool is_overcrowded() const { return _overcrowded; }
+    bool is_overcrowded() const;
 
     bthread_keytable_pool_t* keytable_pool() const { return _keytable_pool; }
 
@@ -1011,9 +1011,6 @@ private:
     // Pass from controller, for progressive reading.
     ConnectionType _connection_type_for_progressive_read;
     butil::atomic<bool> _controller_released_socket;
-
-    // True if the socket is too full to write.
-    volatile bool _overcrowded;
 
     bool _fail_me_at_server_stop;
 
