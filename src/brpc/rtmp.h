@@ -325,6 +325,7 @@ struct AVCDecoderConfigurationRecord {
     std::vector<std::string> pps_list;
 
 private:
+    butil::Status Parse(const void* data, size_t len);
     butil::Status ParseSPS(const butil::StringPiece& buf, size_t sps_length);
 };
 std::ostream& operator<<(std::ostream&, const AVCDecoderConfigurationRecord&);
