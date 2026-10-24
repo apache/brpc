@@ -1528,7 +1528,7 @@ public:
         _destroyed = true;
         _destroying_st = st;
         LOG(INFO) << "Destroy ReadBody=" << this << ", " << st;
-        _cntl->response_attachment().append("Sucess");
+        _cntl->response_attachment().append("Success");
     }
 private:
     brpc::Controller* _cntl;
