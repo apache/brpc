@@ -4177,12 +4177,12 @@ TEST(SelectiveChannelTest, describe_does_not_block_add_channel) {
     BlockingDescribeChannel* blocking = new BlockingDescribeChannel;
     brpc::SelectiveChannel::ChannelHandle first_handle;
     ASSERT_EQ(0, channel.AddChannel(blocking, &first_handle));
+    SelectiveDescribeArgs describe_args;
+    describe_args.channel = &channel;
     SelectiveAddArgs add_args;
 
     {
         ScopedSelectiveChannelThreads threads(blocking);
-        SelectiveDescribeArgs describe_args;
-        describe_args.channel = &channel;
         ASSERT_EQ(0, pthread_create(&threads._describe_tid, nullptr,
                                     RunSelectiveDescribe, &describe_args));
         threads._describe_started = true;
