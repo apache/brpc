@@ -15,8 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_RDMA_RDMA_HANDSHAKE_CONSTANTS_H
-#define BRPC_RDMA_RDMA_HANDSHAKE_CONSTANTS_H
+#ifndef BRPC_HANDSHAKE_RDMA_HANDSHAKE_CONSTANTS_H
+#define BRPC_HANDSHAKE_RDMA_HANDSHAKE_CONSTANTS_H
+
+#include <cstddef>
+#include <cstdint>
+
+#include "brpc/handshake/handshake_frame.h"
 
 namespace brpc {
 namespace rdma {
@@ -50,7 +55,27 @@ constexpr size_t HELLO_V3_MAX_PB_SIZE = 8192;
 constexpr size_t HELLO_ACK_LEN = 4;
 constexpr uint32_t HELLO_ACK_RDMA_OK = 0x1;
 
+inline const handshake::FrameSpec& RdmaHelloFrameSpec(int version) {
+    static const handshake::FrameSpec v2(
+        HELLO_MAGIC, HELLO_MAGIC_LEN,
+        HELLO_V2_MSG_LEN_MIN, HELLO_V2_MSG_LEN_MAX,
+        handshake::FrameSpec::U16_TOTAL_LENGTH);
+    static const handshake::FrameSpec v3(
+        HELLO_MAGIC_V3, HELLO_MAGIC_LEN,
+        HELLO_MAGIC_LEN + HELLO_V3_PB_SIZE_LEN + 1,
+        HELLO_MAGIC_LEN + HELLO_V3_PB_SIZE_LEN + HELLO_V3_MAX_PB_SIZE,
+        handshake::FrameSpec::U32_BODY_LENGTH);
+    return version == 2 ? v2 : v3;
+}
+
+inline const handshake::FrameSpec& RdmaAckFrameSpec() {
+    static const handshake::FrameSpec spec(
+        nullptr, 0, HELLO_ACK_LEN, HELLO_ACK_LEN,
+        handshake::FrameSpec::FIXED);
+    return spec;
+}
+
 }  // namespace rdma
 }  // namespace brpc
 
-#endif  // BRPC_RDMA_RDMA_HANDSHAKE_CONSTANTS_H
+#endif  // BRPC_HANDSHAKE_RDMA_HANDSHAKE_CONSTANTS_H
