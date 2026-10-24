@@ -353,8 +353,9 @@ void* Server::UpdateDerivedVars(void* arg) {
     std::string mprefix = prefix;
     for (MethodMap::iterator it = server->_method_map.begin();
          it != server->_method_map.end(); ++it) {
-        // Not expose counters on builtin services.
-        if (!it->second.is_builtin_service) {
+        // Full and short method names share one MethodStatus. Expose it only
+        // through its owner to avoid hiding and re-exposing the same counters.
+        if (!it->second.is_builtin_service && it->second.own_method_status) {
             mprefix.resize(prefix.size());
             mprefix.push_back('_');
             bvar::to_underscored_name(&mprefix, it->second.method->full_name());
