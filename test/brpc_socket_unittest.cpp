@@ -21,6 +21,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #include <fcntl.h>  // F_GETFD
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
@@ -36,6 +37,7 @@
 #include "bthread/unstable.h"
 #include "bthread/task_control.h"
 #include "brpc/socket.h"
+#include "brpc/describable.h"
 #include "brpc/errno.pb.h"
 #include "brpc/acceptor.h"
 #include "brpc/policy/hulu_pbrpc_protocol.h"
@@ -2128,6 +2130,95 @@ TEST_F(SocketTest, shutdown_write) {
             return;
         }
     }
+}
+
+// A parsing context taking a while to be described, during which the bthread
+// parsing messages of the socket may reset the context.
+class SlowDescribedContext : public brpc::Destroyable, public brpc::Describable {
+public:
+    SlowDescribedContext(bthread::CountdownEvent* describing,
+                         butil::atomic<int>* ndestroyed)
+        : _describing(describing)
+        , _ndestroyed(ndestroyed)
+        , _name("SlowDescribedContext") {}
+
+    void Describe(std::ostream& os, const brpc::DescribeOptions&) const override {
+        _describing->signal();
+        // Not bthread_usleep(): DebugSocket() describes under a pthread mutex.
+        usleep(100000);
+        os << _name;
+    }
+
+    void Destroy() override {
+        _ndestroyed->fetch_add(1);
+        delete this;
+    }
+
+private:
+    bthread::CountdownEvent* _describing;
+    butil::atomic<int>* _ndestroyed;
+    std::string _name;
+};
+
+struct DebugSocketArg {
+    brpc::SocketId id;
+    bthread::CountdownEvent* describing;
+    std::string description;
+    int reset_error;
+};
+
+void* DescribeSocket(void* void_arg) {
+    DebugSocketArg* arg = static_cast<DebugSocketArg*>(void_arg);
+    std::ostringstream os;
+    brpc::Socket::DebugSocket(os, arg->id);
+    arg->description = os.str();
+    return nullptr;
+}
+
+void* ResetParsingContextWhileDescribing(void* void_arg) {
+    DebugSocketArg* arg = static_cast<DebugSocketArg*>(void_arg);
+    brpc::SocketUniquePtr s;
+    arg->reset_error = arg->describing->wait();
+    if (arg->reset_error == 0) {
+        arg->reset_error = brpc::Socket::Address(arg->id, &s);
+    }
+    if (arg->reset_error == 0) {
+        // What InputMessenger does before trying other protocols.
+        s->reset_parsing_context(nullptr);
+    }
+    return nullptr;
+}
+
+TEST_F(SocketTest, debug_socket_keeps_parsing_context_alive) {
+    brpc::SocketId id;
+    brpc::SocketOptions options;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr s;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &s));
+
+    bthread::CountdownEvent describing(1);
+    butil::atomic<int> ndestroyed(0);
+    s->reset_parsing_context(new SlowDescribedContext(&describing, &ndestroyed));
+
+    DebugSocketArg arg = { id, &describing, "", 0 };
+    bthread_t describer;
+    ASSERT_EQ(0, bthread_start_background(&describer, nullptr, DescribeSocket, &arg));
+    // Reset in a pthread: signaling a bthread in Describe() would switch to
+    // it on the worker of the describer, which holds a pthread mutex.
+    pthread_t resetter;
+    ASSERT_EQ(0, pthread_create(&resetter, nullptr,
+                                ResetParsingContextWhileDescribing, &arg));
+    ASSERT_EQ(0, bthread_join(describer, nullptr));
+    ASSERT_EQ(0, pthread_join(resetter, nullptr));
+
+    ASSERT_EQ(0, arg.reset_error);
+    ASSERT_NE(std::string::npos, arg.description.find("parsing_context="))
+        << arg.description;
+    ASSERT_NE(std::string::npos, arg.description.find("SlowDescribedContext"))
+        << arg.description;
+    ASSERT_EQ(1, ndestroyed.load());
+    ASSERT_EQ(nullptr, s->parsing_context());
+    ASSERT_EQ(0, s->SetFailed());
 }
 
 TEST_F(SocketTest, packed_ptr) {

@@ -2427,17 +2427,20 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         os << idsizes[i];
     }
     os << '}';
-    Destroyable* const parsing_context = ptr->parsing_context();
-    Describable* parsing_context_desc = dynamic_cast<Describable*>(parsing_context);
-    if (parsing_context_desc) {
-        os << "\nparsing_context=" << butil::class_name_str(*parsing_context) << '{';
-        DescribeOptions opt;
-        opt.verbose = true;
-        IndentingOStream os2(os, 2);
-        parsing_context_desc->Describe(os2, opt);
-        os << '}';
-    } else {
-        os << "\nparsing_context=" << ShowObject(parsing_context);
+    {
+        BAIDU_SCOPED_LOCK(ptr->_parsing_context_mutex);
+        Destroyable* const parsing_context = ptr->parsing_context();
+        Describable* parsing_context_desc = dynamic_cast<Describable*>(parsing_context);
+        if (parsing_context_desc) {
+            os << "\nparsing_context=" << butil::class_name_str(*parsing_context) << '{';
+            DescribeOptions opt;
+            opt.verbose = true;
+            IndentingOStream os2(os, 2);
+            parsing_context_desc->Describe(os2, opt);
+            os << '}';
+        } else {
+            os << "\nparsing_context=" << ShowObject(parsing_context);
+        }
     }
     const SSLState ssl_state = ptr->ssl_state();
     os << "\npipeline_q=" << npipelined
