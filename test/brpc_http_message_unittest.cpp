@@ -132,8 +132,11 @@ TEST(HttpMessageTest, request_sanity) {
         "Message Body sdfsdf\r\n"
     ;
     brpc::HttpMessage http_message;
-    ASSERT_EQ((ssize_t)strlen(http_request), 
+    // The CRLF after the 19-byte body is not part of this message.
+    ASSERT_EQ((ssize_t)strlen(http_request) - 2,
               http_message.ParseFromArray(http_request, strlen(http_request)));
+    ASSERT_TRUE(http_message.Completed());
+    ASSERT_EQ("Message Body sdfsdf", http_message.body().to_string());
     const brpc::HttpHeader& header = http_message.header();
     // Check all keys
     ASSERT_EQ("json", header.content_type());
@@ -176,8 +179,11 @@ TEST(HttpMessageTest, response_sanity) {
         "Message Body sdfsdf\r\n"
     ;
     brpc::HttpMessage http_message;
-    ASSERT_EQ((ssize_t)strlen(http_response), 
+    // The CRLF after the 19-byte body is not part of this message.
+    ASSERT_EQ((ssize_t)strlen(http_response) - 2,
               http_message.ParseFromArray(http_response, strlen(http_response)));
+    ASSERT_TRUE(http_message.Completed());
+    ASSERT_EQ("Message Body sdfsdf", http_message.body().to_string());
     // Check all keys
     const brpc::HttpHeader& header = http_message.header();
     ASSERT_EQ("json2", header.content_type());
@@ -603,6 +609,141 @@ TEST(HttpMessageTest, chunked_trailer_is_not_a_header) {
     const std::string* xff = header.GetHeader("X-Forwarded-For");
     ASSERT_TRUE(xff != nullptr);
     ASSERT_EQ("10.0.0.1", *xff);
+}
+
+// Puts `data' in a single IOBuf block, the way one read() returns pipelined
+// messages that arrive together.
+void AppendInOneBlock(butil::IOBuf* buf, const std::string& data) {
+    char* copy = (char*)malloc(data.size());
+    memcpy(copy, data.data(), data.size());
+    ASSERT_EQ(0, buf->append_user_data(copy, data.size(), free));
+}
+
+TEST(HttpMessageTest, parse_stops_at_end_of_pipelined_request) {
+    const std::string request1 = "GET /a HTTP/1.1\r\n"
+                                 "Host: a.com\r\n"
+                                 "X-A: 1\r\n\r\n";
+    const std::string request2 = "POST /b HTTP/1.1\r\n"
+                                 "Host: b.com\r\n"
+                                 "X-B: 2\r\n"
+                                 "Content-Length: 5\r\n\r\n"
+                                 "hello";
+    butil::IOBuf buf;
+    AppendInOneBlock(&buf, request1 + request2);
+    ASSERT_EQ(1u, buf.backing_block_num());
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)request1.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        brpc::HttpHeader& header = http_message.header();
+        ASSERT_EQ(brpc::HTTP_METHOD_GET, header.method());
+        ASSERT_EQ("/a", header.uri().path());
+        ASSERT_EQ("a.com", *header.GetHeader("Host"));
+        ASSERT_EQ(nullptr, header.GetHeader("X-B"));
+        ASSERT_TRUE(http_message.body().empty());
+    }
+    {
+        brpc::HttpMessage http_message;
+        const std::string data = buf.to_string();
+        ASSERT_EQ((ssize_t)request1.size(),
+                  http_message.ParseFromArray(data.data(), data.size()))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ("/a", http_message.header().uri().path());
+    }
+    buf.pop_front(request1.size());
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)request2.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        brpc::HttpHeader& header = http_message.header();
+        ASSERT_EQ(brpc::HTTP_METHOD_POST, header.method());
+        ASSERT_EQ("/b", header.uri().path());
+        ASSERT_EQ("b.com", *header.GetHeader("Host"));
+        ASSERT_EQ(nullptr, header.GetHeader("X-A"));
+        ASSERT_EQ("hello", http_message.body().to_string());
+    }
+}
+
+TEST(HttpMessageTest, parse_stops_at_end_of_pipelined_chunked_request) {
+    const std::string request1 = "POST /a HTTP/1.1\r\n"
+                                 "Host: a.com\r\n"
+                                 "Transfer-Encoding: chunked\r\n\r\n"
+                                 "5\r\nhello\r\n"
+                                 "0\r\n\r\n";
+    const std::string request2 = "POST /b HTTP/1.1\r\n"
+                                 "Host: a.com\r\n"
+                                 "Transfer-Encoding: chunked\r\n\r\n"
+                                 "5\r\nworld\r\n"
+                                 "0\r\n\r\n";
+    butil::IOBuf buf;
+    AppendInOneBlock(&buf, request1 + request2);
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)request1.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ("/a", http_message.header().uri().path());
+        ASSERT_EQ("hello", http_message.body().to_string());
+    }
+    buf.pop_front(request1.size());
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)request2.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ("/b", http_message.header().uri().path());
+        ASSERT_EQ("world", http_message.body().to_string());
+    }
+}
+
+TEST(HttpMessageTest, parse_stops_at_end_of_pipelined_response) {
+    const std::string response1 = "HTTP/1.1 200 OK\r\n"
+                                  "Content-Length: 5\r\n\r\n"
+                                  "hello";
+    const std::string response2 = "HTTP/1.1 404 Not Found\r\n"
+                                  "X-B: 2\r\n"
+                                  "Transfer-Encoding: chunked\r\n\r\n"
+                                  "5\r\nworld\r\n"
+                                  "0\r\n\r\n";
+    butil::IOBuf buf;
+    AppendInOneBlock(&buf, response1 + response2);
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)response1.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ(brpc::HTTP_STATUS_OK, http_message.header().status_code());
+        ASSERT_EQ(nullptr, http_message.header().GetHeader("X-B"));
+        ASSERT_EQ("hello", http_message.body().to_string());
+    }
+    buf.pop_front(response1.size());
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)response2.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ(brpc::HTTP_STATUS_NOT_FOUND,
+                  http_message.header().status_code());
+        ASSERT_EQ("world", http_message.body().to_string());
+    }
+
+    // An interim response is a message of its own, as it is when it arrives
+    // in a read of its own.
+    const std::string interim = "HTTP/1.1 100 Continue\r\n\r\n";
+    buf.clear();
+    AppendInOneBlock(&buf, interim + response1);
+    {
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)interim.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ(brpc::HTTP_STATUS_CONTINUE,
+                  http_message.header().status_code());
+        ASSERT_TRUE(http_message.body().empty());
+    }
 }
 
 TEST(HttpMessageTest, htab_is_ows_in_header_values) {

@@ -21,6 +21,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <set>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -3079,6 +3080,61 @@ TEST_F(HttpTest, http_expect) {
     // 200 Ok
     ReadOneResponse(sock, imsg_guard);
     ASSERT_EQ(imsg_guard->header().status_code(), brpc::HTTP_STATUS_OK);
+}
+
+TEST_F(HttpTest, pipelined_requests_get_one_response_each) {
+    brpc::Server server;
+    server.set_version("pipelined");
+    ASSERT_EQ(0, server.Start(0, nullptr));
+
+    const butil::EndPoint ep = server.listen_address();
+    brpc::SocketOptions options;
+    options.remote_side = ep;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr sock;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
+
+    // Both requests in one write, so that the server reads them together.
+    butil::IOBuf request_buf;
+    request_buf.append("GET /health HTTP/1.1\r\nHost: a.com\r\n\r\n"
+                       "GET /version HTTP/1.1\r\nHost: a.com\r\n\r\n");
+    ASSERT_EQ(0, sock->Write(&request_buf));
+    int64_t start_time = butil::cpuwide_time_us();
+    while (sock->fd() < 0) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L) << "Too long!";
+    }
+
+    // The server may answer in any order.
+    std::multiset<std::string> bodies;
+    butil::IOPortal read_buf;
+    start_time = butil::cpuwide_time_us();
+    while (bodies.size() < 2) {
+        const ssize_t nr = read_buf.append_from_file_descriptor(sock->fd(), 4096);
+        if (nr < 0 && (errno == EAGAIN || errno == EINTR)) {
+            ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L)
+                << "Too long! bodies.size()=" << bodies.size();
+            bthread_usleep(1000);
+            continue;
+        }
+        ASSERT_GT(nr, 0);
+        while (true) {
+            brpc::ParseResult pr = brpc::policy::ParseHttpMessage(
+                &read_buf, sock.get(), false, nullptr);
+            if (!pr.is_ok()) {
+                ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
+                break;
+            }
+            brpc::DestroyingPtr<brpc::policy::HttpContext> imsg_guard(
+                static_cast<brpc::policy::HttpContext*>(pr.message()));
+            ASSERT_EQ(brpc::HTTP_STATUS_OK, imsg_guard->header().status_code());
+            bodies.insert(imsg_guard->body().to_string());
+        }
+    }
+    ASSERT_TRUE(read_buf.empty());
+    const std::multiset<std::string> expected = {"OK", "pipelined"};
+    ASSERT_EQ(expected, bodies);
 }
 
 // Test gRPC authentication failure response format
