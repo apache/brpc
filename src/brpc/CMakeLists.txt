@@ -216,9 +216,11 @@ if(WITH_URMA AND URMA_USE_MOCK_ENABLED)
     target_compile_features(brpc_build_config INTERFACE cxx_std_17)
 endif()
 target_include_directories(brpc_build_config BEFORE INTERFACE
-    ${CMAKE_CURRENT_BINARY_DIR})
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS})
 target_compile_definitions(brpc_build_config INTERFACE ${BRPC_DEFINITIONS})
 target_include_directories(brpc_build_config INTERFACE ${BRPC_INCLUDE_DIRS})
+brpc_assert_protobuf_include_order(brpc_build_config ${BRPC_INCLUDE_DIRS})
 
 function(check_thrift_version target_arg)
     #use thrift command to get version

@@ -23,7 +23,9 @@ find_package(Gperftools)
 
 add_library(brpc_test_config INTERFACE)
 target_link_libraries(brpc_test_config INTERFACE brpc_build_config)
-target_include_directories(brpc_test_config INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(brpc_test_config BEFORE INTERFACE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS})
 target_compile_definitions(brpc_test_config INTERFACE
     UNIT_TEST
     BVAR_NOT_LINK_DEFAULT_VARIABLES
@@ -32,6 +34,7 @@ target_compile_options(brpc_test_config INTERFACE -fno-access-control)
 if(GPERFTOOLS_INCLUDE_DIR)
     target_include_directories(brpc_test_config INTERFACE ${GPERFTOOLS_INCLUDE_DIR})
 endif()
+brpc_assert_protobuf_include_order(brpc_test_config ${GPERFTOOLS_INCLUDE_DIR})
 
 include(CompileProto)
 set(TEST_PROTO_FILES addressbook.proto
