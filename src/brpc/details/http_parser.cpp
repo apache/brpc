@@ -1565,6 +1565,14 @@ size_t http_parser_execute (http_parser *parser,
         }
 
         if (ch == ':') {
+          if (parser->header_state == h_transfer_encoding) {
+            /* Multiple `Transfer-Encoding` headers are one list (RFC 7230
+             * 3.2.2), so `chunked` from an earlier line is no longer final.
+             * Clear it here rather than at value start so that an empty
+             * value also resets it.
+             */
+            parser->flags &= ~F_CHUNKED;
+          }
           parser->state = s_header_value_discard_ws;
           CALLBACK_DATA(header_field);
           break;
@@ -1605,10 +1613,6 @@ size_t http_parser_execute (http_parser *parser,
             break;
 
           case h_transfer_encoding:
-            /* Multiple `Transfer-Encoding` headers are one list (RFC 7230
-             * 3.2.2), so `chunked` from an earlier line is no longer final.
-             */
-            parser->flags &= ~F_CHUNKED;
             /* looking for 'Transfer-Encoding: chunked' */
             if ('c' == c) {
               parser->header_state = h_matching_transfer_encoding_chunked;

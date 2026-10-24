@@ -529,6 +529,20 @@ TEST(HttpMessageTest, repeated_transfer_encoding_lines) {
                              "Transfer-Encoding: chunked\r\n"
                              "Transfer-Encoding: identity\r\n\r\n"
                              "5\r\nhello\r\n0\r\n\r\n"));
+    // An empty repeated line is like `chunked, ` and must not keep chunked.
+    ASSERT_EQ(brpc::HPE_INVALID_TRANSFER_ENCODING,
+              ParseHttpErrno("POST / HTTP/1.1\r\n"
+                             "Host: a.com\r\n"
+                             "Transfer-Encoding: chunked\r\n"
+                             "Transfer-Encoding:\r\n\r\n"
+                             "5\r\nhello\r\n0\r\n\r\n"));
+    // A longer field name that only starts with Transfer-Encoding is a
+    // different header and leaves the framing alone.
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno("POST / HTTP/1.1\r\n"
+                                           "Host: a.com\r\n"
+                                           "Transfer-Encoding: chunked\r\n"
+                                           "Transfer-Encoding-X: a\r\n\r\n"
+                                           "0\r\n\r\n"));
     // chunked as the final coding is still honored.
     ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno("POST / HTTP/1.1\r\n"
                                            "Host: a.com\r\n"
