@@ -15,7 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "brpc/urma/urma_handshake.h"
+#include "brpc/handshake/urma_handshake.h"
+
+#include "brpc/adapter_transport.h"
 
 #if BRPC_WITH_URMA
 
@@ -188,6 +190,164 @@ bool ValidHello(const ParsedHello& h) {
     return true;
 }
 
+namespace {
+
+const handshake::FrameSpec& UrmaV2FrameSpec() {
+    static const handshake::FrameSpec spec(
+        "URMA", 4, v2_wire::HELLO_PACKET_LEN,
+        v2_wire::HELLO_MSG_LEN_MAX,
+        handshake::FrameSpec::U16_TOTAL_LENGTH);
+    return spec;
+}
+
+const handshake::FrameSpec& UrmaV3FrameSpec() {
+    static const handshake::FrameSpec spec(
+        "URM3", 4, 8, 8 + MAX_V3_PB_SIZE,
+        handshake::FrameSpec::U32_BODY_LENGTH);
+    return spec;
+}
+
+const handshake::FrameSpec& UrmaAckFrameSpec() {
+    static const handshake::FrameSpec spec(
+        nullptr, 0, sizeof(uint32_t), sizeof(uint32_t),
+        handshake::FrameSpec::FIXED);
+    return spec;
+}
+
+void TranslateV2Hello(const v2_wire::HelloMessage& message,
+                      ParsedHello* out) {
+    out->buffer_size = message.buffer_size;
+    out->recv_buffer_cnt = message.recv_buffer_cnt;
+    out->jetty_id = message.jetty_id;
+    memcpy(out->eid, message.eid, sizeof(out->eid));
+    out->uasid = message.uasid;
+    out->tp_type = message.tp_type;
+    memcpy(out->seg_eid, message.seg_eid, sizeof(out->seg_eid));
+    out->seg_uasid = message.seg_uasid;
+    out->seg_va = message.seg_va;
+    out->seg_len = message.seg_len;
+    out->seg_token_id = message.seg_token_id;
+}
+
+void TranslateV3Hello(const UrmaHello& message, ParsedHello* out) {
+    out->buffer_size = message.buffer_size();
+    out->recv_buffer_cnt = message.recv_buffer_cnt();
+    out->jetty_id = message.jetty_id();
+    memcpy(out->eid, message.eid().data(), sizeof(out->eid));
+    out->uasid = message.uasid();
+    out->tp_type = static_cast<uint8_t>(message.tp_type());
+    memcpy(out->seg_eid, message.seg_eid().data(), sizeof(out->seg_eid));
+    out->seg_uasid = message.seg_uasid();
+    out->seg_va = message.seg_va();
+    out->seg_len = message.seg_len();
+    out->seg_token_id = message.seg_token_id();
+}
+
+}  // namespace
+
+const handshake::FrameSpec& UrmaHandshakeAdapter::HelloFrameSpec() const {
+    return _version == 3 ? UrmaV3FrameSpec() : UrmaV2FrameSpec();
+}
+
+const handshake::FrameSpec& UrmaHandshakeAdapter::AckFrameSpec() const {
+    return UrmaAckFrameSpec();
+}
+
+handshake::StepResult UrmaHandshakeAdapter::BuildHello(
+    bool enabled, std::string* payload) {
+    if (_version == 3) {
+        UrmaHello message;
+        if (enabled) {
+            CHECK(_ep != nullptr);
+            _ep->FillLocalHelloV3(&message);
+        } else {
+            message.set_buffer_size(0);
+            message.set_recv_buffer_cnt(0);
+            message.set_jetty_id(0);
+            message.set_eid(std::string(16, '\0'));
+            message.set_uasid(0);
+            message.set_tp_type(0);
+            message.set_seg_eid(std::string(16, '\0'));
+            message.set_seg_uasid(0);
+            message.set_seg_va(0);
+            message.set_seg_len(0);
+            message.set_seg_token_id(0);
+        }
+        return message.SerializeToString(payload)
+            ? handshake::STEP_OK : handshake::STEP_ERROR;
+    }
+    v2_wire::HelloMessage message{};
+    if (enabled) {
+        CHECK(_ep != nullptr);
+        _ep->FillLocalHelloV2(&message);
+    } else {
+        message.msg_len = v2_wire::HELLO_PACKET_LEN;
+    }
+    uint8_t body[v2_wire::HELLO_BODY_LEN];
+    message.Serialize(body);
+    payload->assign(reinterpret_cast<const char*>(body + sizeof(uint16_t)),
+                    sizeof(body) - sizeof(uint16_t));
+    return handshake::STEP_OK;
+}
+
+handshake::StepResult UrmaHandshakeAdapter::ParseHello(
+    const std::string& payload) {
+    ParsedHello remote{};
+    if (_version == 3) {
+        UrmaHello message;
+        if (!message.ParseFromString(payload) ||
+            message.eid().size() != sizeof(remote.eid) ||
+            message.seg_eid().size() != sizeof(remote.seg_eid)) {
+            errno = EPROTO;
+            return handshake::STEP_ERROR;
+        }
+        // ParsedHello stores this as a byte. Reject an out-of-range protobuf
+        // value before narrowing it, otherwise e.g. 256 becomes a valid 0.
+        if (message.tp_type() > static_cast<uint32_t>(URMA_UTP)) {
+            return handshake::STEP_FALLBACK;
+        }
+        TranslateV3Hello(message, &remote);
+    } else {
+        if (payload.size() < v2_wire::HELLO_BODY_LEN - sizeof(uint16_t)) {
+            errno = EPROTO;
+            return handshake::STEP_ERROR;
+        }
+        uint8_t body[v2_wire::HELLO_BODY_LEN];
+        const uint16_t total_be = butil::HostToNet16(
+            static_cast<uint16_t>(4 + sizeof(uint16_t) + payload.size()));
+        memcpy(body, &total_be, sizeof(total_be));
+        memcpy(body + sizeof(total_be), payload.data(),
+               sizeof(body) - sizeof(total_be));
+        v2_wire::HelloMessage message{};
+        message.Deserialize(body);
+        if (message.hello_ver != v2_wire::HELLO_V2_VERSION ||
+            message.impl_ver != v2_wire::IMPL_V2_VERSION) {
+            return handshake::STEP_FALLBACK;
+        }
+        TranslateV2Hello(message, &remote);
+    }
+    if (!ValidHello(remote)) {
+        return handshake::STEP_FALLBACK;
+    }
+    _remote = remote;
+    return handshake::STEP_OK;
+}
+
+std::unique_ptr<UrmaHandshakeAdapter> CreateClientHandshakeAdapter(
+    UrmaEndpoint* ep) {
+    return std::unique_ptr<UrmaHandshakeAdapter>(
+        new UrmaHandshakeAdapter(
+            ep, FLAGS_urma_client_handshake_version == 3 ? 3 : 2));
+}
+
+std::vector<std::unique_ptr<UrmaHandshakeAdapter> >
+CreateServerHandshakeAdapters(UrmaEndpoint* ep) {
+    std::vector<std::unique_ptr<UrmaHandshakeAdapter> > adapters;
+    adapters.emplace_back(new UrmaHandshakeAdapter(ep, 2));
+    adapters.emplace_back(new UrmaHandshakeAdapter(ep, 3));
+    return adapters;
+}
+
 // File-local (not in the anonymous namespace so it can be friend-declared
 // from urma_endpoint.h's UrmaEndpoint). Reads the body following the magic
 // and translates it into ParsedHello.
@@ -356,6 +516,79 @@ UrmaHandshake* CreateServerHandshakeByMagic(UrmaEndpoint* ep,
 }
 
 }  // namespace urma
+
+namespace handshake {
+
+class UrmaServerHandshakeTransport : public HandshakeTransport {
+public:
+    UrmaServerHandshakeTransport(UrmaTransport* transport,
+                                 butil::IOBuf* source)
+        : _transport(transport), _source(source), _protocol(nullptr) {}
+
+    void OnProtocolSelected(HandshakeProtocol* protocol) override {
+        _protocol = static_cast<urma::UrmaHandshakeAdapter*>(protocol);
+    }
+    StepResult PrepareResources() override {
+        if (_transport->PrepareUpgradeResources(true) == 0) {
+            return STEP_OK;
+        }
+        _transport->DeactivateUpgrade();
+        return STEP_FALLBACK;
+    }
+    StepResult NegotiateResources() override {
+        CHECK(_protocol != nullptr);
+        if (_transport->NegotiateUpgradeResources(
+                _protocol->remote(), true) == 0) {
+            return STEP_OK;
+        }
+        _transport->DeactivateUpgrade();
+        return STEP_FALLBACK;
+    }
+    void OnEstablished() override { _transport->ActivateUpgrade(); }
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
+    StepResult ValidateEstablished() override {
+        return _source->empty() ? STEP_OK : STEP_ERROR;
+    }
+
+private:
+    UrmaTransport* _transport;
+    butil::IOBuf* _source;
+    urma::UrmaHandshakeAdapter* _protocol;
+};
+
+class UrmaServerHandshakeAdapter : public StandardHandshakeAdapter {
+protected:
+    StepResult RunServerStep(butil::IOBuf* source, Socket* socket) override {
+        AdapterTransport* adapter = AdapterTransport::Get(socket);
+        if (!adapter->upgrade_capable(SOCKET_MODE_URMA)) {
+            return RunUrmaFallbackServerHandshake(source, socket);
+        }
+        UrmaTransport* transport = static_cast<UrmaTransport*>(
+            adapter->high_speed_transport());
+        std::vector<std::unique_ptr<urma::UrmaHandshakeAdapter> > owned =
+            urma::CreateServerHandshakeAdapters(transport->GetUrmaEp());
+        std::vector<HandshakeProtocol*> protocols;
+        for (size_t i = 0; i < owned.size(); ++i) {
+            protocols.push_back(owned[i].get());
+        }
+        IOBufHandshakeInput input(source);
+        UrmaServerHandshakeTransport participant(transport, source);
+        return adapter->handshake_session()->RunServer(
+            protocols, &input, &participant, false);
+    }
+
+    HandshakeSession* GetSession(Socket* socket) const override {
+        return AdapterTransport::Get(socket)->handshake_session();
+    }
+};
+
+HandshakeAdapter* GetUrmaServerHandshakeAdapter() {
+    static UrmaServerHandshakeAdapter adapter;
+    return &adapter;
+}
+
+}  // namespace handshake
 }  // namespace brpc
 
 #endif  // BRPC_WITH_URMA

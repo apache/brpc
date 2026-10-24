@@ -203,7 +203,7 @@ JSON2PB_DIRS = src/json2pb
 JSON2PB_SOURCES = $(foreach d,$(JSON2PB_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 JSON2PB_OBJS = $(addsuffix .o, $(basename $(JSON2PB_SOURCES))) 
 
-BRPC_DIRS = src/brpc src/brpc/details src/brpc/builtin src/brpc/policy src/brpc/policy/mysql src/brpc/rdma
+BRPC_DIRS = src/brpc src/brpc/details src/brpc/builtin src/brpc/handshake src/brpc/policy src/brpc/policy/mysql src/brpc/rdma
 ifeq ($(WITH_FLATBUFFERS),1)
 BRPC_DIRS += src/brpc/flatbuffers
 endif
@@ -217,7 +217,8 @@ ifeq ($(URMA_USE_MOCK),0)
 BRPC_SOURCES_ALL := $(filter-out src/brpc/urma/mock_urma.cpp,$(BRPC_SOURCES_ALL))
 endif
 BRPC_SOURCES = $(filter-out $(THRIFT_SOURCES) $(EXCLUDE_SOURCES), $(BRPC_SOURCES_ALL))
-BRPC_PROTOS = $(filter %.proto,$(BRPC_SOURCES))
+# TCP-only servers also encode the disabled URMA Hello.
+BRPC_PROTOS = $(sort $(filter %.proto,$(BRPC_SOURCES)) src/brpc/urma/urma_handshake.proto)
 BRPC_CFAMILIES = $(filter-out %.proto %.pb.cc,$(BRPC_SOURCES))
 BRPC_OBJS = $(BRPC_PROTOS:.proto=.pb.o) $(addsuffix .o, $(basename $(BRPC_CFAMILIES)))
 
@@ -314,6 +315,8 @@ output/bin:protoc-gen-mcpack
 
 src/mcpack2pb/generator.o:src/mcpack2pb/generator.cpp src/idl_options.pb.h
 	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+
+src/brpc/handshake/urma_fallback_handshake.o src/brpc/handshake/urma_fallback_handshake.dbg.o: src/brpc/urma/urma_handshake.pb.h
 
 %.o:%.cpp
 	@echo "> Compiling $@"

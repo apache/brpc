@@ -20,6 +20,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <ostream>
 #include <vector>
 
@@ -28,6 +29,7 @@
 #include "butil/iobuf.h"
 #include "butil/macros.h"
 #include "butil/synchronization/lock.h"
+#include "bthread/mutex.h"
 #include "bthread/types.h"
 
 #include "brpc/socket.h"
@@ -36,7 +38,7 @@
 
 #include "urma_api.h"
 #include "urma_types.h"
-#include "brpc/urma/urma_handshake.h"
+#include "brpc/handshake/urma_handshake.h"
 #include "brpc/urma/urma_handshake.pb.h"
 
 namespace brpc {
@@ -46,15 +48,15 @@ class UrmaTransport;
 namespace urma {
 
 class UrmaHandshake;
+class UrmaStreamTrace;
 struct ParsedHello;
 
 DECLARE_bool(urma_use_polling);
 DECLARE_int32(urma_poller_num);
 DECLARE_bool(urma_disable_bthread);
 
-// Per-connection application-level connect object. Returned by
-// UrmaTransport::Connect(); its StartConnect spawns the client-side handshake
-// bthread that drives the URMA negotiation over the already-connected TCP fd.
+// Legacy URMA connection handshake helper, retained for interoperability tests.
+// AdapterTransport manages the normal client upgrade path.
 class UrmaConnect : public AppConnect {
     friend class UrmaEndpoint;
 public:
@@ -96,13 +98,13 @@ struct UrmaResource {
     DISALLOW_COPY_AND_ASSIGN(UrmaResource);
 };
 
-// One per Socket. Carries the handshake state machine, the send/recv
-// windows, and the registered buffer bookkeeping. Cache-line padded to avoid
-// false sharing between connections.
+// Per-Socket URMA resources, send/recv windows and registered buffers.
+// AdapterTransport drives the common handshake; the legacy handshake state
+// and helpers remain here for interoperability tests. Cache-line aligned.
 class BAIDU_CACHELINE_ALIGNMENT UrmaEndpoint : public SocketUser {
     friend class UrmaConnect;
     friend class Socket;
-    friend class UrmaTransport;
+    friend class ::brpc::UrmaTransport;
     friend class UrmaHandshakeClientV2;
     friend class UrmaHandshakeServerV2;
     friend class UrmaHandshakeClientV3;
@@ -135,8 +137,8 @@ public:
     void DebugInfo(std::ostream& os,
                    butil::StringPiece connector = "\n") const;
 
-    // Edge-triggered callback installed on the TCP socket when the transport
-    // is URMA. Dispatches on _state (see the .cpp for the full state machine):
+    // Legacy TCP handshake callback used by interoperability tests.
+    // Dispatches on _state (see the .cpp for the full state machine):
     //   UNINIT (server)  -> start the server handshake bthread
     //   < ESTABLISHED    -> wake the handshake bthread parked in ReadFromFd
     //   FALLBACK_TCP     -> hand off to InputMessenger::OnNewMessages
@@ -144,7 +146,7 @@ public:
     static void OnNewDataFromTcp(Socket* m);
 
     // CQ completion poller: the edge-triggered callback for the CQ socket
-    // (whose user is this endpoint). Drains urma_poll_jfc and feeds the
+    // (whose user owns a CQ lifetime context). Drains urma_poll_jfc and feeds the
     // completions into HandleCompletion, then calls InputMessenger. Event mode
     // also drains the aggregated JFCE until urma_wait_jfc reports no event,
     // then calls Socket::MoreReadEvents so later JFCE edges can start the
@@ -158,7 +160,7 @@ public:
                                      std::function<void()> release_fn);
     static void PollingModeRelease(bthread_tag_t tag);
 
-    // ---- Handshake IO helpers (also used by urma_handshake.cpp) ----
+    // ---- Legacy handshake IO helpers ----
     // Read at most @len bytes from the TCP fd into @data; waits on _read_butex
     // on EAGAIN. Returns 0 on success, -1 on IO error (errno set).
     int ReadFromFd(void* data, size_t len);
@@ -203,13 +205,15 @@ private:
         FAILED        = 0x300
     };
 
-    // Process handshake at the client / server (run in a background bthread).
+    // Legacy client/server handshake bthreads.
     static void* ProcessHandshakeAtClient(void* arg);
     static void* ProcessHandshakeAtServer(void* arg);
 
     // Allocate / deallocate the per-connection URMA resources (JFCE/JFC/JFR/
     // Jetty, plus the CQ socket). Returns 0 on success.
     int AllocateResources();
+    // Register CQ callbacks only after the TCP handshake parser has returned.
+    int StartCqEvents();
     void DeallocateResources();
 
     // Import the peer's jetty and buffer-pool segment. CRITICAL:
@@ -239,13 +243,14 @@ private:
     // received
     // (0 for send completions), or -1 on error (errno set).
     ssize_t HandleCompletion(const urma_cr_t& cr);
+    ssize_t HandleRecvCompletion(const urma_cr_t& cr);
 
-    // Queue received bytes for InputMessenger. CQ receive completions can
-    // arrive while the server is still waiting for the final TCP handshake
-    // ACK. Keep those bytes in the URMA input processor and dispatch them only
-    // after ESTABLISHED, matching the connection-ready boundary seen by user
-    // code.
+    // Queue received bytes for InputMessenger after ESTABLISHED. Hardware can
+    // complete receives during the handshake, but StartCqEvents defers their
+    // processing until the TCP parser has returned.
     void DispatchReceivedBytes(SocketUniquePtr& s, ssize_t bytes);
+    void DumpStreamTrace(const char* reason, const std::string& prefix = "",
+                         size_t buffered = 0);
 
     // Consume one async event from the JFCE fd (event mode only). The caller
     // drains completions before acknowledge/rearm because the bonding provider
@@ -280,9 +285,30 @@ private:
 
     // The URMA resources (jetty / jfc / jfr / jfce / imported peer objects).
     UrmaResource* _resource{nullptr};
+    std::unique_ptr<UrmaStreamTrace> _stream_trace;
 
-    // The SocketId wrapping the JFCE fd (event mode) or a synthetic carrier
-    // (polling mode). PollCq is the edge-triggered callback on this socket.
+    struct CqLifetime {
+        explicit CqLifetime(SocketId id) : socket_id(id) {}
+        const SocketId socket_id;
+        bthread::Mutex mutex;  // Serializes CQ dispatch, start and teardown.
+        uint64_t generation{0};
+        bool closed{true};
+    };
+    struct CqSocketUser : SocketUser {
+        CqSocketUser(const std::shared_ptr<CqLifetime>& lifetime,
+                     UrmaEndpoint* ep, bool use_polling)
+            : lifetime(lifetime), endpoint(ep),
+              generation(lifetime->generation), polling(use_polling) {}
+        void BeforeRecycle(Socket*) override { delete this; }
+        const std::shared_ptr<CqLifetime> lifetime;
+        UrmaEndpoint* const endpoint;  // Use only with main Socket pinned + mutex.
+        const uint64_t generation;
+        const bool polling;
+    };
+    // Shared with old carriers so queued callbacks can reject a closed/reset
+    // generation without dereferencing an endpoint that may already be gone.
+    const std::shared_ptr<CqLifetime> _cq_lifetime;
+    // Wraps the JFCE fd (event mode) or a synthetic carrier (polling mode).
     SocketId _cq_sid{INVALID_SOCKET_ID};
 
     // ---- Send / recv window bookkeeping ----
@@ -297,6 +323,11 @@ private:
     // Per-WR recv buffers (zero-copy targets).
     std::vector<butil::IOBuf> _rbuf;
     std::vector<void*> _rbuf_data;
+    // A provider may report completions in a different order from posted
+    // receive WRs. Keep each completion with its owning slot and consume the
+    // stream only once all preceding receive WRs have completed.
+    std::vector<urma_cr_t> _recv_completions;
+    std::vector<bool> _recv_completed;
     // Peer's advertised recv buffer size (caps each WR's payload).
     uint32_t _remote_recv_block_size{0};
 

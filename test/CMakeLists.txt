@@ -53,6 +53,9 @@ compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_CURRENT_BINARY_DIR}
                                     ${CMAKE_CURRENT_SOURCE_DIR}
                                     "${TEST_PROTO_FILES}")
 add_library(TEST_PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
+# echo.proto imports src/idl_options.proto. Its generated header must exist
+# before compiling the test protobuf sources, including in a clean build.
+add_dependencies(TEST_PROTO_LIB PROTO_LIB)
 target_link_libraries(TEST_PROTO_LIB PRIVATE brpc_test_config)
 
 set(BRPC_SYSTEM_GTEST_SOURCE_DIR "" CACHE PATH "System googletest source directory.")

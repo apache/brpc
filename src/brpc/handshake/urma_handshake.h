@@ -15,15 +15,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_URMA_HANDSHAKE_H
-#define BRPC_URMA_HANDSHAKE_H
+#ifndef BRPC_HANDSHAKE_URMA_HANDSHAKE_H
+#define BRPC_HANDSHAKE_URMA_HANDSHAKE_H
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "brpc/handshake/handshake_adapter.h"
+
+namespace brpc {
+namespace handshake {
+
+HandshakeAdapter* GetUrmaServerHandshakeAdapter();
+StepResult RunUrmaFallbackServerHandshake(butil::IOBuf* source, Socket* socket);
+
+}  // namespace handshake
+}  // namespace brpc
 
 #if BRPC_WITH_URMA
 
 #include "urma_types.h"
+#include "brpc/transport_handshake.h"
 
 namespace brpc {
 namespace urma {
@@ -68,7 +83,8 @@ constexpr size_t HELLO_MSG_LEN_MAX = 4096;
 constexpr uint16_t HELLO_V2_VERSION = 2;
 constexpr uint16_t IMPL_V2_VERSION = 1;
 
-// The serializable struct. Aligned so it can be reinterpreted as raw bytes.
+// The v2 hello fields are serialized explicitly in network byte order.
+// The wire format is independent of the in-memory struct layout.
 struct HelloMessage {
     uint16_t msg_len;       // total packet length (incl. magic)
     uint16_t hello_ver;
@@ -79,7 +95,7 @@ struct HelloMessage {
     uint8_t eid[16];
     uint32_t uasid;
     uint8_t tp_type;
-    uint8_t pad[3];        // keep the struct 4-byte aligned
+    uint8_t pad[3];         // reserved wire bytes, serialized as zeros
     uint8_t seg_eid[16];
     uint32_t seg_uasid;
     uint64_t seg_va;
@@ -92,7 +108,8 @@ struct HelloMessage {
 
 }  // namespace v2_wire
 
-// Abstract handshake strategy. v2 speaks binary; v3 speaks protobuf ("URM3").
+// Legacy TCP handshake strategy used by interoperability tests.
+// v2 speaks binary; v3 speaks protobuf ("URM3").
 class UrmaHandshake {
 public:
     virtual ~UrmaHandshake() = default;
@@ -108,6 +125,34 @@ public:
     // Returns -1 on IO error (errno set).
     virtual int ReceiveAndParseRemoteHello(ParsedHello* out, bool* negotiated) = 0;
 };
+
+// Wire-format adapter used by the common transport handshake.
+// Stores the selected protocol version and parsed peer hello;
+// UrmaEndpoint owns the local and imported URMA resources.
+class UrmaHandshakeAdapter : public handshake::HandshakeProtocol {
+public:
+    UrmaHandshakeAdapter(UrmaEndpoint* ep, int version)
+        : _ep(ep), _version(version), _remote() {}
+
+    int ProtocolVersion() const override { return _version; }
+    bool AckDisabledHello() const override { return false; }
+    const handshake::FrameSpec& HelloFrameSpec() const override;
+    const handshake::FrameSpec& AckFrameSpec() const override;
+    handshake::StepResult BuildHello(bool enabled,
+                                     std::string* payload) override;
+    handshake::StepResult ParseHello(const std::string& payload) override;
+    const ParsedHello& remote() const { return _remote; }
+
+private:
+    UrmaEndpoint* _ep;
+    int _version;
+    ParsedHello _remote;
+};
+
+std::unique_ptr<UrmaHandshakeAdapter> CreateClientHandshakeAdapter(
+    UrmaEndpoint* ep);
+std::vector<std::unique_ptr<UrmaHandshakeAdapter> >
+CreateServerHandshakeAdapters(UrmaEndpoint* ep);
 
 // v2 binary handshake (magic "URMA").
 class UrmaHandshakeClientV2 : public UrmaHandshake {
@@ -155,10 +200,10 @@ private:
     UrmaEndpoint* _ep;
 };
 
-// Client-side factory: picks v2/v3 based on --urma_client_handshake_version.
+// Legacy client factory: picks v2/v3 via --urma_client_handshake_version.
 UrmaHandshake* CreateClientHandshake(UrmaEndpoint* ep);
 
-// Server-side factory: dispatches on the first 4 bytes read from the TCP fd.
+// Legacy server factory: dispatches on the first 4 bytes read from the TCP fd.
 // Returns nullptr if the magic is not "URMA"/"URM3" (caller falls back to TCP).
 // @magic is the first MAGIC_STR_LEN bytes already read from the fd.
 UrmaHandshake* CreateServerHandshakeByMagic(UrmaEndpoint* ep,
@@ -177,4 +222,4 @@ int ReadBodyAndNegotiate(UrmaEndpoint* ep, ParsedHello* out, bool* negotiated);
 
 #endif  // BRPC_WITH_URMA
 
-#endif  // BRPC_URMA_HANDSHAKE_H
+#endif  // BRPC_HANDSHAKE_URMA_HANDSHAKE_H

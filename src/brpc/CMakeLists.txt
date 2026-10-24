@@ -290,7 +290,7 @@ set(PROTO_FILES brpc/builtin_service.proto
                 brpc/policy/public_pbrpc_meta.proto
                 brpc/policy/sofa_pbrpc_meta.proto
                 brpc/proto_base.proto
-                brpc/rdma/rdma_handshake.proto
+                brpc/rdma_handshake.proto
                 brpc/rpc_dump.proto
                 brpc/rtmp.proto
                 brpc/span.proto
