@@ -24,11 +24,13 @@
 #include <string>
 #include <thread>
 #include "butil/macros.h"
+#include "butil/atomicops.h"
 #include "butil/sys_byteorder.h"
 #include "brpc/socket.h"
 
 #if BRPC_WITH_UBRING
 #include "brpc/ubshm/common/common.h"
+#include "brpc/ubshm/ub_cleanup_worker.h"
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/shm/shm_mgr.h"
@@ -43,9 +45,11 @@ DECLARE_int32(ub_disconnect_timeout_s);
 DECLARE_int32(ub_connect_timeout_s);
 DECLARE_int32(ub_hb_timer_interval_s);
 DECLARE_int32(ub_event_queue_timer_interval_us);
+DECLARE_int32(ub_event_queue_timer_interval_max_us);
 DECLARE_int32(ub_flying_io_timeout_s);
 
 extern bool g_skip_ub_init;
+extern butil::atomic<int> g_ub_test_worker_start_rc;
 }  // namespace ubring
 }  // namespace brpc
 
@@ -364,8 +368,10 @@ TEST(IpcV2FormatPreparationTest, prepares_layout_without_activation) {
     EXPECT_EQ(0u, trx.ubr_rx.ipc_v2_read_offset);
     EXPECT_EQ(UBR_STATE_NONE, trx.ubr_tx.trx_state);
     EXPECT_EQ(UBR_STATE_NONE, trx.ubr_rx.trx_state);
-    EXPECT_EQ(0, trx.timer_fd);
-    EXPECT_EQ(0, trx.hb_timer_fd);
+    // The close/heartbeat timers must stay unarmed (the pre-facade fields
+    // timer_fd/hb_timer_fd became the close_timer/hb_timer slots).
+    EXPECT_EQ(nullptr, trx.close_timer.load());
+    EXPECT_EQ(nullptr, trx.hb_timer.load());
     EXPECT_EQ(91u, local_status.tail);
     EXPECT_EQ(1u, __atomic_load_n(&remote_status.tail, __ATOMIC_ACQUIRE));
     EXPECT_EQ(111u, local_status.timeout);
@@ -793,6 +799,7 @@ TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
         {"ub_connect_timeout_s", "_s", "seconds", "1"},
         {"ub_hb_timer_interval_s", "_s", "seconds", "5"},
         {"ub_event_queue_timer_interval_us", "_us", "microseconds", "100"},
+        {"ub_event_queue_timer_interval_max_us", "_us", "microseconds", "10000"},
         {"ub_flying_io_timeout_s", "_s", "seconds", "5"},
     };
 
@@ -812,11 +819,64 @@ TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
     EXPECT_EQ(1, brpc::ubring::FLAGS_ub_connect_timeout_s);
     EXPECT_EQ(5, brpc::ubring::FLAGS_ub_hb_timer_interval_s);
     EXPECT_EQ(100, brpc::ubring::FLAGS_ub_event_queue_timer_interval_us);
+    EXPECT_EQ(10000, brpc::ubring::FLAGS_ub_event_queue_timer_interval_max_us);
     EXPECT_EQ(5, brpc::ubring::FLAGS_ub_flying_io_timeout_s);
     EXPECT_EQ(100U * USEC_TO_NSEC,
               static_cast<uint32_t>(
                   brpc::ubring::FLAGS_ub_event_queue_timer_interval_us) *
                   USEC_TO_NSEC);
+}
+
+// ---------------------------------------------------------------------------
+// UbrCleanupWorker: a failed lazy start must be retried, not latched.
+
+namespace {
+butil::atomic<int> g_ub_test_cleanup_runs(0);
+
+void UbTestCleanupStep(brpc::ubring::ShmList*) {
+    g_ub_test_cleanup_runs.fetch_add(1);
+}
+}  // namespace
+
+// The worker is a process-wide singleton started lazily by the first post and
+// never stopped, so its lazy start can only be observed before any other test
+// posted a cleanup job. This suite is therefore declared ahead of
+// UBShmEndpointTest, whose teardown paths post cleanups. Should a shuffled
+// run still find the worker started, the probe below detects that and skips
+// instead of asserting on a start that is never attempted.
+TEST(UbrCleanupWorkerTest, start_failure_is_retried_not_latched) {
+    using brpc::ubring::UbrCleanupWorker;
+    brpc::ubring::ShmList shm_list;
+    memset(&shm_list, 0, sizeof(shm_list));
+    g_ub_test_cleanup_runs.store(0);
+
+    // Fail the lazy start exactly like a transient bthread creation failure
+    // (e.g. ENOMEM) would.
+    brpc::ubring::g_ub_test_worker_start_rc.store(-1);
+
+    // The first post doubles as the probe: a post that succeeds despite the
+    // injection means the worker was already started by an earlier test and
+    // no start -- the code under test -- is attempted anymore.
+    if (UbrCleanupWorker::PostShmDrain(&shm_list, UbTestCleanupStep)) {
+        brpc::ubring::g_ub_test_worker_start_rc.store(0);
+        UbrCleanupWorker::DrainAndWait();
+        GTEST_SKIP() << "the cleanup worker was already started by an "
+                        "earlier test; the lazy start cannot be exercised";
+    }
+
+    // While the start keeps failing, every post fails and fails only itself:
+    // no job is queued, so the caller must run it inline.
+    EXPECT_FALSE(UbrCleanupWorker::PostShmDrain(&shm_list, UbTestCleanupStep));
+    EXPECT_FALSE(UbrCleanupWorker::PostShmDrain(&shm_list, UbTestCleanupStep));
+    EXPECT_EQ(0, g_ub_test_cleanup_runs.load());
+
+    // The failure must not latch: clear the injection and post again. The
+    // start is retried, the worker comes up, the job runs exactly once and
+    // DrainAndWait observes quiescence.
+    brpc::ubring::g_ub_test_worker_start_rc.store(0);
+    EXPECT_TRUE(UbrCleanupWorker::PostShmDrain(&shm_list, UbTestCleanupStep));
+    UbrCleanupWorker::DrainAndWait();
+    EXPECT_EQ(1, g_ub_test_cleanup_runs.load());
 }
 
 namespace brpc {
