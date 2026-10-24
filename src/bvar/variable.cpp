@@ -19,7 +19,6 @@
 
 #include <pthread.h>
 #include <set>                                   // std::set
-#include <fstream>                               // std::ifstream
 #include <sstream>                               // std::ostringstream
 #include <gflags/gflags.h>
 #include "butil/macros.h"                        // BAIDU_CASSERT
@@ -34,6 +33,7 @@
 #include "butil/threading/platform_thread.h"
 #include "butil/reloadable_flags.h"
 #include "butil/strings/string_number_conversions.h" // butil::DoubleToString
+#include "butil/process_util.h"                   // butil::ReadCommandLine
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 #include "bvar/mvariable.h"
@@ -689,28 +689,16 @@ int Variable::dump_exposed(Dumper* dumper, const DumpOptions* poptions) {
 // ============= export to files ==============
 
 std::string read_command_name() {
-    std::ifstream fin("/proc/self/stat");
-    if (!fin.is_open()) {
+    // Use /proc/self/cmdline instead of /proc/self/stat to avoid the 15-byte
+    // TASK_COMM_LEN kernel limit on the comm field. /proc/self/cmdline
+    // contains the full argv[0] which preserves the complete command name.
+    char cmdline[1024];
+    const ssize_t nr = butil::ReadCommandLine(cmdline, sizeof(cmdline), false);
+    if (nr <= 0) {
         return std::string();
     }
-    int pid = 0;
-    std::string command_name;
-    fin >> pid >> command_name;
-    if (!fin.good()) {
-        return std::string();
-    }
-    // Although the man page says the command name is in parenthesis, for
-    // safety we normalize the name.
     std::string s;
-    if (command_name.size() >= 2UL && command_name[0] == '(' &&
-        butil::back_char(command_name) == ')') {
-        // remove parenthesis.
-        to_underscored_name(&s,
-                            butil::StringPiece(command_name.data() + 1, 
-                                              command_name.size() - 2UL));
-    } else {
-        to_underscored_name(&s, command_name);
-    }
+    to_underscored_name(&s, butil::StringPiece(cmdline, nr));
     return s;
 }
 
