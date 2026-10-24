@@ -460,6 +460,13 @@ static void GlobalRelease() {
     g_device = nullptr;
 }
 
+static void ReleasePollingModeAtExit() {
+    // Match RDMA's shutdown ordering for pollers, but deliberately leave the
+    // URMA IOBuf pool mapped because thread-local IOBuf blocks may outlive
+    // atexit handlers.
+    UrmaEndpoint::GlobalPollingModeRelease();
+}
+
 // ============================================================================
 // Global initialization.
 // ============================================================================
@@ -620,12 +627,16 @@ static bool GlobalUrmaInitializeImpl() {
         return false;
     }
 
+    if (FLAGS_urma_use_polling) {
+        atexit(ReleasePollingModeAtExit);
+    }
+
     g_urma_available.store(true, butil::memory_order_release);
-    // Do not register GlobalRelease with atexit. IOBuf keeps blocks in
-    // thread-local chains whose destructors may run after atexit handlers.
-    // Unmapping the registered pool here would leave those TLS chains
-    // pointing into unmapped memory. The process reclaims global URMA
-    // resources on exit; GlobalRelease remains available for init rollback.
+    // Register only the polling shutdown above, not GlobalRelease. IOBuf keeps
+    // blocks in thread-local chains whose destructors may run after atexit
+    // handlers. Unmapping the registered pool here would leave those TLS
+    // chains pointing into unmapped memory. The process reclaims the remaining
+    // global URMA resources; GlobalRelease remains available for init rollback.
     LOG(INFO) << "URMA initialized: device=" << device_name
               << " bonding=" << g_is_bonding_device
               << " max_sge=" << g_max_sge
