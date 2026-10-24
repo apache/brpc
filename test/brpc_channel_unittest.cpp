@@ -174,10 +174,21 @@ struct SelectiveAddArgs {
     SelectiveAddArgs() : channel(nullptr), done(false), rc(-1) {}
 };
 
+struct SelectiveRemoveArgs {
+    brpc::SelectiveChannel* channel;
+    brpc::SelectiveChannel::ChannelHandle handle;
+    BlockingDescribeChannel* sub_channel;
+    butil::atomic<bool> done;
+
+    SelectiveRemoveArgs()
+        : channel(nullptr), sub_channel(nullptr), done(false) {}
+};
+
 class ScopedSelectiveChannelThreads {
 public:
     explicit ScopedSelectiveChannelThreads(BlockingDescribeChannel* channel)
-        : _describe_started(false), _add_started(false), _channel(channel) {}
+        : _describe_started(false), _add_started(false), _remove_started(false),
+          _channel(channel) {}
 
     ~ScopedSelectiveChannelThreads() {
         _channel->Release();
@@ -187,12 +198,17 @@ public:
         if (_add_started) {
             pthread_join(_add_tid, nullptr);
         }
+        if (_remove_started) {
+            pthread_join(_remove_tid, nullptr);
+        }
     }
 
     pthread_t _describe_tid;
     pthread_t _add_tid;
+    pthread_t _remove_tid;
     bool _describe_started;
     bool _add_started;
+    bool _remove_started;
 
 private:
     BlockingDescribeChannel* _channel;
@@ -202,6 +218,14 @@ void* RunSelectiveAdd(void* arg) {
     SelectiveAddArgs* args = static_cast<SelectiveAddArgs*>(arg);
     args->rc = args->channel->AddChannel(new DeferredSelectiveChannel(nullptr),
                                          &args->handle);
+    args->done.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
+void* RunSelectiveRemove(void* arg) {
+    SelectiveRemoveArgs* args = static_cast<SelectiveRemoveArgs*>(arg);
+    args->channel->RemoveAndDestroyChannel(args->handle);
+    delete args->sub_channel;
     args->done.store(true, butil::memory_order_release);
     return nullptr;
 }
@@ -4213,6 +4237,51 @@ TEST(SelectiveChannelTest, describe_does_not_block_add_channel) {
         channel.RemoveAndDestroyChannel(add_args.handle);
     }
     channel.RemoveAndDestroyChannel(first_handle);
+}
+
+TEST(SelectiveChannelTest, describe_protects_non_owning_channel_removal) {
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+
+    BlockingDescribeChannel* blocking = new BlockingDescribeChannel;
+    brpc::SelectiveChannel::SubChannelOptions options;
+    options.ownership = brpc::DOESNT_OWN_CHANNEL;
+    brpc::SelectiveChannel::ChannelHandle handle;
+    ASSERT_EQ(0, channel.AddChannel(blocking, options, &handle));
+
+    SelectiveDescribeArgs describe_args;
+    describe_args.channel = &channel;
+    SelectiveRemoveArgs remove_args;
+    remove_args.channel = &channel;
+    remove_args.handle = handle;
+    remove_args.sub_channel = blocking;
+
+    {
+        ScopedSelectiveChannelThreads threads(blocking);
+        ASSERT_EQ(0, pthread_create(&threads._describe_tid, nullptr,
+                                    RunSelectiveDescribe, &describe_args));
+        threads._describe_started = true;
+        for (int i = 0; i < 1000 && !blocking->started(); ++i) {
+            bthread_usleep(1000);
+        }
+        EXPECT_TRUE(blocking->started());
+
+        if (blocking->started()) {
+            ASSERT_EQ(0, pthread_create(&threads._remove_tid, nullptr,
+                                        RunSelectiveRemove, &remove_args));
+            threads._remove_started = true;
+            for (int i = 0; i < 100 && !remove_args.done.load(
+                     butil::memory_order_acquire); ++i) {
+                bthread_usleep(1000);
+            }
+            EXPECT_FALSE(remove_args.done.load(butil::memory_order_acquire));
+        }
+    }
+
+    if (!remove_args.done.load(butil::memory_order_acquire)) {
+        channel.RemoveAndDestroyChannel(handle);
+        delete blocking;
+    }
 }
 
 } //namespace
