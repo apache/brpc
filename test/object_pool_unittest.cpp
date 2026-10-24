@@ -25,6 +25,7 @@
 
 namespace {
 struct MyObject {};
+struct FreeChunkCountObject {};
 
 int nfoo_dtor = 0;
 struct Foo {
@@ -49,6 +50,10 @@ template <> struct ObjectPoolBlockMaxItem<MyObject> {
 
 template <> struct ObjectPoolFreeChunkMaxItem<MyObject> {
     static size_t value() { return 5; }
+};
+
+template <> struct ObjectPoolFreeChunkMaxItem<FreeChunkCountObject> {
+    static size_t value() { return 1; }
 };
 
 template <> struct ObjectPoolValidator<Foo> {
@@ -241,6 +246,43 @@ TEST_F(ObjectPoolTest, get_perf) {
     }
 
     std::cout << describe_objects<SilentObj>() << std::endl;
+}
+
+struct FreeChunkCountArgs {
+    FreeChunkCountObject* first;
+    FreeChunkCountObject* second;
+};
+
+void* add_two_free_chunks(void* arg) {
+    FreeChunkCountArgs* args = static_cast<FreeChunkCountArgs*>(arg);
+    args->first = get_object<FreeChunkCountObject>();
+    args->second = get_object<FreeChunkCountObject>();
+    return_object(args->first);
+    return_object(args->second);
+    return nullptr;
+}
+
+TEST_F(ObjectPoolTest, free_chunk_count_tracks_push_and_pop) {
+    // Keep the main LocalPool alive so worker teardown does not clear chunks.
+    FreeChunkCountObject* guard = get_object<FreeChunkCountObject>();
+    ASSERT_NE(nullptr, guard);
+    FreeChunkCountArgs args = { nullptr, nullptr };
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr, add_two_free_chunks, &args));
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+
+    FreeChunkCountObject* first = get_object<FreeChunkCountObject>();
+    FreeChunkCountObject* second = get_object<FreeChunkCountObject>();
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+    ASSERT_TRUE(first == args.first || first == args.second);
+    ASSERT_TRUE(second == args.first || second == args.second);
+    ASSERT_NE(first, second);
+
+    return_object(first);
+    return_object(second);
+    return_object(guard);
+    clear_objects<FreeChunkCountObject>();
 }
 
 struct D { int val[1]; };
