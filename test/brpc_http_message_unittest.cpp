@@ -341,6 +341,25 @@ TEST(HttpMessageTest, parse_http_set_cookie) {
     }
     ASSERT_EQ(1, set_cookie_value1_count);
     ASSERT_EQ(1, set_cookie_value2_count);
+
+    const char first_part[] = "HTTP/1.1 200 OK\r\nSet-Cookie: a";
+    const char second_part[] = "=1\r\nSet-Cookie: b=2\r\n\r\n";
+    brpc::HttpMessage fragmented_message(false, brpc::HTTP_METHOD_HEAD);
+    ASSERT_EQ((ssize_t)sizeof(first_part) - 1,
+              fragmented_message.ParseFromArray(first_part,
+                                                 sizeof(first_part) - 1));
+    ASSERT_FALSE(fragmented_message.Completed());
+    ASSERT_EQ((ssize_t)sizeof(second_part) - 1,
+              fragmented_message.ParseFromArray(second_part,
+                                                 sizeof(second_part) - 1));
+    ASSERT_TRUE(fragmented_message.Completed());
+    set_cookie = fragmented_message.header().GetHeader("set-cookie");
+    ASSERT_NE(nullptr, set_cookie);
+    ASSERT_EQ("a=1", *set_cookie);
+    all_set_cookie = fragmented_message.header().GetAllSetCookieHeader();
+    ASSERT_EQ(2u, all_set_cookie.size());
+    ASSERT_EQ("a=1", *all_set_cookie[0]);
+    ASSERT_EQ("b=2", *all_set_cookie[1]);
 }
 
 TEST(HttpMessageTest, cl_and_te) {
@@ -852,12 +871,28 @@ TEST(HttpMessageTest, http_header) {
     header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value1);
     value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
     ASSERT_TRUE(value && *value == set_cookie_value1);
+    const std::string* first_set_cookie = value;
     header.AppendHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value2);
+    ASSERT_EQ(set_cookie_value1, *first_set_cookie);
     value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
     ASSERT_TRUE(value && *value == set_cookie_value1);
     header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value3);
     value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
     ASSERT_TRUE(value && *value == set_cookie_value3);
+
+    // set-cookie and user-agent collide in the default HeaderMap bucket
+    // layout. Updating Set-Cookie must not corrupt the surviving header.
+    brpc::HttpHeader collision_header;
+    collision_header.SetHeader(brpc::HttpHeader::SET_COOKIE,
+                               set_cookie_value1);
+    collision_header.SetHeader("user-agent", "brpc");
+    collision_header.SetHeader(brpc::HttpHeader::SET_COOKIE,
+                               set_cookie_value2);
+    value = collision_header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value2);
+    value = collision_header.GetHeader("user-agent");
+    ASSERT_TRUE(value && *value == "brpc");
+
     std::vector<const std::string*> all_set_cookie
         = header.GetAllSetCookieHeader();
     ASSERT_EQ(2u, all_set_cookie.size());
@@ -868,7 +903,7 @@ TEST(HttpMessageTest, http_header) {
     int set_cookie_value2_count = 0;
     int set_cookie_value3_count = 0;
     for (auto iter = header.HeaderBegin(); iter != header.HeaderEnd(); ++iter) {
-        if (!header.IsSetCookie(brpc::HttpHeader::SET_COOKIE)) {
+        if (!header.IsSetCookie(iter->first)) {
             continue;
         }
         if (iter->second == set_cookie_value2) {
@@ -879,9 +914,62 @@ TEST(HttpMessageTest, http_header) {
     }
     ASSERT_EQ(1, set_cookie_value2_count);
     ASSERT_EQ(1, set_cookie_value3_count);
+    brpc::HttpHeader copied_header(header);
+    copied_header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value1);
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value3);
+    value = copied_header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value1);
+    brpc::HttpHeader assigned_header;
+    assigned_header = header;
+    assigned_header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value2);
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value3);
+    value = assigned_header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value2);
     header.RemoveHeader(brpc::HttpHeader::SET_COOKIE);
     ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::SET_COOKIE));
-    ASSERT_EQ(header._first_set_cookie, nullptr);
+    ASSERT_TRUE(header.GetAllSetCookieHeader().empty());
+
+    header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value1);
+    const std::string* first_set_cookie_after_reset =
+        header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_NE(nullptr, first_set_cookie_after_reset);
+    header.AppendHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value2);
+    const size_t bucket_count = header._headers.bucket_count();
+    ASSERT_TRUE(header._headers.resize(bucket_count * 2));
+    ASSERT_NE(bucket_count, header._headers.bucket_count());
+    ASSERT_EQ(set_cookie_value1, *first_set_cookie_after_reset);
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value1);
+    all_set_cookie = header.GetAllSetCookieHeader();
+    ASSERT_EQ(2u, all_set_cookie.size());
+    ASSERT_EQ(set_cookie_value1, *all_set_cookie[0]);
+    ASSERT_EQ(set_cookie_value2, *all_set_cookie[1]);
+    int set_cookie_value1_after_rehash_count = 0;
+    int set_cookie_value2_after_rehash_count = 0;
+    for (auto iter = header.HeaderBegin(); iter != header.HeaderEnd(); ++iter) {
+        if (!header.IsSetCookie(iter->first)) {
+            continue;
+        }
+        if (iter->second == set_cookie_value1) {
+            ++set_cookie_value1_after_rehash_count;
+        } else if (iter->second == set_cookie_value2) {
+            ++set_cookie_value2_after_rehash_count;
+        }
+    }
+    ASSERT_EQ(1, set_cookie_value1_after_rehash_count);
+    ASSERT_EQ(1, set_cookie_value2_after_rehash_count);
+
+    brpc::HttpHeader other_header;
+    other_header.SetHeader(brpc::HttpHeader::SET_COOKIE, set_cookie_value2);
+    header.Swap(other_header);
+    value = header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value2);
+    value = other_header.GetHeader(brpc::HttpHeader::SET_COOKIE);
+    ASSERT_TRUE(value && *value == set_cookie_value1);
+    header.Clear();
+    ASSERT_FALSE(header.GetHeader(brpc::HttpHeader::SET_COOKIE));
 
     ASSERT_EQ(brpc::HTTP_METHOD_GET, header.method());
     header.set_method(brpc::HTTP_METHOD_POST);

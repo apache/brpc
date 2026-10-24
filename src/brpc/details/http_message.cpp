@@ -186,6 +186,9 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
         parser->http_major = 1;
     }
     HttpHeader& headers = http_message->header();
+    if (headers.HasSetCookieHeaders()) {
+        headers.SyncSetCookieHeaders();
+    }
     headers.set_version(parser->http_major, parser->http_minor);
     // Only for response
     // http_parser may set status_code to 0 when the field is not needed,
