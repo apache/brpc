@@ -19,6 +19,7 @@
 
 #include <pthread.h>                                // pthread_*
 
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <iostream>
@@ -222,6 +223,11 @@ public:
     bool get_latency_sample(bvar::detail::Sample<bvar::Stat>* sample) const {
         return _latency_window.get_span(sample);
     }
+
+    bool get_latency_sample(time_t window_size,
+                            bvar::detail::Sample<bvar::Stat>* sample) const {
+        return _latency_window.get_span(window_size, sample);
+    }
 };
 
 TEST(RecorderTest, latency_recorder_window_statistics) {
@@ -276,11 +282,10 @@ TEST(RecorderTest, latency_recorder_window_statistics) {
 }
 
 TEST(RecorderTest, latency_recorder_qps_accuracy) {
-    bvar::LatencyRecorder lr1(2); // set windows size to 2s
-    bvar::LatencyRecorder lr2(2);
-    bvar::LatencyRecorder lr3(2);
-    bvar::LatencyRecorder lr4(2);
-    usleep(3000000); // wait sampler to sample 3 times
+    LatencyRecorderWithWindowSample lr1(2);
+    LatencyRecorderWithWindowSample lr2(2);
+    LatencyRecorderWithWindowSample lr3(2);
+    LatencyRecorderWithWindowSample lr4(2);
 
     auto write = [](bvar::LatencyRecorder& lr, int times) {   
         for (int i = 0; i < times; ++i) {
@@ -291,29 +296,42 @@ TEST(RecorderTest, latency_recorder_qps_accuracy) {
     write(lr2, 11);
     write(lr3, 3);
     write(lr4, 1);
-    usleep(1000000); // wait sampler to sample 1 time
 
-    auto read = [](bvar::LatencyRecorder& lr, double exp_qps, int window_size = 0) {
-        int64_t qps_sum = 0;
-        int64_t exp_qps_int = (int64_t)exp_qps;
-        for (int i = 0; i < 1000; ++i) {
-            int64_t qps = window_size ? lr.qps(window_size): lr.qps();
-            EXPECT_GE(qps, exp_qps_int - 1);
-            EXPECT_LE(qps, exp_qps_int + 1);
-            qps_sum += qps;
+    auto check_qps = [](LatencyRecorderWithWindowSample& lr, int count,
+                        time_t window_size) {
+        const int64_t deadline = butil::monotonic_time_us() + 5 * 1000000L;
+        while (butil::monotonic_time_us() < deadline) {
+            bvar::detail::Sample<bvar::Stat> before;
+            if (lr.get_latency_sample(window_size, &before) &&
+                before.data.num == count && before.time_us > 0) {
+                // qps() reads the window again. Only compare it with `before'
+                // when no sampler tick occurs between the two reads.
+                const int64_t qps = window_size == lr.window_size()
+                    ? lr.qps() : lr.qps(window_size);
+                bvar::detail::Sample<bvar::Stat> after;
+                if (!lr.get_latency_sample(window_size, &after) ||
+                    after.time_us != before.time_us) {
+                    continue;
+                }
+                const double expected_qps =
+                    before.data.num * 1000000.0 / before.time_us;
+                EXPECT_GE(qps, static_cast<int64_t>(std::floor(expected_qps)));
+                EXPECT_LE(qps, static_cast<int64_t>(std::ceil(expected_qps)));
+                return;
+            }
+            usleep(10000);
         }
-        double err = fabs(qps_sum / 1000.0 - exp_qps);
-        return err;
+        ADD_FAILURE() << "Recorded latencies were not sampled";
     };
-    ASSERT_GT(0.1, read(lr1, 10/2.0));
-    ASSERT_GT(0.1, read(lr2, 11/2.0));
-    ASSERT_GT(0.1, read(lr3, 3/2.0));
-    ASSERT_GT(0.1, read(lr4, 1/2.0));
 
-    ASSERT_GT(0.1, read(lr1, 10/3.0, 3));
-    ASSERT_GT(0.1, read(lr2, 11/3.0, 3));
-    ASSERT_GT(0.1, read(lr3, 3/3.0, 3));
-    ASSERT_GT(0.1, read(lr4, 1/3.0, 3));
+    check_qps(lr1, 10, 2);
+    check_qps(lr2, 11, 2);
+    check_qps(lr3, 3, 2);
+    check_qps(lr4, 1, 2);
+    check_qps(lr1, 10, 3);
+    check_qps(lr2, 11, 3);
+    check_qps(lr3, 3, 3);
+    check_qps(lr4, 1, 3);
 }
 
 } // namespace
