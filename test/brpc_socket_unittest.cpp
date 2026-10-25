@@ -1853,6 +1853,59 @@ TEST_F(SocketTest, socket_buffer_options_before_accept) {
 }
 
 #if defined(OS_LINUX)
+TEST_F(SocketTest, accepted_socket_has_nonblocking_and_close_on_exec) {
+    butil::EndPoint point;
+    ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &point));
+    brpc::Server server;
+    ASSERT_EQ(0, server.Start(point, nullptr));
+    point = server.listen_address();
+
+    brpc::Acceptor* acceptor =
+        brpc::ServerPrivateAccessor(&server).acceptor();
+    ASSERT_TRUE(acceptor != nullptr);
+
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    options.connect_on_create = true;
+    brpc::SocketId client_id = brpc::INVALID_SOCKET_ID;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &client_id));
+
+    std::vector<brpc::SocketId> connections;
+    const int64_t deadline = butil::cpuwide_time_us() + 5000000L;
+    for (;;) {
+        acceptor->ListConnections(&connections);
+        if (!connections.empty()) {
+            break;
+        }
+        ASSERT_LT(butil::cpuwide_time_us(), deadline)
+            << "Timed out waiting for the accepted socket to be published";
+        bthread_usleep(1000);
+    }
+    ASSERT_EQ(1ul, connections.size());
+
+    {
+        brpc::SocketUniquePtr accepted_socket;
+        ASSERT_EQ(0, brpc::Socket::Address(connections[0], &accepted_socket));
+        const int fd = accepted_socket->fd();
+        ASSERT_GT(fd, 0);
+        const int status_flags = fcntl(fd, F_GETFL);
+        ASSERT_NE(-1, status_flags);
+        EXPECT_NE(0, status_flags & O_NONBLOCK);
+        const int descriptor_flags = fcntl(fd, F_GETFD);
+        ASSERT_NE(-1, descriptor_flags);
+        EXPECT_NE(0, descriptor_flags & FD_CLOEXEC);
+        ASSERT_EQ(0, accepted_socket->SetFailed());
+    }
+
+    {
+        brpc::SocketUniquePtr client_socket;
+        ASSERT_EQ(0, brpc::Socket::Address(client_id, &client_socket));
+        ASSERT_EQ(0, client_socket->SetFailed());
+    }
+    server.Stop(0);
+    server.Join();
+}
+
 void CheckTCPUserTimeout(int fd, int expect_tcp_user_timeout) {
     int tcp_user_timeout = 0;
     socklen_t len = sizeof(tcp_user_timeout);
