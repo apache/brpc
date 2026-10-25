@@ -305,6 +305,28 @@ TEST(RecorderTest, latency_recorder_qps_accuracy) {
             lr << 1;
         }
     };
+
+    // Fill the windows before writing the test batch. This keeps the batch in
+    // a complete window for multiple sampler ticks instead of just one.
+    const int64_t full_window_deadline =
+        butil::monotonic_time_us() + 5 * 1000000L;
+    bool full_windows = false;
+    while (butil::monotonic_time_us() < full_window_deadline) {
+        full_windows = lr1_2s.has_full_latency_window() &&
+            lr2_2s.has_full_latency_window() &&
+            lr3_2s.has_full_latency_window() &&
+            lr4_2s.has_full_latency_window() &&
+            lr1_3s.has_full_latency_window() &&
+            lr2_3s.has_full_latency_window() &&
+            lr3_3s.has_full_latency_window() &&
+            lr4_3s.has_full_latency_window();
+        if (full_windows) {
+            break;
+        }
+        usleep(10000);
+    }
+    ASSERT_TRUE(full_windows) << "Latency windows were not fully sampled";
+
     write(lr1_2s, 10);
     write(lr2_2s, 11);
     write(lr3_2s, 3);
