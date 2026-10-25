@@ -150,6 +150,39 @@ private:
     mutable butil::atomic<bool> _release;
 };
 
+class BlockingHealthChannel : public brpc::ChannelBase {
+public:
+    explicit BlockingHealthChannel(butil::atomic<int>* destroyed)
+        : _destroyed(destroyed), _started(false), _release(false) {}
+
+    ~BlockingHealthChannel() override {
+        _destroyed->fetch_add(1, butil::memory_order_relaxed);
+    }
+
+    void CallMethod(const google::protobuf::MethodDescriptor*,
+                    google::protobuf::RpcController*,
+                    const google::protobuf::Message*,
+                    google::protobuf::Message*,
+                    google::protobuf::Closure*) override {}
+    int CheckHealth() override {
+        _started.store(true, butil::memory_order_release);
+        while (!_release.load(butil::memory_order_acquire)) {
+            bthread_usleep(1000);
+        }
+        return 0;
+    }
+    int Weight() override { return 1; }
+    bool started() const {
+        return _started.load(butil::memory_order_acquire);
+    }
+    void Release() { _release.store(true, butil::memory_order_release); }
+
+private:
+    butil::atomic<int>* _destroyed;
+    butil::atomic<bool> _started;
+    butil::atomic<bool> _release;
+};
+
 struct SelectiveDescribeArgs {
     brpc::SelectiveChannel* channel;
     butil::atomic<bool> done;
@@ -166,6 +199,21 @@ void* RunSelectiveDescribe(void* arg) {
     return nullptr;
 }
 
+struct SelectiveHealthArgs {
+    brpc::ChannelBase* channel;
+    butil::atomic<bool> done;
+    int rc;
+
+    SelectiveHealthArgs() : channel(nullptr), done(false), rc(-1) {}
+};
+
+void* RunSelectiveHealth(void* arg) {
+    SelectiveHealthArgs* args = static_cast<SelectiveHealthArgs*>(arg);
+    args->rc = args->channel->CheckHealth();
+    args->done.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
 struct SelectiveAddArgs {
     brpc::SelectiveChannel* channel;
     brpc::SelectiveChannel::ChannelHandle handle;
@@ -178,10 +226,11 @@ struct SelectiveRemoveArgs {
     brpc::SelectiveChannel* channel;
     brpc::SelectiveChannel::ChannelHandle handle;
     BlockingDescribeChannel* sub_channel;
+    butil::atomic<bool> started;
     butil::atomic<bool> done;
 
     SelectiveRemoveArgs()
-        : channel(nullptr), sub_channel(nullptr), done(false) {}
+        : channel(nullptr), sub_channel(nullptr), started(false), done(false) {}
 };
 
 class ScopedSelectiveChannelThreads {
@@ -224,11 +273,79 @@ void* RunSelectiveAdd(void* arg) {
 
 void* RunSelectiveRemove(void* arg) {
     SelectiveRemoveArgs* args = static_cast<SelectiveRemoveArgs*>(arg);
+    args->started.store(true, butil::memory_order_release);
     args->channel->RemoveAndDestroyChannel(args->handle);
     delete args->sub_channel;
     args->done.store(true, butil::memory_order_release);
     return nullptr;
 }
+
+struct SelectiveHealthRemoveArgs {
+    brpc::SelectiveChannel* channel;
+    brpc::SelectiveChannel::ChannelHandle handle;
+    BlockingHealthChannel* sub_channel;
+    butil::atomic<bool> started;
+    butil::atomic<bool> done;
+
+    SelectiveHealthRemoveArgs()
+        : channel(nullptr), sub_channel(nullptr), started(false), done(false) {}
+};
+
+void* RunSelectiveHealthRemove(void* arg) {
+    SelectiveHealthRemoveArgs* args =
+        static_cast<SelectiveHealthRemoveArgs*>(arg);
+    args->started.store(true, butil::memory_order_release);
+    args->channel->RemoveAndDestroyChannel(args->handle);
+    delete args->sub_channel;
+    args->done.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
+struct SelectiveOwningRemoveArgs {
+    brpc::SelectiveChannel* channel;
+    brpc::SelectiveChannel::ChannelHandle handle;
+    butil::atomic<bool> done;
+
+    SelectiveOwningRemoveArgs() : channel(nullptr), done(false) {}
+};
+
+void* RunSelectiveOwningRemove(void* arg) {
+    SelectiveOwningRemoveArgs* args =
+        static_cast<SelectiveOwningRemoveArgs*>(arg);
+    args->channel->RemoveAndDestroyChannel(args->handle);
+    args->done.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
+class ScopedSelectiveHealthThreads {
+public:
+    explicit ScopedSelectiveHealthThreads(BlockingHealthChannel* channel)
+        : _health_started(false), _add_started(false), _remove_started(false),
+          _channel(channel) {}
+
+    ~ScopedSelectiveHealthThreads() {
+        _channel->Release();
+        if (_health_started) {
+            pthread_join(_health_tid, nullptr);
+        }
+        if (_add_started) {
+            pthread_join(_add_tid, nullptr);
+        }
+        if (_remove_started) {
+            pthread_join(_remove_tid, nullptr);
+        }
+    }
+
+    pthread_t _health_tid;
+    pthread_t _add_tid;
+    pthread_t _remove_tid;
+    bool _health_started;
+    bool _add_started;
+    bool _remove_started;
+
+private:
+    BlockingHealthChannel* _channel;
+};
 
 class SelectiveRetryPolicy : public brpc::RetryPolicy {
 public:
@@ -4258,23 +4375,36 @@ TEST(SelectiveChannelTest, describe_protects_non_owning_channel_removal) {
 
     {
         ScopedSelectiveChannelThreads threads(blocking);
-        ASSERT_EQ(0, pthread_create(&threads._describe_tid, nullptr,
-                                    RunSelectiveDescribe, &describe_args));
-        threads._describe_started = true;
-        for (int i = 0; i < 1000 && !blocking->started(); ++i) {
-            bthread_usleep(1000);
-        }
-        EXPECT_TRUE(blocking->started());
-
-        if (blocking->started()) {
-            ASSERT_EQ(0, pthread_create(&threads._remove_tid, nullptr,
-                                        RunSelectiveRemove, &remove_args));
-            threads._remove_started = true;
-            for (int i = 0; i < 100 && !remove_args.done.load(
-                     butil::memory_order_acquire); ++i) {
+        const int describe_rc = pthread_create(&threads._describe_tid, nullptr,
+                                               RunSelectiveDescribe, &describe_args);
+        EXPECT_EQ(0, describe_rc);
+        if (describe_rc == 0) {
+            threads._describe_started = true;
+            for (int i = 0; i < 1000 && !blocking->started(); ++i) {
                 bthread_usleep(1000);
             }
-            EXPECT_FALSE(remove_args.done.load(butil::memory_order_acquire));
+            EXPECT_TRUE(blocking->started());
+
+            if (blocking->started()) {
+                const int remove_rc = pthread_create(&threads._remove_tid, nullptr,
+                                                      RunSelectiveRemove, &remove_args);
+                EXPECT_EQ(0, remove_rc);
+                if (remove_rc == 0) {
+                    threads._remove_started = true;
+                    for (int i = 0; i < 1000 && !remove_args.started.load(
+                             butil::memory_order_acquire); ++i) {
+                        bthread_usleep(1000);
+                    }
+                    EXPECT_TRUE(remove_args.started.load(
+                        butil::memory_order_acquire));
+                    for (int i = 0; i < 100 && !remove_args.done.load(
+                             butil::memory_order_acquire); ++i) {
+                        bthread_usleep(1000);
+                    }
+                    EXPECT_FALSE(remove_args.done.load(
+                        butil::memory_order_acquire));
+                }
+            }
         }
     }
 
@@ -4282,6 +4412,131 @@ TEST(SelectiveChannelTest, describe_protects_non_owning_channel_removal) {
         channel.RemoveAndDestroyChannel(handle);
         delete blocking;
     }
+}
+
+TEST(SelectiveChannelTest, health_check_does_not_block_owning_channel_changes) {
+    butil::atomic<int> destroyed(0);
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+    BlockingHealthChannel* blocking = new BlockingHealthChannel(&destroyed);
+    brpc::SelectiveChannel::ChannelHandle blocking_handle;
+    ASSERT_EQ(0, channel.AddChannel(blocking, &blocking_handle));
+    SelectiveHealthArgs health_args;
+    health_args.channel = static_cast<brpc::ChannelBase*>(&channel);
+    SelectiveAddArgs add_args;
+    add_args.channel = &channel;
+    SelectiveOwningRemoveArgs remove_args;
+    remove_args.channel = &channel;
+    remove_args.handle = blocking_handle;
+
+    {
+        ScopedSelectiveHealthThreads threads(blocking);
+        ASSERT_EQ(0, pthread_create(&threads._health_tid, nullptr,
+                                    RunSelectiveHealth, &health_args));
+        threads._health_started = true;
+        for (int i = 0; i < 1000 && !blocking->started(); ++i) {
+            bthread_usleep(1000);
+        }
+        ASSERT_TRUE(blocking->started());
+
+        ASSERT_EQ(0, pthread_create(&threads._add_tid, nullptr,
+                                    RunSelectiveAdd, &add_args));
+        threads._add_started = true;
+        for (int i = 0; i < 100 && !add_args.done.load(
+                 butil::memory_order_acquire); ++i) {
+            bthread_usleep(1000);
+        }
+        const bool add_finished = add_args.done.load(
+            butil::memory_order_acquire);
+        EXPECT_TRUE(add_finished);
+        if (add_finished) {
+            EXPECT_EQ(0, add_args.rc);
+        }
+
+        ASSERT_EQ(0, pthread_create(&threads._remove_tid, nullptr,
+                                    RunSelectiveOwningRemove, &remove_args));
+        threads._remove_started = true;
+        for (int i = 0; i < 100 && !remove_args.done.load(
+                 butil::memory_order_acquire); ++i) {
+            bthread_usleep(1000);
+        }
+        EXPECT_TRUE(remove_args.done.load(butil::memory_order_acquire));
+        EXPECT_EQ(0, destroyed.load(butil::memory_order_acquire));
+    }
+
+    if (add_args.rc == 0) {
+        channel.RemoveAndDestroyChannel(add_args.handle);
+    }
+    if (!remove_args.done.load(butil::memory_order_acquire)) {
+        channel.RemoveAndDestroyChannel(blocking_handle);
+    }
+    EXPECT_TRUE(health_args.done.load(butil::memory_order_acquire));
+    EXPECT_EQ(0, health_args.rc);
+    EXPECT_EQ(1, destroyed.load(butil::memory_order_acquire));
+}
+
+TEST(SelectiveChannelTest, health_check_protects_non_owning_channel_removal) {
+    butil::atomic<int> destroyed(0);
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+    BlockingHealthChannel* blocking = new BlockingHealthChannel(&destroyed);
+    brpc::SelectiveChannel::SubChannelOptions options;
+    options.ownership = brpc::DOESNT_OWN_CHANNEL;
+    brpc::SelectiveChannel::ChannelHandle handle;
+    ASSERT_EQ(0, channel.AddChannel(blocking, options, &handle));
+
+    SelectiveHealthArgs health_args;
+    health_args.channel = static_cast<brpc::ChannelBase*>(&channel);
+    SelectiveHealthRemoveArgs remove_args;
+    remove_args.channel = &channel;
+    remove_args.handle = handle;
+    remove_args.sub_channel = blocking;
+
+    {
+        ScopedSelectiveHealthThreads threads(blocking);
+        const int health_rc = pthread_create(&threads._health_tid, nullptr,
+                                             RunSelectiveHealth, &health_args);
+        EXPECT_EQ(0, health_rc);
+        if (health_rc == 0) {
+            threads._health_started = true;
+            for (int i = 0; i < 1000 && !blocking->started(); ++i) {
+                bthread_usleep(1000);
+            }
+            EXPECT_TRUE(blocking->started());
+
+            if (blocking->started()) {
+                const int remove_rc = pthread_create(
+                    &threads._remove_tid, nullptr,
+                    RunSelectiveHealthRemove, &remove_args);
+                EXPECT_EQ(0, remove_rc);
+                if (remove_rc == 0) {
+                    threads._remove_started = true;
+                    for (int i = 0; i < 1000 && !remove_args.started.load(
+                             butil::memory_order_acquire); ++i) {
+                        bthread_usleep(1000);
+                    }
+                    EXPECT_TRUE(remove_args.started.load(
+                        butil::memory_order_acquire));
+                    for (int i = 0; i < 100 && !remove_args.done.load(
+                             butil::memory_order_acquire); ++i) {
+                        bthread_usleep(1000);
+                    }
+                    EXPECT_FALSE(remove_args.done.load(
+                        butil::memory_order_acquire));
+                    EXPECT_EQ(0, destroyed.load(butil::memory_order_acquire));
+                }
+            }
+        }
+    }
+
+    if (!remove_args.done.load(butil::memory_order_acquire)) {
+        channel.RemoveAndDestroyChannel(handle);
+        delete blocking;
+    }
+    EXPECT_TRUE(health_args.done.load(butil::memory_order_acquire));
+    EXPECT_EQ(0, health_args.rc);
+    EXPECT_TRUE(remove_args.done.load(butil::memory_order_acquire));
+    EXPECT_EQ(1, destroyed.load(butil::memory_order_acquire));
 }
 
 } //namespace
