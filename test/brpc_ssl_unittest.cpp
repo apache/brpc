@@ -20,6 +20,8 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <fstream>
+#include <memory>
+#include <sstream>
 #include <gtest/gtest.h>
 #include <google/protobuf/descriptor.h>
 #include <butil/time.h>
@@ -87,6 +89,73 @@ protected:
     virtual void SetUp() {};
     virtual void TearDown() {};
 };
+
+static void MarkCertificateFreed(void*, void* ptr, CRYPTO_EX_DATA*,
+                                 int, long, void*) {
+    if (ptr != nullptr) {
+        *static_cast<bool*>(ptr) = true;
+    }
+}
+
+TEST_F(SSLTest, diagnostic_print_releases_peer_certificate) {
+    bool certificate_freed = false;
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> server_ctx(
+        SSL_CTX_new(SSLv23_method()), SSL_CTX_free);
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> client_ctx(
+        SSL_CTX_new(SSLv23_method()), SSL_CTX_free);
+    ASSERT_TRUE(server_ctx);
+    ASSERT_TRUE(client_ctx);
+    ASSERT_EQ(1, SSL_CTX_use_certificate_chain_file(server_ctx.get(), "cert1.crt"));
+    ASSERT_EQ(1, SSL_CTX_use_PrivateKey_file(
+        server_ctx.get(), "cert1.key", SSL_FILETYPE_PEM));
+    SSL_CTX_set_session_cache_mode(server_ctx.get(), SSL_SESS_CACHE_OFF);
+    SSL_CTX_set_session_cache_mode(client_ctx.get(), SSL_SESS_CACHE_OFF);
+    std::unique_ptr<SSL, decltype(&SSL_free)> server(
+        SSL_new(server_ctx.get()), SSL_free);
+    std::unique_ptr<SSL, decltype(&SSL_free)> client(
+        SSL_new(client_ctx.get()), SSL_free);
+    ASSERT_TRUE(server);
+    ASSERT_TRUE(client);
+    BIO* server_bio = nullptr;
+    BIO* client_bio = nullptr;
+    ASSERT_EQ(1, BIO_new_bio_pair(&server_bio, 0, &client_bio, 0));
+    SSL_set_bio(server.get(), server_bio, server_bio);
+    SSL_set_bio(client.get(), client_bio, client_bio);
+    SSL_set_accept_state(server.get());
+    SSL_set_connect_state(client.get());
+    for (int i = 0; i < 100 &&
+         (!SSL_is_init_finished(client.get()) ||
+          !SSL_is_init_finished(server.get())); ++i) {
+        for (SSL* ssl : {client.get(), server.get()}) {
+            const int rc = SSL_do_handshake(ssl);
+            if (rc != 1) {
+                const int error = SSL_get_error(ssl, rc);
+                ASSERT_TRUE(error == SSL_ERROR_WANT_READ ||
+                            error == SSL_ERROR_WANT_WRITE) << error;
+            }
+        }
+    }
+    ASSERT_TRUE(SSL_is_init_finished(client.get()));
+    ASSERT_TRUE(SSL_is_init_finished(server.get()));
+    std::unique_ptr<X509, decltype(&X509_free)> peer(
+        SSL_get_peer_certificate(client.get()), X509_free);
+    ASSERT_TRUE(peer);
+    const int index = X509_get_ex_new_index(
+        0, nullptr, nullptr, nullptr, MarkCertificateFreed);
+    ASSERT_GE(index, 0);
+    ASSERT_EQ(1, X509_set_ex_data(peer.get(), index, &certificate_freed));
+    for (int i = 0; i < 10; ++i) {
+        std::ostringstream os;
+        brpc::Print(os, client.get(), "\n");
+        EXPECT_NE(std::string::npos, os.str().find("peer_certificate={"));
+        EXPECT_NE(std::string::npos, os.str().find("subject="));
+    }
+    EXPECT_FALSE(certificate_freed);
+    peer.reset();
+    client.reset();
+    client_ctx.reset();
+    EXPECT_TRUE(certificate_freed);
+}
 
 void* RunClosure(void* arg) {
     google::protobuf::Closure* done = (google::protobuf::Closure*)arg;

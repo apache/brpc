@@ -953,14 +953,15 @@ void Print(std::ostream& os, SSL* ssl, const char* sep) {
        << "protocol=" << SSL_get_version(ssl) << sep
        << "verify=" << (SSL_get_verify_mode(ssl) & SSL_VERIFY_PEER
                         ? "success" : "none");
-    X509* cert = SSL_get_peer_certificate(ssl);
+    std::unique_ptr<X509, decltype(&X509_free)> cert(
+        SSL_get_peer_certificate(ssl), X509_free);
     if (cert) {
         os << sep << "peer_certificate={";
         const std::string new_sep = GetNextLevelSeparator(sep);
         if (sep[0] == '\n') {
             os << new_sep;
         }
-        Print(os, cert, new_sep.c_str());
+        Print(os, cert.get(), new_sep.c_str());
         if (sep[0] == '\n') {
             os << sep;
         }
@@ -969,7 +970,8 @@ void Print(std::ostream& os, SSL* ssl, const char* sep) {
 }
 
 void Print(std::ostream& os, X509* cert, const char* sep) {
-    BIO* buf = BIO_new(BIO_s_mem());
+    std::unique_ptr<BIO, FreeBIO> bio(BIO_new(BIO_s_mem()));
+    BIO* buf = bio.get();
     if (buf == nullptr) {
         return;
     }
