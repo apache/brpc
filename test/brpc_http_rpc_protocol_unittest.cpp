@@ -40,6 +40,7 @@
 #include "butil/logging.h"
 #include "butil/files/scoped_file.h"
 #include "butil/fd_guard.h"
+#include "butil/fd_utility.h"
 #include "butil/file_util.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
@@ -1528,7 +1529,7 @@ public:
         _destroyed = true;
         _destroying_st = st;
         LOG(INFO) << "Destroy ReadBody=" << this << ", " << st;
-        _cntl->response_attachment().append("Sucess");
+        _cntl->response_attachment().append("Success");
     }
 private:
     brpc::Controller* _cntl;
@@ -2289,7 +2290,7 @@ TEST_F(HttpTest, h2_ping_ack_respects_socket_write_cap) {
     brpc::Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = false;
     ASSERT_EQ(0, sock->Write(&big, &wopt));
-    ASSERT_TRUE(sock->_overcrowded);
+    ASSERT_TRUE(sock->is_overcrowded());
 
     brpc::policy::H2Context* ctx =
         new brpc::policy::H2Context(sock.get(), nullptr);
@@ -2317,6 +2318,43 @@ TEST_F(HttpTest, h2_ping_ack_respects_socket_write_cap) {
     // The overcrowded connection must terminate parsing instead of accepting
     // the PING and queueing a PONG past the socket write cap.
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
+}
+
+TEST_F(HttpTest, socket_overcrowded_state_tracks_pending_writes) {
+    int fds[2];
+    ASSERT_EQ(0, pipe(fds));
+    butil::fd_guard read_fd(fds[0]);
+    ASSERT_EQ(0, butil::make_non_blocking(read_fd));
+    brpc::SocketOptions options;
+    options.fd = fds[1];
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr sock;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
+
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_socket_max_unwritten_bytes = 64;
+
+    butil::IOBuf data;
+    data.append(std::string(1024 * 1024, 'x'));
+    ASSERT_EQ(0, sock->Write(&data));
+    ASSERT_TRUE(sock->is_overcrowded());
+
+    brpc::FLAGS_socket_max_unwritten_bytes = 0;
+    ASSERT_FALSE(sock->is_overcrowded());
+    brpc::FLAGS_socket_max_unwritten_bytes = 64;
+
+    char buf[8192];
+    const int max_wait_iterations = 1000;
+    for (int i = 0;
+         i < max_wait_iterations && sock->is_overcrowded(); ++i) {
+        ssize_t nread;
+        while ((nread = read(read_fd, buf, sizeof(buf))) > 0) {}
+        ASSERT_EQ(-1, nread);
+        ASSERT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK);
+        bthread_usleep(1000);
+    }
+    ASSERT_FALSE(sock->is_overcrowded());
 }
 
 TEST_F(HttpTest, http2_goaway_with_debug_data) {

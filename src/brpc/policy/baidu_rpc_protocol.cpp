@@ -1046,8 +1046,9 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
                 cntl->response_checksum_attachment() ?
                 &cntl->response_attachment() : nullptr;
             if (cntl->response()->GetDescriptor() == SerializedResponse::descriptor()) {
+                // res_buf_ptr is not used afterwards; transfer its BlockRefs directly.
                 ((SerializedResponse*)cntl->response())->
-                    serialized_data().append(*res_buf_ptr);
+                    serialized_data().append(res_buf_ptr->movable());
             } else if (!DeserializeRpcMessage(*res_buf_ptr, *cntl, content_type,
                                               compress_type, checksum_type,
                                               cntl->response(),

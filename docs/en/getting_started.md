@@ -94,9 +94,19 @@ To enable [thrift support](../en/thrift.md), install thrift first and cmake with
 
 **Run example with cmake**
 
+Install brpc from the repository root first. CMake installs headers and
+libraries directly; it no longer stages headers in `output/include` during
+the build. Set the installation prefix during configuration so that generated
+pkg-config metadata uses the same prefix, then pass it to the example:
+
 ```shell
+$ cmake -S . -B build -DCMAKE_INSTALL_PREFIX="$PWD/build/output"
+$ cmake --build build -j6
+$ cmake --install build
 $ cd example/echo_c++
-$ cmake -B build && cmake --build build -j4
+$ cmake -B build -DCMAKE_PREFIX_PATH="$PWD/../../build/output"
+$ cmake --build build -j4
+$ cd build
 $ ./echo_server &
 $ ./echo_client
 ```
@@ -443,6 +453,10 @@ brpc does **not** link [libunwind](https://github.com/libunwind/libunwind) by de
 It is recommended to use the latest possible version of libunwind.
 
 no known issues.
+
+## flatbuffers: 25.2.10
+
+Optional and disabled by default. bRPC uses FlatBuffers builder internals, so only this version is accepted; see [FlatBuffers messages](flatbuffers.md) for using another version.
 
 # Track instances
 

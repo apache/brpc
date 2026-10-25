@@ -105,9 +105,17 @@ cmake -B build && cmake --build build -j6
 
 **用cmake运行样例**
 
+先在仓库根目录安装 brpc。CMake 会直接安装头文件和库，不再在编译时将
+头文件暂存到 `output/include`。在配置阶段设置安装前缀，确保生成的
+pkg-config 元数据使用相同的前缀，再将此前缀传给样例：
+
 ```shell
+$ cmake -S . -B build -DCMAKE_INSTALL_PREFIX="$PWD/build/output"
+$ cmake --build build -j6
+$ cmake --install build
 $ cd example/echo_c++
-$ cmake -B build && cmake --build build -j4
+$ cmake -B build -DCMAKE_PREFIX_PATH="$PWD/../../build/output"
+$ cmake --build build -j4
 $ cd build
 $ ./echo_server &
 $ ./echo_client
@@ -444,6 +452,10 @@ brpc会自动检测valgrind（然后注册bthread的栈）。不支持老版本�
 bRPC默认**不**链接 [libunwind](https://github.com/libunwind/libunwind)。用户需要追踪bthread功能则链接libunwind，可以给config_brpc.sh增加`--with-bthread-tracer`选项或者给cmake增加`-DWITH_BTHREAD_TRACER=ON`选项，如果是用 bazel 构建，请添加 `--define with_bthread_tracer=true` 选项。
 
 建议使用最新版本的libunwind。
+
+## flatbuffers: 25.2.10
+
+可选依赖，默认不启用。bRPC 使用了 FlatBuffers builder 的内部接口，只接受该版本；使用其他版本见 [FlatBuffers 消息](flatbuffers.md)。
 
 # 实例追踪
 

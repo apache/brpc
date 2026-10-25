@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Setup googletest
-configure_file("${PROJECT_SOURCE_DIR}/cmake/CMakeLists.download_gtest.in" ${PROJECT_BINARY_DIR}/googletest-download/CMakeLists.txt)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/CMakeLists.download_gtest.in" ${PROJECT_BINARY_DIR}/googletest-download/CMakeLists.txt)
 
 execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
                 RESULT_VARIABLE result

@@ -40,6 +40,17 @@ static std::deque<size_t>* g_free_ids = nullptr;
 static std::vector<ThreadKeyInfo>* g_thread_keys = nullptr;
 static __thread std::vector<ThreadKeyTLS>* thread_key_tls_data = nullptr;
 
+void detail::DestroyThreadKeyData(const std::vector<ThreadKeyInfo>& keys,
+                                  std::vector<ThreadKeyTLS>* tls_data) {
+    for (size_t i = 0; i < tls_data->size(); ++i) {
+        const ThreadKeyTLS& tls = (*tls_data)[i];
+        if (i < keys.size() && tls.seq == keys[i].seq &&
+            !KEY_UNUSED(keys[i].seq) && keys[i].dtor) {
+            keys[i].dtor(tls.data);
+        }
+    }
+}
+
 ThreadKey& ThreadKey::operator=(ThreadKey&& other) noexcept {
     if (this == &other) {
         return *this;
@@ -66,11 +77,7 @@ static void DestroyTlsData() {
                           g_thread_keys->begin(),
                           g_thread_keys->end());
     }
-    for (size_t i = 0; i < thread_key_tls_data->size(); ++i) {
-        if (!KEY_UNUSED(dummy_keys[i].seq) && dummy_keys[i].dtor) {
-            dummy_keys[i].dtor((*thread_key_tls_data)[i].data);
-        }
-    }
+    detail::DestroyThreadKeyData(dummy_keys, thread_key_tls_data);
     delete thread_key_tls_data;
     thread_key_tls_data = nullptr;
 }

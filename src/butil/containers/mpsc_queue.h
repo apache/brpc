@@ -74,6 +74,9 @@ public:
     bool Dequeue(T& data);
 
 private:
+    template <typename U>
+    void EnqueueInternal(U&& data);
+
     // Reverse the list until old_head.
     void ReverseList(MPSCQueueNode<T>* old_head);
 
@@ -93,17 +96,20 @@ MPSCQueue<T, Alloc>::~MPSCQueue() {
 
 template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::Enqueue(typename add_const_reference<T>::type data) {
-    auto node = (MPSCQueueNode<T>*)_alloc.Alloc();
-    node->next = MPSCQueueNode<T>::UNCONNECTED;
-    node->data_mem.Init(data);
-    EnqueueImpl(node);
+    EnqueueInternal(data);
 }
 
 template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::Enqueue(T&& data) {
+    EnqueueInternal(std::move(data));
+}
+
+template <typename T, typename Alloc>
+template <typename U>
+void MPSCQueue<T, Alloc>::EnqueueInternal(U&& data) {
     auto node = (MPSCQueueNode<T>*)_alloc.Alloc();
     node->next = MPSCQueueNode<T>::UNCONNECTED;
-    node->data_mem.Init(data);
+    node->data_mem.Init(std::forward<U>(data));
     EnqueueImpl(node);
 }
 

@@ -148,7 +148,7 @@ ParseResult ParseMongoMessage(butil::IOBuf* source,
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     // Mongo protocol is a protocol with state. Each connection has its own
-    // mongo context. (e.g. last error occured on the connection, the cursor
+    // mongo context. (e.g. last error occurred on the connection, the cursor
     // created by the last Query). The context is stored in
     // socket::_input_message, and created at the first time when msg
     // comes over the socket.

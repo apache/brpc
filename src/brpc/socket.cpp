@@ -89,8 +89,8 @@ DEFINE_int32(ssl_handshake_timeout_ms, 5000,
 BRPC_VALIDATE_GFLAG(ssl_handshake_timeout_ms, PassValidate);
 
 DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
-             "Max unwritten bytes in each socket, if the limit is reached,"
-             " Socket.Write fails with EOVERCROWDED");
+             "Max unwritten bytes in each socket. Socket.Write fails with "
+             "EOVERCROWDED when the limit is reached.");
 
 DEFINE_int64(socket_max_streams_unconsumed_bytes, 0,
              "Max stream receivers' unconsumed bytes in one socket,"
@@ -399,11 +399,7 @@ void Socket::WriteRequest::Setup(Socket* s) {
                 return;
             }
         }
-        const int64_t before_write =
-            s->_unwritten_bytes.fetch_add(data.size(), butil::memory_order_relaxed);
-        if (before_write + (int64_t)data.size() >= FLAGS_socket_max_unwritten_bytes) {
-            s->_overcrowded = true;
-        }
+        s->_unwritten_bytes.fetch_add(data.size(), butil::memory_order_relaxed);
     }
     const uint32_t pc = pipelined_count();
     if (pc) {
@@ -480,7 +476,6 @@ Socket::Socket(Forbidden f)
     , _socket_mode(SOCKET_MODE_TCP)
     , _connection_type_for_progressive_read(CONNECTION_TYPE_UNKNOWN)
     , _controller_released_socket(false)
-    , _overcrowded(false)
     , _fail_me_at_server_stop(false)
     , _logoff_flag(false)
     , _error_code(0)
@@ -776,7 +771,6 @@ int Socket::OnCreated(const SocketOptions& options) {
     _ssl_ctx = options.initial_ssl_ctx;
     _connection_type_for_progressive_read = CONNECTION_TYPE_UNKNOWN;
     _controller_released_socket.store(false, butil::memory_order_relaxed);
-    _overcrowded = false;
     // Maybe non-zero for RTMP connections.
     _fail_me_at_server_stop = false;
     _logoff_flag.store(false, butil::memory_order_relaxed);
@@ -1663,7 +1657,7 @@ int Socket::Write(butil::IOBuf* data, const WriteOptions* options_in) {
         }
     }
 
-    if (!opt.ignore_eovercrowded && _overcrowded) {
+    if (!opt.ignore_eovercrowded && is_overcrowded()) {
         return SetError(opt.id_wait, EOVERCROWDED);
     }
 
@@ -1701,7 +1695,7 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
         }
     }
     
-    if (!opt.ignore_eovercrowded && _overcrowded) {
+    if (!opt.ignore_eovercrowded && is_overcrowded()) {
         return SetError(opt.id_wait, EOVERCROWDED);
     }
     
@@ -1878,8 +1872,9 @@ void* Socket::KeepWrite(void* void_arg) {
         //if (nw <= 0 || req->data.empty()/*note*/) {
         if (nw <= 0) {
             // NOTE: Waiting epollout within timeout is a must to force
-            // KeepWrite to check and setup pending WriteRequests periodically,
-            // which may turn on _overcrowded to stop pending requests from
+            // KeepWrite to check and setup pending WriteRequests periodically
+            // so their bytes contribute to _unwritten_bytes. Subsequent
+            // writes then observe the limit and stop the pending queue from
             // growing infinitely.
             const timespec duetime = butil::milliseconds_from_now(WAIT_EPOLLOUT_TIMEOUT_MS);
             bool pollin = s->_transport->HasOnEdgeTrigger();
@@ -2418,7 +2413,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nread_buf=" << input_processor.read_buf().size()
        << "\nlast_read_to_now=" << cpuwide_now - ptr->_last_readtime_us << "us"
        << "\nlast_write_to_now=" << cpuwide_now - ptr->_last_writetime_us << "us"
-       << "\novercrowded=" << ptr->_overcrowded;
+       << "\novercrowded=" << ptr->is_overcrowded();
     os << "\nid_wait_list={";
     for (size_t i = 0; i < nidsize; ++i) {
         if (i) {
@@ -3003,11 +2998,14 @@ void Socket::AddInputMessages(size_t count) {
     GetOrNewSharedPart()->in_num_messages.fetch_add(count, butil::memory_order_relaxed);
 }
 void Socket::CancelUnwrittenBytes(size_t bytes) {
-    const int64_t before_minus =
-        _unwritten_bytes.fetch_sub(bytes, butil::memory_order_relaxed);
-    if (before_minus < (int64_t)bytes + FLAGS_socket_max_unwritten_bytes) {
-        _overcrowded = false;
-    }
+    _unwritten_bytes.fetch_sub(bytes, butil::memory_order_relaxed);
+}
+
+bool Socket::is_overcrowded() const {
+    const int64_t limit = FLAGS_socket_max_unwritten_bytes;
+    const int64_t unwritten_bytes =
+        _unwritten_bytes.load(butil::memory_order_relaxed);
+    return limit > 0 && unwritten_bytes >= limit;
 }
 void Socket::AddOutputBytes(size_t bytes) {
     GetOrNewSharedPart()->out_size.fetch_add(bytes, butil::memory_order_relaxed);

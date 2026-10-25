@@ -353,8 +353,9 @@ void* Server::UpdateDerivedVars(void* arg) {
     std::string mprefix = prefix;
     for (MethodMap::iterator it = server->_method_map.begin();
          it != server->_method_map.end(); ++it) {
-        // Not expose counters on builtin services.
-        if (!it->second.is_builtin_service) {
+        // Full and short method names share one MethodStatus. Expose it only
+        // through its owner to avoid hiding and re-exposing the same counters.
+        if (!it->second.is_builtin_service && it->second.own_method_status) {
             mprefix.resize(prefix.size());
             mprefix.push_back('_');
             bvar::to_underscored_name(&mprefix, it->second.method->full_name());
@@ -451,6 +452,8 @@ Server::Server(ProfilerLinker)
 Server::~Server() {
     Stop(0);
     Join();
+    // Stop()/Join() are no-ops when a Start() failed before RUNNING.
+    DestroyPreStartAllocations();
     ClearServices();
     FreeSSLContexts();
     delete _session_local_data_pool;
@@ -744,6 +747,8 @@ struct RevertServerStatus {
         if (s != nullptr) {
             s->Stop(0);
             s->Join();
+            // Stop()/Join() are no-ops when the start failed before RUNNING.
+            s->DestroyPreStartAllocations();
         }
     }
 };
@@ -1337,24 +1342,9 @@ int Server::Join() {
         _session_local_data_pool->Reset(nullptr);
     }
 
-    if (_keytable_pool) {
-        // Destroy _keytable_pool to delete keytables inside. This has to be
-        // done here (before leaving Join) because it's legal for users to
-        // delete bthread keys after Join which makes related objects
-        // in KeyTables undeletable anymore and leaked.
-        CHECK_EQ(0, bthread_keytable_pool_destroy(_keytable_pool));
-        // TODO: Can't delete _keytable_pool which may be accessed by
-        // still-running bthreads (created by the server). The memory is
-        // leaked but servers are unlikely to be started/stopped frequently,
-        // the leak is acceptable in most scenarios.
-        _keytable_pool = nullptr;
-    }
-
-    // Delete tls_key as well since we don't need it anymore.
-    if (_tl_options.tls_key != INVALID_BTHREAD_KEY) {
-        CHECK_EQ(0, bthread_key_delete(_tl_options.tls_key));
-        _tl_options.tls_key = INVALID_BTHREAD_KEY;
-    }
+    // Destroy pooled keytables before leaving Join(): users may delete
+    // bthread keys afterwards, making their data undeletable and leaked.
+    DestroyThreadLocalResources();
 
     // Have to join _derivative_thread, which may assume that server is running
     // and services in server are not mutated, otherwise data race happens
@@ -1368,6 +1358,34 @@ int Server::Join() {
     g_running_server_count.fetch_sub(1, butil::memory_order_relaxed);
     _status = READY;
     return 0;
+}
+
+void Server::DestroyPreStartAllocations() {
+    if (_status == RUNNING || _status == STOPPING) {
+        // Handled by Join().
+        return;
+    }
+    DestroyThreadLocalResources();
+}
+
+void Server::DestroyThreadLocalResources() {
+    if (_keytable_pool != nullptr) {
+        // Keep the TLS key valid until its pooled data has been destroyed.
+        // Deleting the key first would disable DestroyServerTLS().
+        CHECK_EQ(0, bthread_keytable_pool_destroy(_keytable_pool));
+        // Don't delete the pool struct. Bthreads created with
+        // attr.keytable_pool == _keytable_pool may outlive shutdown or
+        // a failed start and still call return_keytable() on exit. A
+        // destroyed pool makes them delete their KeyTables directly, but the
+        // struct itself must stay valid. The leak is annotated in
+        // StartInternal().
+        _keytable_pool = nullptr;
+    }
+    // Delete tls_key created in StartInternal().
+    if (_tl_options.tls_key != INVALID_BTHREAD_KEY) {
+        CHECK_EQ(0, bthread_key_delete(_tl_options.tls_key));
+        _tl_options.tls_key = INVALID_BTHREAD_KEY;
+    }
 }
 
 int Server::AddServiceInternal(google::protobuf::Service* service,

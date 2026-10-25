@@ -55,12 +55,14 @@ UBRing 支持两种共享内存后端，通过 `ub_shm_type` 参数控制：
 ```bash
 # 构建 brpc 并启用 UBRing 支持
 cd /path/to/brpc
-cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DWITH_UBRING:BOOL=ON
+cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DWITH_UBRING:BOOL=ON \
+  -DCMAKE_INSTALL_PREFIX="$PWD/build/output"
 cmake --build build -j 8
+cmake --install build
 
 # 构建 ubring_performance 示例
 cd /path/to/brpc/example/ubring_performance
-cmake -B build
+cmake -B build -DCMAKE_PREFIX_PATH="$PWD/../../build/output"
 cmake --build build -j 8
 ```
 
@@ -100,10 +102,12 @@ brpc 在 `example/ubring_performance/` 目录提供了性能测试示例。
 
 #### 构建示例
 
+先按[使用 CMake 构建](#使用-cmake-构建)中的步骤编译并安装 brpc。
+
 ```bash
-cd example/ubring_performance
+cd /path/to/brpc/example/ubring_performance
 mkdir -p build && cd build
-cmake ..
+cmake .. -DCMAKE_PREFIX_PATH="$PWD/../../../build/output"
 make
 ```
 

@@ -150,6 +150,14 @@ http_archive(
     urls = ["https://github.com/google/crc32c/archive/1.1.2.tar.gz"],
 )
 
+# Optional FlatBuffers support uses runtime_cc; keep this version in sync with MODULE.bazel.
+http_archive(
+    name = "com_github_google_flatbuffers",
+    integrity = "sha256-ucLfSXB8V6SPwJI9UrjHO+ty1nX51EsiEeRWm+QKdCE=",
+    strip_prefix = "flatbuffers-25.2.10",
+    urls = ["https://github.com/google/flatbuffers/archive/refs/tags/v25.2.10.tar.gz"],
+)
+
 http_archive(
     name = "com_github_google_glog",  # 2021-05-07T23:06:39Z
     patch_args = ["-p1"],
