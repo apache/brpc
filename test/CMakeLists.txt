@@ -88,6 +88,7 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/run_tests.sh DESTINATION ${CMAKE_CURRENT_B
 SET(TEST_BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/abalist_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/aligned_memory_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson_allocator_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/at_exit_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/atomicops_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/baidu_thread_local_unittest.cpp
