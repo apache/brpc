@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <memory>
 #include <iostream>
+#include <vector>
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "bvar/recorder.h"
@@ -228,6 +229,14 @@ public:
                             bvar::detail::Sample<bvar::Stat>* sample) const {
         return _latency_window.get_span(window_size, sample);
     }
+
+    bool has_full_latency_window() const {
+        std::vector<bvar::Stat> samples;
+        _latency_window.get_samples(&samples);
+        // get_samples() excludes the oldest snapshot used by get_span().
+        return samples.size() + 1 ==
+            static_cast<size_t>(_latency_window.window_size());
+    }
 };
 
 TEST(RecorderTest, latency_recorder_window_statistics) {
@@ -282,31 +291,40 @@ TEST(RecorderTest, latency_recorder_window_statistics) {
 }
 
 TEST(RecorderTest, latency_recorder_qps_accuracy) {
-    LatencyRecorderWithWindowSample lr1(2);
-    LatencyRecorderWithWindowSample lr2(2);
-    LatencyRecorderWithWindowSample lr3(2);
-    LatencyRecorderWithWindowSample lr4(2);
+    LatencyRecorderWithWindowSample lr1_2s(2);
+    LatencyRecorderWithWindowSample lr2_2s(2);
+    LatencyRecorderWithWindowSample lr3_2s(2);
+    LatencyRecorderWithWindowSample lr4_2s(2);
+    LatencyRecorderWithWindowSample lr1_3s(3);
+    LatencyRecorderWithWindowSample lr2_3s(3);
+    LatencyRecorderWithWindowSample lr3_3s(3);
+    LatencyRecorderWithWindowSample lr4_3s(3);
 
     auto write = [](bvar::LatencyRecorder& lr, int times) {   
         for (int i = 0; i < times; ++i) {
             lr << 1;
         }
     };
-    write(lr1, 10);
-    write(lr2, 11);
-    write(lr3, 3);
-    write(lr4, 1);
+    write(lr1_2s, 10);
+    write(lr2_2s, 11);
+    write(lr3_2s, 3);
+    write(lr4_2s, 1);
+    write(lr1_3s, 10);
+    write(lr2_3s, 11);
+    write(lr3_3s, 3);
+    write(lr4_3s, 1);
 
     auto check_qps = [](LatencyRecorderWithWindowSample& lr, int count,
-                        time_t window_size) {
+                        time_t window_size, bool use_default_window) {
         const int64_t deadline = butil::monotonic_time_us() + 5 * 1000000L;
         while (butil::monotonic_time_us() < deadline) {
             bvar::detail::Sample<bvar::Stat> before;
             if (lr.get_latency_sample(window_size, &before) &&
+                lr.has_full_latency_window() &&
                 before.data.num == count && before.time_us > 0) {
                 // qps() reads the window again. Only compare it with `before'
                 // when no sampler tick occurs between the two reads.
-                const int64_t qps = window_size == lr.window_size()
+                const int64_t qps = use_default_window
                     ? lr.qps() : lr.qps(window_size);
                 bvar::detail::Sample<bvar::Stat> after;
                 if (!lr.get_latency_sample(window_size, &after) ||
@@ -324,14 +342,14 @@ TEST(RecorderTest, latency_recorder_qps_accuracy) {
         ADD_FAILURE() << "Recorded latencies were not sampled";
     };
 
-    check_qps(lr1, 10, 2);
-    check_qps(lr2, 11, 2);
-    check_qps(lr3, 3, 2);
-    check_qps(lr4, 1, 2);
-    check_qps(lr1, 10, 3);
-    check_qps(lr2, 11, 3);
-    check_qps(lr3, 3, 3);
-    check_qps(lr4, 1, 3);
+    check_qps(lr1_2s, 10, 2, true);
+    check_qps(lr2_2s, 11, 2, true);
+    check_qps(lr3_2s, 3, 2, true);
+    check_qps(lr4_2s, 1, 2, true);
+    check_qps(lr1_3s, 10, 3, false);
+    check_qps(lr2_3s, 11, 3, false);
+    check_qps(lr3_3s, 3, 3, false);
+    check_qps(lr4_3s, 1, 3, false);
 }
 
 } // namespace
