@@ -27,6 +27,7 @@
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/policy/crc32c_checksum.h"
 #include "butil/iobuf.h"
+#include "butil/memory/scope_guard.h"
 #include "echo.pb.h"
 
 namespace {
@@ -48,6 +49,34 @@ TEST_F(ChecksumAttachmentTest, verify_succeeds_when_body_only) {
 
     brpc::ChecksumIn verify_in{&body, &cntl, nullptr};
     EXPECT_TRUE(brpc::policy::Crc32cVerify(verify_in));
+}
+
+TEST_F(ChecksumAttachmentTest, verify_rejects_invalid_checksum_lengths) {
+    brpc::Controller cntl;
+    butil::IOBuf body;
+    body.append("request body");
+    brpc::ChecksumIn in{&body, &cntl, nullptr};
+    brpc::policy::Crc32cCompute(in);
+    brpc::ControllerPrivateAccessor accessor(&cntl);
+    const std::string valid = accessor.checksum_value();
+    ASSERT_EQ(sizeof(uint32_t), valid.size());
+
+    logging::StringSink logs;
+    {
+        logging::LogSink* previous = logging::SetLogSink(&logs);
+        BUTIL_SCOPE_EXIT { logging::SetLogSink(previous); };
+        for (size_t size = 0; size <= 8; ++size) {
+            if (size == valid.size()) {
+                continue;
+            }
+            const std::string invalid(size, '\0');
+            accessor.set_checksum_value(invalid.data(), invalid.size());
+            EXPECT_FALSE(brpc::policy::Crc32cVerify(in)) << "size=" << size;
+        }
+        accessor.set_checksum_value(valid.data(), valid.size());
+        EXPECT_TRUE(brpc::policy::Crc32cVerify(in));
+    }
+    EXPECT_EQ(std::string::npos, logs.find("Check failed: val.size()"));
 }
 
 TEST_F(ChecksumAttachmentTest, verify_succeeds_when_attachment_included) {
