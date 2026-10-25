@@ -88,7 +88,7 @@ public:
 
     // Cast field to specific type, and write the value into `pv'.
     // Returns 0 on success, -1 otherwise.
-    // NOTE: If separator is a digit, casting functions always return -1.
+    // Only the bytes in the current field are converted.
     inline int to_int8(int8_t *pv) const;
     inline int to_uint8(uint8_t *pv) const;
     inline int to_int(int *pv) const;
@@ -143,7 +143,7 @@ public:
 
     // Cast field to specific type, and write the value into `pv'.
     // Returns 0 on success, -1 otherwise.
-    // NOTE: If separators contains digit, casting functions always return -1.
+    // Only the bytes in the current field are converted.
     inline int to_int8(int8_t *pv) const;
     inline int to_uint8(uint8_t *pv) const;
     inline int to_int(int *pv) const;
