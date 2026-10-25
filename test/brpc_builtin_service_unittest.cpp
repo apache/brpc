@@ -74,6 +74,7 @@ const bool ALLOW_UNUSED dummy_validate_reloadable_string_flag_for_ut =
 
 namespace brpc {
 DECLARE_bool(enable_rpcz);
+DECLARE_bool(show_hostname_instead_of_ip);
 DECLARE_bool(rpcz_hex_log_id);
 DECLARE_int32(idle_timeout_second);
 } // namespace rpc
@@ -259,7 +260,20 @@ protected:
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(expect_type, cntl.http_response().content_type());
-        CheckContent(cntl, buf);
+        if (brpc::FLAGS_show_hostname_instead_of_ip) {
+            char hostname[256];
+            butil::EndPoint peer;
+            ASSERT_EQ(0, str2endpoint(buf, &peer));
+            if (butil::endpoint2hostname(peer, hostname, sizeof(hostname)) == 0) {
+                const std::string expected = use_html
+                    ? brpc::WebEscape(hostname) : std::string(hostname);
+                CheckContent(cntl, expected.c_str());
+            } else {
+                CheckContent(cntl, buf);
+            }
+        } else {
+            CheckContent(cntl, buf);
+        }
         CheckFieldInContent(cntl, "channel_connection_count: ", 0);
 
         close(cfd);
@@ -689,6 +703,13 @@ TEST_F(BuiltinServiceTest, vlog) {
 }
 
 TEST_F(BuiltinServiceTest, connections) {
+    TestConnections(false);
+    TestConnections(true);
+}
+
+TEST_F(BuiltinServiceTest, connections_with_hostnames) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_show_hostname_instead_of_ip = true;
     TestConnections(false);
     TestConnections(true);
 }
