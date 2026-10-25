@@ -727,7 +727,12 @@ private:
 
     // Create a Socket according to `options', put the identifier into `id'.
     // Returns 0 on success, -1 otherwise.
-    int OnCreated(const SocketOptions& options);
+    int OnCreated(const SocketOptions& options, bool fd_is_nonblocking,
+                  bool fd_is_close_on_exec);
+
+    static int CreateWithFdFlags(const SocketOptions& options, SocketId* id,
+                                 bool fd_is_nonblocking,
+                                 bool fd_is_close_on_exec);
 
     // Called before returning to pool.
     void BeforeRecycled();
@@ -803,7 +808,8 @@ private:
     //   -1 - Failed to connect to remote side
     int ConnectIfNot(const timespec* abstime, WriteRequest* req);
 
-    int ResetFileDescriptor(int fd);
+    int ResetFileDescriptor(int fd, bool fd_is_nonblocking = false,
+                            bool fd_is_close_on_exec = false);
 
     void SetSocketOptions(int fd);
 

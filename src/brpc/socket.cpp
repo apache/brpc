@@ -570,7 +570,8 @@ void Socket::ReleaseAllFailedWriteRequests(Socket::WriteRequest* req) {
     ReturnFailedWriteRequest(req, error_code, error_text);
 }
 
-int Socket::ResetFileDescriptor(int fd) {
+int Socket::ResetFileDescriptor(int fd, bool fd_is_nonblocking,
+                                bool fd_is_close_on_exec) {
     // Reset message sizes when fd is changed.
     _fd_input_processor.ResetMsgSizeStats();
     // MUST store `_fd' before adding itself into epoll device to avoid
@@ -593,10 +594,12 @@ int Socket::ResetFileDescriptor(int fd) {
     // FIXME : close-on-exec should be set by new syscalls or worse: set right
     // after fd-creation syscall. Setting at here has higher probabilities of
     // race condition.
-    butil::make_close_on_exec(fd);
+    if (!fd_is_close_on_exec) {
+        butil::make_close_on_exec(fd);
+    }
 
     // Make the fd non-blocking.
-    if (butil::make_non_blocking(fd) != 0) {
+    if (!fd_is_nonblocking && butil::make_non_blocking(fd) != 0) {
         PLOG(ERROR) << "Fail to set fd=" << fd << " to non-blocking";
         _fd.store(-1, butil::memory_order_release);
         return -1;
@@ -716,10 +719,18 @@ void SetSocketBufferOptions(int fd) {
 //   version: from version part of _versioned_nref, must be an EVEN number.
 //   slot: designated by ResourcePool.
 int Socket::Create(const SocketOptions& options, SocketId* id) {
-    return VersionedRefWithId<Socket>::Create(id, options);
+    return CreateWithFdFlags(options, id, false, false);
 }
 
-int Socket::OnCreated(const SocketOptions& options) {
+int Socket::CreateWithFdFlags(const SocketOptions& options, SocketId* id,
+                              bool fd_is_nonblocking,
+                              bool fd_is_close_on_exec) {
+    return VersionedRefWithId<Socket>::Create(
+        id, options, fd_is_nonblocking, fd_is_close_on_exec);
+}
+
+int Socket::OnCreated(const SocketOptions& options, bool fd_is_nonblocking,
+                      bool fd_is_close_on_exec) {
     if (_io_event.Init((void*)id()) != 0) {
         LOG(ERROR) << "Fail to init IOEvent";
         SetFailed(ENOMEM, "%s", "Fail to init IOEvent");
@@ -832,7 +843,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     }
     // Must be the last one! Internal fields of this Socket may be accessed
     // just after calling ResetFileDescriptor.
-    if (ResetFileDescriptor(fd) != 0) {
+    if (ResetFileDescriptor(fd, fd_is_nonblocking, fd_is_close_on_exec) != 0) {
         const int saved_errno = errno;
         PLOG(ERROR) << "Fail to ResetFileDescriptor";
         SetFailed(saved_errno, "Fail to ResetFileDescriptor: %s",

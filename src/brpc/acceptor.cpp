@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <sys/socket.h>
 #include <gflags/gflags.h>
+#include "butil/build_config.h"
 #include "butil/fd_guard.h"                 // fd_guard 
 #include "butil/fd_utility.h"               // make_close_on_exec
 #include "butil/time.h"                     // gettimeofday_us
@@ -294,7 +295,22 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         struct sockaddr_storage in_addr;
         bzero(&in_addr, sizeof(in_addr));
         socklen_t in_len = sizeof(in_addr);
-        butil::fd_guard in_fd(accept(acception->fd(), (sockaddr*)&in_addr, &in_len));
+        bool fd_is_nonblocking = false;
+        bool fd_is_close_on_exec = false;
+        int accepted_fd;
+#if defined(OS_LINUX)
+        accepted_fd = accept4(acception->fd(), (sockaddr*)&in_addr, &in_len,
+                              SOCK_NONBLOCK | SOCK_CLOEXEC);
+        if (accepted_fd >= 0) {
+            fd_is_nonblocking = true;
+            fd_is_close_on_exec = true;
+        } else if (errno == ENOSYS) {
+            accepted_fd = accept(acception->fd(), (sockaddr*)&in_addr, &in_len);
+        }
+#else
+        accepted_fd = accept(acception->fd(), (sockaddr*)&in_addr, &in_len);
+#endif
+        butil::fd_guard in_fd(accepted_fd);
         if (in_fd < 0) {
             // no EINTR because listened fd is non-blocking.
             if (errno == EAGAIN) {
@@ -339,7 +355,8 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.initial_ssl_ctx = am->_ssl_ctx;
         options.socket_mode = am->_socket_mode;
         options.bthread_tag = am->_bthread_tag;
-        if (Socket::Create(options, &socket_id) != 0) {
+        if (Socket::CreateWithFdFlags(options, &socket_id, fd_is_nonblocking,
+                                      fd_is_close_on_exec) != 0) {
             am->ReleaseConnectionSlot();
             LOG(ERROR) << "Fail to create Socket";
             continue;
