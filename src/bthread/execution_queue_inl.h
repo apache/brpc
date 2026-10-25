@@ -302,7 +302,7 @@ public:
 
     int execute(typename butil::add_const_reference<T>::type task,
                 const TaskOptions* options, TaskHandle* handle) {
-        return execute(std::forward<T>(const_cast<T&>(task)), options, handle);
+        return execute_impl(task, options, handle);
     }
 
 
@@ -312,6 +312,13 @@ public:
 
     int execute(T&& task,
                 const TaskOptions* options, TaskHandle* handle) {
+        return execute_impl(std::move(task), options, handle);
+    }
+
+private:
+    template <typename U>
+    int execute_impl(U&& task,
+                     const TaskOptions* options, TaskHandle* handle) {
         if (stopped()) {
             return EINVAL;
         }
@@ -324,7 +331,7 @@ public:
             return_task_node(node);
             return ENOMEM;
         }
-        new (mem) T(std::forward<T>(task));
+        new (mem) T(std::forward<U>(task));
         node->stop_task = false;
         TaskOptions opt;
         if (options) {

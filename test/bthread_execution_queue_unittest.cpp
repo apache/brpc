@@ -150,6 +150,47 @@ TEST_F(ExecutionQueueTest, rvalue) {
     }
 }
 
+class CopyMoveTask {
+public:
+    explicit CopyMoveTask(int value) : _value(value), _moved(false) {}
+
+    CopyMoveTask(const CopyMoveTask& rhs)
+        : _value(rhs._value), _moved(false) {}
+
+    CopyMoveTask(CopyMoveTask&& rhs) noexcept
+        : _value(rhs._value), _moved(false) {
+        rhs._moved = true;
+    }
+
+    int value() const { return _value; }
+    bool moved() const { return _moved; }
+
+private:
+    int _value;
+    bool _moved;
+};
+
+int add(void* meta, bthread::TaskIterator<CopyMoveTask>& iter) {
+    int* result = static_cast<int*>(meta);
+    for (; iter; ++iter) {
+        *result += iter->value();
+    }
+    return 0;
+}
+
+TEST_F(ExecutionQueueTest, lvalue_is_copied) {
+    bthread::ExecutionQueueId<CopyMoveTask> queue_id;
+    int result = 0;
+    ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, nullptr,
+                                                add, &result));
+    CopyMoveTask task(42);
+    ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, task));
+    EXPECT_FALSE(task.moved());
+    ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
+    ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
+    EXPECT_EQ(42, result);
+}
+
 struct PushArg {
     bthread::ExecutionQueueId<LongIntTask> id {0};
     butil::atomic<int64_t> total_num {0};
