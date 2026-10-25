@@ -150,8 +150,15 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth,
     switch (fc) {
     case '-':   // Error          "-<message>\r\n"
     case '+': { // Simple String  "+<string>\r\n"
-        butil::IOBuf str;
-        if (buf.cut_until(&str, "\r\n") != 0) {
+        if (_length != kScanningLine) {
+            _type = REDIS_REPLY_NIL;
+            _length = kScanningLine;
+            _data.line = {};
+        }
+        const size_t max_scan = FLAGS_redis_max_allocation_size >= 0
+            ? static_cast<size_t>(FLAGS_redis_max_allocation_size) + 3 : 0;
+        const size_t crlf_pos = _data.line.FindCRLF(buf, max_scan);
+        if (crlf_pos == static_cast<size_t>(-1)) {
             const size_t len = buf.size();
             if (len > std::numeric_limits<uint32_t>::max()) {
                 LOG(ERROR) << "simple string is too long! max length=2^32-1,"
@@ -172,6 +179,9 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth,
             }
             return PARSE_ERROR_NOT_ENOUGH_DATA;
         }
+        butil::IOBuf str;
+        buf.cutn(&str, crlf_pos);
+        buf.pop_front(2);
         const size_t len = str.size() - 1;
         if (FLAGS_redis_max_allocation_size < 0 ||
             len > (size_t)FLAGS_redis_max_allocation_size) {
