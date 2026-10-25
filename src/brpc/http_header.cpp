@@ -85,7 +85,7 @@ const std::string* HttpHeader::GetHeader(const char* key) const {
 const std::string* HttpHeader::GetHeader(const std::string& key) const {
     if (IsSetCookie(key)) {
         return HasSetCookieHeaders()
-            ? &_set_cookie_headers->front().second : nullptr;
+            ? &_set_cookie_headers->front() : nullptr;
     }
     std::string* val = _headers.seek(key);
     return val;
@@ -96,7 +96,7 @@ std::vector<const std::string*> HttpHeader::GetAllSetCookieHeader() const {
     if (_set_cookie_headers) {
         headers.reserve(_set_cookie_headers->size());
         for (const auto& header : *_set_cookie_headers) {
-            headers.push_back(&header.second);
+            headers.push_back(&header);
         }
     }
     return headers;
@@ -109,9 +109,9 @@ void HttpHeader::SetHeader(const std::string& key,
             if (!_set_cookie_headers) {
                 _set_cookie_headers.reset(new SetCookieHeaders);
             }
-            _set_cookie_headers->push_back(std::make_pair(key, value));
+            _set_cookie_headers->push_back(value);
         } else {
-            _set_cookie_headers->front().second = value;
+            _set_cookie_headers->front() = value;
         }
         _set_cookie_headers_dirty = true;
         SyncSetCookieHeaders();
@@ -142,9 +142,8 @@ void HttpHeader::AppendHeader(const std::string& key,
         if (_set_cookie_headers_dirty) {
             SyncSetCookieHeaders();
         }
-        _set_cookie_headers->push_back(
-            std::make_pair(key, std::string(value.data(), value.size())));
-        _headers.insert(_set_cookie_headers->back());
+        _set_cookie_headers->push_back(std::string(value.data(), value.size()));
+        _headers.insert({ SET_COOKIE, _set_cookie_headers->back() });
     } else {
         std::string& slot = GetOrAddHeader(key);
         if (slot.empty()) {
@@ -188,8 +187,8 @@ std::string& HttpHeader::AddHeader(const std::string& key) {
         _headers.erase(SET_COOKIE);
         _set_cookie_headers_dirty = true;
     }
-    _set_cookie_headers->push_back(std::make_pair(key, std::string()));
-    return _set_cookie_headers->back().second;
+    _set_cookie_headers->push_back(std::string());
+    return _set_cookie_headers->back();
 }
 
 void HttpHeader::SyncSetCookieHeaders() {
@@ -199,7 +198,7 @@ void HttpHeader::SyncSetCookieHeaders() {
     _headers.erase(SET_COOKIE);
     if (_set_cookie_headers) {
         for (const auto& header : *_set_cookie_headers) {
-            _headers.insert(header);
+            _headers.insert({ SET_COOKIE, header });
         }
     }
     _set_cookie_headers_dirty = false;

@@ -218,7 +218,7 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     // HeaderMap rehashing invalidates value pointers and does not preserve
     // duplicate-key order. deque keeps existing value pointers stable when
     // another Set-Cookie header is appended.
-    typedef std::deque<std::pair<std::string, std::string> > SetCookieHeaders;
+    typedef std::deque<std::string> SetCookieHeaders;
     std::unique_ptr<SetCookieHeaders> _set_cookie_headers;
     // When true, Set-Cookie headers are only stored in _set_cookie_headers.
     bool _set_cookie_headers_dirty;
