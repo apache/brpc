@@ -30,6 +30,8 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_guard.h"
+#include "butil/file_util.h"
+#include "butil/posix/eintr_wrapper.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
@@ -1281,6 +1283,88 @@ TEST(RtmpTest, reject_unauthenticated_connection) {
         &buf, socket.get(), false, &server);
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
     ASSERT_EQ(nullptr, socket->parsing_context());
+
+    server.Stop(0);
+    server.Join();
+}
+
+class RejectAllAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string*) const override { return 0; }
+    int VerifyCredential(const std::string&, const butil::EndPoint&,
+                         brpc::AuthContext*) const override { return -1; }
+};
+
+// Returns a port nothing is listening on, or -1.
+static int PickUnusedPort() {
+    butil::fd_guard sockfd(butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
+    if (sockfd < 0) {
+        return -1;
+    }
+    butil::EndPoint point;
+    if (butil::get_local_side(sockfd, &point) != 0) {
+        return -1;
+    }
+    return point.port;
+}
+
+TEST(RtmpTest, not_served_on_internal_port) {
+    PlayingDummyService rtmp_service;
+    RejectAllAuthenticator auth;
+    brpc::Server server;
+    brpc::ServerOptions server_opt;
+    server_opt.rtmp_service = &rtmp_service;
+    server_opt.auth = &auth;
+    bool started = false;
+    for (int i = 0; i < 10 && !started; ++i) {
+        server_opt.internal_port = PickUnusedPort();
+        started = (server_opt.internal_port >= 0 &&
+                   0 == server.Start("127.0.0.1:0", &server_opt));
+    }
+    ASSERT_TRUE(started);
+
+    butil::EndPoint internal_point;
+    ASSERT_EQ(0, butil::str2endpoint(
+        "127.0.0.1", server_opt.internal_port, &internal_point));
+    butil::fd_guard fd(butil::tcp_connect(internal_point, nullptr));
+    ASSERT_GE(fd, 0);
+    timeval tv = { 2, 0 };
+    ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)));
+
+    // Builtin services on internal_port pass authentication without any
+    // credential, which latches the connection as authenticated.
+    const std::string http_req =
+        "GET /version HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+    ASSERT_EQ((int)http_req.size(), butil::WriteFileDescriptor(
+        fd, http_req.data(), http_req.size()));
+    // The reply may arrive in several segments, read until the status
+    // line prefix is complete.
+    const char status_prefix[] = "HTTP/1.1 200";
+    const size_t prefix_len = sizeof(status_prefix) - 1;
+    char resp[1024];
+    size_t nread = 0;
+    while (nread < prefix_len) {
+        const ssize_t n =
+            HANDLE_EINTR(read(fd, resp + nread, sizeof(resp) - nread));
+        ASSERT_GT(n, 0);
+        nread += n;
+    }
+    ASSERT_EQ(0, memcmp(resp, status_prefix, prefix_len));
+
+    // internal_port serves builtin and Tabbed services only, an RTMP
+    // handshake on the same connection must not reach rtmp_service. No
+    // protocol accepts the bytes there, so the server closes the connection
+    // and read() sees EOF. S0 (1 byte) means rtmp_service answered and -1
+    // is the receive timeout, i.e. the connection was left open; both fail.
+    char c0c1[1 + 1536];
+    memset(c0c1, 0, sizeof(c0c1));
+    c0c1[0] = 0x03;
+    ASSERT_EQ((int)sizeof(c0c1),
+              butil::WriteFileDescriptor(fd, c0c1, sizeof(c0c1)));
+    char s0 = 0;
+    const ssize_t n = HANDLE_EINTR(read(fd, &s0, 1));
+    const int saved_errno = errno;
+    ASSERT_EQ(0, n) << "n=" << n << " errno=" << saved_errno;
 
     server.Stop(0);
     server.Join();
