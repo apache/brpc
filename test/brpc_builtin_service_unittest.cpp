@@ -247,9 +247,8 @@ protected:
         brpc::Controller cntl;
         ClosureChecker done;
         SetUpController(&cntl, use_html);
-        butil::EndPoint ep;
-        ASSERT_EQ(0, str2endpoint("127.0.0.1:9798", &ep));
-        ASSERT_EQ(0, _server.Start(ep, nullptr));
+        ASSERT_EQ(0, _server.Start("127.0.0.1:0", nullptr));
+        const butil::EndPoint ep = _server.listen_address();
         int self_port = -1;
         const int cfd = tcp_connect(ep, &self_port);
         ASSERT_GT(cfd, 0);
