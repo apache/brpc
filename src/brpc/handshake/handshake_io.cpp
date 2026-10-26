@@ -30,15 +30,15 @@ namespace brpc {
 namespace handshake {
 
 size_t IOBufHandshakeInput::Size() const {
-    return _source != NULL ? _source->size() : 0;
+    return _source != nullptr ? _source->size() : 0;
 }
 
 bool IOBufHandshakeInput::CopyTo(void* data, size_t len) const {
-    return _source != NULL && _source->copy_to(data, len) == len;
+    return _source != nullptr && _source->copy_to(data, len) == len;
 }
 
 bool IOBufHandshakeInput::Consume(size_t len) {
-    return _source != NULL && _source->pop_front(len) == len;
+    return _source != nullptr && _source->pop_front(len) == len;
 }
 
 static const int WAIT_TIMEOUT_MS = 50;
@@ -46,6 +46,7 @@ static const int WAIT_TIMEOUT_MS = 50;
 SocketHandshakeIO::SocketHandshakeIO(Socket* socket)
     : _socket(socket)
     , _read_butex(bthread::butex_create_checked<butil::atomic<int> >()) {
+    _read_butex->store(0, butil::memory_order_relaxed);
 }
 
 SocketHandshakeIO::~SocketHandshakeIO() {
@@ -97,8 +98,8 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
 }
 
 int SocketHandshakeIO::ReadExact(void* data, size_t len) {
-    CHECK(data != NULL);
-    CHECK(_socket != NULL);
+    CHECK(data != nullptr);
+    CHECK(_socket != nullptr);
     const int fd = _socket->fd();
     return ReadExactLoop(_read_butex, _socket->id(), len,
         [data, fd](size_t offset, size_t remaining) {
@@ -107,10 +108,15 @@ int SocketHandshakeIO::ReadExact(void* data, size_t len) {
 }
 
 template <typename WriteOnce, typename WaitWritable>
-static int WriteAllLoop(size_t len, WriteOnce write_once,
+static int WriteAllLoop(SocketId socket_id, size_t len, WriteOnce write_once,
                         WaitWritable wait_writable) {
     size_t written = 0;
     while (written < len) {
+        SocketUniquePtr alive;
+        if (Socket::Address(socket_id, &alive) != 0) {
+            errno = EFAILEDSOCKET;
+            return -1;
+        }
         const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
         const ssize_t nw = write_once(written, len - written);
         if (nw > 0) {
@@ -129,6 +135,9 @@ static int WriteAllLoop(size_t len, WriteOnce write_once,
         }
         if (wait_writable(&duetime) < 0 &&
             errno != ETIMEDOUT) {
+            if (alive->Failed()) {
+                errno = EFAILEDSOCKET;
+            }
             return -1;
         }
     }
@@ -136,10 +145,10 @@ static int WriteAllLoop(size_t len, WriteOnce write_once,
 }
 
 int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
-    CHECK(data != NULL);
-    CHECK(_socket != NULL);
+    CHECK(data != nullptr);
+    CHECK(_socket != nullptr);
     const int fd = _socket->fd();
-    return WriteAllLoop(len,
+    return WriteAllLoop(_socket->id(), len,
         [data, fd](size_t offset, size_t remaining) {
             return write(fd, static_cast<const uint8_t*>(data) + offset,
                          remaining);
@@ -151,7 +160,7 @@ int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
 }
 
 int SocketHandshakeIO::PushBack(const void* data, size_t len) {
-    CHECK(_socket != NULL);
+    CHECK(_socket != nullptr);
     if (len != 0) {
         return _socket->fd_input_processor().read_buf().append(data, len) == 0 ? 0 : -1;
     }
