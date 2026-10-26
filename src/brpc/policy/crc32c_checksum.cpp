@@ -69,7 +69,7 @@ bool Crc32cVerify(const ChecksumIn& in) {
     if (val.size() != sizeof(expected)) {
         return false;
     }
-    memcpy(&expected, val.data(), sizeof(expected));
+    std::memcpy(&expected, val.data(), sizeof(expected));
     expected = butil::crc32c::Unmask(butil::NetToHost32(expected));
     const uint32_t crc = ComputeCrc32c(in);
     RPC_VLOG << "Crc32cVerify crc=" << crc << " expected=" << expected;
