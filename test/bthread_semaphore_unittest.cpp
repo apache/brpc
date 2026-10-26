@@ -160,21 +160,21 @@ void* sem_butex_waiter(void* arg) {
 
 void check_post_wakeup_count(unsigned initial_value, size_t num, bool batch) {
     SCOPED_TRACE(initial_value);
-    const int N = 8;
+    const int N = 16;
     // Retry if too few waiters were queued before posting. This avoids relying
     // on a fixed sleep to establish that the waiters have entered butex_wait.
     for (int attempt = 0; attempt < 10; ++attempt) {
         bthread_sem_t sem;
         ASSERT_EQ(0, bthread_sem_init(&sem, initial_value));
-        bthread::CountdownEvent ready(2 * N);
+        bthread::CountdownEvent ready(N);
         SemButexWaitArgs args{&sem, static_cast<int>(initial_value), &ready};
+        // A queued pthread woken before entering futex_wait can still return
+        // EWOULDBLOCK, which is indistinguishable from a late arrival. Use only
+        // bthreads so successful waits account for every counted wakeup.
         bthread_t bthreads[N];
-        pthread_t pthreads[N];
         for (int i = 0; i < N; ++i) {
             ASSERT_EQ(0, bthread_start_background(
                 &bthreads[i], nullptr, sem_butex_waiter, &args));
-            ASSERT_EQ(0, pthread_create(
-                &pthreads[i], nullptr, sem_butex_waiter, &args));
         }
         EXPECT_EQ(0, ready.timed_wait(butil::seconds_from_now(10)));
 
@@ -188,7 +188,6 @@ void check_post_wakeup_count(unsigned initial_value, size_t num, bool batch) {
         const int remaining = bthread::butex_wake_all(sem.butex);
         for (int i = 0; i < N; ++i) {
             EXPECT_EQ(0, bthread_join(bthreads[i], nullptr));
-            EXPECT_EQ(0, pthread_join(pthreads[i], nullptr));
         }
         const int queued = args.nwoken.load(butil::memory_order_relaxed);
         // Successful waits include both post and cleanup wakeups; late
@@ -196,7 +195,8 @@ void check_post_wakeup_count(unsigned initial_value, size_t num, bool batch) {
         EXPECT_EQ(std::min(num, static_cast<size_t>(queued)),
                   static_cast<size_t>(queued - remaining));
         ASSERT_EQ(0, bthread_sem_destroy(&sem));
-        if (queued >= N) {
+        // More waiters than permits are needed to detect excessive wakeups.
+        if (static_cast<size_t>(queued) > num) {
             return;
         }
     }
