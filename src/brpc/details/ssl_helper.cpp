@@ -971,10 +971,10 @@ void Print(std::ostream& os, SSL* ssl, const char* sep) {
 
 void Print(std::ostream& os, X509* cert, const char* sep) {
     std::unique_ptr<BIO, FreeBIO> bio(BIO_new(BIO_s_mem()));
-    BIO* buf = bio.get();
-    if (buf == nullptr) {
+    if (!bio) {
         return;
     }
+    BIO* buf = bio.get();
     BIO_printf(buf, "subject=");
     X509_NAME_print(buf, X509_get_subject_name(cert), 0);
     BIO_printf(buf, "%sstart_date=", sep);

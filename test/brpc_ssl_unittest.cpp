@@ -141,7 +141,7 @@ TEST_F(SSLTest, diagnostic_print_releases_peer_certificate) {
     std::unique_ptr<X509, decltype(&X509_free)> peer(
         SSL_get_peer_certificate(client.get()), X509_free);
     ASSERT_TRUE(peer);
-    const int index = X509_get_ex_new_index(
+    static const int index = X509_get_ex_new_index(
         0, nullptr, nullptr, nullptr, MarkCertificateFreed);
     ASSERT_GE(index, 0);
     ASSERT_EQ(1, X509_set_ex_data(peer.get(), index, &certificate_freed));
