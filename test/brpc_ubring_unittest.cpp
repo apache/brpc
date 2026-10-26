@@ -1078,6 +1078,28 @@ TEST_F(UBShmEndpointTest, reset_is_idempotent) {
     _ep->Reset();
 }
 
+TEST_F(UBShmEndpointTest, reset_unmapped_client_does_not_wait_for_peer) {
+    using namespace brpc::ubring;
+    const uint32_t allocated = UBRingManager::g_ubr_mgr.trx_num;
+    SHM local = {nullptr, 4 * 1024 * 1024, 0, {0},
+                 static_cast<uint32_t>(_socket->fd())};
+    const std::string name = "unmapped_" + std::to_string(getpid());
+    ASSERT_EQ(0, _ep->AllocateClientResources(&local, name.c_str()));
+    const std::string shm_name(local.name);
+    EXPECT_EQ(allocated + 1, UBRingManager::g_ubr_mgr.trx_num);
+
+    const int64_t start = butil::gettimeofday_us();
+    _ep->Reset();
+    EXPECT_LT(butil::gettimeofday_us() - start, 1000000);
+    EXPECT_EQ(allocated, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_EQ(nullptr, _ep->_ub_ring);
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, _ep->_poller_sid);
+    butil::fd_guard missing(shm_open(shm_name.c_str(), O_RDONLY, 0));
+    EXPECT_LT(missing, 0);
+    EXPECT_EQ(ENOENT, errno);
+    _ep->Reset();
+}
+
 namespace {
 bool WaitForUBCondition(const std::function<bool()>& condition) {
     const int64_t deadline = butil::gettimeofday_us() + 5000000;
@@ -1156,6 +1178,40 @@ void SendAndCheckUBFallbackRPC(int fd, bool include_ack, uint64_t id) {
     ASSERT_EQ(request.message(), echo.message());
 }
 }  // namespace
+
+TEST_F(UBShmEndpointTest, tcp_server_fallback_completes_with_short_rpc_timeout) {
+    UBFallbackEchoService service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions options;
+    options.internal_port = -1;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+
+    const uint32_t allocated = brpc::ubring::UBRingManager::g_ubr_mgr.trx_num;
+    brpc::Channel channel;
+    brpc::ChannelOptions channel_options;
+    channel_options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    channel_options.connect_timeout_ms = 1000;
+    channel_options.timeout_ms = 1000;
+    channel_options.max_retry = 0;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &channel_options));
+    brpc::Controller cntl;
+    test::EchoRequest request;
+    test::EchoResponse response;
+    request.set_message("UBSHM client to TCP server");
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &request, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(request.message(), response.message());
+    EXPECT_EQ(allocated, brpc::ubring::UBRingManager::g_ubr_mgr.trx_num);
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(cntl._single_server_id, &socket));
+    EXPECT_EQ(brpc::handshake::FALLBACK_TCP,
+              brpc::AdapterTransport::Get(socket.get())->handshake_phase());
+    EXPECT_EQ(nullptr, brpc::UBShmTransport::Get(socket.get())
+                           ->GetUBShmEp()->_ub_ring);
+    socket->SetFailed();
+}
 
 TEST_F(UBShmEndpointTest, failed_server_allocation_cleans_resources_and_serves_tcp) {
     UBFallbackEchoService service;

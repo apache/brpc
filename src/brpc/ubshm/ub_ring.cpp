@@ -70,6 +70,15 @@ RETURN_CODE UBRing::UbrTrxClose() {
         }
         return UBRING_ERR;
     }
+    // No remote mapping means no peer-close exchange was established.
+    if (_trx->remote_shm.addr == nullptr) {
+        RETURN_CODE rc = UbrTrxFreeShm(_trx);
+        if (rc == UBRING_OK) {
+            rc = UBRingManager::ReleaseUbrTrxFromMgr(_trx);
+            _trx = nullptr;
+        }
+        return rc;
+    }
     if (_trx->ubr_rx.remote_tx_event_q.addr != nullptr) {
         ((UbrEventQMsg *)_trx->ubr_rx.remote_tx_event_q.addr)->flag = UBR_STATE_CLOSING;
     }

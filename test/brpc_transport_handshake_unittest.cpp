@@ -18,14 +18,18 @@
 #include <gtest/gtest.h>
 
 #include <errno.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <cstring>
 #include <string>
 
 #include "bthread/bthread.h"
+#include "bthread/butex.h"
+#include "bthread/countdown_event.h"
 #include "butil/fd_guard.h"
 #include "butil/sys_byteorder.h"
+#include "butil/time.h"
 #include "brpc/adapter_transport.h"
 #include "brpc/global.h"
 #include "brpc/handshake/handshake_io.h"
@@ -89,6 +93,26 @@ static void* RunBlockingHandshakeRead(void* arg) {
     char byte = 0;
     read->result = read->io->ReadExact(&byte, sizeof(byte));
     read->error = errno;
+    return nullptr;
+}
+
+struct BlockingHandshakeWrite {
+    SocketHandshakeIO* io;
+    bthread::CountdownEvent started;
+    bthread::CountdownEvent completed;
+    int result = 0;
+    int error = 0;
+
+    explicit BlockingHandshakeWrite(SocketHandshakeIO* value) : io(value) {}
+};
+
+static void* RunBlockingHandshakeWrite(void* arg) {
+    auto* write = static_cast<BlockingHandshakeWrite*>(arg);
+    const char byte = 0;
+    write->started.signal();
+    write->result = write->io->WriteAll(&byte, sizeof(byte));
+    write->error = errno;
+    write->completed.signal();
     return nullptr;
 }
 
@@ -386,6 +410,92 @@ static std::string MakeUBShmHello() {
     memcpy(&frame[4], &hello_ver, sizeof(hello_ver));
     memcpy(&frame[6], &impl_ver, sizeof(impl_ver));
     return frame;
+}
+
+TEST(TransportHandshakeTest, socket_io_initializes_read_butex) {
+    auto* reused = bthread::butex_create_checked<butil::atomic<int>>();
+    reused->store(37, butil::memory_order_relaxed);
+    bthread::butex_destroy(reused);
+    SocketHandshakeIO io;
+    EXPECT_EQ(0, io._read_butex->load(butil::memory_order_relaxed));
+    io.NotifyReadable();
+    EXPECT_EQ(1, io._read_butex->load(butil::memory_order_relaxed));
+}
+
+TEST(TransportHandshakeTest, blocked_write_stops_after_socket_failure) {
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    butil::fd_guard peer_fd(fds[1]);
+    const int flags = fcntl(fds[0], F_GETFL, 0);
+    ASSERT_GE(flags, 0);
+    ASSERT_EQ(0, fcntl(fds[0], F_SETFL, flags | O_NONBLOCK));
+    char data[4096] = {};
+    ssize_t n;
+    do {
+        n = send(fds[0], data, sizeof(data), MSG_NOSIGNAL);
+    } while (n > 0 || (n < 0 && errno == EINTR));
+    ASSERT_EQ(-1, n);
+    ASSERT_EQ(EAGAIN, errno);
+
+    SocketOptions options;
+    options.fd = fds[0];
+    options.need_on_edge_trigger = true;
+    SocketId id;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(id, &socket));
+    SocketHandshakeIO io(socket.get());
+    BlockingHandshakeWrite write(&io);
+    bthread_t tid;
+    ASSERT_EQ(0, bthread_start_background(
+        &tid, nullptr, RunBlockingHandshakeWrite, &write));
+    write.started.wait();
+    socket->SetFailed(EFAILEDSOCKET, "cancel blocked handshake write");
+    const int completed = write.completed.timed_wait(
+        butil::milliseconds_from_now(1000));
+    if (completed != 0) {
+        shutdown(socket->fd(), SHUT_RDWR);
+    }
+    ASSERT_EQ(0, bthread_join(tid, nullptr));
+    EXPECT_EQ(0, completed);
+    EXPECT_EQ(-1, write.result);
+    EXPECT_EQ(EFAILEDSOCKET, write.error);
+}
+
+TEST(TransportHandshakeTest, established_socket_does_not_restart_handshake) {
+    const SocketMode modes[] = {
+        SOCKET_MODE_TCP,
+#if BRPC_WITH_RDMA
+        SOCKET_MODE_RDMA,
+#endif
+#if BRPC_WITH_UBRING
+        SOCKET_MODE_UBRING,
+#endif
+    };
+    for (SocketMode mode : modes) {
+        SocketOptions options;
+        options.socket_mode = mode;
+        SocketId id;
+        ASSERT_EQ(0, Socket::Create(options, &id));
+        SocketUniquePtr socket;
+        ASSERT_EQ(0, Socket::Address(id, &socket));
+        AdapterTransport* adapter = AdapterTransport::Get(socket.get());
+        adapter->handshake_session()->SetPhase(ESTABLISHED);
+        adapter->CompleteConnection(ESTABLISHED);
+
+        const char* prefixes[] = {"RDMA", "RDM3", "UB"};
+        for (const char* prefix : prefixes) {
+            butil::IOBuf input;
+            input.append(prefix);
+            const ParseResult result = adapter->ProcessUpgradeReadable(&input);
+            EXPECT_EQ(PARSE_ERROR_TRY_OTHERS, result.error());
+            EXPECT_EQ(prefix, input.to_string());
+            EXPECT_EQ(ESTABLISHED, adapter->handshake_phase());
+            EXPECT_EQ(nullptr, socket->parsing_context());
+            EXPECT_TRUE(adapter->connection_completed());
+        }
+        socket->SetFailed();
+    }
 }
 
 TEST(TransportHandshakeTest, blocked_read_stops_after_socket_failure) {

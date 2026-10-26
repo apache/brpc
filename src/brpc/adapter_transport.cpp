@@ -278,6 +278,10 @@ int AdapterTransport::StartClientUpgrade(const Socket* socket,
 }
 
 ParseResult AdapterTransport::ProcessUpgradeReadable(butil::IOBuf* source) {
+    if (_handshake.phase(butil::memory_order_acquire) ==
+        handshake::ESTABLISHED) {
+        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+    }
     ParseResult result(PARSE_ERROR_NOT_ENOUGH_DATA);
     if (_socket->parsing_context() != nullptr) {
         handshake::ServerHandshakeContext* context =
