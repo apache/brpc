@@ -1024,6 +1024,134 @@ private:
     bool _owns_urma_init{false};
 };
 
+static void CheckUrmaFallbackCleanup(bool zerocopy) {
+    alarm(20);
+    gflags::SetCommandLineOption("urma_prepared_jetty_cnt", "0");
+    gflags::SetCommandLineOption("urma_buffer_count", "2048");
+    gflags::SetCommandLineOption("urma_recv_zerocopy", zerocopy ? "true" : "false");
+    urma::GlobalUrmaInitializeOrDie();
+    ASSERT_NE(nullptr, urma::GetUrmaContext());
+    for (int version : {2, 3}) {
+        urma::FLAGS_urma_client_handshake_version = version;
+        urma::UrmaHandshakeAdapter disabled(nullptr, version);
+        std::string payload;
+        ASSERT_EQ(handshake::STEP_OK, disabled.BuildHello(false, &payload));
+        std::string frame;
+        ASSERT_EQ(handshake::FRAME_OK, handshake::FrameCodec::Encode(
+            disabled.HelloFrameSpec(), payload, &frame));
+        for (int round = 0; round < 16; ++round) {
+            SocketOptions options;
+            options.socket_mode = SOCKET_MODE_URMA;
+            SocketId id;
+            ASSERT_EQ(0, Socket::Create(options, &id));
+            SocketUniquePtr socket;
+            ASSERT_EQ(0, Socket::Address(id, &socket));
+            auto* adapter = AdapterTransport::Get(socket.get());
+            auto* transport = static_cast<UrmaTransport*>(
+                adapter->high_speed_transport());
+            ScriptedUrmaHandshakeIO io;
+            io.input = frame;
+            adapter->handshake_session()->SetIOForTest(&io);
+            std::promise<int> connected;
+            auto ready = connected.get_future();
+            ASSERT_EQ(0, AdapterTransport::StartClientUpgrade(socket.get(),
+                [](int error, void* data) {
+                    static_cast<std::promise<int>*>(data)->set_value(error);
+                }, &connected));
+            ASSERT_EQ(std::future_status::ready,
+                      ready.wait_for(std::chrono::seconds(3)));
+            EXPECT_EQ(0, ready.get());
+            EXPECT_EQ(handshake::FALLBACK_TCP, adapter->handshake_phase());
+            auto* endpoint = transport->GetUrmaEp();
+            EXPECT_EQ(nullptr, endpoint->_resource);
+            EXPECT_TRUE(endpoint->_rbuf.empty());
+            EXPECT_TRUE(endpoint->_sbuf.empty());
+            EXPECT_TRUE(endpoint->_rbuf_data.empty());
+            EXPECT_TRUE(endpoint->_recv_completions.empty());
+            EXPECT_TRUE(endpoint->_recv_completed.empty());
+            EXPECT_EQ(0, endpoint->_local_window_capacity);
+            EXPECT_EQ(0, endpoint->_remote_window_capacity);
+            EXPECT_EQ(urma::UrmaEndpoint::FALLBACK_TCP,
+                      endpoint->_state.load(butil::memory_order_acquire));
+            socket->SetFailed();
+        }
+    }
+}
+
+TEST_F(UrmaMockTest, repeated_copy_fallback_releases_preposted_buffers) {
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        CheckUrmaFallbackCleanup(false);
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(UrmaMockTest, repeated_zerocopy_fallback_releases_preposted_buffers) {
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        CheckUrmaFallbackCleanup(true);
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+class CleanupErrnoUrmaHandshakeIO : public CapturingUrmaHandshakeIO {
+public:
+    explicit CleanupErrnoUrmaHandshakeIO(urma::UrmaEndpoint* ep) : endpoint(ep) {}
+    int ReadExact(void*, size_t) override {
+        errno = EIO;
+        return -1;
+    }
+    int WriteAll(const void* data, size_t len) override {
+        endpoint->_sbuf.emplace_back();
+        endpoint->_sbuf.back().append_user_data(new int(0), sizeof(int),
+            [](void* data) {
+                delete static_cast<int*>(data);
+                errno = ENOENT;
+            });
+        return CapturingUrmaHandshakeIO::WriteAll(data, len);
+    }
+    urma::UrmaEndpoint* endpoint;
+};
+
+static void CheckUrmaFailureErrno() {
+    alarm(10);
+    gflags::SetCommandLineOption("urma_prepared_jetty_cnt", "0");
+    gflags::SetCommandLineOption("urma_buffer_count", "2048");
+    urma::GlobalUrmaInitializeOrDie();
+    SocketOptions options;
+    options.socket_mode = SOCKET_MODE_URMA;
+    SocketId id;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(id, &socket));
+    auto* adapter = AdapterTransport::Get(socket.get());
+    auto* endpoint = static_cast<UrmaTransport*>(
+        adapter->high_speed_transport())->GetUrmaEp();
+    CleanupErrnoUrmaHandshakeIO io(endpoint);
+    adapter->handshake_session()->SetIOForTest(&io);
+    std::promise<int> connected;
+    auto ready = connected.get_future();
+    ASSERT_EQ(0, AdapterTransport::StartClientUpgrade(socket.get(),
+        [](int error, void* data) {
+            static_cast<std::promise<int>*>(data)->set_value(error);
+        }, &connected));
+    ASSERT_EQ(std::future_status::ready,
+              ready.wait_for(std::chrono::seconds(3)));
+    EXPECT_EQ(EIO, ready.get());
+    EXPECT_EQ(handshake::FAILED, adapter->handshake_phase());
+    EXPECT_TRUE(endpoint->_sbuf.empty());
+    EXPECT_TRUE(endpoint->_rbuf.empty());
+    socket->SetFailed();
+}
+
+TEST_F(UrmaMockTest, client_failure_preserves_errno_across_buffer_cleanup) {
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        CheckUrmaFailureErrno();
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
 TEST_F(UrmaMockTest, send_completion_releases_source_only_after_copy) {
     int device_count = 0;
     urma_device_t** devices = urma_get_device_list(&device_count);

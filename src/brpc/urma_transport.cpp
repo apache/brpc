@@ -224,9 +224,9 @@ int UrmaTransport::StartUpgradeEvents() {
 void UrmaTransport::DeactivateUpgrade() {
     _urma_state.store(URMA_OFF, butil::memory_order_release);
     if (_urma_ep) {
+        _urma_ep->Reset();
         _urma_ep->_state.store(urma::UrmaEndpoint::FALLBACK_TCP,
                                butil::memory_order_release);
-        _urma_ep->DeallocateResources();
     }
 }
 

@@ -193,8 +193,8 @@ public:
     void OnEstablished() override { _transport->ActivateUpgrade(); }
     void OnFallback() override { _transport->DeactivateUpgrade(); }
     void OnFailed() override {
-        _transport->DeactivateUpgrade();
         const int saved_errno = errno != 0 ? errno : EPROTO;
+        _transport->DeactivateUpgrade();
         *_connect_error = saved_errno;
         _socket->SetFailed(saved_errno,
                            "Fail to complete URMA handshake from %s: %s",
