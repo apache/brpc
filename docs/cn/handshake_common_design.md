@@ -1,55 +1,42 @@
 # RDMA 与 UBSHM 公共握手
 
-## 范围
-
-本次重构将 RDMA 和 UBSHM 的握手流程收敛到公共层。`Socket` 持有
-`AdapterTransport`；后者以 TCP 作为握手控制通道，在升级成功后选择高速
-数据面，协商不可用时继续使用 TCP。URMA 目前仍使用独立的 `UrmaTransport`
-和握手实现，不在本次迁移范围内。
+RDMA 和 UBSHM 共用握手流程，以 TCP 交换控制帧。升级成功后使用高速
+数据面，协商不可用时继续使用 TCP。
 
 ## 分工
 
 | 组件 | 职责 |
 | --- | --- |
-| `AdapterTransport` | 持有 TCP 与候选高速 Transport，启动客户端握手、分发服务端输入，并选择数据面 |
-| `HandshakeSession` | 执行公共客户端和服务端状态机，管理帧收发、增量解析和终态发布 |
-| `HandshakeProtocol` | 定义 hello、ACK 和扩展帧，编解码协议字段并保存协议状态 |
-| `HandshakeTransport` | 准备和协商资源，处理升级成功、TCP 回退及失败清理 |
-| RDMA / UBSHM protocol | 实现各自的 wire format、版本兼容和字段校验 |
-| `RdmaEndpoint` / `UBShmEndpoint` | 管理各自的资源和数据面，不驱动完整握手流程 |
+| `AdapterTransport` | 持有 TCP 与高速 Transport，启动握手、分发输入并选择数据面 |
+| `HandshakeSession` | 编排客户端和服务端流程，管理帧收发、增量解析和终态发布 |
+| `HandshakeProtocol` | 编解码 hello、ACK 和扩展帧，校验协议版本及字段 |
+| `HandshakeTransport` | 准备和协商资源，处理升级、回退及失败清理 |
+| `RdmaEndpoint` / `UBShmEndpoint` | 管理传输资源和数据面 |
 
 客户端在 TCP 连接建立后启动握手 bthread；服务端通过 `InputMessenger`
-增量解析 hello、扩展字段（若协议需要）和 ACK。`AdapterTransport` 选择具体的
-protocol 和 transport participant，`HandshakeSession` 只负责调用参与者并编排流程。
-服务端在 `EXTENSION_WAIT` 和 `ACK_WAIT` 保留解析上下文，并通过协议版本
-恢复选中的 protocol，因为扩展帧和 ACK 本身不带 magic。
+增量解析控制帧。在 `EXTENSION_WAIT` 和 `ACK_WAIT`，服务端保留解析上下文，
+按已选协议版本继续处理后续帧。
 
 ## 状态与回退
 
-握手终态为 `ESTABLISHED`、`FALLBACK_TCP` 或 `FAILED`。升级成功后，TCP
-仍是控制连接，业务数据走 RDMA/UBSHM；控制连接上出现额外业务数据视为
-协议错误。升级完成时停止当前 TCP 业务解析循环，由控制连接处理额外输入。
-资源不可用或协商拒绝时，释放本次升级资源，设置 TCP 为数据面，
-再以 release 顺序发布 `FALLBACK_TCP`。事件线程以 acquire 顺序读取终态，
-继续解析已缓存及后续的 TCP 业务数据。已确认属于握手协议的畸形帧则失败，
-不作为普通 RPC 数据回放。
+- `ESTABLISHED`：业务数据走 RDMA/UBSHM，TCP 保留为控制连接。服务端
+  完成最终 ACK 解析并退出 TCP 解析循环后启动高速接收；额外 TCP 数据触发连接错误。
+- `FALLBACK_TCP`：释放升级资源后以 release 顺序发布终态，事件线程以
+  acquire 顺序读取并继续处理已缓存及后续的 TCP 业务数据。
+- `FAILED`：握手 I/O 错误或畸形帧导致失败，清理资源并关闭连接。
 
-增量解析中，不完整帧返回 `NOT_ENOUGH_DATA` 且不消费输入；不可能匹配
-握手 magic 的前缀返回 `TRY_OTHERS`。TCP 分片、握手帧与后续数据粘连都由
-帧边界处理，不能假设一次 read 恰好得到一帧。
+完整帧按边界消费；分片输入返回 `NOT_ENOUGH_DATA` 等待补齐，
+与握手 magic 不匹配的前缀返回 `TRY_OTHERS`。
 
 ## 协议兼容
 
-- RDMA 保持既有 v2/v3 wire format 和协议数值 ID `1`。公共握手的枚举和
-  注册名称分别调整为 `PROTOCOL_TRANSPORT_HANDSHAKE` 和 `transport_handshake`。
-- UBSHM 使用 v3 hello。64 字节 hello 后，双方交换 4 字节网络序格式扩展；
-  本地 IPC 后端选择 `IPC_V2`，UBS 后端选择 `LEGACY_64`；只有双方选择相同的
-  受支持格式才能升级，否则回退 TCP。资源映射传递对端共享内存长度及协商格式，
-  激活数据面前发布格式。ACK 仍为 4 字节。
-- 公共 framing 仅负责帧边界，协议字段由各自 `HandshakeProtocol` 解释。
+- RDMA 保持 v2/v3 wire format 和协议数值 ID `1`。公共握手使用枚举
+  `PROTOCOL_TRANSPORT_HANDSHAKE`，注册名称为 `transport_handshake`。
+- UBSHM 使用 64 字节 v3 hello、4 字节网络序格式扩展和 4 字节 ACK。
+  IPC 后端选择 `IPC_V2`，UBS 后端选择 `LEGACY_64`；格式相同则升级，否则
+  回退 TCP。资源映射使用对端共享内存长度，数据面激活前发布协商格式。
 
-## 验证重点
+## 测试
 
-测试覆盖分片和粘连输入、magic 前缀分流、协议版本与格式校验、TCP 回退、
-资源释放及终态发布，并分别运行 RDMA 与 UBSHM 回归测试。URMA 的公共握手
-迁移需要单独设计和测试，不应仅凭本次重构推断其已完成。
+覆盖分片与粘连输入、magic 分流、版本与格式校验、TCP 回退、资源释放、
+终态发布、最终 ACK 与首包并发，以及 RDMA 和 UBSHM 回归测试。
