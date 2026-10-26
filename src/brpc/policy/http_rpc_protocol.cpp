@@ -420,8 +420,24 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             }
             const std::string* grpc_status = res_header->GetHeader(common->GRPC_STATUS);
             if (grpc_status) {
-                // TODO: More strict parsing
-                GrpcStatus status = (GrpcStatus)strtol(grpc_status->data(), nullptr, 10);
+                int code = 0;
+                bool valid = !grpc_status->empty();
+                for (char c : *grpc_status) {
+                    if (c < '0' || c > '9') {
+                        valid = false;
+                        break;
+                    }
+                    code = code * 10 + (c - '0');
+                    if (code >= GRPC_MAX) {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (!valid) {
+                    cntl->SetFailed(ERESPONSE, "Invalid grpc-status header");
+                    break;
+                }
+                const GrpcStatus status = static_cast<GrpcStatus>(code);
                 if (status != GRPC_OK) {
                     const std::string* grpc_message =
                         res_header->GetHeader(common->GRPC_MESSAGE);
