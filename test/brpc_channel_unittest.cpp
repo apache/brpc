@@ -2440,6 +2440,7 @@ TEST(BaiduAttachmentSizeTest, negative_response_attachment_size_is_rejected) {
         ASSERT_EQ(0, brpc::Socket::Address(
                          sending_id, &cntl._current_call.sending_sock));
         brpc::Socket* socket = cntl._current_call.sending_sock.get();
+        socket->ReleaseAdditionalReference();
 
         brpc::policy::RpcMeta meta;
         meta.set_correlation_id(cntl.current_id().value);
@@ -2482,6 +2483,7 @@ TEST(BaiduAttachmentSizeTest, negative_request_attachment_size_is_rejected) {
         request_fd.release();
         brpc::SocketUniquePtr socket;
         ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+        socket->ReleaseAdditionalReference();
 
         brpc::policy::RpcMeta meta;
         meta.set_correlation_id(1);
