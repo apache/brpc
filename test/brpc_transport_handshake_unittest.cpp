@@ -22,6 +22,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <string>
 
 #include "bthread/bthread.h"
@@ -127,6 +129,29 @@ public:
     }
 
     void StopConnect(Socket*) override {}
+};
+
+class RecordingAppConnect : public TestAppConnect {
+public:
+    void StopConnect(Socket* socket) override {
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            ++_stopped[socket->id()];
+        }
+        stopped.signal();
+    }
+
+    int StopCount(SocketId id) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        auto it = _stopped.find(id);
+        return it == _stopped.end() ? 0 : it->second;
+    }
+
+    bthread::CountdownEvent stopped;
+
+private:
+    std::mutex _mutex;
+    std::map<SocketId, int> _stopped;
 };
 
 static int RejectHandshakeStart(bthread_t*, const bthread_attr_t*,
@@ -1070,6 +1095,57 @@ TEST(TransportHandshakeTest, urma_socket_skips_adapter_handshake_parser) {
     EXPECT_EQ(4UL, source.size());
     EXPECT_EQ(nullptr, socket->parsing_context());
     socket->SetFailed();
+}
+#endif
+
+#if BRPC_WITH_RDMA || BRPC_WITH_UBRING
+TEST(TransportHandshakeTest, shared_app_connect_receives_each_socket_stop) {
+    const SocketMode modes[] = {
+#if BRPC_WITH_RDMA
+        SOCKET_MODE_RDMA,
+#endif
+#if BRPC_WITH_UBRING
+        SOCKET_MODE_UBRING,
+#endif
+    };
+    for (SocketMode mode : modes) {
+        const auto original = std::make_shared<RecordingAppConnect>();
+        SocketOptions options;
+        options.user =
+            static_cast<SocketUser*>(get_or_new_client_side_messenger());
+        options.socket_mode = mode;
+        options.app_connect = original;
+        SocketId first_id;
+        ASSERT_EQ(0, Socket::Create(options, &first_id));
+        SocketUniquePtr first;
+        ASSERT_EQ(0, Socket::Address(first_id, &first));
+        ASSERT_NE(nullptr, first->_app_connect);
+        ASSERT_NE(original.get(), first->_app_connect.get());
+
+        options.app_connect = first->_app_connect;
+        SocketId second_id;
+        ASSERT_EQ(0, Socket::Create(options, &second_id));
+        SocketUniquePtr second;
+        ASSERT_EQ(0, Socket::Address(second_id, &second));
+        ASSERT_EQ(first->_app_connect.get(), second->_app_connect.get());
+
+        AdapterTransport::Get(first.get())->FallbackToTcp();
+        ASSERT_EQ(0, first->SetFailed());
+        first.reset();
+        ASSERT_EQ(0, original->stopped.timed_wait(
+            butil::milliseconds_from_now(1000)));
+        EXPECT_EQ(1, original->StopCount(first_id));
+        EXPECT_EQ(0, original->StopCount(second_id));
+
+        original->stopped.reset(1);
+        AdapterTransport::Get(second.get())->FallbackToTcp();
+        ASSERT_EQ(0, second->SetFailed());
+        second.reset();
+        ASSERT_EQ(0, original->stopped.timed_wait(
+            butil::milliseconds_from_now(1000)));
+        EXPECT_EQ(1, original->StopCount(first_id));
+        EXPECT_EQ(1, original->StopCount(second_id));
+    }
 }
 #endif
 

@@ -84,7 +84,11 @@ public:
         }
     }
 
-    void StopConnect(Socket*) override {}
+    void StopConnect(Socket* socket) override {
+        if (_app_connect) {
+            _app_connect->StopConnect(socket);
+        }
+    }
 
 private:
     struct ApplicationConnectTask {
