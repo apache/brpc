@@ -27,6 +27,7 @@
 #include "bthread/bthread.h"
 #include "bthread/butex.h"
 #include "bthread/countdown_event.h"
+#include "bthread/unstable.h"
 #include "butil/fd_guard.h"
 #include "butil/sys_byteorder.h"
 #include "butil/time.h"
@@ -98,7 +99,6 @@ static void* RunBlockingHandshakeRead(void* arg) {
 
 struct BlockingHandshakeWrite {
     SocketHandshakeIO* io;
-    bthread::CountdownEvent started;
     bthread::CountdownEvent completed;
     int result = 0;
     int error = 0;
@@ -109,7 +109,6 @@ struct BlockingHandshakeWrite {
 static void* RunBlockingHandshakeWrite(void* arg) {
     auto* write = static_cast<BlockingHandshakeWrite*>(arg);
     const char byte = 0;
-    write->started.signal();
     write->result = write->io->WriteAll(&byte, sizeof(byte));
     write->error = errno;
     write->completed.signal();
@@ -125,6 +124,12 @@ public:
 
     void StopConnect(Socket*) override {}
 };
+
+static int RejectHandshakeStart(bthread_t*, const bthread_attr_t*,
+                                void* (*)(void*), void*) {
+    errno = EINTR;
+    return EAGAIN;
+}
 
 static FrameSpec FixedSpec(const char* magic, size_t magic_len,
                            size_t total_len) {
@@ -301,6 +306,25 @@ public:
     }
 };
 
+TEST(TransportHandshakeTest, rejected_handshake_start_releases_socket_reference) {
+    SocketOptions options;
+    SocketId id;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(id, &socket));
+    const int32_t references = socket->nref();
+    int completions = 0;
+    auto done = [](int, void* data) { ++*static_cast<int*>(data); };
+
+    EXPECT_EQ(-1, AdapterTransport::StartClientUpgradeImpl(
+        socket.get(), done, &completions, RejectHandshakeStart));
+    EXPECT_EQ(EAGAIN, errno);
+    EXPECT_EQ(references, socket->nref());
+    // The caller owns the completion callback when startup fails.
+    EXPECT_EQ(0, completions);
+    socket->SetFailed();
+}
+
 TEST(TransportHandshakeTest, registered_protocol_uses_transport_name) {
     GlobalInitializeOrDie();
     EXPECT_EQ(1, PROTOCOL_TRANSPORT_HANDSHAKE);
@@ -449,14 +473,25 @@ TEST(TransportHandshakeTest, blocked_write_stops_after_socket_failure) {
     bthread_t tid;
     ASSERT_EQ(0, bthread_start_background(
         &tid, nullptr, RunBlockingHandshakeWrite, &write));
-    write.started.wait();
+    bool was_waiting = false;
+    const int64_t wait_deadline = butil::gettimeofday_us() + 1000000;
+    while (butil::gettimeofday_us() < wait_deadline) {
+        // A nonzero wake count proves WriteAll reached WaitEpollOut's butex.
+        if (bthread::butex_wake(socket->_epollout_butex, true) > 0) {
+            was_waiting = true;
+            break;
+        }
+        bthread_usleep(1000);
+    }
     socket->SetFailed(EFAILEDSOCKET, "cancel blocked handshake write");
+    bthread_flush();
     const int completed = write.completed.timed_wait(
         butil::milliseconds_from_now(1000));
     if (completed != 0) {
         shutdown(socket->fd(), SHUT_RDWR);
     }
     ASSERT_EQ(0, bthread_join(tid, nullptr));
+    EXPECT_TRUE(was_waiting);
     EXPECT_EQ(0, completed);
     EXPECT_EQ(-1, write.result);
     EXPECT_EQ(EFAILEDSOCKET, write.error);
@@ -644,6 +679,25 @@ TEST(TransportHandshakeTest, publish_fallback_after_tcp_state) {
     session.PublishFallback([&tcp_active]() { tcp_active = 1; });
     ASSERT_EQ(1, tcp_active);
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
+}
+
+TEST(TransportHandshakeTest, failed_handshake_preserves_io_error_after_cleanup) {
+    class CleanupChangesErrno : public TestHandshakeTransport {
+    public:
+        void OnFailed() override {
+            TestHandshakeTransport::OnFailed();
+            errno = ENOENT;
+        }
+    } transport;
+    MemoryHandshakeIO io;
+    HandshakeSession session;
+    session.SetIOForTest(&io);
+    TestHandshakeProtocol protocol;
+
+    EXPECT_EQ(STEP_ERROR, session.RunClient(&protocol, &transport));
+    EXPECT_EQ(EIO, errno);
+    EXPECT_TRUE(transport.failed);
+    EXPECT_EQ(FAILED, session.phase(butil::memory_order_acquire));
 }
 
 TEST(TransportHandshakeTest, client_runs_codec_and_resource_sequence) {

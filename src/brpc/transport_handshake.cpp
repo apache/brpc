@@ -77,8 +77,10 @@ void ServerHandshakeContext::Destroy() {
 
 static StepResult FinishWithFailure(HandshakeSession* session,
                                     HandshakeTransport* transport) {
+    const int saved_errno = errno != 0 ? errno : EPROTO;
     transport->OnFailed();
     session->MarkFailed();
+    errno = saved_errno;
     return STEP_ERROR;
 }
 

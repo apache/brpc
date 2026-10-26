@@ -90,6 +90,11 @@ private:
     void CheckUnexpectedTcpData();
     static void OnNewMessagesAfterUpgrade(Socket* socket);
     static void* ProcessClientHandshake(void* arg);
+    using StartBackground = int (*)(bthread_t*, const bthread_attr_t*,
+                                    void* (*)(void*), void*);
+    static int StartClientUpgradeImpl(const Socket* socket,
+                                      void (*done)(int, void*), void* data,
+                                      StartBackground start_background);
 
     SocketMode _mode;
     handshake::HandshakeSession _handshake;

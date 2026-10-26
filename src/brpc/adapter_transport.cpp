@@ -76,9 +76,9 @@ public:
             socket, _app_connect, done, data};
         if (AdapterTransport::StartClientUpgrade(
                 socket, OnUpgradeComplete, task) != 0) {
+            const int error = errno != 0 ? errno : EAGAIN;
             AdapterTransport::Get(const_cast<Socket*>(socket))->CompleteConnection(
                 handshake::FAILED);
-            const int error = errno != 0 ? errno : EAGAIN;
             delete task;
             done(error, data);
         }
@@ -150,8 +150,8 @@ public:
     void OnFallback() override { _transport->DeactivateUpgrade(); }
 
     void OnFailed() override {
-        _transport->DeactivateUpgrade();
         const int saved_errno = errno != 0 ? errno : EPROTO;
+        _transport->DeactivateUpgrade();
         *_connect_error = saved_errno;
         _socket->SetFailed(saved_errno,
                            "Fail to complete rdma handshake from %s: %s",
@@ -202,8 +202,8 @@ public:
     void OnFallback() override { _transport->DeactivateUpgrade(); }
 
     void OnFailed() override {
-        _transport->DeactivateUpgrade();
         const int saved_errno = errno != 0 ? errno : EPROTO;
+        _transport->DeactivateUpgrade();
         *_connect_error = saved_errno;
         _socket->SetFailed(saved_errno,
                            "Fail to complete ubring handshake from %s: %s",
@@ -260,18 +260,26 @@ bool AdapterTransport::upgrade_capable(SocketMode mode) const {
 int AdapterTransport::StartClientUpgrade(const Socket* socket,
                                          void (*done)(int, void*),
                                          void* data) {
+    return StartClientUpgradeImpl(socket, done, data, bthread_start_background);
+}
+
+int AdapterTransport::StartClientUpgradeImpl(
+    const Socket* socket, void (*done)(int, void*), void* data,
+    StartBackground start_background) {
     AdapterTransport* adapter = Get(const_cast<Socket*>(socket));
     ClientHandshakeTask* task = new ClientHandshakeTask{adapter, done, data, SocketUniquePtr()};
     if (Socket::Address(socket->id(), &task->socket) != 0) {
         delete task;
+        errno = EFAILEDSOCKET;
         return -1;
     }
     bthread_t tid;
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     bthread_attr_set_name(&attr, "StartClientUpgrade");
-    if (bthread_start_background(&tid, &attr,
-                                 ProcessClientHandshake, task) < 0) {
+    const int rc = start_background(&tid, &attr, ProcessClientHandshake, task);
+    if (rc != 0) {
         delete task;
+        errno = rc;
         return -1;
     }
     return 0;
