@@ -61,10 +61,14 @@ TEST_F(ChecksumAttachmentTest, verify_rejects_invalid_checksum_lengths) {
     const std::string valid = accessor.checksum_value();
     ASSERT_EQ(sizeof(uint32_t), valid.size());
 
+#if !BRPC_WITH_GLOG
     logging::StringSink logs;
+#endif
     {
+#if !BRPC_WITH_GLOG
         logging::LogSink* previous = logging::SetLogSink(&logs);
         BUTIL_SCOPE_EXIT { logging::SetLogSink(previous); };
+#endif
         for (size_t size = 0; size <= 8; ++size) {
             if (size == valid.size()) {
                 continue;
@@ -76,7 +80,9 @@ TEST_F(ChecksumAttachmentTest, verify_rejects_invalid_checksum_lengths) {
         accessor.set_checksum_value(valid.data(), valid.size());
         EXPECT_TRUE(brpc::policy::Crc32cVerify(in));
     }
+#if !BRPC_WITH_GLOG
     EXPECT_EQ(std::string::npos, logs.find("Check failed: val.size()"));
+#endif
 }
 
 TEST_F(ChecksumAttachmentTest, verify_succeeds_when_attachment_included) {
