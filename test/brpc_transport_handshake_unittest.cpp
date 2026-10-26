@@ -562,6 +562,39 @@ TEST(TransportHandshakeTest, established_socket_does_not_restart_handshake) {
     }
 }
 
+TEST(TransportHandshakeTest, failed_socket_read_preserves_buffered_data) {
+    for (size_t prefix_len : {0u, 1u}) {
+        SCOPED_TRACE(prefix_len);
+        int fds[2];
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        butil::fd_guard peer_fd(fds[1]);
+        SocketOptions options;
+        options.fd = fds[0];
+        SocketId id;
+        ASSERT_EQ(0, Socket::Create(options, &id));
+        SocketUniquePtr socket;
+        ASSERT_EQ(0, Socket::Address(id, &socket));
+        ASSERT_EQ(2, write(peer_fd, "HS", 2));
+
+        SocketHandshakeIO io(socket.get());
+        char data[2] = {};
+        if (prefix_len != 0) {
+            ASSERT_EQ(0, io.ReadExact(data, prefix_len));
+            EXPECT_EQ('H', data[0]);
+        }
+        ASSERT_EQ(0, socket->SetFailed(EFAILEDSOCKET,
+                                      "cancel buffered handshake read"));
+        errno = 0;
+        EXPECT_EQ(-1, io.ReadExact(data, 2 - prefix_len));
+        EXPECT_EQ(EFAILEDSOCKET, errno);
+
+        const ssize_t remaining = recv(socket->fd(), data, sizeof(data),
+                                       MSG_DONTWAIT);
+        ASSERT_EQ(static_cast<ssize_t>(2 - prefix_len), remaining);
+        EXPECT_EQ(0, memcmp(data, "HS" + prefix_len, remaining));
+    }
+}
+
 TEST(TransportHandshakeTest, blocked_read_stops_after_socket_failure) {
     int fds[2];
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
