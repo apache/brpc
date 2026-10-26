@@ -84,8 +84,11 @@ private:
 
 struct BlockingHandshakeRead {
     SocketHandshakeIO* io;
-    int result;
-    int error;
+    bthread::CountdownEvent completed;
+    int result = 0;
+    int error = 0;
+
+    explicit BlockingHandshakeRead(SocketHandshakeIO* value) : io(value) {}
 };
 
 static void* RunBlockingHandshakeRead(void* arg) {
@@ -94,6 +97,7 @@ static void* RunBlockingHandshakeRead(void* arg) {
     char byte = 0;
     read->result = read->io->ReadExact(&byte, sizeof(byte));
     read->error = errno;
+    read->completed.signal();
     return nullptr;
 }
 
@@ -547,17 +551,35 @@ TEST(TransportHandshakeTest, blocked_read_stops_after_socket_failure) {
     ASSERT_EQ(0, Socket::Address(id, &socket));
 
     SocketHandshakeIO io(socket.get());
-    BlockingHandshakeRead read = {&io, 0, 0};
+    BlockingHandshakeRead read(&io);
     bthread_t tid;
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     ASSERT_EQ(0, bthread_start_background(
         &tid, &attr, RunBlockingHandshakeRead, &read));
 
-    bthread_usleep(10000);
-    ASSERT_EQ(0, socket->SetFailed(
+    bool was_waiting = false;
+    const int64_t wait_deadline = butil::gettimeofday_us() + 1000000;
+    while (butil::gettimeofday_us() < wait_deadline) {
+        // A nonzero wake count proves ReadExact reached its read butex.
+        if (bthread::butex_wake(io._read_butex, true) > 0) {
+            was_waiting = true;
+            break;
+        }
+        bthread_usleep(1000);
+    }
+    EXPECT_EQ(0, socket->SetFailed(
         EFAILEDSOCKET, "cancel blocked handshake read"));
+    bthread_flush();
+    const int completed = read.completed.timed_wait(
+        butil::milliseconds_from_now(1000));
+    if (completed != 0) {
+        shutdown(socket->fd(), SHUT_RDWR);
+        io.NotifyReadable();
+    }
     ASSERT_EQ(0, bthread_join(tid, nullptr));
 
+    EXPECT_TRUE(was_waiting);
+    EXPECT_EQ(0, completed);
     EXPECT_EQ(-1, read.result);
     EXPECT_EQ(EFAILEDSOCKET, read.error);
 }

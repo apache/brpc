@@ -40,7 +40,8 @@ protocol 和 transport participant，`HandshakeSession` 只负责调用参与者
 
 ## 协议兼容
 
-- RDMA 保持既有 v2/v3 wire format、协议 ID 和注册名称。
+- RDMA 保持既有 v2/v3 wire format 和协议数值 ID `1`。公共握手的枚举和
+  注册名称分别调整为 `PROTOCOL_TRANSPORT_HANDSHAKE` 和 `transport_handshake`。
 - UBSHM 使用 v3 hello。64 字节 hello 后，双方交换 4 字节网络序格式扩展；
   本地 IPC 后端选择 `IPC_V2`，UBS 后端选择 `LEGACY_64`；只有双方选择相同的
   受支持格式才能升级，否则回退 TCP。资源映射传递对端共享内存长度及协商格式，
