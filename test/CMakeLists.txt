@@ -132,6 +132,7 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/non_thread_safe_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/nullable_string16_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/object_pool_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/resource_pool_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/observer_list_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/optional_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/platform_thread_unittest.cc
