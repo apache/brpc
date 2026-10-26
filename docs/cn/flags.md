@@ -1,4 +1,4 @@
-brpc使用gflags管理配置。如果你的程序也使用gflags，那么你应该已经可以修改和brpc相关的flags，你可以浏览[flags服务](http://brpc.baidu.com:8765/flags)了解每个flag的具体功能。如果你的程序还没有使用gflags，我们建议你使用，原因如下：
+brpc使用gflags管理配置。如果你的程序也使用gflags，那么你应该已经可以修改和brpc相关的flags，你可以浏览[flags服务](http://localhost:8765/flags)了解每个flag的具体功能。如果你的程序还没有使用gflags，我们建议你使用，原因如下：
 
 - 命令行和文件均可传入，前者方便做测试，后者适合线上运维。放在文件中的gflags可以reload。而configure只支持从文件读取配置。
 - 你可以在浏览器中查看brpc服务器中所有gflags，并对其动态修改（如果允许的话）。configure不可能做到这点。
@@ -55,7 +55,7 @@ flagfile中可以使用`--flagfile包含另一个flagfile。`
 
 # Change gflag on-the-fly
 
-[flags服务](http://brpc.baidu.com:8765/flags)可以查看服务器进程中所有的gflags。修改过的flags会以红色高亮。“修改过”指的是修改这一行为，即使再改回默认值，仍然会显示为红色。
+[flags服务](http://localhost:8765/flags)可以查看服务器进程中所有的gflags。修改过的flags会以红色高亮。“修改过”指的是修改这一行为，即使再改回默认值，仍然会显示为红色。
 
 /flags：列出所有的gflags
 
@@ -128,7 +128,7 @@ BRPC_VALIDATE_GFLAG(health_check_interval, brpc::PositiveInteger);
 以上操作都可以在命令行中进行：
 
 ```shell
-$ curl brpc.baidu.com:8765/flags/health_check_interval
+$ curl localhost:8765/flags/health_check_interval
 Name | Value | Description | Defined At
 ---------------------------------------
 health_check_interval (R) | 3 | seconds between consecutive health-checkings | src/brpc/socket_map.cpp

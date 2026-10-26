@@ -213,9 +213,9 @@ Notes:
 
 # Debug
 
-Turn on [-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose) to print contents of all redis requests and responses. Note that this should only be used for debugging rather than online services.
+Turn on [-redis_verbose](http://localhost:8765/flags/redis_verbose) to print contents of all redis requests and responses. Note that this should only be used for debugging rather than online services.
 
-Turn on [-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbose_crlf2space) to replace the `CRLF` (\r\n) with spaces in debugging logs for better readability.
+Turn on [-redis_verbose_crlf2space](http://localhost:8765/flags/redis_verbose_crlf2space) to replace the `CRLF` (\r\n) with spaces in debugging logs for better readability.
 
 | Name                     | Value | Description                              | Defined At                         |
 | ------------------------ | ----- | ---------------------------------------- | ---------------------------------- |

@@ -23,7 +23,7 @@
 你也可以在命令行中访问vars：
 
 ```
-$ curl brpc.baidu.com:8765/vars/bthread*
+$ curl localhost:8765/vars/bthread*
 bthread_creation_count : 125134
 bthread_creation_latency : 3
 bthread_creation_latency_50 : 3

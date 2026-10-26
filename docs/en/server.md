@@ -264,7 +264,7 @@ Services using protobuf can be accessed via http/h2+json generally. The json str
 
 ```shell
 # -H 'Content-Type: application/json' is optional
-$ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
+$ curl -d '{"message":"hello"}' http://localhost:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
@@ -369,7 +369,7 @@ Server.set_version(…) sets name+version for the server, accessible from the bu
 
 If a connection does not read or write within the seconds specified by ServerOptions.idle_timeout_sec, it's treated as "idle" and will be closed by server soon. Default value is -1 which disables the feature.
 
-If [-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close) is turned on, a log will be printed before closing. 
+If [-log_idle_connection_close](http://localhost:8765/flags/log_idle_connection_close) is turned on, a log will be printed before closing. 
 
 | Name                      | Value | Description                              | Defined At          |
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
@@ -393,13 +393,13 @@ If this field is non-empty, Server creates a file named so at start-up, with pid
 
 This feature only affects logging macros in [butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h).
 
-If [-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname) is turned on, each line of log contains the hostname so that users know machines at where each line is generated from aggregated logs.
+If [-log_hostname](http://localhost:8765/flags/log_hostname) is turned on, each line of log contains the hostname so that users know machines at where each line is generated from aggregated logs.
 
 ## Crash after printing FATAL log
 
 This feature only affects logging macros in [butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h), glog crashes for FATAL log by default.
 
-If [-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) is turned on, program crashes after printing LOG(FATAL) or failed assertions by CHECK*(), and generates coredump (with proper environmental settings). Default value is false. This flag can be turned on in tests to make sure the program never hit critical errors.
+If [-crash_on_fatal_log](http://localhost:8765/flags/crash_on_fatal_log) is turned on, program crashes after printing LOG(FATAL) or failed assertions by CHECK*(), and generates coredump (with proper environmental settings). Default value is false. This flag can be turned on in tests to make sure the program never hit critical errors.
 
 > A common convention: use ERROR for tolerable errors, FATAL for unacceptable and permanent errors.
 
@@ -417,7 +417,7 @@ Set gflag -free_memory_to_system_interval to make the program try to return free
 
 ## Log error to clients
 
-Framework does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text).
+Framework does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://localhost:8765/flags/log_error_text).
 
 ## Customize percentiles of latency
 
@@ -446,7 +446,7 @@ NOTE: It does mean that coredump of programs is likely to be caused by "stack ov
 
 ## Limit sizes of messages
 
-To protect servers and clients, when a request received by a server or a response received by a client is too large, the server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size), in bytes.
+To protect servers and clients, when a request received by a server or a response received by a client is too large, the server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://localhost:8765/flags/max_body_size), in bytes.
 
 An error log is printed when a message is too large and rejected:
 

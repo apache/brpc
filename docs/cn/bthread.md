@@ -49,7 +49,7 @@ pthread worker在任何时间只会运行一个bthread，当前bthread挂起时�
 ##### Q：若有大量的bthread调用了阻塞的pthread或系统函数，会影响RPC运行么？
 
 会。比如有8个pthread worker，当有8个bthread都调用了系统usleep()后，处理网络收发的RPC代码就暂时无法运行了。只要阻塞时间不太长, 这一般**没什么影响**, 毕竟worker都用完了, 除了排队也没有什么好方法.
-在brpc中用户可以选择调大worker数来缓解问题, 在server端可设置[ServerOptions.num_threads](server.md#worker线程数)或[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency), 在client端可设置[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency).
+在brpc中用户可以选择调大worker数来缓解问题, 在server端可设置[ServerOptions.num_threads](server.md#worker线程数)或[-bthread_concurrency](http://localhost:8765/flags/bthread_concurrency), 在client端可设置[-bthread_concurrency](http://localhost:8765/flags/bthread_concurrency).
 
 那有没有完全规避的方法呢?
 

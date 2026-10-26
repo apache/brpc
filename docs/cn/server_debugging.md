@@ -12,7 +12,7 @@
 
 ![img](../images/normal_worker_usage.png)
 
-把 /vars/bthread_worker_count;bthread_worker_usage?expand 拼在服务url后直接看到这两幅图，就像[这样](http://brpc.baidu.com:8765/vars/bthread_worker_count;bthread_worker_usage?expand)。
+把 /vars/bthread_worker_count;bthread_worker_usage?expand 拼在服务url后直接看到这两幅图，就像[这样](http://localhost:8765/vars/bthread_worker_count;bthread_worker_usage?expand)。
 
 # 2.检查CPU的使用程度
 
@@ -42,14 +42,14 @@
 
 ### 排除上游分流不均的嫌疑
 
-在不同服务的[vars界面](http://brpc.baidu.com:8765/vars)输入qps，查看不同的qps是否符合预期，就像这样：
+在不同服务的[vars界面](http://localhost:8765/vars)输入qps，查看不同的qps是否符合预期，就像这样：
 
 ![img](../images/bthread_creation_qps.png)
 
 或者在命令行中用curl直接访问，像这样：
 
 ```shell
-$ curl brpc.baidu.com:8765/vars/*qps*
+$ curl localhost:8765/vars/*qps*
 bthread_creation_qps : 95
 rpc_server_8765_example_echo_service_echo_qps : 57
 ```
