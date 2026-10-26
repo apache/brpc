@@ -90,6 +90,7 @@ protected:
     virtual void TearDown() {};
 };
 
+#ifndef USE_MESALINK
 static void MarkCertificateFreed(void*, void* ptr, CRYPTO_EX_DATA*,
                                  int, long, void*) {
     if (ptr != nullptr) {
@@ -156,6 +157,7 @@ TEST_F(SSLTest, diagnostic_print_releases_peer_certificate) {
     client_ctx.reset();
     EXPECT_TRUE(certificate_freed);
 }
+#endif  // USE_MESALINK
 
 void* RunClosure(void* arg) {
     google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
