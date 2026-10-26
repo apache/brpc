@@ -54,6 +54,7 @@
 #include "brpc/policy/transport_handshake_protocol.h"
 #include "brpc/urma/urma_stream_trace.h"
 #include "brpc/global.h"
+#include "brpc_urma_legacy_handshake.h"
 
 using namespace brpc;
 
@@ -1402,7 +1403,9 @@ static void InstallLegacyUrmaTransport(Socket* socket, SocketUser* user) {
     options.need_on_edge_trigger = true;
     auto transport = std::unique_ptr<UrmaTransport>(new UrmaTransport);
     transport->Init(socket, options);
-    transport->_on_edge_trigger = urma::UrmaEndpoint::OnNewDataFromTcp;
+    delete transport->_urma_ep;
+    transport->_urma_ep = new urma::LegacyUrmaEndpoint(socket);
+    transport->_on_edge_trigger = urma::LegacyUrmaEndpoint::OnNewDataFromTcp;
     transport->_default_connect = std::make_shared<urma::UrmaConnect>();
     socket->_app_connect = transport->_default_connect;
     socket->_transport = std::move(transport);
@@ -1560,8 +1563,8 @@ public:
             return 13;
         }
         urma::ParsedHello hello;
-        endpoint->MakeLocalParsedHello(&hello);
-        endpoint->ApplyRemoteHello(hello);
+        endpoint->GetLocalConnectionInfo(&hello);
+        endpoint->ApplyRemoteInfo(hello);
         if (endpoint->ImportPeer(hello) != 0) {
             return 14;
         }
@@ -1842,7 +1845,8 @@ static int RunUrmaHandshakeInterop(int version, bool polling, bool zerocopy,
     if (peer == UrmaInteropPeer::LEGACY_CLIENT) {
         auto* transport = static_cast<UrmaTransport*>(client->_transport.get());
         if (transport->_urma_state != UrmaTransport::URMA_ON ||
-            transport->GetUrmaEp()->_handshake_version != version) {
+            static_cast<urma::LegacyUrmaEndpoint*>(transport->GetUrmaEp())
+                ->_handshake_version != version) {
             return 39;
         }
     } else if (AdapterTransport::Get(client.get())->handshake_phase() !=
@@ -1926,7 +1930,8 @@ static int RunUrmaHandshakeInterop(int version, bool polling, bool zerocopy,
         return 49;
     }
     if (peer == UrmaInteropPeer::LEGACY_SERVER &&
-        accepted_ep->_handshake_version != version) {
+        static_cast<urma::LegacyUrmaEndpoint*>(accepted_ep)
+            ->_handshake_version != version) {
         return 50;
     }
     if (peer != UrmaInteropPeer::LEGACY_SERVER &&

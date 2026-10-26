@@ -33,11 +33,6 @@ class UrmaTransport : public Transport {
 friend class TransportFactory;
 friend class AdapterTransport;
 friend class urma::UrmaEndpoint;
-friend class urma::UrmaConnect;
-friend class urma::UrmaHandshakeServerV2;
-friend class urma::UrmaHandshakeClientV2;
-friend class urma::UrmaHandshakeServerV3;
-friend class urma::UrmaHandshakeClientV3;
 
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
@@ -62,7 +57,7 @@ public:
 
     bool UpgradeReady() const { return _urma_ep != nullptr; }
     int PrepareUpgradeResources(bool server_side);
-    int NegotiateUpgradeResources(const urma::ParsedHello& remote,
+    int NegotiateUpgradeResources(const urma::UrmaConnectionInfo& remote,
                                   bool server_side);
     void ActivateUpgrade();
     int StartUpgradeEvents();

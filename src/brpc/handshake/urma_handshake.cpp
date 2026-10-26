@@ -243,6 +243,38 @@ void TranslateV3Hello(const UrmaHello& message, ParsedHello* out) {
     out->seg_token_id = message.seg_token_id();
 }
 
+void FillV2Hello(const ParsedHello& p, v2_wire::HelloMessage* out) {
+    *out = v2_wire::HelloMessage{};  // value-initialize
+    out->msg_len = v2_wire::HELLO_PACKET_LEN;
+    out->hello_ver = v2_wire::HELLO_V2_VERSION;
+    out->impl_ver = v2_wire::IMPL_V2_VERSION;
+    out->buffer_size = p.buffer_size;
+    out->recv_buffer_cnt = p.recv_buffer_cnt;
+    out->jetty_id = p.jetty_id;
+    std::memcpy(out->eid, p.eid, 16);
+    out->uasid = p.uasid;
+    out->tp_type = p.tp_type;
+    std::memcpy(out->seg_eid, p.seg_eid, 16);
+    out->seg_uasid = p.seg_uasid;
+    out->seg_va = p.seg_va;
+    out->seg_len = p.seg_len;
+    out->seg_token_id = p.seg_token_id;
+}
+
+void FillV3Hello(const ParsedHello& p, UrmaHello* out) {
+    out->set_buffer_size(p.buffer_size);
+    out->set_recv_buffer_cnt(p.recv_buffer_cnt);
+    out->set_jetty_id(p.jetty_id);
+    out->set_eid(p.eid, 16);
+    out->set_uasid(p.uasid);
+    out->set_tp_type(p.tp_type);
+    out->set_seg_eid(p.seg_eid, 16);
+    out->set_seg_uasid(p.seg_uasid);
+    out->set_seg_va(p.seg_va);
+    out->set_seg_len(p.seg_len);
+    out->set_seg_token_id(p.seg_token_id);
+}
+
 }  // namespace
 
 const handshake::FrameSpec& UrmaHandshakeAdapter::HelloFrameSpec() const {
@@ -255,31 +287,20 @@ const handshake::FrameSpec& UrmaHandshakeAdapter::AckFrameSpec() const {
 
 handshake::StepResult UrmaHandshakeAdapter::BuildHello(
     bool enabled, std::string* payload) {
+    ParsedHello local;
+    if (enabled) {
+        CHECK(_ep != nullptr);
+        _ep->GetLocalConnectionInfo(&local);
+    }
     if (_version == 3) {
         UrmaHello message;
-        if (enabled) {
-            CHECK(_ep != nullptr);
-            _ep->FillLocalHelloV3(&message);
-        } else {
-            message.set_buffer_size(0);
-            message.set_recv_buffer_cnt(0);
-            message.set_jetty_id(0);
-            message.set_eid(std::string(16, '\0'));
-            message.set_uasid(0);
-            message.set_tp_type(0);
-            message.set_seg_eid(std::string(16, '\0'));
-            message.set_seg_uasid(0);
-            message.set_seg_va(0);
-            message.set_seg_len(0);
-            message.set_seg_token_id(0);
-        }
+        FillV3Hello(local, &message);
         return message.SerializeToString(payload)
             ? handshake::STEP_OK : handshake::STEP_ERROR;
     }
     v2_wire::HelloMessage message{};
     if (enabled) {
-        CHECK(_ep != nullptr);
-        _ep->FillLocalHelloV2(&message);
+        FillV2Hello(local, &message);
     } else {
         message.msg_len = v2_wire::HELLO_PACKET_LEN;
     }
@@ -346,173 +367,6 @@ CreateServerHandshakeAdapters(UrmaEndpoint* ep) {
     adapters.emplace_back(new UrmaHandshakeAdapter(ep, 2));
     adapters.emplace_back(new UrmaHandshakeAdapter(ep, 3));
     return adapters;
-}
-
-// File-local (not in the anonymous namespace so it can be friend-declared
-// from urma_endpoint.h's UrmaEndpoint). Reads the body following the magic
-// and translates it into ParsedHello.
-int ReadBodyAndNegotiate(UrmaEndpoint* ep, ParsedHello* out, bool* negotiated) {
-    *negotiated = false;
-    uint8_t body[v2_wire::HELLO_BODY_LEN];
-    if (ep->ReadFromFd(body, v2_wire::HELLO_BODY_LEN) < 0) {
-        return -1;
-    }
-    v2_wire::HelloMessage m;
-    m.Deserialize(body);
-    if (m.msg_len < v2_wire::HELLO_MSG_LEN_MIN ||
-        m.msg_len > v2_wire::HELLO_MSG_LEN_MAX ||
-        m.hello_ver != v2_wire::HELLO_V2_VERSION ||
-        m.impl_ver != v2_wire::IMPL_V2_VERSION) { return 0; }
-    ParsedHello p;
-    p.buffer_size = m.buffer_size;
-    p.recv_buffer_cnt = m.recv_buffer_cnt;
-    p.jetty_id = m.jetty_id;
-    std::memcpy(p.eid, m.eid, 16);
-    p.uasid = m.uasid;
-    p.tp_type = m.tp_type;
-    std::memcpy(p.seg_eid, m.seg_eid, 16);
-    p.seg_uasid = m.seg_uasid;
-    p.seg_va = m.seg_va;
-    p.seg_len = m.seg_len;
-    p.seg_token_id = m.seg_token_id;
-    if (!ValidHello(p)) {
-        return 0;
-    }
-    // Drain trailing bytes if msg_len advertises more than the fixed body.
-    if (m.msg_len > v2_wire::HELLO_PACKET_LEN) {
-        if (DrainBytes(ep, m.msg_len - v2_wire::HELLO_PACKET_LEN) < 0) {
-            return -1;
-        }
-    }
-    *out = p;
-    *negotiated = true;
-    return 0;
-}
-
-int DrainBytes(UrmaEndpoint* ep, size_t n) {
-    char buf[4096];
-    while (n > 0) {
-        size_t want = std::min(n, sizeof(buf));
-        if (ep->ReadFromFd(buf, want) < 0) {
-            return -1;
-        }
-        n -= want;
-    }
-    return 0;
-}
-
-// ============================================================================
-// v2 client / server.
-// ============================================================================
-
-int UrmaHandshakeClientV2::SendLocalHello() {
-    v2_wire::HelloMessage m;
-    _ep->FillLocalHelloV2(&m);
-    uint8_t packet[v2_wire::HELLO_PACKET_LEN];
-    std::memcpy(packet, "URMA", 4);
-    m.Serialize(packet + 4);
-    return _ep->WriteToFd(packet, v2_wire::HELLO_PACKET_LEN);
-}
-
-int UrmaHandshakeClientV2::ReceiveAndParseRemoteHello(ParsedHello* out,
-                                                      bool* negotiated) {
-    *negotiated = false;
-    uint8_t magic[v2_wire::MAGIC_STR_LEN];
-    if (_ep->ReadFromFd(magic, v2_wire::MAGIC_STR_LEN) < 0) {
-        return -1;
-    }
-    if (std::memcmp(magic, "URMA", 4) != 0) {
-        // Peer is not URMA-capable; push the magic back so the TCP input
-        // messenger can re-parse it.
-        _ep->PushBackToReadBuf(magic, v2_wire::MAGIC_STR_LEN);
-        return 0;
-    }
-    return ReadBodyAndNegotiate(_ep, out, negotiated);
-}
-
-int UrmaHandshakeServerV2::ReceiveAndParseRemoteHello(ParsedHello* out,
-                                                       bool* negotiated) {
-    return ReadBodyAndNegotiate(_ep, out, negotiated);
-}
-
-int UrmaHandshakeServerV2::SendLocalHello() {
-    v2_wire::HelloMessage m;
-    _ep->FillLocalHelloV2(&m);
-    auto* tp = static_cast<UrmaTransport*>(_ep->_socket->_transport.get());
-    if (tp->_urma_state.load(butil::memory_order_acquire) ==
-        UrmaTransport::URMA_OFF) {
-        // Tell the client we are not URMA-capable: zero the version fields so
-        // the client's version check fails and it falls back to TCP.
-        m.hello_ver = 0;
-        m.impl_ver = 0;
-        m.jetty_id = 0;
-        m.buffer_size = 0;
-    }
-    uint8_t packet[v2_wire::HELLO_PACKET_LEN];
-    std::memcpy(packet, "URMA", 4);
-    m.Serialize(packet + 4);
-    return _ep->WriteToFd(packet, v2_wire::HELLO_PACKET_LEN);
-}
-
-// ============================================================================
-// v3 protobuf ("URM3"). The protobuf (de)serialization lives on the endpoint
-// because it touches UrmaEndpoint private state; the classes here just call
-// FillLocalHelloV3 / WriteHelloV3 / ReadAndParseHelloV3.
-// ============================================================================
-
-int UrmaHandshakeClientV3::SendLocalHello() {
-    UrmaHello msg;
-    _ep->FillLocalHelloV3(&msg);
-    return _ep->WriteHelloV3(msg);
-}
-
-int UrmaHandshakeClientV3::ReceiveAndParseRemoteHello(ParsedHello* out,
-                                                      bool* negotiated) {
-    *negotiated = false;
-    uint8_t magic[v2_wire::MAGIC_STR_LEN];
-    if (_ep->ReadFromFd(magic, v2_wire::MAGIC_STR_LEN) < 0) {
-        return -1;
-    }
-    if (std::memcmp(magic, "URM3", 4) != 0) {
-        _ep->PushBackToReadBuf(magic, v2_wire::MAGIC_STR_LEN);
-        return 0;
-    }
-    return _ep->ReadAndParseHelloV3(out, negotiated);
-}
-
-int UrmaHandshakeServerV3::ReceiveAndParseRemoteHello(ParsedHello* out,
-                                                      bool* negotiated) {
-    return _ep->ReadAndParseHelloV3(out, negotiated);
-}
-
-int UrmaHandshakeServerV3::SendLocalHello() {
-    UrmaHello msg;
-    _ep->FillLocalHelloV3(&msg);
-    // v3 has no zero-out path; the client rejects jetty_id==0 via ValidHello.
-    return _ep->WriteHelloV3(msg);
-}
-
-// ============================================================================
-// Factories.
-// ============================================================================
-
-UrmaHandshake* CreateClientHandshake(UrmaEndpoint* ep) {
-    switch (FLAGS_urma_client_handshake_version) {
-    case 3: return new UrmaHandshakeClientV3(ep);
-    case 2:
-    default: return new UrmaHandshakeClientV2(ep);
-    }
-}
-
-UrmaHandshake* CreateServerHandshakeByMagic(UrmaEndpoint* ep,
-                                             const uint8_t magic[v2_wire::MAGIC_STR_LEN]) {
-    if (std::memcmp(magic, "URMA", 4) == 0) {
-        return new UrmaHandshakeServerV2(ep);
-    }
-    if (std::memcmp(magic, "URM3", 4) == 0) {
-        return new UrmaHandshakeServerV3(ep);
-    }
-    return nullptr;
 }
 
 }  // namespace urma

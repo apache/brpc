@@ -37,7 +37,7 @@ StepResult RunUrmaFallbackServerHandshake(butil::IOBuf* source, Socket* socket);
 
 #if BRPC_WITH_URMA
 
-#include "urma_types.h"
+#include "brpc/urma/urma_endpoint.h"
 #include "brpc/transport_handshake.h"
 
 namespace brpc {
@@ -45,25 +45,7 @@ namespace urma {
 
 class UrmaEndpoint;
 
-// Wire-format-agnostic view of a peer's hello message. Both v2 (binary) and
-// v3 (protobuf) translate the bytes on the wire into this struct. The endpoint
-// then uses ApplyRemoteHello to size its send/recv windows and to drive
-// urma_import_seg / urma_import_jetty.
-struct ParsedHello {
-    uint32_t buffer_size = 0;      // peer recv buffer size in bytes (per WR)
-    uint32_t recv_buffer_cnt = 0;  // peer recv buffer count (RQ depth - 1)
-    uint32_t jetty_id = 0;         // peer jetty id
-    uint8_t eid[16] = {0};          // peer EID (network order)
-    uint32_t uasid = 0;             // peer uasid
-    uint8_t tp_type = 0;            // urma_tp_type_t: URMA_RTP / URMA_CTP / URMA_UTP
-
-    // Flattened peer buffer-pool segment.
-    uint8_t seg_eid[16] = {0};      // EID owning the peer segment
-    uint32_t seg_uasid = 0;         // uasid owning the peer segment
-    uint64_t seg_va = 0;            // segment virtual address
-    uint64_t seg_len = 0;          // segment length in bytes
-    uint32_t seg_token_id = 0;      // segment token id
-};
+using ParsedHello = UrmaConnectionInfo;
 
 // Validate all values that influence resource import and queue/window sizing.
 // Both v2 and v3 handshakes must pass this check before negotiation succeeds.
@@ -108,24 +90,6 @@ struct HelloMessage {
 
 }  // namespace v2_wire
 
-// Legacy TCP handshake strategy used by interoperability tests.
-// v2 speaks binary; v3 speaks protobuf ("URM3").
-class UrmaHandshake {
-public:
-    virtual ~UrmaHandshake() = default;
-    virtual int ProtocolVersion() const = 0;
-
-    // Send our local hello over the TCP fd held by the endpoint.
-    // Returns 0 on success, -1 on failure (errno set).
-    virtual int SendLocalHello() = 0;
-
-    // Read the peer's hello and parse it into @out. Sets @negotiated to true
-    // if the peer is URMA-capable and the message validates; false (with
-    // return 0) to signal a graceful fall-back to TCP.
-    // Returns -1 on IO error (errno set).
-    virtual int ReceiveAndParseRemoteHello(ParsedHello* out, bool* negotiated) = 0;
-};
-
 // Wire-format adapter used by the common transport handshake.
 // Stores the selected protocol version and parsed peer hello;
 // UrmaEndpoint owns the local and imported URMA resources.
@@ -153,69 +117,6 @@ std::unique_ptr<UrmaHandshakeAdapter> CreateClientHandshakeAdapter(
     UrmaEndpoint* ep);
 std::vector<std::unique_ptr<UrmaHandshakeAdapter> >
 CreateServerHandshakeAdapters(UrmaEndpoint* ep);
-
-// v2 binary handshake (magic "URMA").
-class UrmaHandshakeClientV2 : public UrmaHandshake {
-public:
-    explicit UrmaHandshakeClientV2(UrmaEndpoint* ep) : _ep(ep) {}
-    int ProtocolVersion() const override { return 2; }
-    int SendLocalHello() override;
-    int ReceiveAndParseRemoteHello(ParsedHello* out, bool* negotiated) override;
-
-private:
-    UrmaEndpoint* _ep;
-};
-
-class UrmaHandshakeServerV2 : public UrmaHandshake {
-public:
-    explicit UrmaHandshakeServerV2(UrmaEndpoint* ep) : _ep(ep) {}
-    int ProtocolVersion() const override { return 2; }
-    int SendLocalHello() override;
-    int ReceiveAndParseRemoteHello(ParsedHello* out, bool* negotiated) override;
-
-private:
-    UrmaEndpoint* _ep;
-};
-
-// v3 protobuf handshake (magic "URM3").
-class UrmaHandshakeClientV3 : public UrmaHandshake {
-public:
-    explicit UrmaHandshakeClientV3(UrmaEndpoint* ep) : _ep(ep) {}
-    int ProtocolVersion() const override { return 3; }
-    int SendLocalHello() override;
-    int ReceiveAndParseRemoteHello(ParsedHello* out, bool* negotiated) override;
-
-private:
-    UrmaEndpoint* _ep;
-};
-
-class UrmaHandshakeServerV3 : public UrmaHandshake {
-public:
-    explicit UrmaHandshakeServerV3(UrmaEndpoint* ep) : _ep(ep) {}
-    int ProtocolVersion() const override { return 3; }
-    int SendLocalHello() override;
-    int ReceiveAndParseRemoteHello(ParsedHello* out, bool* negotiated) override;
-
-private:
-    UrmaEndpoint* _ep;
-};
-
-// Legacy client factory: picks v2/v3 via --urma_client_handshake_version.
-UrmaHandshake* CreateClientHandshake(UrmaEndpoint* ep);
-
-// Legacy server factory: dispatches on the first 4 bytes read from the TCP fd.
-// Returns nullptr if the magic is not "URMA"/"URM3" (caller falls back to TCP).
-// @magic is the first MAGIC_STR_LEN bytes already read from the fd.
-UrmaHandshake* CreateServerHandshakeByMagic(UrmaEndpoint* ep,
-                                             const uint8_t magic[v2_wire::MAGIC_STR_LEN]);
-
-// Drain @n bytes from the TCP fd (used when msg_len > HELLO_MSG_LEN_MIN).
-int DrainBytes(UrmaEndpoint* ep, size_t n);
-
-// Read the body following the magic and translate to ParsedHello. Friend of
-// UrmaEndpoint. Returns -1 on IO error; 0 with *negotiated=false on invalid
-// (peer not URMA-capable); 0 with *negotiated=true on success.
-int ReadBodyAndNegotiate(UrmaEndpoint* ep, ParsedHello* out, bool* negotiated);
 
 }  // namespace urma
 }  // namespace brpc

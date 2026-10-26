@@ -196,9 +196,9 @@ int UrmaTransport::PrepareUpgradeResources(bool server_side) {
 }
 
 int UrmaTransport::NegotiateUpgradeResources(
-    const urma::ParsedHello& remote, bool server_side) {
+    const urma::UrmaConnectionInfo& remote, bool server_side) {
     CHECK(_urma_ep != nullptr);
-    _urma_ep->ApplyRemoteHello(remote);
+    _urma_ep->ApplyRemoteInfo(remote);
     if (_urma_ep->ImportPeer(remote) < 0) {
         return -1;
     }
