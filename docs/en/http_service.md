@@ -283,7 +283,7 @@ cntl->http_request().uri().SetQuery("time", "2015/1/2");
 
 # Debugging
 
-Turn on [-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose) to print contents of all http requests and responses. Note that this should only be used for debugging rather than online services.
+Turn on [-http_verbose](http://localhost:8765/flags/http_verbose) to print contents of all http requests and responses. Note that this should only be used for debugging rather than online services.
 
 # Compress the response body
 

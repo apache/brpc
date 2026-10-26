@@ -267,7 +267,7 @@ Join()完成后可以修改其中的Service，并重新Start。
 
 ```shell
 # -H 'Content-Type: application/json' is optional
-$ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
+$ curl -d '{"message":"hello"}' http://localhost:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
@@ -372,7 +372,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 如果一个连接在ServerOptions.idle_timeout_sec对应的时间内没有读取或写出数据，则被视为”闲置”而被server主动关闭。默认值为-1，代表不开启。
 
-打开[-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close)后关闭前会打印一条日志。
+打开[-log_idle_connection_close](http://localhost:8765/flags/log_idle_connection_close)后关闭前会打印一条日志。
 
 | Name                      | Value | Description                              | Defined At          |
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
@@ -396,13 +396,13 @@ Acceptor会在创建brpc Socket前预留连接名额，因此空闲连接和尚�
 
 此功能只对[butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h)中的日志宏有效。
 
-打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
+打开[-log_hostname](http://localhost:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
 
 ## 打印FATAL日志后退出程序
 
 此功能只对[butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h)中的日志宏有效，glog默认在FATAL日志时crash。
 
-打开[-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log)后如果程序使用LOG(FATAL)打印了异常日志或违反了CHECK宏中的断言，那么程序会在打印日志后abort，这一般也会产生coredump文件，默认不打开。这个开关可在对程序的压力测试中打开，以确认程序没有进入过严重错误的分支。
+打开[-crash_on_fatal_log](http://localhost:8765/flags/crash_on_fatal_log)后如果程序使用LOG(FATAL)打印了异常日志或违反了CHECK宏中的断言，那么程序会在打印日志后abort，这一般也会产生coredump文件，默认不打开。这个开关可在对程序的压力测试中打开，以确认程序没有进入过严重错误的分支。
 
 > 一般的惯例是，ERROR表示可容忍的错误，FATAL代表不可逆转的错误。
 
@@ -420,7 +420,7 @@ Acceptor会在创建brpc Socket前预留连接名额，因此空闲连接和尚�
 
 ## 打印发送给client的错误
 
-server的框架部分一般不针对个别client打印错误日志，因为当大量client出现错误时，可能导致server高频打印日志而严重影响性能。但有时为了调试问题，或就是需要让server打印错误，打开参数[-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text)即可。
+server的框架部分一般不针对个别client打印错误日志，因为当大量client出现错误时，可能导致server高频打印日志而严重影响性能。但有时为了调试问题，或就是需要让server打印错误，打开参数[-log_error_text](http://localhost:8765/flags/log_error_text)即可。
 
 ## 定制延时的分位值
 
@@ -450,7 +450,7 @@ brpc的Server是运行在bthread之上，默认栈大小为1MB，而pthread默�
 
 ## 限制最大消息
 
-为了保护server和client，当server收到的request或client收到的response过大时，server或client会拒收并关闭连接。此最大尺寸由[-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size)控制，单位为字节。
+为了保护server和client，当server收到的request或client收到的response过大时，server或client会拒收并关闭连接。此最大尺寸由[-max_body_size](http://localhost:8765/flags/max_body_size)控制，单位为字节。
 
 超过最大消息时会打印如下错误日志：
 
