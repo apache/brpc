@@ -308,6 +308,25 @@ TEST(EndPointTest, original_endpoint) {
     ASSERT_EQ(ep.port, ep2.port);
 }
 
+TEST(EndPointTest, self_assignment) {
+    const char* addresses[] = {
+        "0.0.0.0:0", "1.2.3.4:5678", "[::1]:8080", "unix:sock.file"
+    };
+    for (const char* address : addresses) {
+        SCOPED_TRACE(address);
+        butil::EndPoint ep;
+        ASSERT_EQ(0, butil::str2endpoint(address, &ep));
+        ExtendedEndPoint* eep = ExtendedEndPoint::address(ep);
+        const butil::EndPoint& alias = ep;
+        ep = alias;
+        ASSERT_STREQ(address, butil::endpoint2str(ep).c_str());
+        ASSERT_EQ(eep, ExtendedEndPoint::address(ep));
+        if (eep != nullptr) {
+            ASSERT_EQ(1, eep->_ref_count.load());
+        }
+    }
+}
+
 TEST(EndPointTest, extended_endpoint) {
     butil::EndPoint ep;
     ASSERT_EQ(0, butil::str2endpoint("unix:sock.file", &ep));

@@ -110,6 +110,9 @@ EndPoint::~EndPoint() {
 }
 
 void EndPoint::operator=(const EndPoint& rhs) {
+    if (this == &rhs) {
+        return;
+    }
     reset();
     set_endpoint(this, rhs.ip, rhs.port);
 }
