@@ -30,6 +30,52 @@
 #include "bvar/latency_recorder.h"
 #include <gtest/gtest.h>
 
+namespace bvar {
+namespace detail {
+
+// Give the real QPS APIs a fixed history without racing the sampling thread.
+// The recorder's original sampler remains registered and is restored before
+// destruction. Only this replacement sampler's queue is modified by the test.
+class LatencyRecorderTestPeer {
+public:
+    LatencyRecorderTestPeer(RecorderWindow& window, IntRecorder& recorder,
+                            int count)
+        : _window(window), _original(window._sampler),
+          _sampler(new IntRecorder::sampler_type(&recorder)) {
+        CHECK_EQ(0, _sampler->set_window_size(4));
+        _sampler->take_sample();  // Allocate room for five snapshots.
+        _sampler->_q.clear();
+        for (int i = 0; i <= 4; ++i) {
+            CHECK(_sampler->_q.push(Sample<Stat>(
+                i == 4 ? Stat(count, count) : Stat(), i * 1000000L)));
+        }
+        _sampler->add_borrower();
+        _window._sampler = _sampler.get();
+        // Keep the original borrow alive until it is restored.
+    }
+
+    ~LatencyRecorderTestPeer() {
+        _window._sampler = _original;
+        _sampler->remove_borrower();
+    }
+
+    void advance() {
+        Sample<Stat> next = *_sampler->_q.bottom();
+        next.time_us += 1000000L;
+        _sampler->_q.elim_push(next);
+    }
+
+private:
+    LatencyRecorderTestPeer(const LatencyRecorderTestPeer&) = delete;
+    LatencyRecorderTestPeer& operator=(const LatencyRecorderTestPeer&) = delete;
+    RecorderWindow& _window;
+    IntRecorder::sampler_type* _original;
+    std::unique_ptr<IntRecorder::sampler_type> _sampler;
+};
+
+}  // namespace detail
+}  // namespace bvar
+
 namespace {
 #if !WITH_BABYLON_COUNTER
 TEST(RecorderTest, test_complement) {
@@ -230,12 +276,9 @@ public:
         return _latency_window.get_span(window_size, sample);
     }
 
-    bool has_full_latency_window() const {
-        std::vector<bvar::Stat> samples;
-        _latency_window.get_samples(&samples);
-        // get_samples() excludes the oldest snapshot used by get_span().
-        return samples.size() + 1 ==
-            static_cast<size_t>(_latency_window.window_size());
+    std::unique_ptr<bvar::detail::LatencyRecorderTestPeer> fixed_history(int count) {
+        return std::unique_ptr<bvar::detail::LatencyRecorderTestPeer>(
+            new bvar::detail::LatencyRecorderTestPeer(_latency_window, _latency, count));
     }
 };
 
@@ -291,87 +334,52 @@ TEST(RecorderTest, latency_recorder_window_statistics) {
 }
 
 TEST(RecorderTest, latency_recorder_qps_accuracy) {
-    LatencyRecorderWithWindowSample lr1_2s(2);
-    LatencyRecorderWithWindowSample lr2_2s(2);
-    LatencyRecorderWithWindowSample lr3_2s(2);
-    LatencyRecorderWithWindowSample lr4_2s(2);
-    LatencyRecorderWithWindowSample lr1_3s(3);
-    LatencyRecorderWithWindowSample lr2_3s(3);
-    LatencyRecorderWithWindowSample lr3_3s(3);
-    LatencyRecorderWithWindowSample lr4_3s(3);
+    for (int count : {10, 11, 3, 1}) {
+        for (time_t window : {2, 3}) {
+            SCOPED_TRACE(::testing::Message() << "count=" << count
+                                             << " window=" << window);
+            // Default qps() uses two seconds; explicit qps(3) must override
+            // a four-second default.
+            LatencyRecorderWithWindowSample lr(window == 2 ? 2 : 4);
+            auto history = lr.fixed_history(count);
+            bvar::detail::Sample<bvar::Stat> sample;
+            ASSERT_TRUE(lr.get_latency_sample(window, &sample));
+            ASSERT_EQ(count, sample.data.num);
+            ASSERT_EQ(window * 1000000L, sample.time_us);
 
-    auto write = [](bvar::LatencyRecorder& lr, int times) {   
-        for (int i = 0; i < times; ++i) {
-            lr << 1;
-        }
-    };
-
-    // Fill the windows before writing the test batch. This keeps the batch in
-    // a complete window for multiple sampler ticks instead of just one.
-    const int64_t full_window_deadline =
-        butil::monotonic_time_us() + 5 * 1000000L;
-    bool full_windows = false;
-    while (butil::monotonic_time_us() < full_window_deadline) {
-        full_windows = lr1_2s.has_full_latency_window() &&
-            lr2_2s.has_full_latency_window() &&
-            lr3_2s.has_full_latency_window() &&
-            lr4_2s.has_full_latency_window() &&
-            lr1_3s.has_full_latency_window() &&
-            lr2_3s.has_full_latency_window() &&
-            lr3_3s.has_full_latency_window() &&
-            lr4_3s.has_full_latency_window();
-        if (full_windows) {
-            break;
-        }
-        usleep(10000);
-    }
-    ASSERT_TRUE(full_windows) << "Latency windows were not fully sampled";
-
-    write(lr1_2s, 10);
-    write(lr2_2s, 11);
-    write(lr3_2s, 3);
-    write(lr4_2s, 1);
-    write(lr1_3s, 10);
-    write(lr2_3s, 11);
-    write(lr3_3s, 3);
-    write(lr4_3s, 1);
-
-    auto check_qps = [](LatencyRecorderWithWindowSample& lr, int count,
-                        time_t window_size, bool use_default_window) {
-        const int64_t deadline = butil::monotonic_time_us() + 5 * 1000000L;
-        while (butil::monotonic_time_us() < deadline) {
-            bvar::detail::Sample<bvar::Stat> before;
-            if (lr.get_latency_sample(window_size, &before) &&
-                lr.has_full_latency_window() &&
-                before.data.num == count && before.time_us > 0) {
-                // qps() reads the window again. Only compare it with `before'
-                // when no sampler tick occurs between the two reads.
-                const int64_t qps = use_default_window
-                    ? lr.qps() : lr.qps(window_size);
-                bvar::detail::Sample<bvar::Stat> after;
-                if (!lr.get_latency_sample(window_size, &after) ||
-                    after.time_us != before.time_us) {
-                    continue;
-                }
-                const double expected_qps =
-                    before.data.num * 1000000.0 / before.time_us;
-                EXPECT_GE(qps, static_cast<int64_t>(std::floor(expected_qps)));
-                EXPECT_LE(qps, static_cast<int64_t>(std::ceil(expected_qps)));
-                return;
+            const double expected = count / static_cast<double>(window);
+            int64_t total = 0;
+            const int trials = 10000;
+            for (int i = 0; i < trials; ++i) {
+                const int64_t value = window == 2 ? lr.qps() : lr.qps(window);
+                ASSERT_GE(value, static_cast<int64_t>(std::floor(expected)));
+                ASSERT_LE(value, static_cast<int64_t>(std::ceil(expected)));
+                total += value;
             }
-            usleep(10000);
-        }
-        ADD_FAILURE() << "Recorded latencies were not sampled";
-    };
+            // Exercise rounding through the public APIs, including low QPS.
+            // For independent uniform draws, Hoeffding bounds the chance of
+            // this tolerance failing at less than 2*exp(-50) per case.
+            EXPECT_NEAR(expected, total / static_cast<double>(trials), 0.05);
 
-    check_qps(lr1_2s, 10, 2, true);
-    check_qps(lr2_2s, 11, 2, true);
-    check_qps(lr3_2s, 3, 2, true);
-    check_qps(lr4_2s, 1, 2, true);
-    check_qps(lr1_3s, 10, 3, false);
-    check_qps(lr2_3s, 11, 3, false);
-    check_qps(lr3_3s, 3, 3, false);
-    check_qps(lr4_3s, 1, 3, false);
+            // Move the batch out of the requested window. Duration stays the
+            // same while count becomes zero, reproducing the rollover case.
+            for (time_t i = 0; i < window; ++i) {
+                history->advance();
+            }
+            ASSERT_TRUE(lr.get_latency_sample(window, &sample));
+            EXPECT_EQ(0, sample.data.num);
+            EXPECT_EQ(window * 1000000L, sample.time_us);
+            EXPECT_EQ(0, window == 2 ? lr.qps() : lr.qps(window));
+        }
+    }
+}
+
+TEST(RecorderTest, latency_recorder_qps_rounding) {
+    // A random value equal to the fractional part rounds down.
+    EXPECT_EQ(10, bvar::detail::double_to_random_int(10.25, 0.25));
+    EXPECT_EQ(11, bvar::detail::double_to_random_int(10.25, 0.24));
+    EXPECT_EQ(10, bvar::detail::double_to_random_int(10.0, 0.0));
+    EXPECT_EQ(11, bvar::detail::double_to_random_int(10.75, 0.1));
 }
 
 } // namespace
