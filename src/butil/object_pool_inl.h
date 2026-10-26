@@ -31,6 +31,7 @@
 #include "butil/macros.h"                 // BAIDU_CACHELINE_ALIGNMENT
 #include "butil/scoped_lock.h"            // BAIDU_SCOPED_LOCK
 #include "butil/thread_local.h"           // BAIDU_THREAD_LOCAL
+#include "butil/time.h"                   // monotonic_time_us
 #include "butil/memory/aligned_memory.h"  // butil::AlignedMemory
 #include "butil/debug/address_annotations.h"
 
@@ -117,7 +118,11 @@ public:
     // Free objects are batched in a FreeChunk before they're added to
     // global list(_free_chunks).
     typedef ObjectPoolFreeChunk<T, FREE_CHUNK_NITEM>    FreeChunk;
-    typedef ObjectPoolFreeChunk<T, 0> DynamicFreeChunk;
+    struct GlobalFreeChunk {
+        int64_t push_us;
+        size_t nfree;
+        T* ptrs[0];
+    };
 #ifdef BUTIL_USE_ASAN
     // According to https://github.com/google/sanitizers/wiki/AddressSanitizerManualPoisoning ,
     // The allocated chunks should start with 8-aligned addresses,
@@ -307,6 +312,44 @@ public:
         return (n < FREE_CHUNK_NITEM ? n : FREE_CHUNK_NITEM);
     }
 
+    template <typename Fn>
+    size_t process_idle_objects(int64_t idle_us, size_t max_items, Fn& fn) {
+        static_assert(noexcept(std::declval<Fn&>()(std::declval<T*>())),
+                      "idle object callback must be noexcept");
+        if (idle_us < 0 || max_items == 0) {
+            return 0;
+        }
+        std::vector<GlobalFreeChunk*> batch;
+        size_t nchunk = 0;
+        size_t nitem = 0;
+        int64_t deadline = monotonic_time_us() - idle_us;
+        {
+            BAIDU_SCOPED_LOCK(_free_chunks_mutex);
+            while (nchunk < _free_chunks.size() &&
+                   nitem < max_items && _free_chunks[nchunk]->push_us <= deadline) {
+                nitem += _free_chunks[nchunk]->nfree;
+                ++nchunk;
+            }
+            batch.assign(_free_chunks.begin(), _free_chunks.begin() + nchunk);
+            _free_chunks.erase(_free_chunks.begin(), _free_chunks.begin() + nchunk);
+            publish_nchunks_locked();
+        }
+        for (size_t i = 0; i < nchunk; ++i) {
+            for (size_t j = 0; j < batch[i]->nfree; ++j) {
+                T* obj = batch[i]->ptrs[j];
+                OBJECT_POOL_ASAN_UNPOISON_MEMORY_REGION(obj);
+                fn(obj);
+                OBJECT_POOL_ASAN_POISON_MEMORY_REGION(obj);
+            }
+        }
+        if (nchunk != 0) {
+            BAIDU_SCOPED_LOCK(_free_chunks_mutex);
+            _cold_chunks.insert(_cold_chunks.end(), batch.begin(), batch.end());
+            publish_nchunks_locked();
+        }
+        return nitem;
+    }
+
     // Number of all allocated objects, including being used and free.
     ObjectPoolInfo describe_objects() const {
         ObjectPoolInfo info;
@@ -355,9 +398,8 @@ public:
     }
 
 private:
-    ObjectPool() {
+    ObjectPool() : _nchunks(0) {
         _free_chunks.reserve(OP_INITIAL_FREE_LIST_SIZE);
-        _nfree_chunks.store(0, butil::memory_order_relaxed);
         pthread_mutex_init(&_free_chunks_mutex, nullptr);
 #if defined(BUTIL_USE_ASAN) && \
     !defined(BAIDU_CLEAR_OBJECT_POOL_AFTER_ALL_THREADS_QUIT)
@@ -536,21 +578,28 @@ private:
     }
 
 private:
+    void publish_nchunks_locked() {
+        _nchunks.store(_free_chunks.size() + _cold_chunks.size(),
+                       butil::memory_order_relaxed);
+    }
+
     bool pop_free_chunk(FreeChunk& c) {
         // This relaxed load is only a hint that avoids contending on the
-        // mutex when the shared free list is empty. The list itself remains
-        // protected by _free_chunks_mutex below.
-        if (_nfree_chunks.load(butil::memory_order_relaxed) == 0) {
+        // mutex when both shared free lists are empty. Both lists remain
+        // protected by `_free_chunks_mutex` below.
+        if (_nchunks.load(butil::memory_order_relaxed) == 0) {
             return false;
         }
         pthread_mutex_lock(&_free_chunks_mutex);
-        if (_free_chunks.empty()) {
+        std::vector<GlobalFreeChunk*>& list =
+            _free_chunks.empty() ? _cold_chunks : _free_chunks;
+        if (list.empty()) {
             pthread_mutex_unlock(&_free_chunks_mutex);
             return false;
         }
-        DynamicFreeChunk* p = _free_chunks.back();
-        _free_chunks.pop_back();
-        _nfree_chunks.fetch_sub(1, butil::memory_order_relaxed);
+        GlobalFreeChunk* p = list.back();
+        list.pop_back();
+        publish_nchunks_locked();
         pthread_mutex_unlock(&_free_chunks_mutex);
         c.nfree = p->nfree;
         memcpy(c.ptrs, p->ptrs, sizeof(*p->ptrs) * p->nfree);
@@ -559,16 +608,21 @@ private:
     }
 
     bool push_free_chunk(const FreeChunk& c) {
-        DynamicFreeChunk* p = (DynamicFreeChunk*)malloc(
-            offsetof(DynamicFreeChunk, ptrs) + sizeof(*c.ptrs) * c.nfree);
+        if (c.nfree == 0) {
+            return true;
+        }
+        GlobalFreeChunk* p = (GlobalFreeChunk*)malloc(
+            offsetof(GlobalFreeChunk, ptrs) + sizeof(*c.ptrs) * c.nfree);
         if (!p) {
             return false;
         }
         p->nfree = c.nfree;
         memcpy(p->ptrs, c.ptrs, sizeof(*c.ptrs) * c.nfree);
         pthread_mutex_lock(&_free_chunks_mutex);
+        // Timestamp under the lock so the list is ordered by idle age.
+        p->push_us = monotonic_time_us();
         _free_chunks.push_back(p);
-        _nfree_chunks.fetch_add(1, butil::memory_order_relaxed);
+        publish_nchunks_locked();
         pthread_mutex_unlock(&_free_chunks_mutex);
         return true;
     }
@@ -582,9 +636,11 @@ private:
     static pthread_mutex_t _change_thread_mutex;
     static butil::static_atomic<BlockGroup*> _block_groups[OP_MAX_BLOCK_NGROUP];
 
-    std::vector<DynamicFreeChunk*> _free_chunks;
+    std::vector<GlobalFreeChunk*> _free_chunks;
+    // Processed idle chunks, reused only when `_free_chunks` is empty.
+    std::vector<GlobalFreeChunk*> _cold_chunks;
+    butil::atomic<size_t> _nchunks;
     pthread_mutex_t _free_chunks_mutex;
-    butil::static_atomic<size_t> _nfree_chunks;
 
 #ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
     static butil::static_atomic<size_t> _global_nfree;

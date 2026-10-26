@@ -685,8 +685,9 @@ else
     GTEST_HDR=$(find_dir_of_header_or_die gtest/gtest.h)
     append_to_output_libs $GTEST_LIB "    "
     append_to_output_headers $GTEST_HDR "    "
-    append_to_output_linkings $GTEST_LIB gtest "    "
+    # gtest_main depends on gtest, including when all tests are compiled out.
     append_to_output_linkings $GTEST_LIB gtest_main "    "
+    append_to_output_linkings $GTEST_LIB gtest "    "
 fi
 append_to_output "endif"
 
