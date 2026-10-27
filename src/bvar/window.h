@@ -43,7 +43,6 @@ namespace detail {
 // Just for constructor reusing of Window<>
 template <typename R, SeriesFrequency series_freq>
 class WindowBase : public Variable {
-    friend class LatencyRecorderTestPeer;
 public:
     typedef typename R::value_type value_type;
     typedef typename R::sampler_type sampler_type;

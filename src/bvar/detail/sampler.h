@@ -182,7 +182,6 @@ private:
 // sampling immune to R being destructed first.
 template <typename R, typename T, typename Op, typename InvOp>
 class ReducerSampler : public Sampler {
-    friend class LatencyRecorderTestPeer;
     typedef typename butil::conditional<
         HasShareCombiner<R>::value,
         CombinerSampleSource<R, T, Op, InvOp>,
