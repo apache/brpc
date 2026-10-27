@@ -29,7 +29,7 @@ cmake \
     -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
     -DCMAKE_C_FLAGS="$CFLAGS" -DCMAKE_CXX_FLAGS="$CFLAGS" -DCMAKE_CPP_FLAGS="$CFLAGS" \
     -DCMAKE_EXE_LINKER_FLAGS="$CFLAGS" -DLIB_FUZZING_ENGINE="$LIB_FUZZING_ENGINE" \
-    -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=OFF -DWITH_SNAPPY=ON -DBUILD_UNIT_TESTS=ON -DBUILD_FUZZ_TESTS=ON ../.
+    -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=OFF -DWITH_SNAPPY=ON -DBUILD_UNIT_TESTS=ON -DBUILD_FUZZ_TESTS=ON -DWITH_THRIFT=ON ../.
 
 # https://github.com/google/oss-fuzz/pull/10898
 make \
@@ -37,13 +37,13 @@ make \
     fuzz_redis fuzz_shead fuzz_sofa fuzz_uri \
     fuzz_baidu_rpc fuzz_mongo fuzz_memcache \
     fuzz_couchbase fuzz_streaming fuzz_http_parser \
-    fuzz_amf fuzz_rtmp --ignore-errors -j$(nproc)
+    fuzz_amf fuzz_rtmp fuzz_thrift --ignore-errors -j$(nproc)
 
 cp test/fuzz_* $OUT/
 
 pushd /lib/x86_64-linux-gnu/
 mkdir -p $OUT/lib/
-cp libgflags* libprotobuf* libleveldb* libprotoc* libsnappy* $OUT/lib/.
+cp libgflags* libprotobuf* libleveldb* libprotoc* libsnappy* libthrift* $OUT/lib/.
 popd
 
 pushd $SRC/brpc/test/fuzzing
@@ -57,4 +57,5 @@ zip $OUT/fuzz_hpack_seed_corpus.zip fuzz_hpack_seed_corpus/*
 # Generate rtmp's seeds gen_rtmp_seed_corpus.py
 python3 gen_rtmp_seed_corpus.py fuzz_rtmp_seed_corpus
 zip $OUT/fuzz_rtmp_seed_corpus.zip  fuzz_rtmp_seed_corpus/*
+zip $OUT/fuzz_thrift_seed_corpus.zip fuzz_thrift_seed_corpus/*
 popd

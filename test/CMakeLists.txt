@@ -345,7 +345,7 @@ if(BUILD_FUZZ_TESTS)
         fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri
         fuzz_baidu_rpc fuzz_mongo fuzz_memcache
         fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf
-        fuzz_rtmp)
+        fuzz_rtmp fuzz_thrift)
 
 
     foreach(target ${FUZZ_TARGETS})
