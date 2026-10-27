@@ -639,7 +639,8 @@ TEST_F(HttpTest, process_request_wrong_method) {
 
 TEST_F(HttpTest, grpc_response_status_validation) {
     const std::string invalid[] = {
-        "", "invalid", "0junk", " 0", "0 ", "4294967296",
+        "", "invalid", "0junk", "+0", "-0", "-1", " 0", "0 ",
+        "4294967296",
         "18446744073709551616", std::string(1000, '9'),
         std::string("0\0junk", 6),
     };
@@ -660,9 +661,7 @@ TEST_F(HttpTest, grpc_response_status_validation) {
     for (const auto& status : invalid) {
         check(status, brpc::ERESPONSE);
     }
-    check("+0", 0);
     check("000", 0);
-    check("-1", brpc::GrpcStatusToErrorCode(brpc::GRPC_UNKNOWN));
     check("17", brpc::GrpcStatusToErrorCode(brpc::GRPC_UNKNOWN));
     check("256", brpc::GrpcStatusToErrorCode(brpc::GRPC_UNKNOWN));
     for (int code = brpc::GRPC_OK; code < brpc::GRPC_MAX; ++code) {

@@ -422,7 +422,14 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             const std::string* grpc_status = res_header->GetHeader(common->GRPC_STATUS);
             if (grpc_status) {
                 int code = 0;
-                if (!butil::StringToInt(*grpc_status, &code)) {
+                bool valid = !grpc_status->empty();
+                for (char c : *grpc_status) {
+                    if (c < '0' || c > '9') {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (!valid || !butil::StringToInt(*grpc_status, &code)) {
                     cntl->SetFailed(ERESPONSE, "Invalid grpc-status header");
                     break;
                 }
