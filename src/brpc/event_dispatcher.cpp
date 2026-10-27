@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
+#include <stdlib.h>                                  // `atexit`
 #include <gflags/gflags.h>                            // DEFINE_int32
 #include "butil/compat.h"
 #include "butil/fd_utility.h"                         // make_close_on_exec
@@ -58,9 +58,23 @@ static void StopAndJoinGlobalDispatchers() {
 }
 
 void InitializeGlobalDispatchers() {
+    // A dispatcher may switch bthreads through `bthread_start_urgent()`
+    // while handling events. Waiting in `epoll_wait`/`kevent` blocks its worker
+    // pthread. Reserve one extra worker per dispatcher to compensate for that
+    // blocked capacity and preserve the normal concurrency configured by
+    // `ServerOptions.num_threads` or `-bthread_concurrency`.
+    // Without reservations, `event_dispatcher_num >= num_threads` can leave
+    // all workers blocked in dispatcher waits, preventing other work.
+    for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
+        bthread_tag_t tag = (BTHREAD_TAG_DEFAULT + i) % FLAGS_task_group_ntags;
+        int rc = bthread_add_reserved_concurrency_by_tag(
+            FLAGS_event_dispatcher_num, tag);
+        CHECK_EQ(0, rc) << "Fail to reserve " << FLAGS_event_dispatcher_num
+                        << " workers for event dispatchers of tag=" << tag
+                        << ": " << berror(rc);
+    }
     g_edisp_read_lantency = new bvar::LatencyRecorder("event_dispatcher_read");
     g_edisp_write_lantency = new bvar::LatencyRecorder("event_dispatcher_write");
-
     g_edisp = new EventDispatcher[FLAGS_task_group_ntags * FLAGS_event_dispatcher_num];
     for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
         for (int j = 0; j < FLAGS_event_dispatcher_num; ++j) {

@@ -151,20 +151,41 @@ extern int bthread_getattr(bthread_t bt, bthread_attr_t* attr);
 // Functions for scheduling control.
 // ---------------------------------------------
 
-// Get number of worker pthreads
+// We distinguish normal, reserved, and total concurrency.
+// Total concurrency is normal + reserved. The configuration below controls only
+// normal concurrency.
+// `bthread_add_reserved_concurrency_by_tag()` adds reservations.
+// The bvar `bthread_worker_count` reports the running total.
+//
+// Get the configured normal concurrency. When `-bthread_min_concurrency` is
+// positive, normal workers grow lazily and their current count may be lower.
 extern int bthread_getconcurrency(void);
 
-// Set number of worker pthreads to `num'. After a successful call,
-// bthread_getconcurrency() shall return new set number, but workers may
+// Set normal concurrency to `num`. After a successful call,
+// `bthread_getconcurrency()` shall return new set number, but workers may
 // take some time to quit or create.
 // NOTE: currently concurrency cannot be reduced after any bthread created.
 extern int bthread_setconcurrency(int num);
 
-// Get number of worker pthreads by tag
+// Get the current normal concurrency of `tag`.
 extern int bthread_getconcurrency_by_tag(bthread_tag_t tag);
 
-// Set number of worker pthreads to `num' for specified tag
+// Set normal concurrency to `num` for `tag`.
 extern int bthread_setconcurrency_by_tag(int num, bthread_tag_t tag);
+
+// Add `num` extra reserved worker pthreads of `tag`.
+//
+// Each successful call increases the reserved concurrency of `tag` by `num`.
+// These workers join the shared scheduler pool to compensate for capacity
+// lost when long-lived bthreads block in system calls such as
+// `epoll_wait(..., -1)`.
+//
+// Call this before starting the blocking bthreads. Reserve one extra worker
+// for each, as reservations accumulate and cannot be released.
+// Returns 0 on success, error code otherwise. Exceeding the reserved limit
+// returns `EINVAL` without adding workers. Thread creation failure may leave a
+// partial reservation and returns `EPERM`.
+extern int bthread_add_reserved_concurrency_by_tag(int num, bthread_tag_t tag);
 
 // Yield processor to another bthread. 
 // Notice that current implementation is not fair, which means that 

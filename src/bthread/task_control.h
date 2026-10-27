@@ -55,8 +55,8 @@ public:
     TaskControl();
     ~TaskControl();
 
-    // Must be called before using. `nconcurrency' is # of worker pthreads.
-    int init(int nconcurrency);
+    // Must be called before using. All initial workers are normal workers.
+    int init(int normal_concurrency);
     
     // Create a TaskGroup in this control.
     TaskGroup* create_group(bthread_tag_t tag);
@@ -70,12 +70,36 @@ public:
     // Stop and join worker threads in TaskControl.
     void stop_and_join();
     
-    // Get # of worker threads.
-    int concurrency() const 
-    { return _concurrency.load(butil::memory_order_acquire); }
+    // Get # of normal workers, excluding reservations. This is the current
+    // count, which may be below `-bthread_concurrency` during lazy growth.
+    int normal_concurrency() const {
+        return _normal_concurrency.load(butil::memory_order_acquire);
+    }
 
-    int concurrency(bthread_tag_t tag) const 
-    { return _tagged_ngroup[tag].load(butil::memory_order_acquire); }
+    int normal_concurrency(bthread_tag_t tag) const {
+        return _tagged_normal_concurrency[tag].load(butil::memory_order_acquire);
+    }
+
+    // Get # of extra workers reserved for blocking loops, such as event
+    // dispatchers and epoll threads. See `add_reserved_workers()`.
+    int reserved_concurrency() const {
+        return _reserved_concurrency.load(butil::memory_order_acquire);
+    }
+
+    int reserved_concurrency(bthread_tag_t tag) const {
+        return _tagged_reserved_concurrency[tag].load(
+                butil::memory_order_acquire);
+    }
+
+    // Get total # of worker threads (normal + reserved). Hold
+    // `g_task_control_mutex` when using this total to decide on worker growth.
+    int concurrency() const {
+        return normal_concurrency() + reserved_concurrency();
+    }
+
+    int concurrency(bthread_tag_t tag) const {
+        return normal_concurrency(tag) + reserved_concurrency(tag);
+    }
 
     void print_rq_sizes(std::ostream& os);
 
@@ -84,9 +108,21 @@ public:
     int64_t get_cumulated_switch_count();
     int64_t get_cumulated_signal_count();
 
-    // [Not thread safe] Add more worker threads.
-    // Return the number of workers actually added, which may be less than |num|
-    int add_workers(int num, bthread_tag_t tag);
+    // [Not thread safe] Add more worker threads under `g_task_control_mutex`.
+    // Count them as reserved when `reserved` is true, or normal otherwise.
+    // Normal and reserved workers have separate per-tag limits:
+    // `BTHREAD_MAX_CONCURRENCY` and `BTHREAD_MAX_RESERVED_CONCURRENCY`.
+    // Return the number of workers added, which may be less than `num`.
+    int add_workers(int num, bthread_tag_t tag, bool reserved);
+
+    // [Not thread safe] Add `num` worker threads of `tag` and mark them as
+    // reserved, so that they don't count towards the concurrency configured
+    // via `bthread_setconcurrency*()`. The accumulated reservation of a tag is
+    // limited to `BTHREAD_MAX_RESERVED_CONCURRENCY`.
+    // Return the number of workers added, which may be less than `num`.
+    int add_reserved_workers(int num, bthread_tag_t tag) {
+        return add_workers(num, tag, true);
+    }
 
     // Choose one TaskGroup (randomly right now).
     // If this method is called after init(), it never returns nullptr.
@@ -115,7 +151,9 @@ public:
     std::vector<bthread_t> get_living_bthreads();
 
 private:
-    typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY> TaggedGroups;
+    // Keep group storage stable for lock-free readers in `steal_task()`.
+    typedef std::array<TaskGroup*, BTHREAD_MAX_CONCURRENCY +
+                                  BTHREAD_MAX_RESERVED_CONCURRENCY> TaggedGroups;
     typedef std::array<ParkingLot, BTHREAD_MAX_PARKINGLOT> TaggedParkingLot;
     // Add/Remove a TaskGroup.
     // Returns 0 on success, -1 otherwise.
@@ -158,7 +196,13 @@ private:
 
     butil::atomic<bool> _init;  // if not init, bvar will case coredump
     bool _stop;
-    butil::atomic<int> _concurrency;
+    // Independent normal and reserved counts, globally and per tag.
+    // After `init()`, only grow under `g_task_control_mutex`. Derive the total
+    // from these two counts instead of maintaining a third set of counters.
+    butil::atomic<int> _normal_concurrency;
+    std::vector<butil::atomic<int>> _tagged_normal_concurrency;
+    butil::atomic<int> _reserved_concurrency;
+    std::vector<butil::atomic<int>> _tagged_reserved_concurrency;
     std::vector<pthread_t> _workers;
     bvar::Adder<int64_t> _nworkers;
     butil::Mutex _pending_time_mutex;
