@@ -316,13 +316,26 @@ TEST(EndPointTest, self_assignment) {
         SCOPED_TRACE(address);
         butil::EndPoint ep;
         ASSERT_EQ(0, butil::str2endpoint(address, &ep));
-        ExtendedEndPoint* eep = ExtendedEndPoint::address(ep);
+        const std::string before = butil::endpoint2str(ep).c_str();
+        const butil::ip_t ip = ep.ip;
+        const int port = ep.port;
+        const bool is_extended = ExtendedEndPoint::is_extended(ep);
+        ExtendedEndPoint* eep = nullptr;
+        int64_t ref_count = 0;
+        if (is_extended) {
+            eep = ExtendedEndPoint::address(ep);
+            ref_count = eep->_ref_count.load();
+        }
         const butil::EndPoint& alias = ep;
         ep = alias;
-        ASSERT_STREQ(address, butil::endpoint2str(ep).c_str());
-        ASSERT_EQ(eep, ExtendedEndPoint::address(ep));
-        if (eep != nullptr) {
-            ASSERT_EQ(1, eep->_ref_count.load());
+        ASSERT_EQ(before, butil::endpoint2str(ep).c_str());
+        ASSERT_EQ(is_extended, ExtendedEndPoint::is_extended(ep));
+        if (is_extended) {
+            ASSERT_EQ(eep, ExtendedEndPoint::address(ep));
+            ASSERT_EQ(ref_count, eep->_ref_count.load());
+        } else {
+            ASSERT_EQ(ip, ep.ip);
+            ASSERT_EQ(port, ep.port);
         }
     }
 }
