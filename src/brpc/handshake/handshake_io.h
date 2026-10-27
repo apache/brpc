@@ -38,6 +38,7 @@ public:
 
     virtual int ReadExact(void* data, size_t len) = 0;
     virtual int WriteAll(const void* data, size_t len) = 0;
+    // Restore data before any buffered input.
     virtual int PushBack(const void* data, size_t len) = 0;
 };
 
