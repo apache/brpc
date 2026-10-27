@@ -38,7 +38,7 @@ DEFINE_int32(stack_size_large, 8388608, "size of large stacks");
 DEFINE_int32(guard_page_size, 4096, "size of guard page, allocate stacks by malloc if it's 0(not recommended)");
 DEFINE_int32(tc_stack_small, 32, "maximum small stacks cached by each thread");
 DEFINE_int32(tc_stack_normal, 8, "maximum normal stacks cached by each thread");
-DEFINE_int32(bthread_stack_trim_idle_s, 600,
+DEFINE_int32(bthread_stack_trim_idle_s, 0,
              "Release memory of stacks idle in the global pool for this many "
              "seconds, 0 disables (Linux only, unsupported under ASan)");
 BUTIL_VALIDATE_GFLAG(bthread_stack_trim_idle_s, butil::NonNegativeInteger);
