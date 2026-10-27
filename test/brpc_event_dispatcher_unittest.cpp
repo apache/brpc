@@ -19,6 +19,7 @@
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
+#include <cstdlib>
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -708,7 +709,11 @@ TEST_F(EventDispatcherTest, server_with_fewer_threads_than_dispatchers_can_quit)
            butil::gettimeofday_us() < deadline_us) {
         usleep(10000);
     }
-    ASSERT_TRUE(args.done.load(butil::memory_order_acquire))
-        << "Server::Stop()/Join() did not finish in 10s, no worker available?";
+    bool done = args.done.load(butil::memory_order_acquire);
+    if (!done) {
+        EXPECT_TRUE(done) << "Server::Stop()/Join() did not finish in 10s, "
+                             "no worker available?";
+        std::abort();
+    }
     ASSERT_EQ(0, pthread_join(th, nullptr));
 }
