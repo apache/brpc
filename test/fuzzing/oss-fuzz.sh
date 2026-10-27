@@ -57,4 +57,13 @@ zip $OUT/fuzz_hpack_seed_corpus.zip fuzz_hpack_seed_corpus/*
 # Generate rtmp's seeds gen_rtmp_seed_corpus.py
 python3 gen_rtmp_seed_corpus.py fuzz_rtmp_seed_corpus
 zip $OUT/fuzz_rtmp_seed_corpus.zip  fuzz_rtmp_seed_corpus/*
+zip $OUT/fuzz_esp_seed_corpus.zip fuzz_esp_seed_corpus/*
+zip $OUT/fuzz_sofa_seed_corpus.zip fuzz_sofa_seed_corpus/*
+zip $OUT/fuzz_baidu_rpc_seed_corpus.zip fuzz_baidu_rpc_seed_corpus/*
+zip $OUT/fuzz_streaming_seed_corpus.zip fuzz_streaming_seed_corpus/*
+zip $OUT/fuzz_memcache_seed_corpus.zip fuzz_memcache_seed_corpus/*
+zip $OUT/fuzz_couchbase_seed_corpus.zip fuzz_couchbase_seed_corpus/*
+zip $OUT/fuzz_mongo_seed_corpus.zip fuzz_mongo_seed_corpus/*
+zip $OUT/fuzz_amf_seed_corpus.zip fuzz_amf_seed_corpus/*
+zip $OUT/fuzz_http_parser_seed_corpus.zip fuzz_http_parser_seed_corpus/*
 popd
