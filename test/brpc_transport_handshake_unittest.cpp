@@ -22,6 +22,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <string>
 
 #include "bthread/bthread.h"
@@ -29,13 +31,15 @@
 #include "bthread/countdown_event.h"
 #include "bthread/unstable.h"
 #include "butil/fd_guard.h"
-#include "butil/time.h"
 #include "butil/sys_byteorder.h"
+#include "butil/time.h"
 #include "brpc/adapter_transport.h"
+#include "brpc/global.h"
 #include "brpc/handshake/handshake_io.h"
 #include "brpc/handshake/handshake_adapter.h"
 #include "brpc/input_messenger.h"
 #include "brpc/policy/transport_handshake_protocol.h"
+#include "brpc/protocol.h"
 #if BRPC_WITH_RDMA
 #include "brpc/rdma_transport.h"
 #endif
@@ -127,6 +131,35 @@ public:
     void StopConnect(Socket*) override {}
 };
 
+class RecordingAppConnect : public TestAppConnect {
+public:
+    void StopConnect(Socket* socket) override {
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            ++_stopped[socket->id()];
+        }
+        stopped.signal();
+    }
+
+    int StopCount(SocketId id) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        auto it = _stopped.find(id);
+        return it == _stopped.end() ? 0 : it->second;
+    }
+
+    bthread::CountdownEvent stopped;
+
+private:
+    std::mutex _mutex;
+    std::map<SocketId, int> _stopped;
+};
+
+static int RejectHandshakeStart(bthread_t*, const bthread_attr_t*,
+                                void* (*)(void*), void*) {
+    errno = EINTR;
+    return EAGAIN;
+}
+
 static FrameSpec FixedSpec(const char* magic, size_t magic_len,
                            size_t total_len) {
     return FrameSpec(magic, magic_len, total_len, total_len,
@@ -135,7 +168,7 @@ static FrameSpec FixedSpec(const char* magic, size_t magic_len,
 
 class TestHandshakeProtocol : public HandshakeProtocol {
 public:
-    explicit TestHandshakeProtocol(std::string* calls = NULL)
+    explicit TestHandshakeProtocol(std::string* calls = nullptr)
         : _calls(calls), _with_extension(false),
           _extension_size(0) {}
 
@@ -145,7 +178,7 @@ public:
         return spec;
     }
     const FrameSpec& AckFrameSpec() const override {
-        static const FrameSpec spec = FixedSpec(NULL, 0, 1);
+        static const FrameSpec spec = FixedSpec(nullptr, 0, 1);
         return spec;
     }
     StepResult BuildHello(bool enabled, std::string* payload) override {
@@ -186,12 +219,12 @@ public:
     void EnableExtension(size_t size) {
         _with_extension = true;
         _extension_size = size;
-        _extension_spec = FixedSpec(NULL, 0, size);
+        _extension_spec = FixedSpec(nullptr, 0, size);
     }
 
 private:
     void Append(const char* value) {
-        if (_calls != NULL) {
+        if (_calls != nullptr) {
             *_calls += value;
         }
     }
@@ -204,7 +237,7 @@ private:
 
 class TestHandshakeTransport : public HandshakeTransport {
 public:
-    explicit TestHandshakeTransport(std::string* calls = NULL)
+    explicit TestHandshakeTransport(std::string* calls = nullptr)
         : prepare_result(STEP_OK), negotiate_result(STEP_OK),
           validate_result(STEP_OK), tcp_active(false),
           high_speed_active(false), failed(false), _calls(calls) {}
@@ -237,7 +270,7 @@ public:
 
 private:
     void Append(const char* value) {
-        if (_calls != NULL) {
+        if (_calls != nullptr) {
             *_calls += value;
         }
     }
@@ -301,6 +334,39 @@ public:
             ->adapter.session.phase(butil::memory_order_acquire) == ESTABLISHED;
     }
 };
+
+TEST(TransportHandshakeTest, rejected_handshake_start_releases_socket_reference) {
+    SocketOptions options;
+    SocketId id;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(id, &socket));
+    const int32_t references = socket->nref();
+    int completions = 0;
+    auto done = [](int, void* data) { ++*static_cast<int*>(data); };
+
+    EXPECT_EQ(-1, AdapterTransport::StartClientUpgradeImpl(
+        socket.get(), done, &completions, RejectHandshakeStart));
+    EXPECT_EQ(EAGAIN, errno);
+    EXPECT_EQ(references, socket->nref());
+    // The caller owns the completion callback when startup fails.
+    EXPECT_EQ(0, completions);
+    socket->SetFailed();
+}
+
+TEST(TransportHandshakeTest, registered_protocol_uses_transport_name) {
+    GlobalInitializeOrDie();
+    EXPECT_EQ(1, PROTOCOL_TRANSPORT_HANDSHAKE);
+    EXPECT_EQ(PROTOCOL_TRANSPORT_HANDSHAKE,
+              StringToProtocolType("transport_handshake"));
+    EXPECT_STREQ("transport_handshake",
+                 ProtocolTypeToString(PROTOCOL_TRANSPORT_HANDSHAKE));
+
+    const Protocol* protocol = FindProtocol(PROTOCOL_TRANSPORT_HANDSHAKE);
+    ASSERT_NE(nullptr, protocol);
+    EXPECT_EQ(policy::ParseTransportHandshake, protocol->parse);
+    EXPECT_EQ(policy::ProcessTransportHandshake, protocol->process_request);
+}
 
 TEST(TransportHandshakeTest, adapter_retains_context_for_fragmented_extension) {
     int fds[2];
@@ -458,6 +524,78 @@ TEST(TransportHandshakeTest, blocked_write_stops_after_socket_failure) {
     EXPECT_EQ(0, completed);
     EXPECT_EQ(-1, write.result);
     EXPECT_EQ(EFAILEDSOCKET, write.error);
+}
+
+TEST(TransportHandshakeTest, established_socket_does_not_restart_handshake) {
+    const SocketMode modes[] = {
+        SOCKET_MODE_TCP,
+#if BRPC_WITH_RDMA
+        SOCKET_MODE_RDMA,
+#endif
+#if BRPC_WITH_UBRING
+        SOCKET_MODE_UBRING,
+#endif
+#if BRPC_WITH_URMA
+        SOCKET_MODE_URMA,
+#endif
+    };
+    for (SocketMode mode : modes) {
+        SocketOptions options;
+        options.socket_mode = mode;
+        SocketId id;
+        ASSERT_EQ(0, Socket::Create(options, &id));
+        SocketUniquePtr socket;
+        ASSERT_EQ(0, Socket::Address(id, &socket));
+        AdapterTransport* adapter = AdapterTransport::Get(socket.get());
+        adapter->handshake_session()->SetPhase(ESTABLISHED);
+        adapter->CompleteConnection(ESTABLISHED);
+
+        const char* prefixes[] = {"RDMA", "RDM3", "UB", "URMA", "URM3"};
+        for (const char* prefix : prefixes) {
+            butil::IOBuf input;
+            input.append(prefix);
+            const ParseResult result = adapter->ProcessUpgradeReadable(&input);
+            EXPECT_EQ(PARSE_ERROR_TRY_OTHERS, result.error());
+            EXPECT_EQ(prefix, input.to_string());
+            EXPECT_EQ(ESTABLISHED, adapter->handshake_phase());
+            EXPECT_EQ(nullptr, socket->parsing_context());
+            EXPECT_TRUE(adapter->connection_completed());
+        }
+        socket->SetFailed();
+    }
+}
+
+TEST(TransportHandshakeTest, failed_socket_read_preserves_buffered_data) {
+    for (size_t prefix_len : {0u, 1u}) {
+        SCOPED_TRACE(prefix_len);
+        int fds[2];
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        butil::fd_guard peer_fd(fds[1]);
+        SocketOptions options;
+        options.fd = fds[0];
+        SocketId id;
+        ASSERT_EQ(0, Socket::Create(options, &id));
+        SocketUniquePtr socket;
+        ASSERT_EQ(0, Socket::Address(id, &socket));
+        ASSERT_EQ(2, write(peer_fd, "HS", 2));
+
+        SocketHandshakeIO io(socket.get());
+        char data[2] = {};
+        if (prefix_len != 0) {
+            ASSERT_EQ(0, io.ReadExact(data, prefix_len));
+            EXPECT_EQ('H', data[0]);
+        }
+        ASSERT_EQ(0, socket->SetFailed(EFAILEDSOCKET,
+                                      "cancel buffered handshake read"));
+        errno = 0;
+        EXPECT_EQ(-1, io.ReadExact(data, 2 - prefix_len));
+        EXPECT_EQ(EFAILEDSOCKET, errno);
+
+        const ssize_t remaining = recv(socket->fd(), data, sizeof(data),
+                                       MSG_DONTWAIT);
+        ASSERT_EQ(static_cast<ssize_t>(2 - prefix_len), remaining);
+        EXPECT_EQ(0, memcmp(data, "HS" + prefix_len, remaining));
+    }
 }
 
 TEST(TransportHandshakeTest, blocked_read_stops_after_socket_failure) {
@@ -624,6 +762,25 @@ TEST(TransportHandshakeTest, publish_fallback_after_tcp_state) {
     session.PublishFallback([&tcp_active]() { tcp_active = 1; });
     ASSERT_EQ(1, tcp_active);
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
+}
+
+TEST(TransportHandshakeTest, failed_handshake_preserves_io_error_after_cleanup) {
+    class CleanupChangesErrno : public TestHandshakeTransport {
+    public:
+        void OnFailed() override {
+            TestHandshakeTransport::OnFailed();
+            errno = ENOENT;
+        }
+    } transport;
+    MemoryHandshakeIO io;
+    HandshakeSession session;
+    session.SetIOForTest(&io);
+    TestHandshakeProtocol protocol;
+
+    EXPECT_EQ(STEP_ERROR, session.RunClient(&protocol, &transport));
+    EXPECT_EQ(EIO, errno);
+    EXPECT_TRUE(transport.failed);
+    EXPECT_EQ(FAILED, session.phase(butil::memory_order_acquire));
 }
 
 TEST(TransportHandshakeTest, client_runs_codec_and_resource_sequence) {
@@ -815,7 +972,7 @@ TEST(TransportHandshakeTest,
         source.append(invalid_prefixes[i]);
         const size_t original_size = source.size();
         const ParseResult result = policy::ParseTransportHandshake(
-            &source, socket.get(), false, NULL);
+            &source, socket.get(), false, nullptr);
         ASSERT_FALSE(result.is_ok());
         EXPECT_EQ(PARSE_ERROR_TRY_OTHERS, result.error())
             << invalid_prefixes[i];
@@ -848,7 +1005,7 @@ TEST(TransportHandshakeTest,
         source.append(partial_prefixes[i]);
         const size_t original_size = source.size();
         const ParseResult result = policy::ParseTransportHandshake(
-            &source, socket.get(), false, NULL);
+            &source, socket.get(), false, nullptr);
         ASSERT_FALSE(result.is_ok());
         EXPECT_EQ(PARSE_ERROR_NOT_ENOUGH_DATA, result.error())
             << partial_prefixes[i];
@@ -877,7 +1034,7 @@ TEST(TransportHandshakeTest,
     butil::IOBuf source;
     source.append(hello.data(), 1);
     ParseResult result = policy::ParseTransportHandshake(
-        &source, socket.get(), false, NULL);
+        &source, socket.get(), false, nullptr);
     ASSERT_FALSE(result.is_ok());
     ASSERT_EQ(PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
     ASSERT_EQ(1UL, source.size());
@@ -886,7 +1043,7 @@ TEST(TransportHandshakeTest,
 
     source.append(hello.data() + 1, hello.size() - 1);
     result = policy::ParseTransportHandshake(
-        &source, socket.get(), false, NULL);
+        &source, socket.get(), false, nullptr);
     ASSERT_FALSE(result.is_ok());
     ASSERT_EQ(PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
     ASSERT_TRUE(source.empty());
@@ -906,7 +1063,7 @@ TEST(TransportHandshakeTest,
     const uint32_t ack = 0;
     source.append(&ack, sizeof(ack));
     result = policy::ParseTransportHandshake(
-        &source, socket.get(), false, NULL);
+        &source, socket.get(), false, nullptr);
     ASSERT_FALSE(result.is_ok());
     ASSERT_EQ(PARSE_ERROR_TRY_OTHERS, result.error());
     ASSERT_TRUE(source.empty());
@@ -936,7 +1093,7 @@ TEST(TransportHandshakeTest,
     source.append(application_data, sizeof(application_data) - 1);
 
     const ParseResult result = policy::ParseTransportHandshake(
-        &source, socket.get(), false, NULL);
+        &source, socket.get(), false, nullptr);
     ASSERT_FALSE(result.is_ok());
     ASSERT_EQ(PARSE_ERROR_TRY_OTHERS, result.error());
     ASSERT_EQ(sizeof(application_data) - 1, source.size());
@@ -952,7 +1109,7 @@ TEST(TransportHandshakeTest,
 }
 
 #if BRPC_WITH_URMA
-TEST(TransportHandshakeTest, urma_socket_skips_adapter_handshake_parser) {
+TEST(TransportHandshakeTest, urma_non_handshake_data_bypasses_upgrade_parser) {
     int fds[2];
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
     butil::fd_guard peer_fd(fds[1]);
@@ -974,6 +1131,60 @@ TEST(TransportHandshakeTest, urma_socket_skips_adapter_handshake_parser) {
     EXPECT_EQ(4UL, source.size());
     EXPECT_EQ(nullptr, socket->parsing_context());
     socket->SetFailed();
+}
+#endif
+
+#if BRPC_WITH_RDMA || BRPC_WITH_UBRING || BRPC_WITH_URMA
+TEST(TransportHandshakeTest, shared_app_connect_receives_each_socket_stop) {
+    const SocketMode modes[] = {
+#if BRPC_WITH_RDMA
+        SOCKET_MODE_RDMA,
+#endif
+#if BRPC_WITH_UBRING
+        SOCKET_MODE_UBRING,
+#endif
+#if BRPC_WITH_URMA
+        SOCKET_MODE_URMA,
+#endif
+    };
+    for (SocketMode mode : modes) {
+        const auto original = std::make_shared<RecordingAppConnect>();
+        SocketOptions options;
+        options.user =
+            static_cast<SocketUser*>(get_or_new_client_side_messenger());
+        options.socket_mode = mode;
+        options.app_connect = original;
+        SocketId first_id;
+        ASSERT_EQ(0, Socket::Create(options, &first_id));
+        SocketUniquePtr first;
+        ASSERT_EQ(0, Socket::Address(first_id, &first));
+        ASSERT_NE(nullptr, first->_app_connect);
+        ASSERT_NE(original.get(), first->_app_connect.get());
+
+        options.app_connect = first->_app_connect;
+        SocketId second_id;
+        ASSERT_EQ(0, Socket::Create(options, &second_id));
+        SocketUniquePtr second;
+        ASSERT_EQ(0, Socket::Address(second_id, &second));
+        ASSERT_EQ(first->_app_connect.get(), second->_app_connect.get());
+
+        AdapterTransport::Get(first.get())->FallbackToTcp();
+        ASSERT_EQ(0, first->SetFailed());
+        first.reset();
+        ASSERT_EQ(0, original->stopped.timed_wait(
+            butil::milliseconds_from_now(1000)));
+        EXPECT_EQ(1, original->StopCount(first_id));
+        EXPECT_EQ(0, original->StopCount(second_id));
+
+        original->stopped.reset(1);
+        AdapterTransport::Get(second.get())->FallbackToTcp();
+        ASSERT_EQ(0, second->SetFailed());
+        second.reset();
+        ASSERT_EQ(0, original->stopped.timed_wait(
+            butil::milliseconds_from_now(1000)));
+        EXPECT_EQ(1, original->StopCount(first_id));
+        EXPECT_EQ(1, original->StopCount(second_id));
+    }
 }
 #endif
 

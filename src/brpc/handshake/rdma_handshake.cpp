@@ -473,7 +473,7 @@ public:
     RdmaServerHandshakeTransport(
         RdmaTransport* transport, Socket* socket, butil::IOBuf* source)
         : _transport(transport), _socket(socket), _source(source),
-          _protocol(NULL) {}
+          _protocol(nullptr) {}
 
     void OnProtocolSelected(HandshakeProtocol* protocol) override {
         _protocol = static_cast<rdma::RdmaHandshakeAdapter*>(protocol);
@@ -490,7 +490,7 @@ public:
     }
 
     StepResult NegotiateResources() override {
-        CHECK(_protocol != NULL);
+        CHECK(_protocol != nullptr);
         if (_transport->NegotiateUpgradeResources(
                 _protocol->remote(), true) == 0) {
             return STEP_OK;
@@ -519,7 +519,7 @@ private:
 StepResult RdmaServerHandshakeAdapter::RunRdmaServerHandshake(
     butil::IOBuf* source, Socket* socket) {
     RdmaTransport* transport = RdmaTransport::Get(socket);
-    CHECK(transport->GetRdmaEp() != NULL);
+    CHECK(transport->GetRdmaEp() != nullptr);
 
     std::vector<std::unique_ptr<rdma::RdmaHandshakeAdapter> > protocols =
         transport->CreateServerHandshakeAdapters();

@@ -35,7 +35,7 @@ const uint32_t COMMON_ACK_OK = 0x1;
 }  // namespace
 
 StepResult HandshakeProtocol::BuildAck(bool enabled, std::string* payload) {
-    CHECK(payload != NULL);
+    CHECK(payload != nullptr);
     const uint32_t flags = butil::HostToNet32(enabled ? COMMON_ACK_OK : 0);
     payload->assign(reinterpret_cast<const char*>(&flags), sizeof(flags));
     return STEP_OK;
@@ -43,7 +43,7 @@ StepResult HandshakeProtocol::BuildAck(bool enabled, std::string* payload) {
 
 StepResult HandshakeProtocol::ParseAck(const std::string& payload,
                                        bool* enabled) {
-    CHECK(enabled != NULL);
+    CHECK(enabled != nullptr);
     if (payload.size() != COMMON_ACK_SIZE) {
         errno = EPROTO;
         return STEP_ERROR;
@@ -56,7 +56,7 @@ StepResult HandshakeProtocol::ParseAck(const std::string& payload,
 
 const FrameSpec& HandshakeProtocol::ExtensionFrameSpec() const {
     static const FrameSpec empty_spec(
-        NULL, 0, 0, 0, FrameSpec::FIXED);
+        nullptr, 0, 0, 0, FrameSpec::FIXED);
     return empty_spec;
 }
 
@@ -64,21 +64,23 @@ ServerHandshakeContext* ServerHandshakeContext::Create(
     HandshakeAdapter* adapter) {
     ServerHandshakeContext* context =
         butil::get_object<ServerHandshakeContext>();
-    if (context != NULL) {
+    if (context != nullptr) {
         context->_adapter = adapter;
     }
     return context;
 }
 
 void ServerHandshakeContext::Destroy() {
-    _adapter = NULL;
+    _adapter = nullptr;
     butil::return_object(this);
 }
 
 static StepResult FinishWithFailure(HandshakeSession* session,
                                     HandshakeTransport* transport) {
+    const int saved_errno = errno != 0 ? errno : EPROTO;
     transport->OnFailed();
     session->MarkFailed();
+    errno = saved_errno;
     return STEP_ERROR;
 }
 
@@ -118,7 +120,7 @@ StepResult HandshakeSession::ReceiveHello(HandshakeProtocol* protocol,
                                           bool push_back_on_not_mine,
                                           bool* magic_matched) {
     std::string payload;
-    const FrameResult frame_result = input != NULL
+    const FrameResult frame_result = input != nullptr
         ? FrameCodec::ParseBufferedFrame(
               input, protocol->HelloFrameSpec(), &payload, magic_matched)
         : FrameCodec::ReadFrame(
@@ -147,7 +149,7 @@ StepResult HandshakeSession::ReceiveAck(HandshakeProtocol* protocol,
                                         HandshakeInput* input,
                                         bool* enabled) {
     std::string payload;
-    const FrameResult frame_result = input != NULL
+    const FrameResult frame_result = input != nullptr
         ? FrameCodec::ParseBufferedFrame(
               input, protocol->AckFrameSpec(), &payload)
         : FrameCodec::ReadFrame(
@@ -174,7 +176,7 @@ StepResult HandshakeSession::SendExtension(HandshakeProtocol* protocol,
 StepResult HandshakeSession::ReceiveExtension(HandshakeProtocol* protocol,
                                              HandshakeInput* input) {
     std::string payload;
-    const FrameResult frame_result = input != NULL
+    const FrameResult frame_result = input != nullptr
         ? FrameCodec::ParseBufferedFrame(
               input, protocol->ExtensionFrameSpec(), &payload)
         : FrameCodec::ReadFrame(
@@ -187,14 +189,14 @@ StepResult HandshakeSession::SelectAndReceiveHello(
     const std::vector<HandshakeProtocol*>& protocols, HandshakeInput* input,
     bool push_back_on_not_mine, HandshakeProtocol** selected) {
     CHECK(!protocols.empty());
-    CHECK(selected != NULL);
-    if (input == NULL) {
+    CHECK(selected != nullptr);
+    if (input == nullptr) {
         // A blocking byte stream cannot try a second codec after consuming
         // bytes from the fd. Such protocols must select a single codec before
         // entering the common session.
         CHECK_EQ(1UL, protocols.size());
         *selected = protocols.front();
-        return ReceiveHello(*selected, NULL, push_back_on_not_mine);
+        return ReceiveHello(*selected, nullptr, push_back_on_not_mine);
     }
 
     bool need_more = false;
@@ -222,8 +224,8 @@ StepResult HandshakeSession::SelectAndReceiveHello(
 
 StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
                                        HandshakeTransport* transport) {
-    CHECK(protocol != NULL);
-    CHECK(transport != NULL);
+    CHECK(protocol != nullptr);
+    CHECK(transport != nullptr);
     transport->OnProtocolSelected(protocol);
     // A client handshake runs once on a potentially reused bthread. Do not
     // let an errno left by earlier work override this handshake's result.
@@ -244,7 +246,7 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
     }
 
     SetPhase(HELLO_WAIT);
-    result = ReceiveHello(protocol, NULL, false);
+    result = ReceiveHello(protocol, nullptr, false);
     if (result == STEP_NOT_MINE || result == STEP_NEED_MORE) {
         errno = EPROTO;
     }
@@ -263,7 +265,7 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
             return FinishWithFailure(this, transport);
         }
         SetPhase(EXTENSION_WAIT);
-        result = ReceiveExtension(protocol, NULL);
+        result = ReceiveExtension(protocol, nullptr);
         if (result != STEP_OK && result != STEP_FALLBACK) {
             return FinishWithFailure(this, transport);
         }
@@ -296,7 +298,7 @@ StepResult HandshakeSession::RunServer(
     const std::vector<HandshakeProtocol*>& protocols, HandshakeInput* input,
     HandshakeTransport* transport, bool fallback_on_not_mine) {
     CHECK(!protocols.empty());
-    CHECK(transport != NULL);
+    CHECK(transport != nullptr);
 
     // Once TCP fallback has been published, subsequent bytes are application
     // protocol data and must bypass every upgrade codec without changing the
@@ -305,7 +307,7 @@ StepResult HandshakeSession::RunServer(
         return STEP_NOT_MINE;
     }
 
-    HandshakeProtocol* selected = NULL;
+    HandshakeProtocol* selected = nullptr;
     if (phase(butil::memory_order_acquire) != ACK_WAIT &&
         phase(butil::memory_order_acquire) != EXTENSION_WAIT) {
         const int previous_phase = phase(butil::memory_order_acquire);
@@ -321,7 +323,7 @@ StepResult HandshakeSession::RunServer(
             return STEP_NOT_MINE;
         }
         if (result == STEP_NEED_MORE) {
-            if (selected == NULL) {
+            if (selected == nullptr) {
                 SetPhase(previous_phase);
             }
             return STEP_NEED_MORE;
@@ -329,7 +331,7 @@ StepResult HandshakeSession::RunServer(
         if (result == STEP_ERROR) {
             return FinishWithFailure(this, transport);
         }
-        CHECK(selected != NULL);
+        CHECK(selected != nullptr);
         transport->OnProtocolSelected(selected);
         if (result == STEP_FALLBACK) {
             // Publish the disabled transport state immediately. The server
@@ -375,7 +377,7 @@ StepResult HandshakeSession::RunServer(
                 break;
             }
         }
-        CHECK(selected != NULL);
+        CHECK(selected != nullptr);
     }
 
     if (phase(butil::memory_order_acquire) == EXTENSION_WAIT) {

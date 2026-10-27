@@ -76,7 +76,7 @@ FrameResult FrameCodec::DecodeLength(const FrameSpec& spec,
 FrameResult FrameCodec::Encode(const FrameSpec& spec,
                                const std::string& payload,
                                std::string* frame) {
-    if (frame == NULL || (spec.magic_len != 0 && spec.magic == NULL)) {
+    if (frame == nullptr || (spec.magic_len != 0 && spec.magic == nullptr)) {
         return FRAME_PROTOCOL_ERROR;
     }
     const size_t length_size = LengthFieldSize(spec);
@@ -124,8 +124,8 @@ FrameResult FrameCodec::Encode(const FrameSpec& spec,
 FrameResult FrameCodec::ReadFrame(HandshakeIO* io, const FrameSpec& spec,
                                   bool push_back_on_not_mine,
                                   std::string* payload) {
-    if (io == NULL || payload == NULL ||
-        (spec.magic_len != 0 && spec.magic == NULL)) {
+    if (io == nullptr || payload == nullptr ||
+        (spec.magic_len != 0 && spec.magic == nullptr)) {
         return FRAME_PROTOCOL_ERROR;
     }
 
@@ -165,11 +165,11 @@ FrameResult FrameCodec::ParseBufferedFrame(HandshakeInput* input,
                                            const FrameSpec& spec,
                                            std::string* payload,
                                            bool* magic_matched) {
-    if (magic_matched != NULL) {
+    if (magic_matched != nullptr) {
         *magic_matched = false;
     }
-    if (input == NULL || payload == NULL ||
-        (spec.magic_len != 0 && spec.magic == NULL)) {
+    if (input == nullptr || payload == nullptr ||
+        (spec.magic_len != 0 && spec.magic == nullptr)) {
         return FRAME_PROTOCOL_ERROR;
     }
     const size_t header_len = spec.magic_len + LengthFieldSize(spec);
@@ -185,7 +185,7 @@ FrameResult FrameCodec::ParseBufferedFrame(HandshakeInput* input,
         memcmp(header.data(), spec.magic, spec.magic_len) != 0) {
         return FRAME_NOT_MINE;
     }
-    if (magic_matched != NULL) {
+    if (magic_matched != nullptr) {
         *magic_matched = true;
     }
     if (input->Size() < header_len ||
@@ -214,7 +214,7 @@ FrameResult FrameCodec::ParseBufferedFrame(HandshakeInput* input,
 
 FrameResult FrameCodec::WriteFrame(HandshakeIO* io, const FrameSpec& spec,
                                    const std::string& payload) {
-    if (io == NULL) {
+    if (io == nullptr) {
         return FRAME_PROTOCOL_ERROR;
     }
     std::string frame;

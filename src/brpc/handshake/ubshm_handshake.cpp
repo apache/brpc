@@ -61,7 +61,7 @@ static const FrameSpec& HelloFrameSpec() {
 
 static const FrameSpec& AckFrameSpec() {
     static const FrameSpec spec(
-        NULL, 0, ACK_LEN, ACK_LEN, FrameSpec::FIXED);
+        nullptr, 0, ACK_LEN, ACK_LEN, FrameSpec::FIXED);
     return spec;
 }
 
@@ -181,7 +181,7 @@ const handshake::FrameSpec& UBShmHandshakeAdapter::AckFrameSpec() const {
 const handshake::FrameSpec&
 UBShmHandshakeAdapter::ExtensionFrameSpec() const {
     static const handshake::FrameSpec spec(
-        NULL, 0, HelloFormatExtension::WIRE_SIZE,
+        nullptr, 0, HelloFormatExtension::WIRE_SIZE,
         HelloFormatExtension::WIRE_SIZE, handshake::FrameSpec::FIXED);
     return spec;
 }
@@ -189,13 +189,13 @@ UBShmHandshakeAdapter::ExtensionFrameSpec() const {
 void UBShmHandshakeAdapter::ConfigureClientHello(
     uint64_t len, const char* shm_name) {
     _local_len = len;
-    _local_name = shm_name != NULL ? shm_name : "";
+    _local_name = shm_name != nullptr ? shm_name : "";
     _server_reply = false;
 }
 
 handshake::StepResult UBShmHandshakeAdapter::BuildHello(
     bool enabled, std::string* payload) {
-    const char* name = NULL;
+    const char* name = nullptr;
     if (enabled) {
         name = _server_reply ? _remote.shm_name : _local_name.c_str();
     }
@@ -242,7 +242,7 @@ handshake::StepResult UBShmHandshakeAdapter::BuildHello(
         message.hello_ver = handshake::ubshm_wire::HELLO_VERSION;
         message.impl_ver = handshake::ubshm_wire::IMPL_VERSION;
         message.len = len;
-        if (shm_name == NULL) {
+        if (shm_name == nullptr) {
             errno = EINVAL;
             return handshake::STEP_ERROR;
         }
@@ -277,7 +277,7 @@ handshake::StepResult UBShmHandshakeAdapter::ParseHello(
     // the original wire bytes so that truncation cannot hide a malformed name.
     const char* wire_name =
         payload.data() + payload.size() - SHM_MAX_NAME_BUFF_LEN;
-    if (memchr(wire_name, '\0', SHM_MAX_NAME_BUFF_LEN) == NULL) {
+    if (memchr(wire_name, '\0', SHM_MAX_NAME_BUFF_LEN) == nullptr) {
         errno = EPROTO;
         return handshake::STEP_ERROR;
     }
@@ -386,20 +386,20 @@ public:
             strnlen(remote.shm_name, SHM_MAX_NAME_BUFF_LEN);
 
         ubring::SHM remote_trx_shm = {
-            NULL, remote.len, 0, {0},
+            nullptr, remote.len, 0, {0},
             static_cast<uint32_t>(_socket->fd())};
         memcpy(remote_trx_shm.name, remote.shm_name, remote_name_len + 1);
 
         const size_t local_shm_len =
             static_cast<size_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
         ubring::SHM local_trx_shm = {
-            NULL, local_shm_len, 0, {0},
+            nullptr, local_shm_len, 0, {0},
             static_cast<uint32_t>(_socket->fd())};
         char client_name[SHM_MAX_NAME_BUFF_LEN + 1];
         memcpy(client_name, remote.shm_name, SHM_MAX_NAME_BUFF_LEN);
         client_name[SHM_MAX_NAME_BUFF_LEN] = '\0';
         char* client_ip_port = strrchr(client_name, '_');
-        if (client_ip_port != NULL) {
+        if (client_ip_port != nullptr) {
             *client_ip_port = '\0';
         }
         const int result = snprintf(
@@ -444,7 +444,7 @@ private:
 StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     butil::IOBuf* source, Socket* socket) {
     UBShmTransport* transport = UBShmTransport::Get(socket);
-    CHECK(transport->GetUBShmEp() != NULL);
+    CHECK(transport->GetUBShmEp() != nullptr);
 
     ubring::UBShmHandshakeAdapter wire(
         ubring::PreferredDataFormatForShmType(ubring::GetShmType()));

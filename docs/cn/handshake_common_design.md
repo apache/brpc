@@ -1,38 +1,45 @@
 # 公共传输握手
 
-`AdapterTransport` 统一 RDMA、UBSHM 和 URMA 的握手入口。TCP 承担控制面，
-升级成功后使用高速数据面，协商不可用时继续使用 TCP。
+RDMA、UBSHM 和 URMA 共用握手流程，以 TCP 交换控制帧。升级成功后使用高速
+数据面，协商不可用时继续使用 TCP。
 
-## 组件分工
+## 分工
 
 | 组件 | 职责 |
 | --- | --- |
-| `AdapterTransport` | 持有 TCP 与候选 Transport，选择协议及数据面 |
-| `HandshakeSession` | 编排客户端、服务端状态机和增量帧解析 |
-| `HandshakeProtocol` | 编解码 hello、ACK 和扩展帧，处理版本兼容 |
-| `HandshakeTransport` | 准备资源，执行升级、回退和失败清理 |
-| 各传输的 Endpoint | 管理资源及数据收发 |
+| `AdapterTransport` | 持有 TCP 与高速 Transport，启动握手、分发输入并选择数据面 |
+| `HandshakeSession` | 编排客户端和服务端流程，管理帧收发、增量解析和终态发布 |
+| `HandshakeProtocol` | 编解码 hello、ACK 和扩展帧，校验协议版本及字段 |
+| `HandshakeTransport` | 准备和协商资源，处理升级、回退及失败清理 |
+| 各传输的 Endpoint | 管理传输资源和数据面 |
 
-客户端在 TCP 建连后启动握手 bthread；服务端通过 `InputMessenger` 增量解析
-hello、扩展字段和 ACK。ACK 不带 magic，服务端使用已选协议继续解析。
+客户端在 TCP 连接建立后启动握手 bthread；服务端通过 `InputMessenger`
+增量解析控制帧。在 `EXTENSION_WAIT` 和 `ACK_WAIT`，服务端保留解析上下文，
+按已选协议版本继续处理后续帧。
 
 ## 状态与回退
 
-- `ESTABLISHED`：使用高速数据面，TCP 保留为控制连接；额外 TCP 业务数据按协议错误处理。
-- `FALLBACK_TCP`：资源不可用或协商拒绝时释放升级资源，继续解析已缓存及后续 TCP 数据。
-- `FAILED`：握手帧畸形或处理失败，清理资源并关闭连接。
+- `ESTABLISHED`：业务数据走 RDMA/UBSHM/URMA，TCP 保留为控制连接。服务端
+  完成最终 ACK 解析并退出 TCP 解析循环后启动高速接收；额外 TCP 数据触发连接错误。
+- `FALLBACK_TCP`：释放升级资源后以 release 顺序发布终态，事件线程以
+  acquire 顺序读取并继续处理已缓存及后续的 TCP 业务数据。
+- `FAILED`：握手 I/O 错误或畸形帧导致失败，清理资源并关闭连接。
 
-终态以 release/acquire 顺序发布和读取。未收齐的帧返回 `NOT_ENOUGH_DATA`，
-不消费输入；非握手 magic 返回 `TRY_OTHERS`。帧边界处理支持 TCP 分片和粘连。
+完整帧按边界消费；分片输入返回 `NOT_ENOUGH_DATA` 等待补齐，
+与握手 magic 不匹配的前缀返回 `TRY_OTHERS`。
 
-## 协议与数据面衔接
+## 协议兼容
 
-- RDMA 保持既有 v2/v3 wire format、协议 ID 和注册名称。
-- UBSHM 使用 v3 hello：64 字节 hello 后交换 4 字节网络序格式扩展，IPC 选择
-  `IPC_V2`，UBS 选择 `LEGACY_64`；格式一致后升级，ACK 为 4 字节。
+- RDMA 保持 v2/v3 wire format 和协议数值 ID `1`。公共握手使用枚举
+  `PROTOCOL_TRANSPORT_HANDSHAKE`，注册名称为 `transport_handshake`。
+- UBSHM 使用 64 字节 v3 hello、4 字节网络序格式扩展和 4 字节 ACK。
+  IPC 后端选择 `IPC_V2`，UBS 后端选择 `LEGACY_64`；格式相同则升级，否则
+  回退 TCP。资源映射使用对端共享内存长度，数据面激活前发布协商格式。
+
 - URMA 保持 v2 二进制和 v3 protobuf 格式；资源导入和收发信用由
-  `UrmaEndpoint` 管理，详见 [UrmaTransport](urma.md)。
-- 激活数据面后，等待 TCP 握手解析退出再注册 URMA CQ 回调，避免两条输入路径并行解析。
+  `UrmaEndpoint` 管理。服务端退出 TCP 握手解析后注册 CQ 回调。
 
-测试覆盖分片与粘连、magic 分流、版本协商、终态发布、TCP 回退、
-资源清理及各传输的数据面回归。
+## 测试
+
+覆盖分片与粘连输入、magic 分流、版本与格式校验、TCP 回退、资源释放、
+终态发布、最终 ACK 与首包并发，以及 RDMA、UBSHM 和 URMA 回归测试。

@@ -68,6 +68,11 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
                          size_t len, ReadOnce read_once) {
     size_t received = 0;
     while (received < len) {
+        SocketUniquePtr alive;
+        if (Socket::Address(socket_id, &alive) != 0) {
+            errno = EFAILEDSOCKET;
+            return -1;
+        }
         const int expected = read_butex->load(butil::memory_order_acquire);
         const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
         const ssize_t nr = read_once(received, len - received);
@@ -76,11 +81,6 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
                 continue;
             }
             if (errno != EAGAIN) {
-                return -1;
-            }
-            SocketUniquePtr alive;
-            if (Socket::Address(socket_id, &alive) != 0) {
-                errno = EFAILEDSOCKET;
                 return -1;
             }
             if (bthread::butex_wait(read_butex, expected, &duetime) < 0 &&
