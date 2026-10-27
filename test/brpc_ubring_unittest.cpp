@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <vector>
 #include "bthread/bthread.h"
+#include "bthread/countdown_event.h"
 #include "brpc/acceptor.h"
 #include "brpc/adapter_transport.h"
 #include "brpc/channel.h"
@@ -55,6 +56,8 @@
 #include "brpc/ubshm/shm/shm_mgr.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "brpc/ubshm/ub_ring.h"
+#include "brpc/ubshm/ub_helper.h"
+#include "brpc/ubshm/timer/timer_mgr.h"
 #include "brpc/ubshm/ubr_msg.h"
 #include "brpc/ubshm/ubr_msg_v2.h"
 
@@ -1010,6 +1013,7 @@ protected:
     void SetUp() override {
         _saved_skip = g_skip_ub_init;
         g_skip_ub_init = false;
+        GlobalUBInitializeOrDie();
         ShmMgrInit();
         UBRingManager::UbrMgrInit();
         UBShmEndpoint::GlobalInitialize();
@@ -1076,6 +1080,153 @@ TEST_F(UBShmEndpointTest, reset_cleans_up_resources) {
 TEST_F(UBShmEndpointTest, reset_is_idempotent) {
     _ep->Reset();
     _ep->Reset();
+}
+
+#if defined(OS_LINUX)
+TEST_F(UBShmEndpointTest, cancel_unexpired_timer_does_not_wait_for_expiration) {
+    using namespace brpc::ubring;
+    bthread::CountdownEvent canceled;
+    std::atomic<int> callbacks(0);
+    itimerspec spec{};
+    spec.it_value.tv_sec = 10;
+    const int fd = TimerStart(&spec, [](void* arg) -> void* {
+        static_cast<std::atomic<int>*>(arg)->fetch_add(1);
+        return nullptr;
+    }, &callbacks);
+    ASSERT_GE(fd, 0);
+    std::thread cancel([&] {
+        DeleteTimerSafe(fd);
+        canceled.signal();
+    });
+    const int result = canceled.timed_wait(butil::milliseconds_from_now(1000));
+    if (result != 0) {
+        // Wake a blocking delete so a failure can still join the thread.
+        spec.it_value.tv_sec = 0;
+        spec.it_value.tv_nsec = 1;
+        timerfd_settime(fd, 0, &spec, nullptr);
+    }
+    cancel.join();
+    EXPECT_EQ(0, result);
+    EXPECT_EQ(0, callbacks.load());
+}
+
+TEST_F(UBShmEndpointTest, expired_one_shot_timer_releases_its_descriptor) {
+    using namespace brpc::ubring;
+    const uint32_t timers = GetActiveTimerNum();
+    bthread::CountdownEvent called;
+    itimerspec spec{};
+    spec.it_value.tv_nsec = 1;
+    const int fd = TimerStart(&spec, [](void* arg) -> void* {
+        static_cast<bthread::CountdownEvent*>(arg)->signal();
+        return nullptr;
+    }, &called);
+    ASSERT_GE(fd, 0);
+    EXPECT_EQ(0, called.timed_wait(butil::milliseconds_from_now(1000)));
+    const int64_t deadline = butil::gettimeofday_us() + 1000000;
+    while (GetActiveTimerNum() != timers &&
+           butil::gettimeofday_us() < deadline) {
+        bthread_usleep(1000);
+    }
+    const bool released = GetActiveTimerNum() == timers;
+    if (!released) {
+        timerfd_settime(fd, 0, &spec, nullptr);
+    }
+    EXPECT_TRUE(released);
+}
+
+TEST_F(UBShmEndpointTest, repeated_close_preserves_deferred_cleanup_timer) {
+    using namespace brpc::ubring;
+    for (UbrCloseType type : {UBR_SEND_CLOSE, UBR_CALL_BACK_CLOSE}) {
+        UbrTrx trx{};
+        UbrEventQMsg event{};
+        event.flag = UBR_STATE_CONNECTED;
+        trx.ubr_tx.local_tx_event_q.addr =
+            reinterpret_cast<uint8_t*>(&event);
+        itimerspec spec{};
+        spec.it_interval.tv_sec = 10;
+        spec.it_value.tv_sec = 10;
+        auto noop = [](void*) -> void* { return nullptr; };
+        trx.timer_fd = TimerStart(&spec, noop, nullptr);
+        trx.hb_timer_fd = TimerStart(&spec, noop, nullptr);
+        ASSERT_GE(trx.timer_fd, 0);
+        ASSERT_GE(trx.hb_timer_fd, 0);
+        BRPC_SCOPE_EXIT {
+            DeleteTimerSafe(trx.clear_timer_fd);
+            if (type == UBR_CALL_BACK_CLOSE) {
+                DeleteTimerSafe(trx.timer_fd);
+            }
+        };
+        ASSERT_EQ(UBRING_OK, UBRing::ClearTrxResource(&trx, 0, type));
+        EXPECT_EQ(UBRING_REENTRY,
+                  UBRing::ClearTrxResource(&trx, 0, UBR_SEND_CLOSE));
+        EXPECT_GE(fcntl(trx.clear_timer_fd, F_GETFD), 0);
+    }
+}
+
+TEST_F(UBShmEndpointTest, concurrent_close_schedules_one_cleanup_timer) {
+    using namespace brpc::ubring;
+    UbrTrx trx{};
+    UbrEventQMsg event{};
+    event.flag = UBR_STATE_CONNECTED;
+    trx.ubr_tx.local_tx_event_q.addr = reinterpret_cast<uint8_t*>(&event);
+    itimerspec spec{};
+    spec.it_value.tv_sec = 10;
+    auto noop = [](void*) -> void* { return nullptr; };
+    trx.timer_fd = TimerStart(&spec, noop, nullptr);
+    trx.hb_timer_fd = TimerStart(&spec, noop, nullptr);
+    ASSERT_GE(trx.timer_fd, 0);
+    ASSERT_GE(trx.hb_timer_fd, 0);
+    BRPC_SCOPE_EXIT { DeleteTimerSafe(trx.clear_timer_fd); };
+    bthread::CountdownEvent start;
+    int results[2];
+    auto close = [&](int i) {
+        start.wait();
+        results[i] = UBRing::ClearTrxResource(&trx, 0, UBR_SEND_CLOSE);
+    };
+    std::thread first(close, 0);
+    std::thread second(close, 1);
+    start.signal();
+    first.join();
+    second.join();
+    std::sort(results, results + 2);
+    int expected[] = {UBRING_OK, UBRING_REENTRY};
+    std::sort(expected, expected + 2);
+    EXPECT_EQ(expected[0], results[0]);
+    EXPECT_EQ(expected[1], results[1]);
+    EXPECT_GE(fcntl(trx.clear_timer_fd, F_GETFD), 0);
+}
+#endif
+
+TEST_F(UBShmEndpointTest, initialize_preserves_acquired_transactions) {
+    using namespace brpc::ubring;
+    UbrTrx* trx = nullptr;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&trx));
+    auto* pool = UBRingManager::g_ubr_mgr.trx_mgr;
+    EXPECT_EQ(UBRING_OK, UBRingManager::UbrMgrInit());
+    EXPECT_EQ(pool, UBRingManager::g_ubr_mgr.trx_mgr);
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    if (pool == UBRingManager::g_ubr_mgr.trx_mgr) {
+        EXPECT_EQ(UBRING_OK, UBRingManager::ReleaseUbrTrxFromMgr(trx));
+    }
+}
+
+TEST_F(UBShmEndpointTest, finalize_waits_for_pending_cleanup) {
+    using namespace brpc::ubring;
+    UbrTrx* trx = nullptr;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&trx));
+    bthread::CountdownEvent finalized;
+    std::thread finalize([&] {
+        UBRingManager::UbrMgrFini();
+        finalized.signal();
+    });
+    const int result = finalized.timed_wait(butil::milliseconds_from_now(100));
+    if (result == ETIMEDOUT) {
+        EXPECT_EQ(UBRING_OK, UBRingManager::ReleaseUbrTrxFromMgr(trx));
+    }
+    finalize.join();
+    EXPECT_EQ(ETIMEDOUT, result);
+    EXPECT_EQ(nullptr, UBRingManager::g_ubr_mgr.trx_mgr);
+    EXPECT_EQ(UBRING_OK, UBRingManager::UbrMgrInit());
 }
 
 TEST_F(UBShmEndpointTest, reset_unmapped_client_does_not_wait_for_peer) {

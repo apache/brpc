@@ -30,6 +30,7 @@ UbrLinkInfoMgr UBRingManager::g_link_info_mgr;
 pthread_mutex_t UBRingManager::g_ubr_trx_mgr_mtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t UBRingManager::g_ubr_listener_mgr_mtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t UBRingManager::g_link_info_mgr_mtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_ubr_trx_idle = PTHREAD_COND_INITIALIZER;
 
 uint64_t g_ubr_trx_num = 0;
 uint64_t g_ub_event_cnt = 0;
@@ -58,6 +59,10 @@ RETURN_CODE UBRingManager::UbrMgrDefault()
 }
 
 RETURN_CODE UBRingManager::UbrMgrInit() {
+    LOCK_GUARD(g_ubr_trx_mgr_mtx);
+    if (g_ubr_mgr.trx_mgr != nullptr) {
+        return UBRING_OK;
+    }
     RETURN_CODE rc = UbrMgrDefault();
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Ubr manager set default values failed.";
@@ -71,7 +76,9 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
     if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr ||
                  g_ubr_mgr.trx_mgr_unit_status == nullptr)) {
         LOG(ERROR) << "Ubr manager memory allocation failed.";
-        UbrMgrFini();
+        FREE_PTR(g_ubr_mgr.trx_mgr);
+        FREE_PTR(g_ubr_mgr.trx_mgr_unit_status);
+        g_ubr_mgr.trx_cap = 0;
         return UBRING_ERR;
     }
 
@@ -84,14 +91,17 @@ RETURN_CODE UBRingManager::UbrMgrInit() {
 void UBRingManager::UbrMgrFini() {
     {
         LOCK_GUARD(g_ubr_trx_mgr_mtx);
+        // Close timers keep transaction pointers until deferred cleanup ends.
+        while (g_ubr_mgr.trx_num != 0) {
+            pthread_cond_wait(&g_ubr_trx_idle, &g_ubr_trx_mgr_mtx);
+        }
         FREE_PTR(g_ubr_mgr.trx_mgr);
         FREE_PTR(g_ubr_mgr.trx_mgr_unit_status);
+        g_ubr_mgr.trx_cap = 0;
     }
     {
         LOCK_GUARD(g_ubr_listener_mgr_mtx);
     }
-    g_ubr_mgr.trx_num = 0;
-    g_ubr_mgr.trx_cap = 0;
     LinkInfoFini();
 }
 
@@ -101,12 +111,12 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
         return UBRING_ERR;
     }
 
+    LOCK_GUARD(g_ubr_trx_mgr_mtx);
     if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Acquire trx failed, trx_mgr is null.";
         return UBRING_ERR;
     }
 
-    LOCK_GUARD(g_ubr_trx_mgr_mtx);
     if (g_ubr_mgr.trx_num >= g_ubr_mgr.trx_cap) {
         LOG(ERROR) << "Acquire trx failed, trx number is full.";
         return UBRING_ERR;
@@ -136,17 +146,12 @@ RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx) {
         return UBRING_ERR;
     }
 
-    trx->local_shm.addr = nullptr;
-    trx->ubr_tx.local_tx_event_q.addr = nullptr;
-    trx->ubr_tx.local_data_status_q.addr = nullptr;
-    trx->ubr_rx.local_rx_event_q.addr = nullptr;
-    trx->ubr_rx.remote_data_status_q.addr = nullptr;
+    LOCK_GUARD(g_ubr_trx_mgr_mtx);
     if (UNLIKELY(g_ubr_mgr.trx_mgr == nullptr)) {
         LOG(ERROR) << "Release trx failed, trx_mgr is null.";
         return UBRING_ERR;
     }
 
-    LOCK_GUARD(g_ubr_trx_mgr_mtx);
     uint32_t idx = trx->trx_mgr_index;
     if (g_ubr_mgr.trx_mgr_unit_status[idx] == UBR_MGR_UNIT_FREE) {
         LOG(INFO) << "Release trx already freed, name=" << trx->local_shm.name;
@@ -158,8 +163,16 @@ RETURN_CODE UBRingManager::ReleaseUbrTrxFromMgr(UbrTrx *trx) {
         return UBRING_ERR;
     }
 
+    trx->local_shm.addr = nullptr;
+    trx->ubr_tx.local_tx_event_q.addr = nullptr;
+    trx->ubr_tx.local_data_status_q.addr = nullptr;
+    trx->ubr_rx.local_rx_event_q.addr = nullptr;
+    trx->ubr_rx.remote_data_status_q.addr = nullptr;
     g_ubr_mgr.trx_mgr_unit_status[idx] = UBR_MGR_UNIT_FREE;
     --g_ubr_mgr.trx_num;
+    if (g_ubr_mgr.trx_num == 0) {
+        pthread_cond_broadcast(&g_ubr_trx_idle);
+    }
     return UBRING_OK;
 }
 

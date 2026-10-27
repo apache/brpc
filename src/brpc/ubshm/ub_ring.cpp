@@ -1338,6 +1338,12 @@ RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrC
         return UBRING_ERR;
     }
 
+    int expected = UBR_CLOSE_FIRST;
+    if (!ATOMIC_COMPARE_EXCHANGE_STRONG(
+            trx->close_state, expected, UBR_CLOSE_SECOND)) {
+        return UBRING_REENTRY;
+    }
+
     UbrEventQMsg* local_tx_event_q = (UbrEventQMsg *)trx->ubr_tx.local_tx_event_q.addr;
     if (local_tx_event_q->flag == UBR_STATE_CONNECTED) {
         local_tx_event_q->flag = UBR_STATE_CLOSING;

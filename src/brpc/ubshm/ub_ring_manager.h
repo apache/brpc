@@ -59,6 +59,7 @@ public:
 
     static RETURN_CODE UbrMgrInit();
 
+    // Wait for acquired transactions to finish cleanup before freeing the pool.
     static void UbrMgrFini();
 
     static RETURN_CODE AcquireUbrTrxFromMgr(UbrTrx **trx);

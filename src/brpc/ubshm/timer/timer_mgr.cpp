@@ -73,9 +73,6 @@ static RETURN_CODE DeleteTimerInner(uint32_t fd) {
     kevent(g_epoll_fd, &evt, 1, nullptr, 0, nullptr);
 #endif
 
-    uint64_t exp = 0;
-    read((int)fd, &exp, sizeof(exp));
-
     close((int)fd);
     std::atomic_fetch_sub(&g_total_timer_num, 1U);
     return UBRING_OK;
@@ -251,7 +248,7 @@ void *TimerEpoll(void *args) {
 
             uint64_t exp = 0;
             if (read(timer_fd, &exp, sizeof(exp)) < 0) {
-                if (errno != EBADF) {
+                if (errno != EBADF && errno != EAGAIN && errno != EINTR) {
                     LOG(ERROR) << "Failed to read timerfd=" << timer_fd << " errno=" << errno;
                 }
                 continue;
@@ -272,40 +269,7 @@ void *TimerEpoll(void *args) {
 }
 
 void DeleteTimerSafe(uint32_t fd) {
-    if (g_timer_fd_ctx_map == nullptr) {
-        return;
-    }
-
-    if (pthread_spin_lock(&g_timer_fd_ctx_map[fd].spin_lock) != 0) {
-        return;
-    }
-
-    if (g_timer_fd_ctx_map[fd].status == TIMER_CONTEXT_NOT_USING) {
-        pthread_spin_unlock(&g_timer_fd_ctx_map[fd].spin_lock);
-        return;
-    }
-
-    g_timer_fd_ctx_map[fd].status = TIMER_CONTEXT_NOT_USING;
-    g_timer_fd_ctx_map[fd].cb = nullptr;
-    g_timer_fd_ctx_map[fd].args = nullptr;
-    g_timer_fd_ctx_map[fd].periodical = 0;
-    g_timer_fd_ctx_map[fd].fd = 0;
-
-    pthread_spin_unlock(&g_timer_fd_ctx_map[fd].spin_lock);
-
-#if defined(OS_LINUX)
-    epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, (int)fd, nullptr);
-#elif defined(OS_MACOSX)
-    struct kevent evt;
-    EV_SET(&evt, fd, EVFILT_TIMER, EV_DELETE, 0, 0, nullptr);
-    kevent(g_epoll_fd, &evt, 1, nullptr, 0, nullptr);
-#endif
-
-    uint64_t exp = 0;
-    read((int)fd, &exp, sizeof(exp));
-
-    close((int)fd);
-    std::atomic_fetch_sub(&g_total_timer_num, 1U);
+    DeleteTimerInner(fd);
 }
 
 void DeleteTimer(uint32_t fd) {
@@ -324,7 +288,7 @@ int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args) {
     }
 
 #if defined(OS_LINUX)
-    int timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
+    int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
 #elif defined(OS_MACOSX)
     int timer_fd = timerfd_create_macosx(CLOCK_MONOTONIC, 0);
 #endif
