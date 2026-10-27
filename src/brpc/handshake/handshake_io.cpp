@@ -162,7 +162,13 @@ int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
 int SocketHandshakeIO::PushBack(const void* data, size_t len) {
     CHECK(_socket != nullptr);
     if (len != 0) {
-        return _socket->fd_input_processor().read_buf().append(data, len) == 0 ? 0 : -1;
+        butil::IOBuf restored;
+        if (restored.append(data, len) != 0) {
+            return -1;
+        }
+        auto& input = _socket->fd_input_processor().read_buf();
+        restored.append(input);
+        input.swap(restored);
     }
     return 0;
 }

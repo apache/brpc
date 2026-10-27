@@ -465,6 +465,50 @@ static std::string MakeUBShmHello() {
     return frame;
 }
 
+TEST(TransportHandshakeTest, socket_io_pushback_prepends_buffered_input) {
+    for (const std::string& suffix : {std::string(), std::string("tail")}) {
+        SocketOptions options;
+        SocketId id;
+        ASSERT_EQ(0, Socket::Create(options, &id));
+        SocketUniquePtr socket;
+        ASSERT_EQ(0, Socket::Address(id, &socket));
+        auto& input = socket->fd_input_processor().read_buf();
+        input.append(suffix);
+        SocketHandshakeIO io(socket.get());
+
+        EXPECT_EQ(0, io.PushBack("PRPC", 4));
+        EXPECT_EQ("PRPC" + suffix, input.to_string());
+        EXPECT_EQ(0, io.PushBack("\0", 1));
+        const std::string expected = std::string(1, '\0') + "PRPC" + suffix;
+        EXPECT_EQ(expected, input.to_string());
+        EXPECT_EQ(0, io.PushBack(nullptr, 0));
+        EXPECT_EQ(expected, input.to_string());
+        socket->SetFailed();
+    }
+}
+
+TEST(HandshakeFrameTest,
+     socket_magic_mismatch_restores_prefix_before_buffered_input) {
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    butil::fd_guard peer_fd(fds[1]);
+    SocketOptions options;
+    options.fd = fds[0];
+    SocketId id;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(id, &socket));
+    socket->fd_input_processor().read_buf().append("tail");
+    ASSERT_EQ(4, write(peer_fd, "PRPC", 4));
+
+    SocketHandshakeIO io(socket.get());
+    std::string payload;
+    EXPECT_EQ(FRAME_NOT_MINE, FrameCodec::ReadFrame(
+        &io, FixedSpec("URMA", 4, 4), true, &payload));
+    EXPECT_EQ("PRPCtail", socket->fd_input_processor().read_buf().to_string());
+    socket->SetFailed();
+}
+
 TEST(TransportHandshakeTest, socket_io_initializes_read_butex) {
     auto* reused = bthread::butex_create_checked<butil::atomic<int>>();
     reused->store(37, butil::memory_order_relaxed);
