@@ -159,6 +159,8 @@ Atomic64 Release_Load(volatile const Atomic64* ptr);
 #include "butil/atomicops_internals_loongarch64_gcc.h"
 #elif defined(COMPILER_GCC) && defined(ARCH_CPU_RISCV_FAMILY)
 #include "butil/atomicops_internals_riscv_gcc.h"
+#elif defined(COMPILER_GCC) && defined(ARCH_CPU_PPC64_FAMILY)
+#include "butil/atomicops_internals_gcc.h"
 #else
 #error "Atomic operations are not supported on your platform"
 #endif

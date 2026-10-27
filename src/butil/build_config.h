@@ -148,6 +148,15 @@
 #define ARCH_CPU_32_BITS 1
 #endif
 #define ARCH_CPU_LITTLE_ENDIAN 1
+#elif defined(__powerpc64__)
+#define ARCH_CPU_PPC64_FAMILY 1
+#define ARCH_CPU_PPC64 1
+#define ARCH_CPU_64_BITS 1
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define ARCH_CPU_BIG_ENDIAN 1
+#else
+#define ARCH_CPU_LITTLE_ENDIAN 1
+#endif
 #else
 #error Please add support for your architecture in butil/build_config.h
 #endif

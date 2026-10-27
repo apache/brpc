@@ -45,6 +45,9 @@
 	#elif __riscv
 	    #define BTHREAD_CONTEXT_PLATFORM_linux_riscv64
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
+	#elif defined(__powerpc64__) && _CALL_ELF == 2
+	    #define BTHREAD_CONTEXT_PLATFORM_linux_ppc64
+	    #define BTHREAD_CONTEXT_CALL_CONVENTION
 	#endif
 
   #elif defined(__MINGW32__) || defined (__MINGW64__)
