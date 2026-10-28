@@ -563,10 +563,30 @@ public:
     void SetUp() override {
         LoggingTest::SetUp();
         _saved_async_log = FLAGS_async_log;
+        _saved_async_log_in_background_always =
+            FLAGS_async_log_in_background_always;
         _saved_rotate_size_mb = FLAGS_log_rotate_size_mb;
         _saved_max_backups = FLAGS_log_rotate_max_backups;
         FLAGS_async_log = false;
         _log_path = _temp_file.fname();
+        // A suite that ran before may have left the async log queue full:
+        // on builds with the cpu profiler enabled, LoggingTest.performance
+        // queues millions of logs that take the background thread tens of
+        // seconds to flush. Those logs go to whichever file is current and
+        // would rotate it from under the assertions below, so drain them
+        // into the temp file first, with rotation on to bound the disk
+        // usage. Costs one stat() when the queue is already idle.
+        FLAGS_log_rotate_size_mb = 1;
+        FLAGS_log_rotate_max_backups = 2;
+        InitLoggingToTempFile();
+        WaitForAsyncLogToFlush();
+        CloseLogFile();
+        FLAGS_log_rotate_size_mb = _saved_rotate_size_mb;
+        FLAGS_log_rotate_max_backups = _saved_max_backups;
+        unlink(_log_path.c_str());
+        for (int i = 1; i <= 3; ++i) {
+            unlink(BackupPath(i).c_str());
+        }
     }
 
     void TearDown() override {
@@ -574,6 +594,8 @@ public:
         FLAGS_log_rotate_max_backups = _saved_max_backups;
         FLAGS_log_rotate_size_mb = _saved_rotate_size_mb;
         FLAGS_async_log = _saved_async_log;
+        FLAGS_async_log_in_background_always =
+            _saved_async_log_in_background_always;
         // InitLoggingToTempFile() points the global logging destination at
         // the temp file. Restore the default destination (stderr on POSIX)
         // before anything else: once CloseLogFile() above has closed the
@@ -607,6 +629,34 @@ protected:
         return _log_path + butil::string_printf(".%d", index);
     }
 
+    // Wait until the async log queue is idle: the background thread
+    // flushes the backlog into `_log_path', so a size that stops changing
+    // means that it caught up. Rotation makes the size drop and jump, but
+    // it never stays the same while logs are still flowing. Bounded so
+    // that a stuck queue cannot hang the whole test binary.
+    void WaitForAsyncLogToFlush() {
+        const int64_t max_wait_us = 600 * 1000 * 1000;
+        const int stable_samples = 6;
+        off_t last_size = -1;
+        int stable = 0;
+        for (int64_t waited_us = 0; waited_us < max_wait_us;
+                waited_us += 50 * 1000) {
+            off_t size = 0;
+            FileSize(_log_path, &size);  // 0 when the file is gone
+            if (size == last_size) {
+                if (++stable >= stable_samples) {
+                    return;
+                }
+            } else {
+                stable = 0;
+                last_size = size;
+            }
+            usleep(50 * 1000);
+        }
+        fprintf(stderr, "LogRotationTest: async log queue still not idle "
+                "after %dms\n", (int)(max_wait_us / 1000));
+    }
+
     // Each log adds a header on top of `size', which only makes the file grow
     // faster than the caller expects, never slower.
     void WriteLogs(int count, size_t size) {
@@ -621,6 +671,7 @@ protected:
 private:
     butil::TempFile _temp_file;
     bool _saved_async_log{false};
+    bool _saved_async_log_in_background_always{false};
     int _saved_rotate_size_mb{0};
     int _saved_max_backups{0};
 };
@@ -1028,6 +1079,38 @@ TEST_F(LogRotationTest, concurrent_sync_log) {
     }
     ASSERT_EQ((size_t)(thread_num * logs_per_thread), marker_count);
     ASSERT_EQ((size_t)(thread_num * logs_per_thread), markers.size());
+}
+
+// An async log that is still in the queue when a later InitLogging() moves
+// the destination away from the file is flushed by the background thread
+// without looking at the destination it was queued under, which is what
+// TearDown() above does while the queue of LoggingTest.performance is
+// still draining. It used to be written through a null FILE* and crashed
+// the whole process.
+TEST_F(LogRotationTest, async_log_flushed_after_destination_change) {
+    // Queue everything on the background thread instead of letting the
+    // enqueueing thread write inline, so that logs are still in flight
+    // when the destination changes below.
+    FLAGS_async_log = true;
+    FLAGS_async_log_in_background_always = true;
+    InitLoggingToTempFile();
+
+    const std::string content(100, 'a');
+    for (int i = 0; i < 10000; ++i) {
+        LOG(INFO) << content;
+    }
+    // The very sequence of TearDown(): close the handle, then stop logging
+    // to a file.
+    CloseLogFile();
+    LoggingSettings settings;
+    settings.logging_dest = LOG_TO_SYSTEM_DEBUG_LOG;
+    ASSERT_TRUE(InitLogging(settings));
+
+    // Let the background thread flush the backlog under the new
+    // destination, then make sure the framework is still usable.
+    sleep(1);
+    FLAGS_async_log = false;
+    LOG(INFO) << "still alive";
 }
 
 #if defined(BRPC_ENABLE_CPU_PROFILER) || defined(BAIDU_RPC_ENABLE_CPU_PROFILER)
