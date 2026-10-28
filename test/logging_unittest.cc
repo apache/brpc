@@ -5,10 +5,13 @@
 #include "butil/basictypes.h"
 #include "butil/logging.h"
 #include "gperftools_helper.h"
+#include "butil/file_util.h"
 #include "butil/files/temp_file.h"
 #include "butil/popen.h"
+#include "butil/time.h"
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
+#include <set>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -568,12 +571,25 @@ public:
 
     void TearDown() override {
         CloseLogFile();
-        for (int i = 1; i <= _saved_max_backups + 2; ++i) {
-            unlink(BackupPath(i).c_str());
-        }
         FLAGS_log_rotate_max_backups = _saved_max_backups;
         FLAGS_log_rotate_size_mb = _saved_rotate_size_mb;
         FLAGS_async_log = _saved_async_log;
+        // InitLoggingToTempFile() points the global logging destination at
+        // the temp file. Restore the default destination (stderr on POSIX)
+        // before anything else: once CloseLogFile() above has closed the
+        // handle, the next log of whichever suite runs later would reopen
+        // and keep appending to a file under this path, and its stderr
+        // would go silent.
+        LoggingSettings settings;
+        settings.logging_dest = LOG_TO_SYSTEM_DEBUG_LOG;
+        ASSERT_TRUE(InitLogging(settings));
+        // A failed test may leave the obstacle directories that the
+        // rotation failure tests create behind, remove them as well.
+        for (int i = 1; i <= _saved_max_backups + 2; ++i) {
+            unlink(BackupPath(i).c_str());
+            rmdir((BackupPath(i) + "/x").c_str());
+            rmdir(BackupPath(i).c_str());
+        }
         LoggingTest::TearDown();
     }
 
@@ -876,6 +892,142 @@ TEST_F(LogRotationTest, recovers_after_the_log_file_is_replaced) {
     ASSERT_GT(size, 0);
     ASSERT_LE(size, 1L * 1024 * 1024);
     unlink(moved.c_str());
+}
+
+// A backup that cannot be shifted out of the way must stop the rotation
+// rather than let the final rename overwrite it with the current log file,
+// which would silently drop the newest generation on every rotation.
+TEST_F(LogRotationTest, shift_failure_keeps_the_newest_backup) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 2;
+    InitLoggingToTempFile();
+
+    // Rotate once so that ".1" holds a complete generation. The size is
+    // not enough to tell the generations apart, the rotation threshold
+    // makes them equally large, the content is compared instead.
+    WriteLogs(1200, 1000);
+    std::string first_backup;
+    ASSERT_TRUE(butil::ReadFileToString(
+        butil::FilePath(BackupPath(1)), &first_backup));
+    ASSERT_GT(first_backup.size(), (size_t)(100 * 1024));
+
+    // Occupy ".2" with a non-empty directory: shifting ".1" to ".2" fails
+    // with ENOTEMPTY while renaming the current file over ".1" would work.
+    ASSERT_EQ(0, mkdir(BackupPath(2).c_str(), 0755));
+    ASSERT_EQ(0, mkdir((BackupPath(2) + "/x").c_str(), 0755));
+
+    WriteLogs(1200, 1000);  // crosses the threshold, the shift fails
+    CloseLogFile();
+
+    // ".1" still holds the very same generation, rotation did not trade it
+    // for the current file.
+    std::string backup;
+    ASSERT_TRUE(butil::ReadFileToString(
+        butil::FilePath(BackupPath(1)), &backup));
+    ASSERT_EQ(first_backup, backup);
+    // The current file kept growing instead of losing a generation.
+    off_t size = 0;
+    ASSERT_TRUE(FileSize(_log_path, &size));
+    ASSERT_GT(size, 1L * 1024 * 1024);
+
+    // Once the obstacle is gone, the backed off retry shifts the preserved
+    // backup and rotation works again.
+    ASSERT_EQ(0, rmdir((BackupPath(2) + "/x").c_str()));
+    ASSERT_EQ(0, rmdir(BackupPath(2).c_str()));
+    WriteLogs(1200, 1000);
+    CloseLogFile();
+
+    ASSERT_TRUE(butil::ReadFileToString(
+        butil::FilePath(BackupPath(2)), &backup));
+    ASSERT_EQ(first_backup, backup);  // the preserved generation, shifted
+    ASSERT_TRUE(FileSize(BackupPath(1), &size));
+    ASSERT_GT(size, 1L * 1024 * 1024);
+}
+
+// --log_rotate_max_backups is only validated to be a positive int, so a
+// huge value must not turn into one rename() per index on every rotation,
+// all of them under the logging lock.
+TEST_F(LogRotationTest, huge_max_backups_shifts_only_existing_backups) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 100000000;
+    InitLoggingToTempFile();
+
+    butil::Timer timer;
+    timer.start();
+    WriteLogs(2500, 1000);  // ~2.5MB, a couple of rotations
+    CloseLogFile();
+    timer.stop();
+
+    // The rotations above renamed a handful of files rather than 1e8 of
+    // them, which would stall the logging threads for minutes.
+    ASSERT_LT(timer.m_elapsed(), 10 * 1000);
+    ASSERT_TRUE(FileSize(BackupPath(1), nullptr));
+    ASSERT_TRUE(FileSize(BackupPath(2), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(3), nullptr));
+}
+
+struct SyncLogArgs {
+    int thread_index;
+    int log_count;
+    size_t log_size;
+};
+
+void* write_sync_logs(void* void_arg) {
+    auto args = (SyncLogArgs*)void_arg;
+    for (int i = 0; i < args->log_count; ++i) {
+        LOG(INFO) << butil::string_printf("<<T:%d:%d>>",
+                                          args->thread_index, i)
+                  << std::string(args->log_size, 'x');
+    }
+    return nullptr;
+}
+
+// Threads logging synchronously rotate the file between them without
+// losing or duplicating a log.
+TEST_F(LogRotationTest, concurrent_sync_log) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 10;
+    InitLoggingToTempFile();
+
+    const int thread_num = 8;
+    const int logs_per_thread = 300;
+    SyncLogArgs args[thread_num];
+    pthread_t threads[thread_num];
+    for (int i = 0; i < thread_num; ++i) {
+        args[i].thread_index = i;
+        args[i].log_count = logs_per_thread;
+        args[i].log_size = 1000;
+        ASSERT_EQ(0, pthread_create(&threads[i], nullptr,
+                                    write_sync_logs, &args[i]));
+    }
+    for (int i = 0; i < thread_num; ++i) {
+        ASSERT_EQ(0, pthread_join(threads[i], nullptr));
+    }
+    CloseLogFile();
+    ASSERT_TRUE(FileSize(BackupPath(1), nullptr));  // rotation did happen
+
+    // Every single log must show up exactly once across the current file
+    // and the backups: none lost, none written twice, none torn apart by
+    // a rotation.
+    std::set<std::string> markers;
+    size_t marker_count = 0;
+    for (int i = 0; i <= FLAGS_log_rotate_max_backups + 1; ++i) {
+        std::string content;
+        if (!butil::ReadFileToString(butil::FilePath(
+                i == 0 ? _log_path : BackupPath(i)), &content)) {
+            continue;
+        }
+        size_t pos = 0;
+        while ((pos = content.find("<<T:", pos)) != std::string::npos) {
+            const size_t end = content.find(">>", pos);
+            ASSERT_NE(std::string::npos, end);
+            markers.insert(content.substr(pos, end - pos + 2));
+            ++marker_count;
+            pos = end + 2;
+        }
+    }
+    ASSERT_EQ((size_t)(thread_num * logs_per_thread), marker_count);
+    ASSERT_EQ((size_t)(thread_num * logs_per_thread), markers.size());
 }
 
 #if defined(BRPC_ENABLE_CPU_PROFILER) || defined(BAIDU_RPC_ENABLE_CPU_PROFILER)
