@@ -41,6 +41,7 @@ option(WITH_CPU_FREQUENCY "Use CPU frequency for cpuwide_time" OFF)
 option(WITH_ASAN "With AddressSanitizer" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 option(BUILD_FUZZ_TESTS "Whether to build fuzz tests" OFF)
+option(BUILD_BASE64_BENCHMARKS "Whether to build Base64 benchmarks" OFF)
 option(BUILD_BRPC_TOOLS "Whether to build brpc tools" ON)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 
@@ -217,6 +218,24 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/output/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/output/lib)
 
 add_subdirectory(src)
+
+if(BUILD_BASE64_BENCHMARKS)
+    add_executable(base64_benchmark_scalar
+        test/base64_benchmark.cpp
+        src/butil/third_party/modp_b64/modp_b64.cc)
+    target_compile_definitions(base64_benchmark_scalar PRIVATE
+        MODP_B64_DISABLE_AVX2)
+    target_include_directories(base64_benchmark_scalar PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+    add_executable(base64_benchmark_avx2
+        test/base64_benchmark.cpp
+        src/butil/third_party/modp_b64/modp_b64.cc
+        src/butil/third_party/modp_b64/modp_b64_avx2.cc)
+    target_include_directories(base64_benchmark_avx2 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+endif()
+
 add_subdirectory(test/cmake_link_dependencies EXCLUDE_FROM_ALL)
 if(BUILD_UNIT_TESTS)
     enable_testing()
