@@ -627,8 +627,10 @@ static bool GlobalUrmaInitializeImpl() {
         return false;
     }
 
-    if (FLAGS_urma_use_polling) {
-        atexit(ReleasePollingModeAtExit);
+    if (FLAGS_urma_use_polling &&
+        atexit(ReleasePollingModeAtExit) != 0) {
+        LOG(ERROR) << "Fail to register URMA polling shutdown handler";
+        return false;
     }
 
     g_urma_available.store(true, butil::memory_order_release);
