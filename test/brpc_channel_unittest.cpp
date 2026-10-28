@@ -2238,6 +2238,57 @@ protected:
         StopAndJoin();
     }
 
+    void TestBackupRequestWithoutRetryBudget(bool single_server, bool async,
+                                            int timeout_ms,
+                                            bool consume_retry_first) {
+        ASSERT_EQ(0, StartAccept(_ep));
+        brpc::Channel channel;
+        SetUpChannel(&channel, single_server, false);
+
+        // Establish the connection before testing backup/retry ordering.
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(__FUNCTION__);
+        brpc::Controller warmup;
+        warmup.set_timeout_ms(1000);
+        CallMethod(&channel, &warmup, &req, &res, async);
+        ASSERT_FALSE(warmup.Failed()) << warmup.ErrorText();
+
+        auto attempts = std::make_shared<butil::atomic<int>>(0);
+        _svc.SetMockFunc([attempts, consume_retry_first](
+                google::protobuf::RpcController* controller,
+                const test::EchoRequest*, test::EchoResponse*,
+                google::protobuf::Closure*) {
+            if (attempts->fetch_add(1, butil::memory_order_relaxed) == 0 &&
+                consume_retry_first) {
+                static_cast<brpc::Controller*>(controller)->SetFailed(
+                    brpc::EOVERCROWDED, "Consume the only retry before backup");
+                return;
+            }
+            bthread_usleep(100000);
+        });
+
+        brpc::Controller cntl;
+        cntl.set_max_retry(consume_retry_first ? 1 : 0);
+        cntl.set_backup_request_ms(20);
+        cntl.set_timeout_ms(timeout_ms);
+        CallMethod(&channel, &cntl, &req, &res, async);
+        if (timeout_ms < 0 || timeout_ms > 100) {
+            EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+            EXPECT_EQ("received " + req.message(), res.message());
+        } else {
+            EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
+        }
+        EXPECT_FALSE(cntl.has_backup_request());
+        EXPECT_EQ(consume_retry_first ? 1 : 0, cntl.retried_count());
+        // Also finish delayed server work when the client has timed out.
+        bthread_usleep(150000);
+        EXPECT_EQ(consume_retry_first ? 2 : 1,
+                  attempts->load(butil::memory_order_relaxed));
+        StopAndJoin();
+        _svc.SetMockFunc({});
+    }
+
     class BackupRequestPolicyImpl : public brpc::BackupRequestPolicy {
     public:
         int32_t GetBackupRequestMs(const brpc::Controller*) const override {
@@ -3391,6 +3442,25 @@ TEST_F(ChannelTest, backup_request_policy) {
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <= 1; ++k) { // Flag ShortConnection
                 TestBackupRequestPolicy(i, j, k);
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, backup_request_without_retry_budget) {
+    const int timeouts_ms[] = {1000, 60, -1};
+    for (bool single_server : {false, true}) {
+        for (bool async : {false, true}) {
+            for (int timeout_ms : timeouts_ms) {
+                for (bool consume_retry_first : {false, true}) {
+                    SCOPED_TRACE(testing::Message()
+                        << "single_server=" << single_server
+                        << " async=" << async
+                        << " timeout_ms=" << timeout_ms
+                        << " consume_retry_first=" << consume_retry_first);
+                    TestBackupRequestWithoutRetryBudget(
+                        single_server, async, timeout_ms, consume_retry_first);
+                }
             }
         }
     }
