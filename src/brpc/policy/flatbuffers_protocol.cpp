@@ -362,6 +362,19 @@ void ProcessFlatBuffersResponse(InputMessageBase* message_base) {
     if (rc != 0) {
         return;
     }
+    // A live correlation id alone does not prove that this response belongs
+    // to the attempt: it must also arrive on the socket the attempt used.
+    const SocketId response_socket_id =
+        message->socket() ? message->socket()->id() : INVALID_SOCKET_ID;
+    if (cntl == nullptr || !ControllerPrivateAccessor(cntl)
+            .does_response_match_request_socket(correlation_id, response_socket_id)) {
+        LOG(WARNING) << "correlation_id=" << correlation_id.value
+                     << " of the FlatBuffers response from socket "
+                     << response_socket_id
+                     << " does not match a request sent over it, drop it";
+        CHECK_EQ(0, bthread_id_unlock(correlation_id));
+        return;
+    }
     ControllerPrivateAccessor accessor(cntl);
     const int saved_error = cntl->ErrorCode();
     cntl->set_rpc_received_us(message->received_us());

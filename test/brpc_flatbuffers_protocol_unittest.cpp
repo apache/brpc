@@ -54,6 +54,7 @@
 #include "brpc/policy/flatbuffers_protocol.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/server.h"
+#include "brpc/socket.h"
 #include "brpc/stream.h"
 #include "flatbuffers_message_generated.h"
 
@@ -1819,6 +1820,102 @@ TEST(FlatBuffersResponseTest, SchemaVerificationIsExplicitlyTheCallersResponsibi
     EXPECT_FALSE(response.Verify<Payload>());
     peer.Join();
     EXPECT_TRUE(peer.served());
+}
+
+// Builds a response frame for `cid' as if it had arrived on `socket'.
+brpc::policy::MostCommonMessage* MakeFlatBuffersResponse(
+        const Message& payload, brpc::CallId cid, brpc::Socket* socket) {
+    brpc::policy::MostCommonMessage* msg = brpc::policy::MostCommonMessage::Get();
+    msg->meta.append(ResponseMeta(payload.size(), 0, cid.value));
+    msg->payload.append(Bytes(payload));
+    socket->ReAddress(&msg->_socket);
+    return msg;
+}
+
+brpc::SocketUniquePtr CreateTestSocket() {
+    brpc::SocketId id;
+    brpc::SocketUniquePtr ptr;
+    EXPECT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &id));
+    EXPECT_EQ(0, brpc::Socket::Address(id, &ptr));
+    return ptr;
+}
+
+TEST(FlatBuffersResponseTest, ResponseFromForeignSocketIsDropped) {
+    const Message expected = MakePayload(64, 7);
+    Message response;
+    brpc::Controller cntl;
+    cntl._response = &response;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(cntl.call_id(), nullptr, 2));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    brpc::SocketUniquePtr sending = CreateTestSocket();
+    brpc::SocketUniquePtr foreign = CreateTestSocket();
+    ASSERT_TRUE(sending && foreign);
+    sending->ReAddress(&cntl._current_call.sending_sock);
+
+    // A live correlation id on another connection must not complete the RPC.
+    brpc::policy::ProcessFlatBuffersResponse(
+        MakeFlatBuffersResponse(expected, cntl.current_id(), foreign.get()));
+    EXPECT_EQ(0u, response.size());
+    EXPECT_EQ(0, cntl.ErrorCode());
+
+    // The call stays available for the response on its own socket.
+    brpc::policy::ProcessFlatBuffersResponse(
+        MakeFlatBuffersResponse(expected, cntl.current_id(), sending.get()));
+    EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_EQ(Bytes(expected), Bytes(response));
+}
+
+TEST(FlatBuffersResponseTest, ResponseFromPreviousRetryIsDropped) {
+    const Message expected = MakePayload(64, 8);
+    Message response;
+    brpc::Controller cntl;
+    cntl._response = &response;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(cntl.call_id(), nullptr, 3));
+    const brpc::CallId previous_id = cntl.current_id();
+    cntl._current_call.nretry = 1;
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    brpc::SocketUniquePtr sending = CreateTestSocket();
+    ASSERT_TRUE(sending);
+    sending->ReAddress(&cntl._current_call.sending_sock);
+
+    // Even on the right socket, a finished attempt cannot supply the result.
+    brpc::policy::ProcessFlatBuffersResponse(
+        MakeFlatBuffersResponse(expected, previous_id, sending.get()));
+    EXPECT_EQ(0u, response.size());
+    EXPECT_EQ(0, cntl.ErrorCode());
+
+    brpc::policy::ProcessFlatBuffersResponse(
+        MakeFlatBuffersResponse(expected, cntl.current_id(), sending.get()));
+    EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_EQ(Bytes(expected), Bytes(response));
+}
+
+TEST(FlatBuffersResponseTest, UnfinishedBackupAttemptMatchesOnlyItsOwnSocket) {
+    const Message expected = MakePayload(64, 9);
+    Message response;
+    brpc::Controller cntl;
+    cntl._response = &response;
+    ASSERT_EQ(0, bthread_id_lock_and_reset_range(cntl.call_id(), nullptr, 3));
+    ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+    const brpc::CallId first_id = cntl.current_id();
+    brpc::SocketUniquePtr first = CreateTestSocket();
+    brpc::SocketUniquePtr backup = CreateTestSocket();
+    ASSERT_TRUE(first && backup);
+    first->ReAddress(&cntl._current_call.sending_sock);
+    // Mirror starting a backup request: keep the first attempt and its socket.
+    cntl._unfinished_call = new brpc::Controller::Call(&cntl._current_call);
+    ++cntl._current_call.nretry;
+    backup->ReAddress(&cntl._current_call.sending_sock);
+
+    brpc::policy::ProcessFlatBuffersResponse(
+        MakeFlatBuffersResponse(expected, first_id, backup.get()));
+    EXPECT_EQ(0u, response.size());
+    EXPECT_EQ(0, cntl.ErrorCode());
+
+    brpc::policy::ProcessFlatBuffersResponse(
+        MakeFlatBuffersResponse(expected, first_id, first.get()));
+    EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_EQ(Bytes(expected), Bytes(response));
 }
 
 }  // namespace
