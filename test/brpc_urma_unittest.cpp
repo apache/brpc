@@ -116,6 +116,7 @@ void CheckPollingExit() {
     }
     // This handler was registered before URMA initialization, so it runs
     // after the polling exit handler, like a late Socket/endpoint destructor.
+    urma::FLAGS_urma_use_polling = true;
     delete g_exit_endpoint;
     g_exit_endpoint = nullptr;
 }
