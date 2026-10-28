@@ -341,7 +341,7 @@ if(BUILD_FUZZ_TESTS)
 
     target_link_libraries(brpc-static-debug PUBLIC brpc_test_config ${DYNAMIC_LIB})
 
-    set(FUZZ_TARGETS fuzz_butil fuzz_esp fuzz_hpack fuzz_http
+    set(FUZZ_TARGETS fuzz_base64 fuzz_butil fuzz_esp fuzz_hpack fuzz_http
         fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri
         fuzz_baidu_rpc fuzz_mongo fuzz_memcache
         fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf
