@@ -4,13 +4,16 @@
 [中文指南](../../docs/cn/flatbuffers.md)
 
 Independent client and server programs using the `fb_rpc` protocol, a generated
-FlatBuffers service, and `brpc::flatbuffers::Message`. This is a **bounded
-functional example**, not a performance comparison; the directory name is kept
-for continuity.
+FlatBuffers service, and `brpc::flatbuffers::Message`. By default the client
+runs a **bounded functional check**. A timed mode compares `fb_rpc` with an
+equivalent protobuf service over `baidu_std` (see
+[Timed comparison](#timed-comparison)).
 
 The schema declares `BenchmarkService.Echo` with stable wire method ID **7**.
 The generated stub calls `Channel::FBCallMethod`, and the server registers the
-generated service with `Server::AddFlatBuffersService`.
+generated service with `Server::AddFlatBuffersService`. The same server also
+registers `benchmark_fb_pb.BenchmarkService` from `echo_pb.proto`, a protobuf
+service with the same fields, and serves both `fb_rpc` and `baidu_std`.
 
 ## Build
 
@@ -29,8 +32,8 @@ example with `-DLINK_SO=ON`. Extra runtime dependencies can be passed with
 
 ## Run separately
 
-The server and client must run on the **same host**; both accept only IPv4
-loopback endpoints. In the build terminal:
+By default the server and client accept only IPv4 loopback endpoints. In the
+build terminal:
 
 ```sh
 "$WORK/example/benchmark_fb_server" --listen_addr=127.0.0.1:0 --duration_s=300
@@ -70,21 +73,48 @@ schema rejection (error code -1); timeouts and connection errors are failures.
 
 | Client option | Default | Allowed |
 | --- | --- | --- |
-| `server` | required | `127.0.0.1:<nonzero-port>` |
+| `server` | required | `127.0.0.1:<nonzero-port>`, any IPv4 with `allow_remote` |
+| `protocol` | `fb_rpc` | `fb_rpc`, `baidu_std` (protobuf control service) |
 | `request_count` | 16 | 1..1000 total, not per thread |
-| `thread_num` | 2 | 1..16 synchronous callers |
+| `thread_num` | 2 | 1..16 synchronous callers (1..1024 when timed) |
 | `request_size` | 64 | 0..1048576 string bytes |
 | `attachment_size` | 0 | 0..1048576 bytes |
 | `timeout_ms` | 1500 | 1..5000 per RPC |
 | `deadline_ms` | 30000 | 1..120000 for the client run |
 | `connection_type` | `single` | `single`, `pooled`, `short` |
 | `omit_message` | false | Preserve absent rather than empty string |
-| `corrupt_request` | false | Require schema rejection |
+| `corrupt_request` | false | Require schema rejection (`fb_rpc`, count mode only) |
+| `duration_s` | 0 | 0 for count mode, 1..3600 for timed mode |
+| `warmup_s` | 0 | 0..600 unmeasured seconds before a timed run |
+| `allow_remote` | false | Accept a non-loopback `server` |
+| `use_bthread` | false | Run callers as bthreads, like `multi_threaded_echo_c++ --use_bthread` |
 
-The server defaults to `127.0.0.1:0`, `duration_s=60` (1..3600) and
-`max_concurrency=32` (1..64), and stops earlier on SIGINT/SIGTERM. Builtin
+The server defaults to `127.0.0.1:0`, `duration_s=60` (1..86400) and
+`max_concurrency=32` (1..4096), and stops earlier on SIGINT/SIGTERM. Use
+`--allow_remote` with a non-loopback `listen_addr`. Builtin
 services are disabled. FRPC has no authentication, compression, checksums or
 streaming, so this is not a production or public-network configuration.
+
+## Timed comparison
+
+With `--duration_s` the client keeps one synchronous RPC in flight per caller
+thread, verifies every reply, and prints one JSON line with QPS, payload
+throughput, latency percentiles and the client's CPU cores. Run each protocol
+with identical sizes and concurrency against the same server:
+
+```sh
+"$WORK/example/benchmark_fb_server" --listen_addr=SERVER_IP:8901 --allow_remote \
+  --duration_s=3600 --max_concurrency=4096
+for p in fb_rpc baidu_std; do
+  "$WORK/example/benchmark_fb_client" --server=SERVER_IP:8901 --allow_remote \
+    --protocol=$p --duration_s=30 --warmup_s=3 --thread_num=64 --request_size=8192
+done
+```
+
+Both services echo the request string and attachment; the FlatBuffers path
+builds and verifies a FlatBuffers response, while the protobuf path parses and
+serializes the equivalent message. The results are only comparable when
+binaries, hosts, concurrency, sizes and duration are the same.
 
 ## Smoke test
 

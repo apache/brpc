@@ -112,7 +112,7 @@ grep -E '^#define BRPC_WITH_FLATBUFFERS +1$' "$WORK/prefix/include/butil/config.
 
 ## 3. 通过 example 完成端到端验证
 
-该示例是**有界功能验证，不是性能对比**。[echo.fbs](../../example/benchmark_fb/echo.fbs)
+该示例默认做**有界功能验证**，另有可选的计时模式，用于对比 `fb_rpc` 和等价的 `baidu_std` 服务。[echo.fbs](../../example/benchmark_fb/echo.fbs)
 声明 `BenchmarkService.Echo`，显式 wire method ID 为 7。
 [server.cpp](../../example/benchmark_fb/server.cpp) 使用 `AddFlatBuffersService` 注册服务；
 [client.cpp](../../example/benchmark_fb/client.cpp) 使用生成的 `BenchmarkService::Stub`

@@ -153,8 +153,9 @@ layout of a CMake install prefix or a Make `output/` directory.
 
 ## Verify with the client/server example
 
-[example/benchmark_fb](../../example/benchmark_fb/README.md) is a **bounded
-functional example**, not a performance benchmark. Its [schema](../../example/benchmark_fb/echo.fbs)
+[example/benchmark_fb](../../example/benchmark_fb/README.md) runs a **bounded
+functional check** by default and has an opt-in timed mode that compares `fb_rpc`
+with an equivalent `baidu_std` service. Its [schema](../../example/benchmark_fb/echo.fbs)
 uses `BenchmarkService.Echo` with explicit wire ID 7. The
 [server](../../example/benchmark_fb/server.cpp) calls `AddFlatBuffersService`;
 the [client](../../example/benchmark_fb/client.cpp) uses the generated

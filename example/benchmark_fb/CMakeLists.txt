@@ -143,7 +143,25 @@ add_custom_command(OUTPUT ${_generated_files}
     DEPENDS "${_schema}" "${FLATC_EXECUTABLE}" "${BRPC_FLATC_EXECUTABLE}"
     VERBATIM)
 add_custom_target(benchmark_fb_codegen DEPENDS ${_generated_files})
-add_library(benchmark_fb_schema STATIC "${_generated}/echo.brpc.fb.cpp")
+# Protobuf control schema used for the baidu_std comparison.
+if(TARGET protobuf::protoc)
+    set(_protoc "$<TARGET_FILE:protobuf::protoc>")
+elseif(Protobuf_PROTOC_EXECUTABLE)
+    set(_protoc "${Protobuf_PROTOC_EXECUTABLE}")
+else()
+    message(FATAL_ERROR "Set Protobuf_PROTOC_EXECUTABLE to the protoc matching libprotobuf")
+endif()
+add_custom_command(OUTPUT "${_generated}/echo_pb.pb.h" "${_generated}/echo_pb.pb.cc"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_generated}"
+    COMMAND "${_protoc}" "--cpp_out=${_generated}" -I "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/echo_pb.proto"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/echo_pb.proto"
+    VERBATIM)
+add_custom_target(benchmark_fb_pb_codegen DEPENDS
+    "${_generated}/echo_pb.pb.h" "${_generated}/echo_pb.pb.cc")
+add_dependencies(benchmark_fb_codegen benchmark_fb_pb_codegen)
+add_library(benchmark_fb_schema STATIC "${_generated}/echo.brpc.fb.cpp"
+    "${_generated}/echo_pb.pb.cc")
 add_dependencies(benchmark_fb_schema benchmark_fb_codegen)
 target_include_directories(benchmark_fb_schema PUBLIC "${_generated}")
 target_link_libraries(benchmark_fb_schema PUBLIC benchmark_fb_dependencies)
