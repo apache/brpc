@@ -676,7 +676,13 @@ void Log2File(const std::string& log) {
     LoggingLock logging_lock;
     // Rotate before writing so that a single log is never split into two files.
     MaybeRotateLogFileUnlocked(log.size());
-    if (InitializeLogFileHandle()) {
+    // InitializeLogFileHandle() also succeeds without opening anything when
+    // the destination no longer logs to a file. That is the case of an async
+    // log that was queued before a later InitLogging() moved the destination
+    // away from the file: there is no handle to write through, so the log is
+    // dropped instead of being written through a null handle, which used to
+    // crash the process. MaybeRotateLogFileUnlocked() above checks the same.
+    if (InitializeLogFileHandle() && log_file) {
 #if defined(OS_WIN)
         SetFilePointer(log_file, 0, 0, SEEK_END);
         DWORD num_written = 0;
