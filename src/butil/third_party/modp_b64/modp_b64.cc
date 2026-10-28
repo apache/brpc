@@ -44,6 +44,7 @@
 
 /* public header */
 #include "modp_b64.h"
+#include "modp_b64_avx2.h"
 
 /*
  * If you are ripping this out of the library, comment out the next
@@ -85,6 +86,11 @@
 
 size_t modp_b64_encode(char* dest, const char* str, size_t len)
 {
+#if MODP_B64_HAS_AVX2
+    if (modp_b64_avx2_supported()) {
+        return modp_b64_avx2_encode(dest, str, len);
+    }
+#endif
 #if USE_RVV_BASE64
     return rvv_modp_b64_encode(dest, str, len);
 #endif
@@ -197,6 +203,11 @@ int modp_b64_decode(char* dest, const char* src, int len)
 
 size_t modp_b64_decode(char* dest, const char* src, size_t len)
 {
+#if MODP_B64_HAS_AVX2
+    if (modp_b64_avx2_supported()) {
+        return modp_b64_avx2_decode(dest, src, len);
+    }
+#endif
 #if USE_RVV_BASE64
     return rvv_modp_b64_decode(dest, src, len);
 #endif

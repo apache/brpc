@@ -196,6 +196,7 @@ set(BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/dynamic_annotations/dynamic_annotations.c
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/icu/icu_utf.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/modp_b64/modp_b64.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/modp_b64/modp_b64_avx2.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/modp_b64/modp_b64_rvv.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/murmurhash3/murmurhash3.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/snappy/snappy-sinksource.cc

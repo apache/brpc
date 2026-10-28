@@ -13,3 +13,8 @@ basictypes.h could be possible.
 
 The modp_b64.cc and modp_b64.h files were modified to make them safe on
 64-bit systems.
+
+The AVX2 codec in modp_b64_avx2.cc adapts the AVX2 reshuffle, translate, and
+validation routines from https://github.com/aklomp/base64, commit
+5d5074cb856b9a53fe64f04ddf47812a85f4fb5a. The adapted code is BSD-2-Clause;
+see LICENSE.aklomp-base64.
