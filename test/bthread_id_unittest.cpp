@@ -16,6 +16,8 @@
 // under the License.
 
 #include <iostream>
+#include <atomic>
+#include <thread>
 #include <gtest/gtest.h>
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -110,6 +112,37 @@ TEST(BthreadIdTest, join_before_destroy) {
         non_null_ret += (ret[i] != nullptr);
     }
     ASSERT_EQ(1UL, non_null_ret);
+}
+
+struct JoinRaceArgs {
+    bthread_id_t id;
+    std::atomic<bool> entered;
+};
+
+void* join_race_waiter(void* arg) {
+    JoinRaceArgs* args = static_cast<JoinRaceArgs*>(arg);
+    args->entered.store(true, std::memory_order_release);
+    EXPECT_EQ(0, bthread_id_join(args->id));
+    return nullptr;
+}
+
+TEST(BthreadIdTest, join_races_with_destroy) {
+    for (int i = 0; i < 100; ++i) {
+        bthread_id_t id;
+        ASSERT_EQ(0, bthread_id_create(&id, nullptr, nullptr));
+        JoinRaceArgs args;
+        args.id = id;
+        args.entered.store(false, std::memory_order_relaxed);
+        pthread_t waiter;
+        ASSERT_EQ(0, pthread_create(&waiter, nullptr, join_race_waiter, &args));
+        while (!args.entered.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        void* data = nullptr;
+        ASSERT_EQ(0, bthread_id_trylock(id, &data));
+        ASSERT_EQ(0, bthread_id_unlock_and_destroy(id));
+        ASSERT_EQ(0, pthread_join(waiter, nullptr));
+    }
 }
 
 struct OnResetArg {
