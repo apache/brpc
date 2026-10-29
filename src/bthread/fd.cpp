@@ -139,10 +139,24 @@ public:
         }
         bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
         bthread_attr_set_name(&attr, "EpollThread::run_this");
-        if (bthread_start_background(
-                &_tid, &attr, EpollThread::run_this, this) != 0) {
+        attr.tag = bthread_self_tag();
+        // `run_this()` can block its worker in `epoll_wait` or `kevent`.
+        // Reserve an extra worker to preserve the normal concurrency configured
+        // via `-bthread_concurrency` or `ServerOptions.num_threads`.
+        // The reservation happens exactly once per `EpollThread`.
+        int rc = bthread_add_reserved_concurrency_by_tag(1, attr.tag);
+        if (rc != 0) {
+            LOG(WARNING) << "Fail to reserve a worker for EpollThread of tag="
+                         << attr.tag << ": " << berror(rc)
+                         << ". It will consume the configured concurrency"
+                            " instead.";
+        }
+        if (bthread_start_background(&_tid, &attr, run_this, this) != 0) {
             close(_epfd);
             _epfd = -1;
+            // Not releasing the reservation above: this is fatal anyway, and an
+            // extra idle worker is harmless compared to the alternative of
+            // exposing an unreserve API that could be misused.
             LOG(FATAL) << "Fail to create epoll bthread";
             return -1;
         }

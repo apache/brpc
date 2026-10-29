@@ -19,20 +19,45 @@
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
+#include <cstdlib>
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
+#include <gflags/gflags.h>
 #include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
 #include "butil/memory/scope_guard.h"
 #include "bthread/bthread.h"
+#include "bthread/task_control.h"
+#include "brpc/channel.h"
+#include "brpc/controller.h"
 #include "brpc/event_dispatcher.h"
+#include "brpc/server.h"
 #include "brpc/socket.h"
 #include "brpc/details/has_epollrdhup.h"
 #include "brpc/versioned_ref_with_id.h"
+#include "echo.pb.h"
+
+DECLARE_int32(task_group_ntags);
+DECLARE_int32(event_dispatcher_num);
+
+namespace bthread {
+extern TaskControl* g_task_control;
+}
+
+// Far more dispatchers than the workers the reserve tests at the end of this
+// file configure, which is exactly the situation that used to deadlock.
+static const int NUM_EVENT_DISPATCHERS = 16;
+
+int main(int argc, char* argv[]) {
+    FLAGS_event_dispatcher_num = NUM_EVENT_DISPATCHERS;
+    testing::InitGoogleTest(&argc, argv);
+    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
+    return RUN_ALL_TESTS();
+}
 
 class EventDispatcherTest : public ::testing::Test{
 protected:
@@ -41,6 +66,65 @@ protected:
     void SetUp() override {}
     void TearDown() override {}
 };
+
+void set_threadsafe_death_test_style() {
+    // Re-exec instead of forking a process with live bthread workers.
+    // googletest >= 1.12 built with Abseil (`bazel --define absl=1`) exposes
+    // the flag as an `absl::Flag`, which can only be set via `GTEST_FLAG_SET`.
+#ifdef GTEST_FLAG_SET
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+#else
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+#endif
+}
+
+TEST(EventDispatcherDeathTest, reservation_failure_uses_fatal_logging) {
+    set_threadsafe_death_test_style();
+#if !BRPC_WITH_GLOG
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+                     "crash_on_fatal_log", "true").empty());
+#endif
+    ASSERT_DEATH({
+        // Exceed the independent reserved budget. Fatal logging must stop
+        // initialization when the logging backend is configured to crash.
+        FLAGS_event_dispatcher_num = BTHREAD_MAX_RESERVED_CONCURRENCY + 1;
+        brpc::GetGlobalEventDispatcher(0, BTHREAD_TAG_DEFAULT);
+    }, "Fail to reserve .* workers for event dispatchers");
+}
+
+void check_max_concurrency_with_dispatcher(bool dispatcher_first) {
+    FLAGS_event_dispatcher_num = 1;
+    if (dispatcher_first) {
+        brpc::GetGlobalEventDispatcher(0, BTHREAD_TAG_DEFAULT);
+    }
+    ASSERT_EQ(0, bthread_setconcurrency_by_tag(
+        BTHREAD_MAX_CONCURRENCY, BTHREAD_TAG_DEFAULT));
+    if (!dispatcher_first) {
+        brpc::GetGlobalEventDispatcher(0, BTHREAD_TAG_DEFAULT);
+    }
+    ASSERT_EQ(BTHREAD_MAX_CONCURRENCY,
+              bthread_getconcurrency_by_tag(BTHREAD_TAG_DEFAULT));
+    ASSERT_EQ(1, bthread::g_task_control->reserved_concurrency(BTHREAD_TAG_DEFAULT));
+    ASSERT_EQ(BTHREAD_MAX_CONCURRENCY + 1,
+              bthread::g_task_control->concurrency(BTHREAD_TAG_DEFAULT));
+
+    bthread_t tid;
+    ASSERT_EQ(0, bthread_start_background(
+        &tid, nullptr, [](void*) -> void* { return nullptr; }, nullptr));
+    ASSERT_EQ(0, bthread_join(tid, nullptr));
+}
+
+TEST(EventDispatcherDeathTest, max_concurrency_supports_both_initialization_orders) {
+    set_threadsafe_death_test_style();
+    for (bool dispatcher_first : {false, true}) {
+        SCOPED_TRACE(dispatcher_first);
+        ASSERT_EXIT({
+            check_max_concurrency_with_dispatcher(dispatcher_first);
+            _exit(::testing::Test::HasFailure() ? 1 : 0);
+        }, ::testing::ExitedWithCode(0), "");
+    }
+}
 
 TEST_F(EventDispatcherTest, has_epollrdhup) {
     LOG(INFO) << brpc::has_epollrdhup;
@@ -531,4 +615,105 @@ TEST_F(EventDispatcherTest, customize_dispatch_task) {
     ptr.reset();
     ASSERT_EQ(nullptr, ptr);
     ASSERT_NE(0, EventPipe::Address(id, &ptr));
+}
+
+// If those workers were taken out of the concurrency configured by the user, a
+// process with `event_dispatcher_num >= num_threads` would have no worker to
+// run anything else, and would never even be able to quit.
+
+// Must stay below `NUM_EVENT_DISPATCHERS` and above the default
+// `-bthread_concurrency`, as concurrency can only ever grow.
+static const int NUM_THREADS = 10;
+static const int RESERVE_PORT = 8798;
+
+class ReserveEchoServiceImpl : public test::EchoService {
+public:
+    void Echo(google::protobuf::RpcController*,
+              const test::EchoRequest* req,
+              test::EchoResponse* res,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        res->set_message(req->message());
+    }
+};
+
+struct StopArgs {
+    brpc::Server* server;
+    butil::atomic<bool> done;
+    explicit StopArgs(brpc::Server* s) : server(s), done(false) {}
+};
+
+void* stop_and_join(void* arg) {
+    StopArgs* args = static_cast<StopArgs*>(arg);
+    args->server->Stop(0);
+    args->server->Join();
+    args->done.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
+// Dispatchers need extra workers beyond the configured normal concurrency.
+TEST_F(EventDispatcherTest, dispatchers_do_not_consume_configured_concurrency) {
+    ASSERT_EQ(NUM_EVENT_DISPATCHERS, FLAGS_event_dispatcher_num);
+    // Force initialization of the global dispatchers.
+    brpc::GetGlobalEventDispatcher(0, BTHREAD_TAG_DEFAULT);
+    ASSERT_TRUE(bthread::g_task_control != nullptr);
+
+    int expected = FLAGS_task_group_ntags * FLAGS_event_dispatcher_num;
+    // The internal `bthread::EpollThread` also reserves a worker. It may not
+    // have started yet, so compare with `>=`.
+    ASSERT_GE(bthread::g_task_control->reserved_concurrency(), expected);
+    // Reserved workers are on top of the configured concurrency, not inside it.
+    int normal = bthread_getconcurrency();
+    ASSERT_EQ(normal, bthread::g_task_control->normal_concurrency());
+    ASSERT_GE(bthread::g_task_control->concurrency(), normal + expected);
+}
+
+// End-to-end: a server whose `num_threads` is smaller than the number of event
+// dispatchers must still serve requests and, crucially, be able to quit.
+TEST_F(EventDispatcherTest, server_with_fewer_threads_than_dispatchers_can_quit) {
+    brpc::Server server;
+    ReserveEchoServiceImpl service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions options;
+    options.num_threads = NUM_THREADS;
+    ASSERT_EQ(0, server.Start(RESERVE_PORT, &options));
+    // `num_threads` workers are available to normal bthreads, on top of the
+    // ones reserved for the dispatchers.
+    ASSERT_EQ(NUM_THREADS, bthread_getconcurrency_by_tag(BTHREAD_TAG_DEFAULT));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions copt;
+    copt.timeout_ms = 3000;
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1", RESERVE_PORT, &ep));
+    ASSERT_EQ(0, channel.Init(ep, &copt));
+
+    test::EchoService_Stub stub(&channel);
+    for (int i = 0; i < 20; ++i) {
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message("hello");
+        stub.Echo(&cntl, &req, &res, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ("hello", res.message());
+    }
+
+    // Previously, `Stop()`/`Join()` could not schedule their bthreads because
+    // every worker was stuck in `epoll_wait`.
+    StopArgs args(&server);
+    pthread_t th;
+    ASSERT_EQ(0, pthread_create(&th, nullptr, stop_and_join, &args));
+    int64_t deadline_us = butil::gettimeofday_us() + 10 * 1000000L;
+    while (!args.done.load(butil::memory_order_acquire) &&
+           butil::gettimeofday_us() < deadline_us) {
+        usleep(10000);
+    }
+    bool done = args.done.load(butil::memory_order_acquire);
+    if (!done) {
+        EXPECT_TRUE(done) << "Server::Stop()/Join() did not finish in 10s, "
+                             "no worker available?";
+        std::abort();
+    }
+    ASSERT_EQ(0, pthread_join(th, nullptr));
 }

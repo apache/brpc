@@ -593,7 +593,20 @@ server的验证是基于连接的。当server收到连接上的第一个请求�
 
 注意: ServerOptions.num_threads仅仅是个**提示**。
 
-你不能认为Server就用了这么多线程，因为进程内的所有Server和Channel会共享线程资源，线程总数是所有ServerOptions.num_threads和-bthread_concurrency中的最大值。比如一个程序内有两个Server，num_threads分别为24和36，bthread_concurrency为16。那么worker线程数为max(24, 36, 16) = 36。这不同于其他RPC实现中往往是加起来。
+你不能认为Server就用了这么多线程，因为进程内的所有Server和Channel会共享线程资源，配置的普通并发数是所有ServerOptions.num_threads和-bthread_concurrency中的最大值。比如一个程序内有两个Server，num_threads分别为24和36，bthread_concurrency为16。那么配置的普通并发数为max(24, 36, 16) = 36。这不同于其他RPC实现中往往是加起来。
+
+注意: event dispatcher（-event_dispatcher_num个，每个tag一组）和bthread内部的epoll线程跑的是不会退出的事件循环：空闲时等在epoll_wait/kevent上，有事件时就地处理。由于bthread不可抢占，这两种状态下承载它们的worker pthread都轮不到别的bthread，相当于被独占了。所以它们各自**额外**预留一个worker，不占用上述的最大值。这里区分三个概念：
+
+- **普通并发数**：用于普通bthread的worker数，由`num_threads`/`-bthread_concurrency`配置。
+- **预留并发数**：为event dispatcher、内部epoll等阻塞循环额外增加的worker数。
+- **总并发数**：普通并发数与预留并发数之和；当前运行的worker总数可从bvar `bthread_worker_count`看到。
+
+默认立即创建worker时，总并发数为`max(所有num_threads, -bthread_concurrency) + 预留并发数`。启用`-bthread_min_concurrency`后，普通worker按需增长，当前普通并发数可以低于配置值；预留worker仍立即创建。
+
+普通并发数的配置下限为`BTHREAD_MIN_CONCURRENCY`（4）。内部epoll线程使用独立的预留额度，不计入这个下限。
+
+每个tag的普通worker上限为`BTHREAD_MAX_CONCURRENCY`（1024），预留worker使用独立的`BTHREAD_MAX_RESERVED_CONCURRENCY`（512）累计额度，总容量为1536。普通并发数设为1024后仍可为event dispatcher和内部epoll线程预留worker，初始化顺序不会改变这两类额度。
+
 
 Channel没有相应的选项，但可以通过选项-bthread_concurrency调整。
 
