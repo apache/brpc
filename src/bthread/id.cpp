@@ -30,6 +30,11 @@
 
 namespace bthread {
 
+#if defined(UNIT_TEST)
+void (*g_bthread_id_join_before_wait_for_test)(void*) = nullptr;
+void* g_bthread_id_join_before_wait_arg_for_test = nullptr;
+#endif
+
 // This queue reduces the chance to allocate memory for deque
 template <typename T, int N>
 class SmallQueue {
@@ -549,6 +554,12 @@ int bthread_id_join(bthread_id_t id) {
         if (!has_ver) {
             break;
         }
+#if defined(UNIT_TEST)
+        if (bthread::g_bthread_id_join_before_wait_for_test != nullptr) {
+            bthread::g_bthread_id_join_before_wait_for_test(
+                bthread::g_bthread_id_join_before_wait_arg_for_test);
+        }
+#endif
         if (bthread::butex_wait(join_butex, expected_ver, nullptr) < 0 &&
             errno != EWOULDBLOCK && errno != EINTR) {
             return errno;
