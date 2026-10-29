@@ -283,6 +283,9 @@ int TaskControl::init(int concurrency) {
         LOG(ERROR) << "Fail to get global_timer_thread";
         return -1;
     }
+#if defined(BTHREAD_STACK_TRIM_SUPPORTED)
+    internal::init_stack_trimming();
+#endif
 
 #ifdef BRPC_BTHREAD_TRACER
     if (!_task_tracer.Init()) {

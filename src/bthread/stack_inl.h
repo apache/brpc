@@ -136,7 +136,8 @@ template <typename StackClass> struct StackFactory {
             BTHREAD_ASAN_POISON_MEMORY_REGION(storage);
         }
         ~Wrapper() {
-            if (context) {
+            // A trimmed stack has no context but still owns its mapping.
+            if (storage.bottom) {
                 context = nullptr;
                 // Unpoison to avoid affecting other allocator.
                 BTHREAD_ASAN_UNPOISON_MEMORY_REGION(storage);
@@ -147,9 +148,18 @@ template <typename StackClass> struct StackFactory {
     };
     
     static ContextualStack* get_stack(void (*entry)(intptr_t)) {
-        ContextualStack* cs = butil::get_object<Wrapper>(entry);
+        Wrapper* cs = butil::get_object<Wrapper>(entry);
+        if (cs == nullptr) {
+            return nullptr;
+        }
         // Marks stack as addressable.
         BTHREAD_ASAN_UNPOISON_MEMORY_REGION(cs->storage);
+        // Reclamation may discard the saved continuation, even on failure.
+        // The mapping is kept, so restarting at entry needs no allocation.
+        if (cs->context == nullptr) {
+            cs->context = bthread_make_fcontext(
+                cs->storage.bottom, cs->storage.stacksize, entry);
+        }
         return cs;
     }
     
