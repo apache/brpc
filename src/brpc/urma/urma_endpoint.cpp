@@ -1758,9 +1758,8 @@ void UrmaEndpoint::PollerRemoveCqSid() {
         return;
     }
     auto& group = poller_groups[_poller_tag];
-    if (!group.running.load(butil::memory_order_acquire)) {
-        return;
-    }
+    // Preserve removals for ADDs left queued when a worker stopped. The queues
+    // outlive endpoints, and a restarted worker must consume the matching pair.
     auto& pollers = group.pollers;
     if (pollers.empty()) {
         return;

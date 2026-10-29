@@ -23,6 +23,7 @@
 #if BRPC_WITH_URMA
 #include <atomic>
 #include <cstdlib>
+#include "bthread/bthread.h"
 #include "butil/atomicops.h"
 #include "butil/sys_byteorder.h"
 #include "urma_api.h"
@@ -89,7 +90,7 @@ TEST_P(UrmaPollingTest, release_joins_and_can_be_repeated) {
     EXPECT_EQ(4, released.load());
 }
 
-TEST_P(UrmaPollingTest, late_cq_operations_skip_stopped_pollers) {
+TEST_P(UrmaPollingTest, stopped_pollers_skip_add_and_preserve_remove) {
     ASSERT_EQ(0, urma::UrmaEndpoint::PollingModeInitialize(
         0, nullptr, nullptr, nullptr));
     urma::UrmaEndpoint::PollingModeRelease(0);
@@ -97,10 +98,17 @@ TEST_P(UrmaPollingTest, late_cq_operations_skip_stopped_pollers) {
     endpoint._cq_sid = 7;
     endpoint.PollerAddCqSid();
     endpoint.PollerRemoveCqSid();
+    int removals = 0;
     for (auto& poller : urma::UrmaEndpoint::PollerGroups()[0].pollers) {
         urma::UrmaEndpoint::CqSidOp op;
+        if (poller.op_queue.Dequeue(op)) {
+            EXPECT_EQ(urma::UrmaEndpoint::CqSidOp::REMOVE, op.type);
+            EXPECT_EQ(7, op.sid);
+            ++removals;
+        }
         EXPECT_FALSE(poller.op_queue.Dequeue(op));
     }
+    EXPECT_EQ(1, removals);
 }
 
 INSTANTIATE_TEST_SUITE_P(BthreadAndPthread, UrmaPollingTest,
@@ -116,10 +124,64 @@ void CheckPollingExit() {
     }
     // This handler was registered before URMA initialization, so it runs
     // after the polling exit handler, like a late Socket/endpoint destructor.
+    urma::FLAGS_urma_use_polling = true;
     delete g_exit_endpoint;
     g_exit_endpoint = nullptr;
 }
 }  // namespace
+
+TEST(UrmaPollingDeathTest, restart_consumes_pending_add_and_late_remove) {
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    for (bool use_pthread : {false, true}) {
+        EXPECT_EXIT({
+            urma::FLAGS_urma_use_polling = true;
+            urma::FLAGS_urma_poller_num = 1;
+            urma::FLAGS_urma_disable_bthread = use_pthread;
+            if (urma::UrmaEndpoint::GlobalInitialize() != 0 ||
+                urma::UrmaEndpoint::PollingModeInitialize(
+                    0, nullptr, nullptr, nullptr) != 0) {
+                std::_Exit(92);
+            }
+            urma::UrmaEndpoint::PollingModeRelease(0);
+            auto& poller = urma::UrmaEndpoint::PollerGroups()[0].pollers[0];
+            auto& queue = poller.op_queue;
+            // Seed the stopped queue with an ADD left unconsumed by a worker.
+            urma::UrmaEndpoint::CqSidOp add;
+            add.type = urma::UrmaEndpoint::CqSidOp::ADD;
+            add.sid = 7;
+            queue.Enqueue(add);
+            urma::UrmaEndpoint endpoint(nullptr);
+            endpoint._cq_sid = 7;
+            endpoint.PollerRemoveCqSid();
+            urma::UrmaEndpoint::CqSidOp op;
+            if (!queue.Dequeue(op) || op.type != add.type || op.sid != add.sid) {
+                std::_Exit(96);
+            }
+            if (!queue.Dequeue(op) ||
+                op.type != urma::UrmaEndpoint::CqSidOp::REMOVE ||
+                op.sid != add.sid) {
+                std::_Exit(97);
+            }
+            // Replay the verified pair through a restarted worker. Its callback
+            // runs after draining the queue, so observing it bounds the wait.
+            queue.Enqueue(add);
+            queue.Enqueue(op);
+            std::atomic<bool> polled{false};
+            if (urma::UrmaEndpoint::PollingModeInitialize(
+                    0, [&] { polled.store(true); }, nullptr, nullptr) != 0) {
+                std::_Exit(92);
+            }
+            for (int i = 0; i < 5000 && !polled.load(); ++i) {
+                bthread_usleep(1000);
+            }
+            urma::UrmaEndpoint::PollingModeRelease(0);
+            if (!polled.load() || queue.Dequeue(op)) {
+                std::_Exit(98);
+            }
+            std::_Exit(0);
+        }, ::testing::ExitedWithCode(0), "");
+    }
+}
 
 TEST(UrmaPollingDeathTest, global_shutdown_joins_all_tags) {
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
