@@ -957,6 +957,111 @@ TEST_F(UbrTrxCleanupDeferTest, post_failure_rearms_instead_of_running_inline) {
     EXPECT_TRUE(slot_released);
 }
 
+// ---------------------------------------------------------------------------
+// Timer facade: multiple external waiters of UbrTimerDelAndWait must all wait
+// out a running periodic dispatch (review C4 on PR #3509).
+
+namespace {
+std::atomic<bool> g_timer_cb_entered(false);
+std::atomic<bool> g_timer_cb_release(false);
+std::atomic<bool> g_timer_cb_completed(false);
+
+void* UbrTestBlockingTimerCb(void*, uint64_t) {
+    g_timer_cb_entered.store(true);
+    while (!g_timer_cb_release.load()) {
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    g_timer_cb_completed.store(true);
+    return nullptr;
+}
+
+void* UbrTestTrivialTimerCb(void*, uint64_t) {
+    return nullptr;
+}
+}  // namespace
+
+// Two concurrent UbrTimerDelAndWait callers on one slot: neither may return
+// while the periodic dispatch is still running, and both must observe the
+// callback's completion. Before the join sentinel, the caller that lost the
+// slot competition returned immediately and could proceed to free resources
+// the running callback was still touching.
+TEST(UbrTimerFacadeTest, two_waiters_both_wait_out_a_running_dispatch) {
+    butil::atomic<brpc::ubring::UbrTimerId> slot(nullptr);
+    g_timer_cb_entered.store(false);
+    g_timer_cb_release.store(false);
+    g_timer_cb_completed.store(false);
+
+    ASSERT_EQ(UBRING_OK,
+              brpc::ubring::UbrTimerStartPeriodic(
+                  &slot, 0, 1000000, UbrTestBlockingTimerCb, nullptr, 0));
+    while (!g_timer_cb_entered.load()) {
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+
+    std::atomic<bool> w1_done(false);
+    std::atomic<bool> w2_done(false);
+    std::atomic<bool> w1_saw_completed(false);
+    std::atomic<bool> w2_saw_completed(false);
+    std::thread w1([&] {
+        brpc::ubring::UbrTimerDelAndWait(&slot);
+        w1_saw_completed = g_timer_cb_completed.load();
+        w1_done = true;
+    });
+    std::thread w2([&] {
+        brpc::ubring::UbrTimerDelAndWait(&slot);
+        w2_saw_completed = g_timer_cb_completed.load();
+        w2_done = true;
+    });
+
+    // Let both waiters arrive. Neither may return while the dispatch runs.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_FALSE(w1_done);
+    EXPECT_FALSE(w2_done);
+
+    g_timer_cb_release = true;
+    w1.join();
+    w2.join();
+    EXPECT_TRUE(g_timer_cb_completed.load());
+    EXPECT_TRUE(w1_saw_completed.load());
+    EXPECT_TRUE(w2_saw_completed.load());
+    EXPECT_EQ(nullptr, slot.load());
+}
+
+// While one caller joins the slot, UbrTimerDel must report "not won" and a
+// start must be refused; once the join completes, the slot accepts a fresh
+// arm again.
+TEST(UbrTimerFacadeTest, del_and_start_settle_around_a_running_join) {
+    butil::atomic<brpc::ubring::UbrTimerId> slot(nullptr);
+    g_timer_cb_entered.store(false);
+    g_timer_cb_release.store(false);
+    g_timer_cb_completed.store(false);
+
+    ASSERT_EQ(UBRING_OK,
+              brpc::ubring::UbrTimerStartPeriodic(
+                  &slot, 0, 1000000, UbrTestBlockingTimerCb, nullptr, 0));
+    while (!g_timer_cb_entered.load()) {
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+
+    std::thread joiner([&] { brpc::ubring::UbrTimerDelAndWait(&slot); });
+    // Let the joiner publish the sentinel.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_EQ(1, brpc::ubring::UbrTimerDel(&slot));
+    EXPECT_EQ(UBRING_ERR,
+              brpc::ubring::UbrTimerStart(&slot, 1000000,
+                                          UbrTestTrivialTimerCb, nullptr, 0));
+
+    g_timer_cb_release = true;
+    joiner.join();
+    EXPECT_EQ(nullptr, slot.load());
+
+    // The settled slot accepts and deletes a fresh arm.
+    EXPECT_EQ(UBRING_OK,
+              brpc::ubring::UbrTimerStart(&slot, 1000000,
+                                          UbrTestTrivialTimerCb, nullptr, 0));
+    EXPECT_EQ(0, brpc::ubring::UbrTimerDel(&slot));
+}
+
 namespace brpc {
 namespace ubring {
 class UBShmEndpointTest : public ::testing::Test {

@@ -92,7 +92,10 @@ RETURN_CODE UbrTimerStartPeriodic(butil::atomic<UbrTimerId>* slot,
 //
 // Returns 1 when this caller did not acquire timer ownership. The callback,
 // another deleter, or the scheduling path is responsible for settling the
-// timer resources, so this caller must not reclaim them.
+// timer resources, so this caller must not reclaim them. This includes the
+// case of a concurrent UbrTimerDelAndWait owning the slot for its join: the
+// joiner settles the references and waits out a running callback, and it
+// has already stored the `stopped' flag a self-delete would have set.
 int UbrTimerDel(butil::atomic<UbrTimerId>* slot);
 
 // Delete and wait until a possibly running callback finished, so the
@@ -110,6 +113,12 @@ int UbrTimerDel(butil::atomic<UbrTimerId>* slot);
 // timer -- always can be waited for, because its task stays anchored until it
 // returns. The wait polls with bthread_usleep, which degrades to ::usleep on
 // plain pthread callers (e.g. process-exit paths).
+//
+// Multiple external waiters are safe: while one caller joins the task, the
+// slot holds a join sentinel, and every other UbrTimerDelAndWait on the same
+// slot waits for that join to complete before returning -- so ANY caller may
+// assume that, once its own call returned, a periodic dispatch that was
+// running has finished and nobody is still mid-join.
 void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot);
 
 }  // namespace ubring

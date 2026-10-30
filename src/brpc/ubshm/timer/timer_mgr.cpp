@@ -38,6 +38,17 @@ enum UbrTimerState {
 // started or a callback is finishing.
 constexpr uint64_t kTimerPollIntervalUs = 100;
 
+// Sentinel published in a timer slot while a UbrTimerDelAndWait join is in
+// progress. It makes the join visible to everyone else touching the slot:
+// a second DelAndWait waits for the sentinel to clear instead of returning
+// while the joined dispatch is still running (which would let a teardown
+// path race the callback -- e.g. a force close unmapping the shm a
+// close-check dispatch still reads), UbrTimerDel reports "not won" because
+// the joiner settles the task's references, and UbrTimerStart refuses to
+// arm behind a teardown in progress. The sentinel is never dereferenced,
+// only compared and exchanged.
+UbrTimerTask* const kTimerJoining = (UbrTimerTask*)(intptr_t)1;
+
 }  // namespace
 
 // Reference rules: one "owner" ref for the handle slot, one "schedule" ref
@@ -184,10 +195,6 @@ void UbrTimerOnFire(void* p) {
     }
 }
 
-UbrTimerTask* TakeOutTask(butil::atomic<UbrTimerId>* slot) {
-    return slot->exchange(nullptr);
-}
-
 RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_us,
                                uint64_t interval_us, bool periodic,
                                void* (*cb)(void*, uint64_t),
@@ -229,7 +236,13 @@ RETURN_CODE TimerStartInternal(butil::atomic<UbrTimerId>* slot, uint64_t delay_u
     // racing the start always has an object to act on or wait for.
     UbrTimerId expected = nullptr;
     if (!slot->compare_exchange_strong(expected, task)) {
-        LOG(ERROR) << "Ubr timer start refused, slot already occupied";
+        // The slot holds a live task, or the join sentinel of a concurrent
+        // UbrTimerDelAndWait. Either way this timer is owned or being torn
+        // down: refuse the arm instead of retrying, so a re-arm racing a
+        // teardown fails fast instead of straying behind it.
+        LOG(ERROR) << "Ubr timer start refused, slot already occupied"
+                   << (expected == kTimerJoining
+                       ? " (a DelAndWait join is in progress)" : "");
         delete task;                             // never published
         return UBRING_ERR;
     }
@@ -295,11 +308,29 @@ int UbrTimerDel(butil::atomic<UbrTimerId>* slot) {
     }
     // Take the ownership of the slot first: after this exchange every
     // dereference below is safe (the task cannot be freed while we hold
-    // the owner reference the slot used to anchor).
-    UbrTimerTask* task = TakeOutTask(slot);
-    if (task == nullptr) {
-        return 1;        // fired and cleared its slot (callback side consumed)
+    // the owner reference the slot used to anchor). A join sentinel is
+    // never taken out of the slot, so a concurrent DelAndWait keeps its
+    // visibility for other waiters.
+    UbrTimerTask* task = nullptr;
+    for (;;) {
+        UbrTimerTask* cur = slot->load();
+        if (cur == nullptr) {
+            return 1;    // fired and cleared its slot (callback side consumed)
                          // or another del won the exchange (it consumes)
+        }
+        if (cur == kTimerJoining) {
+            // A concurrent UbrTimerDelAndWait owns the slot for its join: its
+            // protocol settles the task's references and waits out a running
+            // dispatch, so report "not won" -- this caller must not consume
+            // anything. The joiner has already stored `stopped', which also
+            // covers a periodic callback deleting its own timer behind the
+            // join.
+            return 1;
+        }
+        if (slot->compare_exchange_strong(cur, nullptr)) {
+            task = cur;
+            break;
+        }
     }
     task->stopped.store(true);                   // meaningful for periodic only
     // A start still in flight cannot be cancelled nor dispatched yet; wait
@@ -359,9 +390,35 @@ void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot) {
         UbrTimerDel(slot);
         return;
     }
-    UbrTimerTask* task = TakeOutTask(slot);
-    if (task == nullptr) {
-        return;
+    // Publish the join in the slot (the sentinel), then run the join
+    // protocol on the task. The sentinel is what a second external waiter
+    // spins on and what UbrTimerDel/UbrTimerStart see; it is cleared only
+    // after the task is deleted, so nobody can act on the slot between the
+    // take and the settle.
+    UbrTimerTask* task = nullptr;
+    for (;;) {
+        UbrTimerTask* cur = slot->load();
+        if (cur == nullptr) {
+            return;      // nothing armed and no join in progress
+        }
+        if (cur == kTimerJoining) {
+            // Another external waiter is joining this very timer: it has
+            // observed the running dispatch and will not return before the
+            // dispatch finishes. Waiting for the sentinel to clear gives
+            // this caller the same guarantee. Returning immediately -- as
+            // the empty slot would otherwise suggest -- would let a teardown
+            // path race the still-running callback: a force close would see
+            // no published cleanup, claim the ownership, unmap the shm, and
+            // the joined dispatch would resume on unmapped memory.
+            while (slot->load() == kTimerJoining) {
+                bthread_usleep(kTimerPollIntervalUs);
+            }
+            return;
+        }
+        if (slot->compare_exchange_strong(cur, kTimerJoining)) {
+            task = cur;
+            break;
+        }
     }
     task->join_pending.store(true);
     task->stopped.store(true);
@@ -386,6 +443,13 @@ void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot) {
     }
     task->join_pending.store(false);
     delete task;
+    // Release the join marker: the second waiters spin on it, UbrTimerDel
+    // reports "not won" on it and UbrTimerStart refuses to arm behind it.
+    // The CAS keeps the slot monotonically going from the sentinel to
+    // null: everything else treats a non-null, non-sentinel slot as a live
+    // task.
+    UbrTimerId joining = kTimerJoining;
+    slot->compare_exchange_strong(joining, nullptr);
 }
 
 }  // namespace ubring
