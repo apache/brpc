@@ -168,13 +168,22 @@ static RETURN_CODE UbrScheduleClearTimer(UbrTrx *trx, uint64_t expect_ubr_id,
     if (BAIDU_UNLIKELY(rc != UBRING_OK)) {
         // The timer was never scheduled: this path owns the manager,
         // timer/callback and starter references. Hand the cleanup to the
-        // worker -- the caller may be the timer thread -- so the trx does not
-        // end up with neither timers nor a queued cleanup, and run it inline
-        // only when the worker cannot be started. Unlike the timer-fired
-        // callbacks above, there is no periodic driver to defer to here (the
-        // arm itself just failed), so inline stays the last resort on this
-        // rare-times-rare path; its caller is a closing bthread or the SDK
-        // fault thread, not the process-wide timer thread.
+        // worker so the trx does not end up with neither timers nor a queued
+        // cleanup, and run it inline only when the worker cannot be started.
+        // Unlike the timer-fired callbacks above there is no retry driver to
+        // defer to -- the arm itself just failed -- and this schedule is
+        // reached from the timer thread as often as not: the heartbeat
+        // (UbrTrxHBCallback -> UbrPassiveClearTrx) and the close check
+        // (UbrTrxCloseCallback -> ClearTrxResource -> UbrAddAsynClearTimer)
+        // both call it from their dispatches, so the residual inline
+        // execution can still land on the process-wide timer thread. It is
+        // the deliberate last resort of a rare-times-rare path: a
+        // bthread_timer_add failure means the timer subsystem cannot take
+        // another entry -- the same ENOMEM that fails the worker start, or a
+        // timer thread failing outright -- so no timer is left to retry
+        // with. The alternatives are worse: leaving the state PENDING with
+        // no driver would never run the cleanup, leak the pool slot and keep
+        // the shm alive, so correctness wins over latency here.
         int state_expected = UBR_CLEANUP_PENDING;
         if (ATOMIC_COMPARE_EXCHANGE_STRONG(ctl->state, state_expected, UBR_CLEANUP_RUNNING)) {
             if (!UbrCleanupWorker::PostTrxCleanup(trx, ctl->ubr_id, work, ctl)) {

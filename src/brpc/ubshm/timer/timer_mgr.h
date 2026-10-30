@@ -118,7 +118,11 @@ int UbrTimerDel(butil::atomic<UbrTimerId>* slot);
 // slot holds a join sentinel, and every other UbrTimerDelAndWait on the same
 // slot waits for that join to complete before returning -- so ANY caller may
 // assume that, once its own call returned, a periodic dispatch that was
-// running has finished and nobody is still mid-join.
+// running has finished and nobody is still mid-join. The one exception is a
+// non-waiting UbrTimerDel another caller performed on the same task first:
+// that delete empties the slot without a sentinel, and per UbrTimerDel's
+// contract the responsibility for the still-running callback has already
+// transferred to the deleting caller.
 void UbrTimerDelAndWait(butil::atomic<UbrTimerId>* slot);
 
 }  // namespace ubring

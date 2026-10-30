@@ -1043,9 +1043,18 @@ TEST(UbrTimerFacadeTest, del_and_start_settle_around_a_running_join) {
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
 
+    // Wait for the joiner to publish the sentinel instead of a fixed sleep:
+    // on a loaded CI the joiner thread might not have run within any fixed
+    // delay, and the delete below would then take the task and return 0. The
+    // task pointer is opaque but comparable, and only the join's sentinel
+    // can replace it while the callback blocks, so wait for the slot to no
+    // longer hold the armed task.
+    const brpc::ubring::UbrTimerId armed = slot.load();
     std::thread joiner([&] { brpc::ubring::UbrTimerDelAndWait(&slot); });
-    // Let the joiner publish the sentinel.
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    for (int i = 0; i < 5000 && slot.load() == armed; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_NE(armed, slot.load());      // the sentinel is published
     EXPECT_EQ(1, brpc::ubring::UbrTimerDel(&slot));
     EXPECT_EQ(UBRING_ERR,
               brpc::ubring::UbrTimerStart(&slot, 1000000,
