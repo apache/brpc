@@ -1087,6 +1087,112 @@ TEST_F(SocketTest, derived_socket_keeps_parent_keepalive_options) {
     }
 }
 
+class QuietRevival : public brpc::SocketUser {
+    void AfterRevived(brpc::Socket*) override {}
+};
+
+TEST_F(SocketTest, removal_racing_with_revival) {
+    QuietRevival user;
+    // Exercise both orderings without depending on the health check timer.
+    for (int revive_first = 0; revive_first < 2; ++revive_first) {
+        SCOPED_TRACE(revive_first);
+        brpc::SocketOptions options;
+        options.user = &user;
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+        BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+        // These two references stand in for the owner's HC reference and
+        // the health check task's reference. The timer itself is disabled.
+        brpc::SocketUniquePtr owner;
+        brpc::SocketUniquePtr health_check;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &owner));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &health_check));
+        ASSERT_EQ(0, owner->SetFailed());
+        ASSERT_EQ(2, owner->nref());
+
+        if (revive_first) {
+            health_check->Revive(2);
+            EXPECT_FALSE(owner->Failed());
+            EXPECT_EQ(3, owner->nref());
+            EXPECT_EQ(0, owner->ReleaseAdditionalReference());
+        } else {
+            EXPECT_EQ(-1, owner->ReleaseAdditionalReference());
+            // The owner's HC reference has not been released yet: Revive(2)
+            // must still reject this socket after permanent removal.
+            health_check->Revive(2);
+            EXPECT_TRUE(owner->Failed());
+        }
+        EXPECT_EQ(2, owner->nref());
+        EXPECT_EQ(-1, owner->ReleaseAdditionalReference());
+        EXPECT_EQ(2, owner->nref());
+        owner.reset();
+        health_check.reset();
+        EXPECT_EQ(-1, brpc::Socket::Status(id));
+    }
+}
+
+TEST_F(SocketTest, removal_before_failure_prevents_revival) {
+    QuietRevival user;
+    brpc::SocketOptions options;
+    options.user = &user;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+    ASSERT_EQ(0, ptr->ReleaseAdditionalReference());
+    ASSERT_EQ(0, ptr->SetFailed());
+    ptr->Revive(1);
+    EXPECT_TRUE(ptr->Failed());
+    EXPECT_EQ(1, ptr->nref());
+    ptr.reset();
+    EXPECT_EQ(-1, brpc::Socket::Status(id));
+}
+
+struct RemovalRace {
+    explicit RemovalRace(brpc::Socket* s) : socket(s), ready(2) {}
+    brpc::Socket* socket;
+    bthread::CountdownEvent ready;
+};
+
+static void* ReleaseAdditionalReferenceInThread(void* arg) {
+    RemovalRace* race = static_cast<RemovalRace*>(arg);
+    race->ready.signal();
+    race->ready.wait();
+    race->socket->ReleaseAdditionalReference();
+    return nullptr;
+}
+
+TEST_F(SocketTest, concurrent_removal_and_revival) {
+    QuietRevival user;
+    for (int i = 0; i < 200; ++i) {
+        SCOPED_TRACE(i);
+        brpc::SocketOptions options;
+        options.user = &user;
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+        BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+        brpc::SocketUniquePtr owner;
+        brpc::SocketUniquePtr health_check;
+        ASSERT_EQ(0, brpc::Socket::Address(id, &owner));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &health_check));
+        ASSERT_EQ(0, owner->SetFailed());
+        RemovalRace race(owner.get());
+        pthread_t tid;
+        ASSERT_EQ(0, pthread_create(&tid, nullptr,
+                                    ReleaseAdditionalReferenceInThread,
+                                    &race));
+        race.ready.signal();
+        race.ready.wait();
+        health_check->Revive(2);
+        ASSERT_EQ(0, pthread_join(tid, nullptr));
+        EXPECT_EQ(2, owner->nref());
+        owner.reset();
+        health_check.reset();
+        EXPECT_EQ(-1, brpc::Socket::Status(id));
+    }
+}
+
 TEST_F(SocketTest, client_binding_ipv6_connect) {
     butil::EndPoint point;
     ASSERT_EQ(0, butil::str2endpoint("[::1]:0", &point));
