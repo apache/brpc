@@ -232,18 +232,18 @@ void EventDispatcher::Run() {
                 || (e[i].events & has_epollrdhup)
 #endif
                 ) {
-                int64_t start_ns = butil::cpuwide_time_ns();
+                int64_t start_us = butil::cpuwide_time_us();
                 // We don't care about the return value.
                 CallInputEventCallback(e[i].data.u64, e[i].events, _thread_attr);
-                (*g_edisp_read_lantency) << (butil::cpuwide_time_ns() - start_ns);
+                (*g_edisp_read_lantency) << (butil::cpuwide_time_us() - start_us);
             }
         }
         for (int i = 0; i < n; ++i) {
             if (e[i].events & (EPOLLOUT | EPOLLERR | EPOLLHUP)) {
-                int64_t start_ns = butil::cpuwide_time_ns();
+                int64_t start_us = butil::cpuwide_time_us();
                 // We don't care about the return value.
                 CallOutputEventCallback(e[i].data.u64, e[i].events, _thread_attr);
-                (*g_edisp_write_lantency) << (butil::cpuwide_time_ns() - start_ns);
+                (*g_edisp_write_lantency) << (butil::cpuwide_time_us() - start_us);
             }
         }
     }
