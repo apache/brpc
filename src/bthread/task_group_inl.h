@@ -93,6 +93,14 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         //   brpc)
         flush_nosignal_tasks();
         LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << _rq.capacity();
+        if (_sched_recursive_guard != 0) {
+            // Remained callbacks run with the guard held, either in
+            // sched_to()'s remained loop or at task_runner() entry. Re-entering
+            // sched_to() here would be recursive (and fatal in debug builds),
+            // so only wait here.
+            ::usleep(1000);
+            continue;
+        }
         if (is_current_pthread_task() && !is_current_main_task()) {
             // A pthread-mode bthread runs on _main_stack and cannot be
             // scheduled out, fall back to waiting.
@@ -164,7 +172,7 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         // |args| lives on the stack that sched_to() is about to freeze and is
         // read by the remained-callback after the switch, so it must stay in
         // this scope: if it were declared inside the branch below, its slot
-        // could be reused before sched_to() reads it.
+        // could be reused before the callback has finished reading it.
         ReadyToRunArgs args = { tag(), nullptr, false };
         if (!is_current_main_task()) {
             // Preserve the task being scheduled out. The push is deferred to
@@ -173,9 +181,9 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             // concurrently on another worker. The callback runs on the stack
             // of |run_tid| after sched_to() has frozen the current context,
             // same as exchange(). Capture the meta now, current_tid() is
-            // |run_tid| by the time the callback runs. Note that push_rq()
-            // can be re-entered from remained-callbacks, in which case the
-            // task to preserve is still the one being frozen here.
+            // |run_tid| by the time the callback runs.
+            // The callback may re-enter push_rq() while _rq is still full;
+            // the guard check above prevents another sched_to() from it.
             args.meta = _cur_meta;
             set_remained(ready_to_run_in_worker_ignoresignal, &args);
         }

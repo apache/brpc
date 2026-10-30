@@ -333,9 +333,9 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
         }
 
-#ifndef NDEBUG
+        // Balance the increment done by sched_to() before entering this fresh
+        // stack. Keep the guard held until all remained callbacks finish.
         --g->_sched_recursive_guard;
-#endif
     }
 
     do {
@@ -733,12 +733,13 @@ extern void CheckBthreadScheSafety();
 
 void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     TaskGroup* g = *pg;
-#ifndef NDEBUG
+    // Maintain the guard in release builds as well: push_rq() uses it to
+    // detect remained callbacks. It is balanced below, or by task_runner()
+    // when this switch enters a fresh stack.
     if ((++g->_sched_recursive_guard) > 1) {
         LOG(FATAL) << "Recursively(" << g->_sched_recursive_guard - 1
                    << ") call sched_to(" << g << ")";
     }
-#endif
     // Save errno so that errno is bthread-specific.
     int saved_errno = errno;
     void* saved_unique_user_ptr = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr);
@@ -827,9 +828,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     // tls_unique_user_ptr probably changed.
     BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr, saved_unique_user_ptr);
 
-#ifndef NDEBUG
     --g->_sched_recursive_guard;
-#endif
     *pg = g;
 }
 

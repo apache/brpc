@@ -83,6 +83,8 @@ public:
     // Suspend caller and run bthread `next_tid' in TaskGroup *pg.
     // Purpose of this function is to avoid pushing `next_tid' to _rq and
     // then being popped by sched(pg), which is not necessary.
+    // On return, *pg is the group currently running the caller, which may
+    // differ from the input group if the caller was stolen while suspended.
     static void sched_to(TaskGroup** pg, TaskMeta* next_meta);
     static void sched_to(TaskGroup** pg, bthread_t next_tid);
     static void exchange(TaskGroup** pg, TaskMeta* next_meta);
@@ -90,6 +92,9 @@ public:
     // The callback will be run in the beginning of next-run bthread.
     // Can't be called by current bthread directly because it often needs
     // the target to be suspended already.
+    // The callback runs with _sched_recursive_guard held, either in
+    // sched_to()'s remained loop or at task_runner() entry, and must not
+    // directly or indirectly enter sched_to() again.
     typedef void (*RemainedFn)(void*);
     void set_remained(RemainedFn cb, void* arg) {
         _last_context_remained = cb;
@@ -180,8 +185,10 @@ public:
     // Get the meta associate with the task.
     static TaskMeta* address_meta(bthread_t tid);
 
-    // Push a task into _rq, if _rq is full, retry after some time. This
-    // process make go on indefinitely.
+    // Push a task into _rq. If full, run a queued task to make room when
+    // context switching is allowed; otherwise wait and retry.
+    // This function may switch context. After it returns, the current task
+    // may belong to a different TaskGroup.
     void push_rq(bthread_t tid);
 
     // Returns size of local run queue.
@@ -362,6 +369,8 @@ friend class TaskControl;
     int _remote_num_nosignal{0};
     int _remote_nsignaled{0};
 
+    // Nonzero during a context switch, including remained-callback execution.
+    // Maintained in all build types because push_rq() reads it.
     int _sched_recursive_guard{0};
     // tag of this taskgroup
     bthread_tag_t _tag{BTHREAD_TAG_DEFAULT};
