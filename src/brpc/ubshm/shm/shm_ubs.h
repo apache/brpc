@@ -43,9 +43,10 @@ void UbsMemLoggerPrint(int level, const char *msg);
 
 void *UbsShmCallback(void* args, uint64_t gen);
 // One drain step of the pending-unmap list: unmap the head node and deallocate
-// it. Called by the cleanup worker (and inline by UbsShmCallback when that
-// worker cannot be started), never by the timer thread directly. The head node
-// stays in the list when the unmap fails, so a later timer fire retries it.
+// it. Called by the cleanup worker only; when that worker cannot be started,
+// UbsShmCallback defers the drain to its next periodic fire instead of running
+// it on the timer thread. The head node stays in the list when the unmap
+// fails, so a later timer fire retries it.
 void UbsShmDrainNode(ShmList *shm_list);
 RETURN_CODE UbsShmAddTimer(ShmList *shm_list);
 RETURN_CODE InitShmTimer(ShmList **shm_list);

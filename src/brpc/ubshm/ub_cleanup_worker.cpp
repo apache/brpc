@@ -35,6 +35,11 @@ namespace ubring {
 // while the worker is not started; read under g_worker_mtx, written by tests
 // before posting.
 butil::atomic<int> g_ub_test_worker_start_rc(0);
+// Test hook, never set in production: when true, Post() fails immediately
+// without starting the worker or enqueueing, so a failed post can be
+// simulated regardless of whether the process-wide worker is already
+// running (the start hook above is only consulted on the first post).
+butil::atomic<bool> g_ub_test_fail_post(false);
 
 namespace {
 
@@ -94,6 +99,11 @@ void* UbrCleanupWorkerMain(void*) {
 }
 
 bool Post(const UbrCleanupJob& job) {
+    // Test hook (never set in production): simulate a post that fails after
+    // the worker is already running; see g_ub_test_fail_post.
+    if (BAIDU_UNLIKELY(g_ub_test_fail_post.load(butil::memory_order_relaxed))) {
+        return false;
+    }
     // Serialize the posters (the worker itself never takes this mutex) so
     // that at most one cleanup worker is ever started: two posters seeing
     // "not started" at the same time would start two bthreads -- two

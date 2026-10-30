@@ -50,6 +50,11 @@ DEFINE_int32(ub_event_queue_timer_interval_max_us, 10000,
 
 // Exponential back-off multiplier of the close-check polling interval.
 constexpr uint64_t kCloseCheckBackoffFactor = 2;
+// Delay of the re-arm used when a delayed-cleanup fire could not post its
+// job to the cleanup worker: short enough to drain promptly once the worker
+// recovers, long enough that a retry loop stays negligible on the timer
+// thread while the failure persists.
+constexpr uint64_t kCleanupRetryIntervalUs = 100 * 1000;
 
 UBRing::UBRing()
 {}
@@ -165,7 +170,11 @@ static RETURN_CODE UbrScheduleClearTimer(UbrTrx *trx, uint64_t expect_ubr_id,
         // timer/callback and starter references. Hand the cleanup to the
         // worker -- the caller may be the timer thread -- so the trx does not
         // end up with neither timers nor a queued cleanup, and run it inline
-        // only when the worker cannot be started.
+        // only when the worker cannot be started. Unlike the timer-fired
+        // callbacks above, there is no periodic driver to defer to here (the
+        // arm itself just failed), so inline stays the last resort on this
+        // rare-times-rare path; its caller is a closing bthread or the SDK
+        // fault thread, not the process-wide timer thread.
         int state_expected = UBR_CLEANUP_PENDING;
         if (ATOMIC_COMPARE_EXCHANGE_STRONG(ctl->state, state_expected, UBR_CLEANUP_RUNNING)) {
             if (!UbrCleanupWorker::PostTrxCleanup(trx, ctl->ubr_id, work, ctl)) {
@@ -563,6 +572,24 @@ void* UBRing::UbrPassiveClearCallback(void* args, uint64_t) {
     UbrTrx* trx = ctl->trx;
     if (!UbrCleanupWorker::PostTrxCleanup(trx, ctl->ubr_id,
                                           UbrDoPassiveClearWork, ctl)) {
+        // The worker could not be started: running the cleanup inline here
+        // would put the SDK-backed work on the process-wide timer thread --
+        // exactly what the worker exists to avoid, and worst under the memory
+        // pressure that made the bthread creation fail. Return the ownership
+        // to PENDING and transfer this fire's timer/callback reference to a
+        // short re-arm, so the next fire retries the post: the cleanup is not
+        // lost, only delayed by the retry interval. A force close that wins
+        // the PENDING claim in between simply takes over, and a re-armed fire
+        // that finds the state settled drops its reference without running
+        // anything. Only a re-arm that itself fails (the slot is occupied or
+        // arming is refused) falls back to running inline -- by then there is
+        // no driver left to retry with.
+        ATOMIC_STORE(ctl->state, UBR_CLEANUP_PENDING);
+        if (UbrTimerStart(&ctl->timer, kCleanupRetryIntervalUs,
+                          UbrPassiveClearCallback, ctl, ctl->ubr_id)
+                == UBRING_OK) {
+            return nullptr;
+        }
         if (BAIDU_UNLIKELY(UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ctl->ubr_id))) {
             UbrDoPassiveClearWork(trx, ctl->ubr_id);
         }
@@ -645,6 +672,17 @@ void *UBRing::UbrAsynClearCallback(void *args, uint64_t)
     UbrTrx* trx = ctl->trx;
     if (!UbrCleanupWorker::PostTrxCleanup(trx, ctl->ubr_id,
                                           UbrDoAsynClearWork, ctl)) {
+        // Same deferral as the passive path: re-arm a short retry instead of
+        // running the SDK-backed cleanup inline on the timer thread. The
+        // PENDING->RUNNING claim is returned so the next fire's arbitration
+        // works unchanged, and a racing force close that claims in between
+        // simply takes over the cleanup.
+        ATOMIC_STORE(ctl->state, UBR_CLEANUP_PENDING);
+        if (UbrTimerStart(&ctl->timer, kCleanupRetryIntervalUs,
+                          UbrAsynClearCallback, ctl, ctl->ubr_id)
+                == UBRING_OK) {
+            return nullptr;
+        }
         if (BAIDU_UNLIKELY(UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ctl->ubr_id))) {
             UbrDoAsynClearWork(trx, ctl->ubr_id);
         }

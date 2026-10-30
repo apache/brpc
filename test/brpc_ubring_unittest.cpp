@@ -34,6 +34,7 @@
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/shm/shm_mgr.h"
+#include "brpc/ubshm/shm/shm_ubs.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/ubr_msg.h"
@@ -50,6 +51,7 @@ DECLARE_int32(ub_flying_io_timeout_s);
 
 extern bool g_skip_ub_init;
 extern butil::atomic<int> g_ub_test_worker_start_rc;
+extern butil::atomic<bool> g_ub_test_fail_post;
 }  // namespace ubring
 }  // namespace brpc
 
@@ -877,6 +879,82 @@ TEST(UbrCleanupWorkerTest, start_failure_is_retried_not_latched) {
     EXPECT_TRUE(UbrCleanupWorker::PostShmDrain(&shm_list, UbTestCleanupStep));
     UbrCleanupWorker::DrainAndWait();
     EXPECT_EQ(1, g_ub_test_cleanup_runs.load());
+}
+
+// ---------------------------------------------------------------------------
+// Deferred cleanup: a post that fails must never run its SDK-backed work
+// inline on the process-wide timer thread (review C3 on PR #3509).
+
+// The shm drain timer must defer a failed post to its next periodic fire:
+// the queued node stays in the list, and the pending flag is reset so the
+// retry is not stalled forever. A node whose shm.addr is null is consumed by
+// the drain without any SDK call, which makes "consumed" observable.
+TEST(UbrShmDrainDeferTest, post_failure_defers_and_next_fire_drains) {
+    brpc::ubring::ShmListNode* node =
+        (brpc::ubring::ShmListNode*)calloc(1, sizeof(brpc::ubring::ShmListNode));
+    ASSERT_NE(nullptr, node);
+    brpc::ubring::ShmList shm_list;
+    memset(&shm_list, 0, sizeof(shm_list));
+    shm_list.head = node;
+    shm_list.tail = node;
+    shm_list.size = 1;
+
+    brpc::ubring::g_ub_test_fail_post.store(true);
+    brpc::ubring::UbsShmCallback(&shm_list, 0);
+    // Deferred instead of drained inline: the node is still queued...
+    EXPECT_EQ(node, shm_list.head);
+    // ... and a stale pending flag must not stall the later fires either.
+    brpc::ubring::g_ub_test_fail_post.store(false);
+    brpc::ubring::UbsShmCallback(&shm_list, 0);
+    brpc::ubring::UbrCleanupWorker::DrainAndWait();
+    EXPECT_EQ(nullptr, shm_list.head);
+    EXPECT_EQ(nullptr, shm_list.tail);
+}
+
+class UbrTrxCleanupDeferTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        ASSERT_EQ(UBRING_OK, brpc::ubring::UBRingManager::UbrMgrInit());
+    }
+    void TearDown() override {
+        brpc::ubring::UBRingManager::UbrMgrFini();
+    }
+};
+
+// A delayed-cleanup fire whose post fails must re-arm a short retry instead
+// of running the cleanup inline on the timer thread. The ownership goes back
+// to PENDING, the re-armed fire retries the post, and the worker eventually
+// runs the cleanup exactly once.
+TEST_F(UbrTrxCleanupDeferTest, post_failure_rearms_instead_of_running_inline) {
+    using namespace brpc::ubring;
+    UbrTrx* trx = nullptr;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&trx));
+    const uint64_t ubr_id = ATOMIC_LOAD(trx->ubr_id);
+    auto* ctl = new UbrCleanupCtl();
+    ctl->trx = trx;
+    ctl->ubr_id = ubr_id;
+    ctl->state.store(UBR_CLEANUP_PENDING);
+    ctl->timer.store(nullptr);
+    ctl->ref.store(1);              // timer/callback reference, as a fire holds
+
+    // The post fails: the fire defers by re-arming, nothing runs inline.
+    g_ub_test_fail_post.store(true);
+    UBRing::UbrAsynClearCallback(ctl, ubr_id);
+    EXPECT_NE(nullptr, ctl->timer.load());     // re-armed for the retry
+    EXPECT_EQ(UBR_CLEANUP_PENDING, ctl->state.load());
+    EXPECT_TRUE(UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index, ubr_id));
+
+    // Recovery: the re-armed fire posts successfully and the worker runs the
+    // cleanup, which releases the pool slot. Do not touch `ctl' afterwards:
+    // the job's last ReleaseRef deletes it.
+    g_ub_test_fail_post.store(false);
+    bool slot_released = false;
+    for (int i = 0; i < 100 && !slot_released; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        slot_released = !UBRingManager::IsUbrTrxSlotUsed(trx->trx_mgr_index,
+                                                         ubr_id);
+    }
+    EXPECT_TRUE(slot_released);
 }
 
 namespace brpc {

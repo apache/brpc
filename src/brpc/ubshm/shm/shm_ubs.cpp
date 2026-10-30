@@ -448,10 +448,16 @@ void *UbsShmCallback(void* args, uint64_t)
         return nullptr;
     }
     if (BAIDU_UNLIKELY(!UbrCleanupWorker::PostShmDrain(shm_list, UbsShmDrainNode))) {
-        // The worker could not be started: keep the pre-worker behaviour and
-        // drain here rather than leaving the nodes in the list forever.
-        LOG(ERROR) << "Cleanup worker unavailable, draining shm on the timer thread.";
-        UbsShmDrainNode(shm_list);
+        // The worker could not be started: do NOT drain here. This callback
+        // runs on the process-wide timer thread, and one inline SDK call --
+        // unmap and deallocate can wait on a daemon round trip -- would delay
+        // every timer in the process, worst under the memory pressure that
+        // made the bthread creation fail. Reset the pending flag so the next
+        // periodic fire retries the post: the nodes stay in the list, nothing
+        // is lost, and the drain is only delayed by one timer period.
+        LOG_EVERY_SECOND(ERROR) << "Fail to post the shm drain to the cleanup "
+                                << "worker, deferring to the next timer fire.";
+        g_shm_drain_pending.store(false);
     }
     return nullptr;
 }
