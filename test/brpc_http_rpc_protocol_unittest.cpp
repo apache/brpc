@@ -1771,6 +1771,33 @@ TEST_F(HttpTest, http2_rst_before_header) {
     ASSERT_TRUE(cntl.Failed());
     ASSERT_TRUE(cntl.ErrorCode() == brpc::EHTTP);
     ASSERT_TRUE(cntl.http_response().status_code() == brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR);
+    ASSERT_NE(std::string::npos,
+              cntl.ErrorText().find("terminated by RST_STREAM: INTERNAL_ERROR[0x2]"))
+        << cntl.ErrorText();
+}
+
+TEST_F(HttpTest, http2_rst_flow_control_error_message) {
+    brpc::Controller cntl;
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+    butil::IOBuf res_out;
+    char rstbuf[9 /*FRAME_HEAD_SIZE*/ + 4];
+    brpc::policy::SerializeFrameHead(
+        rstbuf, 4, brpc::policy::H2_FRAME_RST_STREAM, 0, h2_stream_id);
+    SaveUint32(rstbuf + 9, brpc::H2_FLOW_CONTROL_ERROR);
+    res_out.append(rstbuf, sizeof(rstbuf));
+    brpc::ParseResult res_pr =
+        brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_TRUE(cntl.Failed());
+    EXPECT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    EXPECT_EQ(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              cntl.http_response().status_code());
+    EXPECT_NE(std::string::npos,
+              cntl.ErrorText().find("terminated by RST_STREAM: FLOW_CONTROL_ERROR[0x3]"))
+        << cntl.ErrorText();
 }
 
 TEST_F(HttpTest, http2_rst_after_header_and_data) {

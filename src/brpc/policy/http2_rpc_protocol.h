@@ -25,10 +25,7 @@
 #include "brpc/details/hpack.h"
 #include "brpc/stream_creator.h"
 #include "brpc/controller.h"
-
-#ifndef NDEBUG
 #include "bvar/bvar.h"
-#endif
 
 namespace brpc {
 namespace policy {
@@ -115,20 +112,22 @@ enum H2StreamState {
 };
 const char* H2StreamState2Str(H2StreamState);
 
-#ifndef NDEBUG
 struct H2Bvars {
     bvar::Adder<int> h2_unsent_request_count;
     bvar::Adder<int> h2_stream_context_count;
+    bvar::Adder<int64_t> h2_stream_reset_count;
+    bvar::Adder<int64_t> h2_pending_data_bytes;
 
     H2Bvars()
         : h2_unsent_request_count("h2_unsent_request_count")
-        , h2_stream_context_count("h2_stream_context_count") {
+        , h2_stream_context_count("h2_stream_context_count")
+        , h2_stream_reset_count("h2_stream_reset_count")
+        , h2_pending_data_bytes("h2_pending_data_bytes") {
     }
 };
 inline H2Bvars* get_h2_bvars() {
     return butil::get_leaky_singleton<H2Bvars>();
 }
-#endif
 
 class H2UnsentRequest : public SocketMessage, public StreamUserData {
 friend void PackH2Request(butil::IOBuf*, SocketMessage**,
@@ -244,6 +243,8 @@ public:
     
     size_t parsed_length() const { return this->_parsed_length; }
     int stream_id() const { return _stream_id; }
+    bool rst_received() const { return _rst_received; }
+    H2Error rst_error() const { return _rst_error; }
 
     int64_t ReleaseDeferredWindowUpdate() {
         if (_deferred_window_update.load(butil::memory_order_relaxed) == 0) {
@@ -264,6 +265,11 @@ friend class H2Context;
 #endif
     int _stream_id;
     bool _stream_ended;
+    bool _remote_ended;
+    bool _response_committed;
+    bool _has_pending_trailer;
+    bool _rst_received;
+    H2Error _rst_error;
     butil::atomic<int64_t> _remote_window_left;
     butil::atomic<int64_t> _deferred_window_update;
     uint64_t _correlation_id;
@@ -285,9 +291,12 @@ friend class H2Context;
     // turned into a RST_STREAM once END_HEADERS is reached.
     H2Error _rejected_error;
     butil::IOBuf _remaining_header_fragment;
-    // Request body which cannot be sent yet due to remote flow control.
+    // Request or response body which cannot be sent yet due to remote flow control.
     // Accessed under H2Context::_stream_mutex.
     butil::IOBuf _pending_data;
+    // Encoded gRPC trailer headers waiting for _pending_data to be flushed.
+    // Accessed under H2Context::_stream_mutex.
+    butil::IOBuf _pending_trailer;
 };
 
 StreamCreator* get_h2_global_stream_creator();
@@ -390,15 +399,24 @@ friend void InitFrameHandlers();
     void RemoveGoAwayStreams(int goaway_stream_id, std::vector<H2StreamContext*>* out_streams);
 
     H2StreamContext* FindStream(int stream_id);
+    butil::intrusive_ptr<H2StreamContext> FindOpenStream(
+        int stream_id, bool* out_remote_ended);
     // Atomically checks stream and pending-DATA limits, inserts the client
     // stream, and appends DATA allowed by the current remote windows. On
     // success, ownership of sctx is transferred to this context. On failure,
     // no stream, window, or pending-DATA state is changed.
     butil::Status TryToInsertClientStream(
         int stream_id, H2StreamContext*, const butil::IOBuf&, butil::IOBuf*);
+    int CheckServerStreamBeforeHeaders(int stream_id, size_t data_size,
+                                       H2Settings* out_remote_settings);
+    void CommitServerResponse(int stream_id, const butil::IOBuf& data,
+                              butil::IOBuf* trailer_headers,
+                              butil::IOBuf* out);
     void AppendPendingDataLocked(H2StreamContext*, butil::IOBuf*);
     void ClearPendingData(int stream_id);
     bool FlushPendingData(int stream_id);
+    void AddPendingDataSize(size_t n);
+    void SubPendingDataSize(size_t n);
 
     // True if the connection is established by client, otherwise it's
     // accepted by server.
@@ -410,6 +428,7 @@ friend void InitFrameHandlers();
     int _goaway_stream_id;
     H2Settings _remote_settings;
     bool _remote_settings_received;
+    bool _client_preface_pending;
     H2Settings _local_settings;
     H2Settings _unack_local_settings;
     HPacker _hpacker;
@@ -421,6 +440,7 @@ friend void InitFrameHandlers();
     // Total bytes retained in H2StreamContext::_pending_data on this
     // connection. Accessed under _stream_mutex.
     size_t _pending_data_size;
+    int _last_flushed_stream_id;
     butil::atomic<int64_t> _deferred_window_update;
 };
 

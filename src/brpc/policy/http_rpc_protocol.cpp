@@ -449,16 +449,30 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                 // code indicates that the body is probably the error text
                 // which is helpful for debugging.
                 // content may be binary data, so the size limit is a must.
-                std::string body_str;
-                res_body.copy_to(
-                    &body_str, std::min((int)res_body.size(),
-                                        FLAGS_http_max_error_length));
-                cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s: %.*s",
-                                res_header->major_version(),
-                                res_header->minor_version(),
-                                static_cast<int>(res_header->status_code()),
-                                res_header->reason_phrase(),
-                                (int)body_str.size(), body_str.c_str());
+                std::string err = butil::string_printf(
+                    "HTTP/%d.%d %d %s",
+                    res_header->major_version(),
+                    res_header->minor_version(),
+                    static_cast<int>(res_header->status_code()),
+                    res_header->reason_phrase());
+                if (is_http2) {
+                    const H2StreamContext* h2_sctx =
+                        static_cast<const H2StreamContext*>(imsg_guard.get());
+                    if (h2_sctx->rst_received()) {
+                        butil::string_appendf(
+                            &err, " (stream_id=%d terminated by RST_STREAM: %s[0x%x])",
+                            h2_sctx->stream_id(),
+                            H2ErrorToString(h2_sctx->rst_error()),
+                            static_cast<unsigned int>(h2_sctx->rst_error()));
+                    }
+                }
+                if (!res_body.empty()) {
+                    err.append(": ");
+                    res_body.append_to(
+                        &err, std::min((int)res_body.size(),
+                                       FLAGS_http_max_error_length));
+                }
+                cntl->SetFailed(EHTTP, "%s", err.c_str());
             } else if (cntl->response() != nullptr &&
                        cntl->response()->GetDescriptor()->field_count() != 0) {
                 cntl->SetFailed(ERESPONSE, "A protobuf response can't be parsed"
@@ -477,6 +491,17 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                     res_header->minor_version(),
                     static_cast<int>(res_header->status_code()),
                     res_header->reason_phrase());
+            if (is_http2) {
+                const H2StreamContext* h2_sctx =
+                    static_cast<const H2StreamContext*>(imsg_guard.get());
+                if (h2_sctx->rst_received()) {
+                    butil::string_appendf(
+                        &err, " (stream_id=%d terminated by RST_STREAM: %s[0x%x])",
+                        h2_sctx->stream_id(),
+                        H2ErrorToString(h2_sctx->rst_error()),
+                        static_cast<unsigned int>(h2_sctx->rst_error()));
+                }
+            }
             if (!res_body.empty()) {
                 // Use content as error text if it's present. Notice that
                 // content may be binary data, so the size limit is a must.
@@ -853,6 +878,12 @@ HttpResponseSender::~HttpResponseSender() {
     const google::protobuf::Message* res = nullptr != _messages ? _messages->Response() : nullptr;
     
     if (cntl->IsCloseConnection()) {
+        if (cntl->http_request().is_http2()) {
+            H2Context* ctx = static_cast<H2Context*>(socket->parsing_context());
+            if (ctx != NULL) {
+                ctx->AddAbandonedStream(_h2_stream_id);
+            }
+        }
         socket->SetFailed();
         return;
     }
@@ -1051,6 +1082,12 @@ HttpResponseSender::~HttpResponseSender() {
     }
 
     if (rc != 0) {
+        if (is_http2) {
+            H2Context* ctx = static_cast<H2Context*>(socket->parsing_context());
+            if (ctx != NULL) {
+                ctx->AddAbandonedStream(_h2_stream_id);
+            }
+        }
         // EPIPE is common in pooled connections + backup requests.
         const int errcode = errno;
         PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *socket;
@@ -1755,6 +1792,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 MakeRawHttpRequest(&sample->request, &req_header, ep, &req_body);
                 sample->submit(start_parse_us);
             }
+        } else {
+            req_body.clear();
         }
     } else {
         if (imsg_guard->read_body_progressively()) {
