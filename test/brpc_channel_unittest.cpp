@@ -38,6 +38,7 @@
 #include "brpc/policy/most_common_message.h"
 #include "brpc/policy/public_pbrpc_protocol.h"
 #include "brpc/policy/streaming_rpc_protocol.h"
+#include "brpc/policy/dynpart_load_balancer.h"
 #include "brpc/channel.h"
 #include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/parallel_channel.h"
@@ -2838,6 +2839,26 @@ TEST_F(ChannelTest, uninitialized_selective_channel) {
     ::test::EchoService::Stub(&channel).Echo(&async_cntl, &req, &res, done);
     EXPECT_TRUE(done_called);
     EXPECT_EQ(EINVAL, async_cntl.ErrorCode()) << async_cntl.ErrorText();
+}
+
+TEST_F(ChannelTest, dynpart_load_balancer_supports_more_than_eight_candidates) {
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+
+    brpc::policy::DynPartLoadBalancer lb;
+    for (int i = 0; i < 9; ++i) {
+        brpc::SelectiveChannel::ChannelHandle handle;
+        ASSERT_EQ(0, channel.AddChannel(
+                         new DeferredSelectiveChannel(&calls), &handle));
+        ASSERT_TRUE(lb.AddServer(brpc::ServerId(handle.id, handle.tag)));
+    }
+
+    brpc::SocketUniquePtr ptr;
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, nullptr };
+    brpc::LoadBalancer::SelectOut out(&ptr);
+    ASSERT_EQ(0, lb.SelectServer(in, &out));
+    ASSERT_NE(nullptr, ptr.get());
 }
 
 TEST_F(ChannelTest, empty_selective_channel) {
