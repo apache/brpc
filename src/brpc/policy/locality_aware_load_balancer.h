@@ -101,6 +101,7 @@ private:
         size_t _old_index;
         int64_t _old_weight;
         int64_t _avg_latency;
+        int64_t _join_time_us;
         butil::BoundedQueue<TimeInfo> _time_q;
         // content of _time_q
         TimeInfo _time_q_items[RECV_QUEUE_SIZE];
@@ -175,6 +176,10 @@ inline int64_t LocalityAwareLoadBalancer::Weight::ResetWeight(
         if (inflight_delay >= punish_latency && _avg_latency > 0) {
             new_weight = new_weight * punish_latency / inflight_delay;
         }
+    }
+    const double wm = WarmupMultiplier(_join_time_us, now_us);
+    if (wm < 1.0) {
+        new_weight = (int64_t)(new_weight * wm);
     }
     if (new_weight < FLAGS_min_weight) {
         new_weight = FLAGS_min_weight;
