@@ -168,6 +168,10 @@ struct Server::FlatBuffersServiceMap {
         return nullptr;
     }
 };
+#else
+// The member is declared in every build to keep Server's layout stable; it is
+// never allocated when FlatBuffers support is OFF.
+struct Server::FlatBuffersServiceMap {};
 #endif
 
 butil::static_atomic<int> g_running_server_count = BUTIL_STATIC_ATOMIC_INIT(0);

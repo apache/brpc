@@ -315,6 +315,24 @@ if(WITH_FLATBUFFERS)
             brpc-static brpc_test_config gtest_main ${DYNAMIC_LIB})
         add_test(NAME ${FB_TEST} COMMAND ${FB_TEST})
     endforeach()
+
+    # The same probe compiled with the OFF configuration must report the same
+    # layout; the ON validation runs both and compares their output.
+    set(WITH_FLATBUFFERS_VAL 0)
+    configure_file("${PROJECT_SOURCE_DIR}/src/butil/config.h.in"
+                   "${CMAKE_CURRENT_BINARY_DIR}/layout_off/butil/config.h" @ONLY)
+    set(WITH_FLATBUFFERS_VAL 1)
+    foreach(FB_LAYOUT on off)
+        add_executable(flatbuffers_layout_probe_${FB_LAYOUT} flatbuffers_layout_probe.cpp)
+        if(FB_LAYOUT STREQUAL "off")
+            target_include_directories(flatbuffers_layout_probe_${FB_LAYOUT} BEFORE PRIVATE
+                "${CMAKE_CURRENT_BINARY_DIR}/layout_off")
+        endif()
+        target_compile_options(flatbuffers_layout_probe_${FB_LAYOUT} PRIVATE
+            -Wno-invalid-offsetof)
+        target_link_libraries(flatbuffers_layout_probe_${FB_LAYOUT} PRIVATE
+            brpc-static brpc_test_config ${DYNAMIC_LIB})
+    endforeach()
 endif()
 
 # brpc tests

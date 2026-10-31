@@ -39,11 +39,14 @@
 #include "brpc/naming_service_filter.h"
 #include "brpc/health_check_option.h"
 #include "brpc/socket_mode.h"
-#if BRPC_WITH_FLATBUFFERS
-#include "brpc/flatbuffers/service.h"
-#endif
 
 namespace brpc {
+#if BRPC_WITH_FLATBUFFERS
+namespace flatbuffers {
+class Message;
+class MethodDescriptor;
+}  // namespace flatbuffers
+#endif
 
 struct ChannelOptions {
     // Constructed with default options.
@@ -180,11 +183,7 @@ private:
 //   channel.Init("bns://rdev.matrix.all", "rr", nullptr/*default options*/);
 //   MyService_Stub stub(&channel);
 //   stub.MyMethod(&controller, &request, &response, nullptr);
-class Channel : public ChannelBase
-#if BRPC_WITH_FLATBUFFERS
-              , public flatbuffers::RpcChannel
-#endif
-{
+class Channel : public ChannelBase {
 friend class Controller;
 friend class SelectiveChannel;
 public:
@@ -237,12 +236,15 @@ public:
                     google::protobuf::Closure* done);
 
 #if BRPC_WITH_FLATBUFFERS
+    // Issues an fb_rpc call. Generated stubs reach it through the adapter
+    // returned by flatbuffers::NewChannelAdapter(); Channel does not inherit
+    // flatbuffers::RpcChannel, so its layout does not depend on the option.
     // The descriptor is borrowed and must remain valid until the RPC finishes.
     void FBCallMethod(const flatbuffers::MethodDescriptor* method,
                       google::protobuf::RpcController* controller,
                       const flatbuffers::Message* request,
                       flatbuffers::Message* response,
-                      google::protobuf::Closure* done) override;
+                      google::protobuf::Closure* done);
 #endif
 
     // Get current options.

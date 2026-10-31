@@ -65,11 +65,9 @@ struct x509_st;
 }
 
 namespace brpc {
-#if BRPC_WITH_FLATBUFFERS
 namespace flatbuffers {
 class MethodDescriptor;
 }
-#endif
 class Span;
 class Server;
 class SharedLoadBalancer;
@@ -973,9 +971,9 @@ private:
     // Fields will be used when making requests
     Protocol::PackRequest _pack_request;
     const google::protobuf::MethodDescriptor* _method;
-#if BRPC_WITH_FLATBUFFERS
+    // Declared whatever BRPC_WITH_FLATBUFFERS is, so the layout does not
+    // depend on it. Always null when the option is OFF.
     const flatbuffers::MethodDescriptor* _flatbuffers_method;
-#endif
     const Authenticator* _auth;
     butil::IOBuf _request_buf;
     IdlNames _idl_names;

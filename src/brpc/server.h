@@ -25,6 +25,7 @@
 #include "bthread/errno.h"        // Redefine errno
 #include "bthread/bthread.h"      // Server may need some bthread functions,
                                   // e.g. bthread_usleep
+#include <memory>
 #include <google/protobuf/service.h>                 // google::protobuf::Service
 #include "butil/config.h"
 #include "butil/macros.h"                            // DISALLOW_COPY_AND_ASSIGN
@@ -819,10 +820,10 @@ friend struct RevertServerStatus;
     Acceptor* _am;
     Acceptor* _internal_am;
 
-#if BRPC_WITH_FLATBUFFERS
+    // Declared whatever BRPC_WITH_FLATBUFFERS is, so the layout does not
+    // depend on it. Always null when the option is OFF.
     struct FlatBuffersServiceMap;
     std::unique_ptr<FlatBuffersServiceMap> _flatbuffers_services;
-#endif
 
     // Use method->full_name() as key
     MethodMap _method_map;

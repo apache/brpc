@@ -608,6 +608,32 @@ TEST_F(FlatBuffersProtocolTest, SynchronousAndAsynchronousPayloadAttachmentVaria
     }
 }
 
+TEST_F(FlatBuffersProtocolTest, ChannelAdapterForwardsThroughRpcChannelInterface) {
+    // Generated stubs reach brpc::Channel only through this adapter.
+    EXPECT_EQ(nullptr, brpc::flatbuffers::NewChannelAdapter(nullptr, false));
+    std::unique_ptr<brpc::flatbuffers::RpcChannel> borrowed(
+        brpc::flatbuffers::NewChannelAdapter(&channel, false));
+    ASSERT_NE(nullptr, borrowed);
+    const Message request = MakePayload(64, 5);
+    Message response;
+    brpc::Controller cntl;
+    borrowed->FBCallMethod(method(), &cntl, &request, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ExpectReply(response, request, method());
+    borrowed.reset();
+
+    // An owning adapter deletes its channel; the call still succeeds first.
+    auto* owned_channel = new brpc::Channel;
+    ASSERT_EQ(0, InitChannel(owned_channel, server.listen_address()));
+    std::unique_ptr<brpc::flatbuffers::RpcChannel> owning(
+        brpc::flatbuffers::NewChannelAdapter(owned_channel, true));
+    Message owned_response;
+    brpc::Controller owned_cntl;
+    owning->FBCallMethod(method(), &owned_cntl, &request, &owned_response, nullptr);
+    ASSERT_FALSE(owned_cntl.Failed()) << owned_cntl.ErrorText();
+    ExpectReply(owned_response, request, method());
+}
+
 TEST_F(FlatBuffersProtocolTest, ConcurrentCallsShareOneConstMessageWithoutMutation) {
     Message mutable_request = MakePayload(16385, 9981, 256);
     memset(mutable_request.mutable_buf_begin(), 0x3d,

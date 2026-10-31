@@ -42,6 +42,7 @@
 #include "brpc/details/ssl_helper.h"
 #if BRPC_WITH_FLATBUFFERS
 #include "brpc/flatbuffers/message.h"
+#include "brpc/flatbuffers/service.h"
 #endif
 
 namespace brpc {
@@ -487,9 +488,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
                          const google::protobuf::Message* request,
                          google::protobuf::Message* response,
                          google::protobuf::Closure* done) {
-#if BRPC_WITH_FLATBUFFERS
     static_cast<Controller*>(controller_base)->_flatbuffers_method = nullptr;
-#endif
     CallMethodInternal(method, controller_base, request, response, done, false);
 }
 

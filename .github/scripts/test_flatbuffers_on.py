@@ -131,6 +131,17 @@ class GateTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             gate.verify_ctest(self.xml, {"acceptance", "runtime"})
 
+    def test_layout_must_match_between_on_and_off(self):
+        body = "brpc::Channel size=360 align=8\nbrpc::Server size=10816 align=64\n"
+        on = "BRPC_WITH_FLATBUFFERS=1\n" + body
+        off = "BRPC_WITH_FLATBUFFERS=0\n" + body
+        self.assertEqual(2, gate.compare_layouts(on, off)["entries"])
+        for bad_on, bad_off in ((on, off.replace("360", "368")),
+                                (on, on), (off, off), ("", off),
+                                ("BRPC_WITH_FLATBUFFERS=1\n", "BRPC_WITH_FLATBUFFERS=0\n")):
+            with self.assertRaises(ValueError):
+                gate.compare_layouts(bad_on, bad_off)
+
     def archive(self, name="pkg/file", link=False):
         path = self.root / "archive.tar.gz"
         with tarfile.open(path, "w:gz") as archive:

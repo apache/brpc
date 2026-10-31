@@ -79,9 +79,9 @@ The generated names are `example::api::Echo`,
 `example::api::Echo_Stub`, and the alias `example::api::Echo::Stub`.
 They are **not** the old `EchoStub` spelling. Methods take protobuf
 `RpcController`/`Closure` and `brpc::flatbuffers::Message` parameters. Derive from
-`Echo` and override the schema methods; supply an implementation of
-`brpc::flatbuffers::RpcChannel` to a stub, such as a `brpc::Channel` initialized
-with `ChannelOptions::protocol = "fb_rpc"`. Register the implementation with
+`Echo` and override the schema methods; pass a `brpc::Channel` initialized with
+`ChannelOptions::protocol = "fb_rpc"` to a stub, or any other implementation of
+`brpc::flatbuffers::RpcChannel`. Register the implementation with
 `Server::AddFlatBuffersService`. See [FlatBuffers RPC](../../docs/en/flatbuffers.md)
 for ownership, protocol limitations, and response verification. Channel ownership
 defaults to borrowed; `Service::STUB_OWNS_CHANNEL` transfers ownership to the stub.

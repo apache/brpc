@@ -13,7 +13,10 @@ Protocol's existing protobuf callback signatures.
 FlatBuffers is **OFF by default**. Enable it when building bRPC, then build the
 client/server against that same library and generated configuration header.
 Adding `-DBRPC_WITH_FLATBUFFERS=1` to an application is not a substitute: the
-feature changes the Channel, Controller and Server ABI.
+FlatBuffers APIs are compiled into the library. The option does not change the
+layout of Channel, Controller or Server, so protobuf-only code works with either
+build, and code that uses FlatBuffers APIs fails to link against a library
+built without them.
 
 | Build system | Enable option | Exported runtime prefix |
 | --- | --- | --- |
@@ -353,11 +356,12 @@ must run their callback exactly once.
 
 ## Network RPC
 
-Build both the library and its users with the same `BRPC_WITH_FLATBUFFERS`
-setting; enabling the feature changes the Channel, Controller and Server ABI.
-Register generated services with `server.AddFlatBuffersService(&service,
-SERVER_DOESNT_OWN_SERVICE)`. Use `ChannelOptions::protocol = "fb_rpc"` and pass
-that `brpc::Channel` to a generated stub. The stub calls `Channel::FBCallMethod`;
+The class layout of Channel, Controller and Server is the same with the option ON
+or OFF; the ON validation checks this. Register generated services with
+`server.AddFlatBuffersService(&service, SERVER_DOESNT_OWN_SERVICE)`. Use
+`ChannelOptions::protocol = "fb_rpc"` and pass that `brpc::Channel` to a
+generated stub (`Echo::Stub stub(&channel);`). The stub wraps the channel in a
+library adapter that calls `Channel::FBCallMethod`;
 `Controller::flatbuffers_method()` returns the typed descriptor, while the
 protobuf `Controller::method()` remains null. Manually supplied descriptors
 must outlive their calls, including retries and backup requests.

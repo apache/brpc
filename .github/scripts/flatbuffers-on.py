@@ -38,7 +38,8 @@ FLATBUFFERS_VERSION = "25.2.10"
 FLATBUFFERS_SHA256 = "b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421"
 GTEST_VERSION = "1.14.0"
 GTEST_SHA256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7"
-TESTS = {"brpc_flatbuffers_unittest": 22, "brpc_flatbuffers_protocol_unittest": 37}
+TESTS = {"brpc_flatbuffers_unittest": 22, "brpc_flatbuffers_protocol_unittest": 38}
+LAYOUT_PROBES = ("flatbuffers_layout_probe_on", "flatbuffers_layout_probe_off")
 
 
 def list_gtests(text):
@@ -158,6 +159,18 @@ def check_enabled(header):
     if not re.search(r"^\s*#\s*define\s+BRPC_WITH_FLATBUFFERS\s+1\s*$",
                      Path(header).read_text(), re.MULTILINE):
         raise ValueError("FlatBuffers is not enabled in " + str(header))
+
+
+def compare_layouts(on_text, off_text):
+    """Require the ON and OFF probes to report the same class layout."""
+    on_lines = on_text.splitlines()
+    off_lines = off_text.splitlines()
+    if (not on_lines or not off_lines or on_lines[0] != "BRPC_WITH_FLATBUFFERS=1" or
+            off_lines[0] != "BRPC_WITH_FLATBUFFERS=0"):
+        raise ValueError("Layout probes did not run with the ON and OFF configurations")
+    if len(on_lines) < 2 or on_lines[1:] != off_lines[1:]:
+        raise ValueError("Class layout differs between FlatBuffers ON and OFF builds")
+    return {"entries": len(on_lines) - 1}
 
 
 def signal_group(process, signum):
@@ -327,9 +340,13 @@ class Runner:
             "-DFLATBUFFERS_INCLUDE_DIR=" + str(self.fb / "include"),
             "-DFLATBUFFERS_FLATC_EXECUTABLE=" + str(self.flatc)])
         self.step("build", ["cmake", "--build", build, "--target", *TESTS, "brpc-shared",
-                            "--parallel", self.args.jobs])
+                            *LAYOUT_PROBES, "--parallel", self.args.jobs])
         self.step("install", ["cmake", "--install", build])
         check_enabled(runtime / "include/butil/config.h")
+        layouts = [self.step(name, [build / "test" / name], timeout=30).read_text()
+                   for name in LAYOUT_PROBES]
+        self.results["layout"] = compare_layouts(*layouts)
+        self.save("running")
         for name in TESTS:
             self.check_gtest(name, build / "test" / name, build)
         codegen = self.work / "codegen"

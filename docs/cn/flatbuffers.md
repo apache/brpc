@@ -14,8 +14,8 @@ bRPC 提供基于 IOBuf 的 FlatBuffers 消息、构造器、服务描述及 `fb
 | Make | `config_brpc.sh --with-flatbuffers` | `<checkout>/output` |
 | Bazel | build/test 命令均传 `--define=BRPC_WITH_FLATBUFFERS=true` | 原始 Bazel 输出不是 example 所需的安装前缀 |
 
-**不能只给应用增加 `-DBRPC_WITH_FLATBUFFERS=1`。** 该功能会改变 Channel、Controller、
-Server 的 ABI；ON 头文件与 OFF 运行库混用不受支持。`butil/config.h` 中的宏始终为 0 或 1，
+**不能只给应用增加 `-DBRPC_WITH_FLATBUFFERS=1`。** FlatBuffers 相关 API 编译在库里。该选项不会改变
+Channel、Controller、Server 的内存布局，只用 protobuf 的代码与两种构建的库都能配合使用；使用 FlatBuffers API 的代码链接到未启用该选项的库时会链接失败。`butil/config.h` 中的宏始终为 0 或 1，
 应用应使用 `#if BRPC_WITH_FLATBUFFERS`，而不是 `#ifdef`。
 
 先按[入门指南](getting_started.md)准备 C++ 工具链、Protobuf 编译器及开发库、gflags、
@@ -326,7 +326,7 @@ rpc_service BenchmarkService {
 
 ## 8. 网络 RPC
 
-库和使用方必须用相同的 `BRPC_WITH_FLATBUFFERS` 设置构建；启用该功能会改变 Channel、Controller、Server 的 ABI。用 `server.AddFlatBuffersService(&service, SERVER_DOESNT_OWN_SERVICE)` 注册生成的服务；将 `ChannelOptions::protocol` 设为 `"fb_rpc"`，并把这个 `brpc::Channel` 传给生成的 stub。stub 调用 `Channel::FBCallMethod`；`Controller::flatbuffers_method()` 返回带类型的 descriptor，protobuf 的 `Controller::method()` 仍为空。手工提供的 descriptor 必须活过整个调用，包括重试和 backup request。
+启用或关闭该选项时，Channel、Controller、Server 的内存布局相同，ON 验证会检查这一点。用 `server.AddFlatBuffersService(&service, SERVER_DOESNT_OWN_SERVICE)` 注册生成的服务；将 `ChannelOptions::protocol` 设为 `"fb_rpc"`，并把这个 `brpc::Channel` 传给生成的 stub（`Echo::Stub stub(&channel);`）。stub 用库里的适配器包装该 channel，由适配器调用 `Channel::FBCallMethod`；`Controller::flatbuffers_method()` 返回带类型的 descriptor，protobuf 的 `Controller::method()` 仍为空。手工提供的 descriptor 必须活过整个调用，包括重试和 backup request。
 
 服务注册独立于 protobuf 的 AddService 和 ListServices。Add/Remove/Clear 要求服务端处于已停止（READY）状态，不能是正在 STOPPING；管理操作必须由外部串行化。只有注册成功后所有权才转移。`RemoveFlatBuffersService` 会删除自有服务，Stop/Join 则保留注册以便重启。`GetFlatBuffersServiceCount()` 返回这个独立注册表的数量。重复的 service ID（包括 hash 冲突）以及与 protobuf 方法全名冲突的 FlatBuffers 方法会被拒绝。按字符串调用的 `MaxConcurrencyOf` 支持 FlatBuffers 方法，服务端整体并发和默认方法并发限制同样适用。
 
