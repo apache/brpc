@@ -389,6 +389,37 @@ TEST(EndPointTest, extended_endpoint) {
     ASSERT_EQ(1, eep2->_ref_count.load());
 }
 
+TEST(EndPointTest, failed_parse_leaves_endpoint_untouched) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("unix:forged.sock", &ep));
+    ExtendedEndPoint* eep = ExtendedEndPoint::address(ep);
+    ASSERT_TRUE(eep);
+    ASSERT_EQ(1, eep->_ref_count.load());
+
+    // The ip field of an extended endpoint holds its resource id, so this
+    // string names `ep' with the port that marks extended endpoints.
+    char forged[64];
+    snprintf(forged, sizeof(forged), "%s:%d",
+             butil::ip2str(ep.ip).c_str(), butil::details::EXTENDED_ENDPOINT_PORT);
+    {
+        butil::EndPoint tmp;
+        ASSERT_EQ(-1, butil::str2endpoint(forged, &tmp));
+        ASSERT_FALSE(ExtendedEndPoint::is_extended(tmp));
+        ASSERT_EQ(-1, butil::hostname2endpoint(forged, &tmp));
+        ASSERT_FALSE(ExtendedEndPoint::is_extended(tmp));
+        // Callers fall back to another address after a failed parse.
+        tmp = butil::EndPoint(butil::IP_ANY, 80);
+    }
+    ASSERT_EQ(1, eep->_ref_count.load());
+
+    // An out-of-range port must not be narrowed to int before the range check.
+    butil::EndPoint ep2;
+    ASSERT_EQ(-1, butil::str2endpoint("127.0.0.1:4294967377", &ep2));
+    ASSERT_EQ(-1, butil::hostname2endpoint("127.0.0.1:4294967377", &ep2));
+    ASSERT_EQ(butil::IP_ANY, ep2.ip);
+    ASSERT_EQ(0, ep2.port);
+}
+
 TEST(EndPointTest, endpoint_compare) {
     butil::EndPoint ep1, ep2, ep3;
 
