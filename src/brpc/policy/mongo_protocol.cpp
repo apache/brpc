@@ -20,6 +20,7 @@
 #include <gflags/gflags.h>
 
 #include "butil/iobuf.h"                         // butil::IOBuf
+#include "butil/object_pool.h"
 #include "butil/strings/string_util.h"
 #include "butil/time.h"
 
@@ -31,7 +32,6 @@
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/mongo_service_adaptor.h"
-#include "brpc/policy/most_common_message.h"
 #include "brpc/policy/nshead_protocol.h"
 #include "brpc/policy/mongo.pb.h"
 #include "brpc/details/usercode_backup_pool.h"
@@ -110,6 +110,28 @@ void SendMongoResponse::Run() {
     }
 }
 
+// A mongo request and the context of its connection. The context is
+// referenced when the request is cut, because the bthread parsing messages
+// may reset the parsing context of the socket before the request is
+// processed in another bthread.
+struct MongoInputMessage : public InputMessageBase {
+    butil::IOBuf meta;
+    butil::IOBuf payload;
+    butil::intrusive_ptr<MongoContext> context;
+
+    inline static MongoInputMessage* Get() {
+        return butil::get_object<MongoInputMessage>();
+    }
+
+    // @InputMessageBase
+    void DestroyImpl() override {
+        meta.clear();
+        payload.clear();
+        context.reset();
+        butil::return_object(this);
+    }
+};
+
 ParseResult ParseMongoMessage(butil::IOBuf* source,
                               Socket* socket, bool /*read_eof*/, const void *arg) {
     const Server* server = static_cast<const Server*>(arg);
@@ -161,12 +183,17 @@ ParseResult ParseMongoMessage(butil::IOBuf* source,
         socket_context_msg = new MongoContextMessage(context);
         socket->reset_parsing_context(socket_context_msg);
     }
-    policy::MostCommonMessage* msg = policy::MostCommonMessage::Get();
+    MongoInputMessage* msg = MongoInputMessage::Get();
     source->cutn(&msg->meta, sizeof(buf));
     size_t act_body_len = source->cutn(&msg->payload, body_len - sizeof(buf));
     if (act_body_len != body_len - sizeof(buf)) {
         CHECK(false);     // Very unlikely, unless memory is corrupted.
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+    }
+    MongoContextMessage* context_msg =
+        dynamic_cast<MongoContextMessage*>(socket_context_msg);
+    if (nullptr != context_msg) {
+        msg->context = context_msg->context();
     }
     return MakeMessage(msg);
 }
@@ -192,7 +219,7 @@ void EndRunningCallMethodInPool(
     ::google::protobuf::Closure* done);
 
 void ProcessMongoRequest(InputMessageBase* msg_base) {
-    DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
+    DestroyingPtr<MongoInputMessage> msg(static_cast<MongoInputMessage*>(msg_base));
     SocketUniquePtr socket_guard(msg->ReleaseSocket());
     Socket* socket = socket_guard.get();
     const Server* server = static_cast<const Server*>(msg_base->arg());
@@ -212,15 +239,16 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
     const Server::MethodProperty *mp = server_accessor.FindMethodPropertyByFullName(
         srv_des->method(0)->full_name());
 
-    MongoContextMessage* context_msg =
-        dynamic_cast<MongoContextMessage*>(socket->parsing_context());
-    if (nullptr == context_msg) {
+    if (nullptr == msg->context) {
         LOG(WARNING) << "socket context wasn't set correctly";
         return;
     }
 
     SendMongoResponse* mongo_done = new SendMongoResponse(server);
-    mongo_done->cntl.set_mongo_session_data(context_msg->context());
+    // set_mongo_session_data() stores the pointer into a
+    // butil::intrusive_ptr, which takes its own reference. The controller
+    // therefore keeps the context alive after this message is destroyed.
+    mongo_done->cntl.set_mongo_session_data(msg->context.get());
 
     ControllerPrivateAccessor accessor(&(mongo_done->cntl));
     const bool security_mode = server->options().security_mode() &&
