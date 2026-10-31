@@ -77,7 +77,7 @@ public:
     }
 
 #if BRPC_WITH_FLATBUFFERS
-    const Server::FlatBuffersMethodProperty*
+    const Server::MethodProperty*
     FindFlatBuffersMethodPropertyByIndex(uint32_t service_index,
                                          int32_t method_index) const {
         return _server->FindFlatBuffersMethodPropertyByIndex(

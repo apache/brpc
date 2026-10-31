@@ -298,16 +298,16 @@ void ProcessFlatBuffersRequest(InputMessageBase* message_base) {
             cntl->SetFailed(ENOMETHOD, "Invalid FlatBuffers method ID");
             break;
         }
-        const Server::FlatBuffersMethodProperty* property =
+        const Server::MethodProperty* property =
             server_accessor.FindFlatBuffersMethodPropertyByIndex(service_id, method_id);
         if (!property) {
             cntl->SetFailed(ENOMETHOD, "Unknown FlatBuffers service=%u method=%u",
                             service_id, method_id);
             break;
         }
-        call->service = property->service;
-        call->method = property->method;
-        accessor.set_flatbuffers_method(property->method);
+        call->service = property->fb_service;
+        call->method = property->fb_method;
+        accessor.set_flatbuffers_method(property->fb_method);
         if (socket->is_overcrowded() && !server->options().ignore_eovercrowded &&
             !property->ignore_eovercrowded) {
             cntl->SetFailed(EOVERCROWDED, "FlatBuffers connection is overcrowded");

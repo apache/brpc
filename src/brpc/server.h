@@ -25,6 +25,7 @@
 #include "bthread/errno.h"        // Redefine errno
 #include "bthread/bthread.h"      // Server may need some bthread functions,
                                   // e.g. bthread_usleep
+#include <functional>
 #include <memory>
 #include <google/protobuf/service.h>                 // google::protobuf::Service
 #include "butil/config.h"
@@ -51,12 +52,12 @@
 
 namespace brpc {
 
-#if BRPC_WITH_FLATBUFFERS
+// Forward-declared in every build: MethodProperty and Server keep the same
+// layout whatever BRPC_WITH_FLATBUFFERS is.
 namespace flatbuffers {
 class Service;
 class MethodDescriptor;
 }  // namespace flatbuffers
-#endif
 
 class Acceptor;
 class MethodStatus;
@@ -454,19 +455,14 @@ public:
         // while other methods(ignore_eovercrowded=false) keep returning eovercrowded.
         // currently only valid for baidu_master_service, baidu_rpc, http_rpc, hulu_pbrpc and sofa_pbrpc protocols 
         bool ignore_eovercrowded;
+        // Set only for FlatBuffers methods, whose `service' and `method'
+        // above stay null. Always null when BRPC_WITH_FLATBUFFERS is OFF.
+        flatbuffers::Service* fb_service;
+        const flatbuffers::MethodDescriptor* fb_method;
 
         MethodProperty();
     };
     typedef butil::FlatMap<std::string, MethodProperty> MethodMap;
-
-#if BRPC_WITH_FLATBUFFERS
-    struct FlatBuffersMethodProperty {
-        flatbuffers::Service* service;
-        const flatbuffers::MethodDescriptor* method;
-        MethodStatus* status;
-        bool ignore_eovercrowded;
-    };
-#endif
 
     struct ThreadLocalOptions {
         bthread_key_t tls_key;
@@ -540,7 +536,10 @@ public:
     int RemoveService(google::protobuf::Service* service);
 
 #if BRPC_WITH_FLATBUFFERS
-    // FlatBuffers services are separate from the protobuf service maps.
+    // FlatBuffers services are separate from the protobuf service maps, so
+    // ListServices() and /list show protobuf services only; use
+    // ListFlatBuffersServices() for these. Per-method options such as
+    // MaxConcurrencyOf() and IgnoreEovercrowdedOf() accept their full names.
     // The service and its descriptor must remain valid until removal.
     // Add/Remove require a stopped server (READY). Ownership transfers only
     // after a successful Add; Remove deletes a server-owned service.
@@ -551,6 +550,7 @@ public:
                               ServiceOwnership ownership);
     int RemoveFlatBuffersService(flatbuffers::Service* service);
     size_t GetFlatBuffersServiceCount() const;
+    void ListFlatBuffersServices(std::vector<flatbuffers::Service*>* services) const;
 #endif
 
     // Remove all services from this server.
@@ -586,7 +586,8 @@ public:
     google::protobuf::Service*
     FindServiceByName(const butil::StringPiece& name) const;
 
-    // Put all services registered by user into `services'
+    // Put all protobuf services registered by user into `services'.
+    // ServerStatistics::user_service_count also counts FlatBuffers services.
     void ListServices(std::vector<google::protobuf::Service*>* services);
 
     // Get statistics of this server
@@ -746,9 +747,18 @@ friend struct RevertServerStatus;
                                      int method_index) const;
 
 #if BRPC_WITH_FLATBUFFERS
-    const FlatBuffersMethodProperty* FindFlatBuffersMethodPropertyByIndex(
+    const MethodProperty* FindFlatBuffersMethodPropertyByIndex(
         uint32_t service_index, int32_t method_index) const;
+    MethodProperty* FindFlatBuffersMethodPropertyByFullName(
+        const butil::StringPiece& full_method_name) const;
 #endif
+
+    // Visits every protobuf and FlatBuffers method property, including
+    // builtin ones, so that per-method settings apply to both kinds.
+    void ForEachMethodProperty(const std::function<void(MethodProperty*)>& fn);
+    // Protobuf methods first, then FlatBuffers methods.
+    MethodProperty* FindAnyMethodPropertyByFullName(
+        const butil::StringPiece& full_method_name) const;
 
     const ServiceProperty*
     FindServicePropertyByFullName(const butil::StringPiece& fullname) const;

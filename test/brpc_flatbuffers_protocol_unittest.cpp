@@ -56,6 +56,7 @@
 #include "brpc/server.h"
 #include "brpc/socket.h"
 #include "brpc/stream.h"
+#include "bvar/variable.h"
 #include "flatbuffers_message_generated.h"
 
 namespace {
@@ -1438,6 +1439,151 @@ TEST(FlatBuffersLifecycleTest, ControllerResetClearsContextBeforeOrdinaryProtobu
     EXPECT_EQ(method, cntl.method());
     EXPECT_EQ("ordinary protobuf",
               response->GetReflection()->GetString(*response, field));
+    EXPECT_EQ(0, server.Stop(0));
+    EXPECT_EQ(0, server.Join());
+}
+
+TEST(FlatBuffersRegistryTest, ListingCountsAndPerMethodOptionsShareOneRegistry) {
+    PayloadService flatbuffers_service;
+    DynamicEchoService protobuf_service;
+    ASSERT_NE(nullptr, protobuf_service.GetDescriptor());
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddFlatBuffersService(
+        &flatbuffers_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.AddService(&protobuf_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+
+    std::vector<brpc::flatbuffers::Service*> fb_services;
+    server.ListFlatBuffersServices(&fb_services);
+    ASSERT_EQ(1u, fb_services.size());
+    EXPECT_EQ(&flatbuffers_service, fb_services[0]);
+    std::vector<google::protobuf::Service*> pb_services;
+    server.ListServices(&pb_services);
+    ASSERT_EQ(1u, pb_services.size());
+    EXPECT_EQ(&protobuf_service, pb_services[0]);
+    brpc::ServerStatistics stat;
+    server.GetStat(&stat);
+    EXPECT_EQ(static_cast<int>(pb_services.size() + fb_services.size()),
+              stat.user_service_count);
+
+    // Per-method options reach FlatBuffers methods through every overload.
+    const ServiceDescriptor* sd = flatbuffers_service.GetDescriptor();
+    const MethodDescriptor* echo = sd->FindMethodByIndex(7);
+    const MethodDescriptor* alternate = sd->FindMethodByIndex(41);
+    server.MaxConcurrencyOf(echo->full_name()) = 3;
+    server.MaxConcurrencyOf(sd->full_name(), alternate->name()) = 5;
+    server.IgnoreEovercrowdedOf(echo->full_name()) = true;
+    const brpc::Server& const_server = server;
+    EXPECT_EQ(3, const_server.MaxConcurrencyOf(echo->full_name()));
+    EXPECT_EQ(5, const_server.MaxConcurrencyOf(sd->full_name(), alternate->name()));
+    EXPECT_TRUE(const_server.IgnoreEovercrowdedOf(echo->full_name()));
+    EXPECT_FALSE(const_server.IgnoreEovercrowdedOf(alternate->full_name()));
+    const brpc::Server::MethodProperty* property =
+        brpc::ServerPrivateAccessor(&server).FindFlatBuffersMethodPropertyByIndex(
+            sd->index(), 7);
+    ASSERT_NE(nullptr, property);
+    EXPECT_EQ(property, server.FindAnyMethodPropertyByFullName(echo->full_name()));
+    EXPECT_EQ(echo, property->fb_method);
+    EXPECT_EQ(nullptr, property->method);
+    EXPECT_TRUE(property->ignore_eovercrowded);
+
+    // Start applies the stored limits to FlatBuffers methods as well.
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    EXPECT_EQ(3, property->status->MaxConcurrency());
+    EXPECT_EQ(5, brpc::ServerPrivateAccessor(&server).FindFlatBuffersMethodPropertyByIndex(
+        sd->index(), 41)->status->MaxConcurrency());
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+
+    // Removal drops the full-name index together with the service.
+    ASSERT_EQ(0, server.RemoveFlatBuffersService(&flatbuffers_service));
+    EXPECT_EQ(nullptr, server.FindAnyMethodPropertyByFullName(echo->full_name()));
+    EXPECT_EQ(0, const_server.MaxConcurrencyOf(echo->full_name()));
+    server.ListFlatBuffersServices(&fb_services);
+    EXPECT_TRUE(fb_services.empty());
+}
+
+TEST(FlatBuffersRegistryTest, StatusPageShowsFlatBuffersMethods) {
+    PayloadService flatbuffers_service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddFlatBuffersService(
+        &flatbuffers_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    brpc::Channel channel;
+    // HTTP does not support single connections.
+    ASSERT_EQ(0, InitChannel(&channel, server.listen_address(), "http", "pooled"));
+    brpc::Controller cntl;
+    cntl.http_request().uri() = "/status";
+    channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    const std::string page = cntl.response_attachment().to_string();
+    EXPECT_NE(std::string::npos, page.find("brpc_fbtest.ProtocolService")) << page;
+    EXPECT_NE(std::string::npos, page.find("Echo (fb_rpc, id=7)")) << page;
+    EXPECT_EQ(0, server.Stop(0));
+    EXPECT_EQ(0, server.Join());
+}
+
+TEST(FlatBuffersRegistryTest, MethodStatusIsExposedAsBvar) {
+    // FlatBuffers entries do not set own_method_status, yet their counters
+    // must still be published like those of protobuf methods.
+    PayloadService flatbuffers_service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddFlatBuffersService(
+        &flatbuffers_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions options;
+    options.server_info_name = "fb_bvar_expose";
+    const std::string count_name =
+        "rpc_server_fb_bvar_expose_brpc_fbtest_protocol_service_echo_count";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(kWaitTimeoutMs);
+    while (bvar::Variable::describe_exposed(count_name).empty() &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    EXPECT_FALSE(bvar::Variable::describe_exposed(count_name).empty());
+    EXPECT_EQ(0, server.Stop(0));
+    EXPECT_EQ(0, server.Join());
+}
+
+TEST(FlatBuffersRegistryTest, ProtobufProtocolsCannotReachFlatBuffersMethodsByName) {
+    PayloadService flatbuffers_service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddFlatBuffersService(
+        &flatbuffers_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
+    // A client-only protobuf descriptor that spells the FlatBuffers method.
+    google::protobuf::FileDescriptorProto file;
+    file.set_name("flatbuffers_protocol_cross_protocol.proto");
+    file.set_package("brpc_fbtest");
+    file.add_message_type()->set_name("Empty");
+    auto* service = file.add_service();
+    service->set_name("ProtocolService");
+    auto* method = service->add_method();
+    method->set_name("Echo");
+    method->set_input_type(".brpc_fbtest.Empty");
+    method->set_output_type(".brpc_fbtest.Empty");
+    google::protobuf::DescriptorPool pool;
+    const auto* built = pool.BuildFile(file);
+    ASSERT_NE(nullptr, built);
+    google::protobuf::DynamicMessageFactory factory;
+    const google::protobuf::Message* prototype =
+        factory.GetPrototype(built->message_type(0));
+    for (const char* protocol : {"baidu_std", "http"}) {
+        SCOPED_TRACE(protocol);
+        brpc::Channel channel;
+        ASSERT_EQ(0, InitChannel(&channel, server.listen_address(), protocol,
+                                 strcmp(protocol, "http") == 0 ? "pooled" : "single"));
+        std::unique_ptr<google::protobuf::Message> request(prototype->New());
+        std::unique_ptr<google::protobuf::Message> response(prototype->New());
+        brpc::Controller cntl;
+        channel.CallMethod(built->service(0)->method(0), &cntl, request.get(),
+                           response.get(), nullptr);
+        ASSERT_TRUE(cntl.Failed());
+        EXPECT_TRUE(cntl.ErrorCode() == brpc::ENOSERVICE ||
+                    cntl.ErrorCode() == brpc::ENOMETHOD ||
+                    cntl.ErrorCode() == brpc::EHTTP) << cntl.ErrorText();
+    }
+    EXPECT_EQ(0, flatbuffers_service.entered.load());
     EXPECT_EQ(0, server.Stop(0));
     EXPECT_EQ(0, server.Join());
 }

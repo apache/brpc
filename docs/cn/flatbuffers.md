@@ -328,7 +328,7 @@ rpc_service BenchmarkService {
 
 启用或关闭该选项时，Channel、Controller、Server 的内存布局相同，ON 验证会检查这一点。用 `server.AddFlatBuffersService(&service, SERVER_DOESNT_OWN_SERVICE)` 注册生成的服务；将 `ChannelOptions::protocol` 设为 `"fb_rpc"`，并把这个 `brpc::Channel` 传给生成的 stub（`Echo::Stub stub(&channel);`）。stub 用库里的适配器包装该 channel，由适配器调用 `Channel::FBCallMethod`；`Controller::flatbuffers_method()` 返回带类型的 descriptor，protobuf 的 `Controller::method()` 仍为空。手工提供的 descriptor 必须活过整个调用，包括重试和 backup request。
 
-服务注册独立于 protobuf 的 AddService 和 ListServices。Add/Remove/Clear 要求服务端处于已停止（READY）状态，不能是正在 STOPPING；管理操作必须由外部串行化。只有注册成功后所有权才转移。`RemoveFlatBuffersService` 会删除自有服务，Stop/Join 则保留注册以便重启。`GetFlatBuffersServiceCount()` 返回这个独立注册表的数量。重复的 service ID（包括 hash 冲突）以及与 protobuf 方法全名冲突的 FlatBuffers 方法会被拒绝。按字符串调用的 `MaxConcurrencyOf` 支持 FlatBuffers 方法，服务端整体并发和默认方法并发限制同样适用。
+服务注册独立于 protobuf 的 AddService 和 ListServices。Add/Remove/Clear 要求服务端处于已停止（READY）状态，不能是正在 STOPPING；管理操作必须由外部串行化。只有注册成功后所有权才转移。`RemoveFlatBuffersService` 会删除自有服务，Stop/Join 则保留注册以便重启。`GetFlatBuffersServiceCount()` 和 `ListFlatBuffersServices()` 返回这个独立注册表的内容；`ListServices()` 和 `/list` 仍只包含 protobuf 服务，`ServerStatistics::user_service_count` 则统计两类服务之和。重复的 service ID（包括 hash 冲突）以及与 protobuf 方法全名冲突的 FlatBuffers 方法会被拒绝。FlatBuffers 方法与 protobuf 方法使用同一种按方法的属性，因此 `MaxConcurrencyOf()`、`IgnoreEovercrowdedOf()`、服务端整体并发和默认方法并发限制、方法级 bvar 以及 `/status` 都覆盖 FlatBuffers 方法。其他协议无法按名字调用 FlatBuffers 方法。
 
 传输层支持同步/异步调用、重试、backup request、single/pooled/short 连接以及请求/响应附件。每次发送都会分配一个独立的小 header 并共享 payload 存储，不会改写 const 请求的 metadata 前缀，因此重试和并发调用可以安全共享同一个不可变请求。应用仍须保证每个 response 和 Controller 活到调用完成。
 

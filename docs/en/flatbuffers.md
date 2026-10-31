@@ -371,10 +371,14 @@ APIs. Add/remove/clear require a stopped (READY) server, not a server still
 STOPPING; management operations must be externally serialized. Ownership
 transfers only after successful registration. `RemoveFlatBuffersService`
 deletes an owned service, while Stop/Join keep registrations for restart.
-`GetFlatBuffersServiceCount()` reports this separate registry. Duplicate service
+`GetFlatBuffersServiceCount()` and `ListFlatBuffersServices()` report this
+separate registry; `ListServices()` and `/list` stay protobuf-only, while
+`ServerStatistics::user_service_count` counts both kinds. Duplicate service
 IDs (including hash collisions) and conflicting full protobuf/FlatBuffers method
-names are rejected. String-based `MaxConcurrencyOf` supports FlatBuffers
-methods, as do server-wide and default method concurrency limits.
+names are rejected. FlatBuffers methods use the same per-method properties as
+protobuf methods, so `MaxConcurrencyOf()`, `IgnoreEovercrowdedOf()`, the
+server-wide and default method concurrency limits, method bvars and `/status`
+all cover them. Other protocols cannot call a FlatBuffers method by name.
 
 The transport supports synchronous/asynchronous calls, retries, backup requests,
 single/pooled/short connections and request/response attachments. It allocates a
