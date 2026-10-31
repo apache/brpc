@@ -540,6 +540,56 @@ TEST(HttpMessageTest, transfer_encoding_list_with_space_after_comma) {
                                            "0\r\n\r\n"));
 }
 
+TEST(HttpMessageTest, repeated_transfer_encoding_lines) {
+    // RFC 7230 3.2.2: repeated Transfer-Encoding lines form one list, so a
+    // later line decides framing exactly as it would after a comma.
+    ASSERT_EQ(brpc::HPE_INVALID_TRANSFER_ENCODING,
+              ParseHttpErrno("POST / HTTP/1.1\r\n"
+                             "Host: a.com\r\n"
+                             "Transfer-Encoding: chunked, identity\r\n\r\n"
+                             "5\r\nhello\r\n0\r\n\r\n"));
+    ASSERT_EQ(brpc::HPE_INVALID_TRANSFER_ENCODING,
+              ParseHttpErrno("POST / HTTP/1.1\r\n"
+                             "Host: a.com\r\n"
+                             "Transfer-Encoding: chunked\r\n"
+                             "Transfer-Encoding: identity\r\n\r\n"
+                             "5\r\nhello\r\n0\r\n\r\n"));
+    // An empty repeated line is like `chunked, ` and must not keep chunked.
+    ASSERT_EQ(brpc::HPE_INVALID_TRANSFER_ENCODING,
+              ParseHttpErrno("POST / HTTP/1.1\r\n"
+                             "Host: a.com\r\n"
+                             "Transfer-Encoding: chunked\r\n"
+                             "Transfer-Encoding:\r\n\r\n"
+                             "5\r\nhello\r\n0\r\n\r\n"));
+    // A longer field name that only starts with Transfer-Encoding is a
+    // different header and leaves the framing alone.
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno("POST / HTTP/1.1\r\n"
+                                           "Host: a.com\r\n"
+                                           "Transfer-Encoding: chunked\r\n"
+                                           "Transfer-Encoding-X: a\r\n\r\n"
+                                           "0\r\n\r\n"));
+    // chunked as the final coding is still honored.
+    ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno("POST / HTTP/1.1\r\n"
+                                           "Host: a.com\r\n"
+                                           "Transfer-Encoding: gzip\r\n"
+                                           "Transfer-Encoding: chunked\r\n\r\n"
+                                           "0\r\n\r\n"));
+
+    // A response whose final coding is not chunked is read until EOF.
+    butil::IOBuf response;
+    response.append("HTTP/1.1 200 OK\r\n"
+                    "Transfer-Encoding: chunked\r\n"
+                    "Transfer-Encoding: gzip\r\n\r\n"
+                    "5\r\nhello\r\n0\r\n\r\n");
+    brpc::HttpMessage http_message;
+    ASSERT_EQ((ssize_t)response.size(), http_message.ParseFromIOBuf(response))
+        << http_message._parser;
+    ASSERT_FALSE(http_message._parser.flags & brpc::F_CHUNKED)
+        << http_message._parser;
+    ASSERT_FALSE(http_message.Completed());
+    ASSERT_EQ("5\r\nhello\r\n0\r\n\r\n", http_message.body().to_string());
+}
+
 TEST(HttpMessageTest, content_length_with_interior_space) {
     ASSERT_EQ(brpc::HPE_INVALID_CONTENT_LENGTH, ParseHttpErrno("POST / HTTP/1.1\r\n"
                                                                "Host: a.com\r\n"
