@@ -282,6 +282,9 @@ foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
         brpc-shared-debug
         ${GPERFTOOLS_LIBRARIES})
     add_test(NAME ${BTHREAD_UT_WE} COMMAND ${BTHREAD_UT_WE})
+    if(BTHREAD_UT_WE STREQUAL "bthread_runqueue_unittest")
+        set_tests_properties(${BTHREAD_UT_WE} PROPERTIES TIMEOUT 90)
+    endif()
 endforeach()
 
 # brpc tests
