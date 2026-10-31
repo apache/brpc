@@ -682,3 +682,26 @@ TEST_F(HPackTest, zero_size_dynamic_table) {
     brpc::HPacker p;
     ASSERT_EQ(0, p.Init(0));
 }
+
+TEST_F(HPackTest, empty_header_name) {
+    // RFC 7541 requires a literal header name to be non-empty. A zero-length
+    // name consumes one byte on the wire (the 0x00 length octet), so the
+    // "name_bytes <= 0" guard in DecodeWithKnownPrefix() did not reject it.
+    // The empty name then reached IndexTable::AddHeader(), whose
+    // CHECK(!h.name.empty()) aborted the process, so a single small HEADERS
+    // frame from an unauthenticated peer could kill an HTTP/2 server.
+    const uint8_t literals[][3] = {
+        {0x40, 0x00, 0x00},  // with incremental indexing
+        {0x00, 0x00, 0x00},  // without indexing
+        {0x10, 0x00, 0x00},  // never indexed
+        {0x40, 0x80, 0x00},  // with incremental indexing, Huffman-encoded name
+    };
+    for (size_t i = 0; i < sizeof(literals) / sizeof(literals[0]); ++i) {
+        brpc::HPacker p;
+        ASSERT_EQ(0, p.Init(4096));
+        butil::IOBuf buf;
+        buf.append(literals[i], sizeof(literals[i]));
+        brpc::HPacker::Header h;
+        ASSERT_EQ(-1, p.Decode(&buf, &h)) << "case " << i;
+    }
+}
