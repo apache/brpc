@@ -24,4 +24,28 @@ TEST(Base64Test, Basic) {
   EXPECT_EQ(kText, decoded);
 }
 
+TEST(Base64Test, RoundTripBinaryPayloads) {
+  for (size_t size = 0; size <= 257; ++size) {
+    std::string input;
+    input.reserve(size);
+    for (size_t i = 0; i < size; ++i) {
+      input.push_back(static_cast<char>((i * 37 + size) & 0xff));
+    }
+
+    std::string encoded;
+    std::string decoded;
+    Base64Encode(input, &encoded);
+    ASSERT_TRUE(Base64Decode(encoded, &decoded)) << "size=" << size;
+    EXPECT_EQ(input, decoded) << "size=" << size;
+  }
+}
+
+TEST(Base64Test, RejectsInvalidInput) {
+  std::string decoded;
+  EXPECT_FALSE(Base64Decode("abc", &decoded));
+  EXPECT_FALSE(Base64Decode("abcd!", &decoded));
+  EXPECT_FALSE(Base64Decode("abcd====", &decoded));
+  EXPECT_FALSE(Base64Decode("AAAA$AAA", &decoded));
+}
+
 }  // namespace butil
