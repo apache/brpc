@@ -510,6 +510,7 @@ void Controller::ResetPods() {
     _accessed = nullptr;
     _pack_request = nullptr;
     _method = nullptr;
+    _flatbuffers_method = nullptr;
     _auth = nullptr;
     _idl_names = idl_single_req_single_res;
     _idl_result = IDL_VOID_RESULT;

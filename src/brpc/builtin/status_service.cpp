@@ -29,6 +29,9 @@
 #endif
 #include "brpc/rtmp.h"                 // RtmpService
 #include "brpc/builtin/common.h"
+#if BRPC_WITH_FLATBUFFERS
+#include "brpc/flatbuffers/service.h"
+#endif
 
 
 namespace brpc {
@@ -201,6 +204,32 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
         }
     }
     const BaiduMasterService* baidu_master_service = server->options().baidu_master_service;
+#if BRPC_WITH_FLATBUFFERS
+    // FlatBuffers services live in their own registry; show their methods
+    // with the same per-method status as protobuf services.
+    std::vector<flatbuffers::Service*> fb_services;
+    server->ListFlatBuffersServices(&fb_services);
+    for (flatbuffers::Service* service : fb_services) {
+        const flatbuffers::ServiceDescriptor* d = service->GetDescriptor();
+        os << (use_html ? "<h3>" : "[") << d->full_name()
+           << (use_html ? "</h3>" : "]") << '\n';
+        for (int j = 0; j < d->method_count(); ++j) {
+            const flatbuffers::MethodDescriptor* md = d->method(j);
+            const Server::MethodProperty* mp =
+                server->FindFlatBuffersMethodPropertyByFullName(md->full_name());
+            if (use_html) {
+                os << "<h4>" << md->name() << " (fb_rpc, id=" << md->index()
+                   << ")</h4>\n";
+            } else {
+                os << '\n' << md->name() << " (fb_rpc, id=" << md->index() << ")\n";
+            }
+            if (mp && mp->status) {
+                mp->status->Describe(os, desc_options);
+                os << '\n';
+            }
+        }
+    }
+#endif
     if (baidu_master_service && baidu_master_service->_status) {
         DescribeOptions options;
         options.verbose = false;
