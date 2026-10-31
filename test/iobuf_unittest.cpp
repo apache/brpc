@@ -2030,6 +2030,134 @@ static void append_as_separate_blocks(butil::IOBuf* buf,
     }
 }
 
+TEST_F(IOBufTest, cutter_remaining_contiguous_bytes_empty_and_append) {
+    butil::IOBuf buf;
+    butil::IOBufCutter cutter(&buf);
+    ASSERT_EQ(0u, cutter.remaining_contiguous_bytes());
+    ASSERT_EQ(0u, cutter.remaining_contiguous_bytes());
+    ASSERT_EQ(0u, cutter.remaining_bytes());
+
+    append_as_separate_blocks(&buf, "abc", 3);
+    ASSERT_EQ(3u, cutter.remaining_contiguous_bytes());
+    ASSERT_EQ(buf.backing_block(0).data(), cutter.fetch1());
+    ASSERT_EQ(3u, cutter.remaining_bytes());
+    ASSERT_EQ(3u, cutter.pop_front(3));
+
+    // Append before the exhausted reference has been removed.
+    append_as_separate_blocks(&buf, "def", 3);
+    const char* next = buf.backing_block(1).data();
+    ASSERT_EQ(3u, cutter.remaining_contiguous_bytes());
+    ASSERT_EQ(next, cutter.fetch1());
+    ASSERT_EQ(3u, cutter.remaining_bytes());
+    ASSERT_EQ(3u, cutter.pop_front(3));
+    ASSERT_EQ(0u, cutter.remaining_contiguous_bytes());
+    ASSERT_EQ(0u, cutter.remaining_contiguous_bytes());
+    ASSERT_EQ(0u, cutter.remaining_bytes());
+
+    // Appending also works after the query has observed empty input.
+    append_as_separate_blocks(&buf, "ghi", 3);
+    ASSERT_EQ(3u, cutter.remaining_contiguous_bytes());
+    ASSERT_EQ(buf.backing_block(0).data(), cutter.fetch1());
+    ASSERT_EQ(3u, cutter.remaining_bytes());
+}
+
+TEST_F(IOBufTest, cutter_remaining_contiguous_bytes_partial_and_next) {
+    butil::IOBuf buf;
+    append_as_separate_blocks(&buf, "abcdefghi", 3);
+    const butil::StringPiece blocks[] = {
+        buf.backing_block(0), buf.backing_block(1), buf.backing_block(2)
+    };
+    butil::IOBufCutter cutter(&buf);
+    for (size_t i = 0; i < arraysize(blocks); ++i) {
+        ASSERT_EQ(blocks[i].size(), cutter.remaining_contiguous_bytes());
+        ASSERT_EQ(blocks[i].size(), cutter.remaining_contiguous_bytes());
+        ASSERT_EQ(blocks[i].data(), cutter.fetch1());
+        ASSERT_EQ(9u - i * 3, cutter.remaining_bytes());
+
+        ASSERT_EQ(1u, cutter.pop_front(1));
+        const butil::StringPiece rest(blocks[i].data() + 1, 2);
+        ASSERT_EQ(rest.size(), cutter.remaining_contiguous_bytes());
+        ASSERT_EQ(rest.data(), cutter.fetch1());
+        ASSERT_EQ(8u - i * 3, cutter.remaining_bytes());
+        std::string consumed;
+        ASSERT_EQ(2u, cutter.cutn(&consumed, 2));
+        ASSERT_EQ(rest, butil::StringPiece(consumed));
+    }
+    ASSERT_EQ(0u, cutter.remaining_contiguous_bytes());
+    ASSERT_EQ(0u, cutter.remaining_bytes());
+    ASSERT_TRUE(buf.empty());
+}
+
+TEST_F(IOBufTest, cutter_fetch_empty_and_append) {
+    butil::IOBuf buf;
+    {
+        const butil::IOBufCutter cutter(&buf);
+        char aux[4] = "xyz";
+        ASSERT_EQ(&buf, &cutter.buf());
+        ASSERT_EQ(aux, cutter.fetch(aux, 0));
+        ASSERT_EQ(nullptr, cutter.fetch(nullptr, 0));
+        ASSERT_EQ(nullptr, cutter.fetch(aux, 1));
+        ASSERT_STREQ("xyz", aux);
+
+        ASSERT_EQ(0, buf.append("abc"));
+        ASSERT_EQ(buf.backing_block(0).data(), cutter.fetch(aux, 3));
+        ASSERT_EQ(nullptr, cutter.fetch(aux, 4));
+        ASSERT_STREQ("xyz", aux);
+        ASSERT_EQ(3u, cutter.remaining_bytes());
+    }
+    ASSERT_EQ("abc", buf.to_string());
+}
+
+TEST_F(IOBufTest, cutter_fetch_at_every_offset) {
+    const std::string payload = "abcdefghijkl";
+    const size_t chunk = 3;
+    for (size_t offset = 0; offset <= payload.size(); ++offset) {
+        butil::IOBuf buf;
+        append_as_separate_blocks(&buf, payload, chunk);
+        {
+            butil::IOBufCutter cutter(&buf);
+            ASSERT_EQ(offset, cutter.pop_front(offset));
+            const butil::IOBufCutter& reader = cutter;
+            const std::string underlying = buf.to_string();
+            const size_t block_count = buf.backing_block_num();
+            const size_t remaining = payload.size() - offset;
+            for (size_t n = 0; n <= remaining + 1; ++n) {
+                char aux[16];
+                memset(aux, '#', sizeof(aux));
+                const void* data = reader.fetch(aux, n);
+                if (n == 0) {
+                    ASSERT_EQ(aux, data);
+                } else if (n > remaining) {
+                    ASSERT_EQ(nullptr, data);
+                } else {
+                    ASSERT_NE(nullptr, data);
+                    ASSERT_EQ(payload.substr(offset, n),
+                              std::string(static_cast<const char*>(data), n));
+                    if (n <= chunk - offset % chunk) {
+                        const size_t index = offset - (payload.size() - buf.size());
+                        const butil::StringPiece block = buf.backing_block(index / chunk);
+                        ASSERT_EQ(block.data() + index % chunk, data);
+                    } else {
+                        ASSERT_EQ(aux, data);
+                    }
+                }
+                if (data != aux || n == 0) {
+                    ASSERT_EQ(std::string(sizeof(aux), '#'),
+                              std::string(aux, sizeof(aux)));
+                }
+                ASSERT_EQ(remaining, reader.remaining_bytes());
+                ASSERT_EQ(&buf, &reader.buf());
+                ASSERT_EQ(underlying, reader.buf().to_string());
+                ASSERT_EQ(block_count, reader.buf().backing_block_num());
+            }
+            std::string rest;
+            ASSERT_EQ(remaining, cutter.cutn(&rest, remaining));
+            ASSERT_EQ(payload.substr(offset), rest);
+        }
+        ASSERT_TRUE(buf.empty());
+    }
+}
+
 TEST_F(IOBufTest, as_input_stream_multi_block_read) {
     butil::IOBuf buf;
     const std::string payload = "the quick brown fox jumps over the lazy dog";
