@@ -186,7 +186,8 @@ public:
     static TaskMeta* address_meta(bthread_t tid);
 
     // Push a task into _rq. If full, run a queued task to make room when
-    // context switching is allowed; otherwise wait and retry.
+    // context switching is allowed. Remained callbacks defer a queued task
+    // until the guard is balanced; pthread-mode tasks wait and retry.
     // This function may switch context. After it returns, the current task
     // may belong to a different TaskGroup.
     void push_rq(bthread_t tid);
@@ -306,6 +307,7 @@ friend class TaskControl;
     static void asan_task_runner(intptr_t);
 #endif // BUTIL_USE_ASAN
     static void task_runner(intptr_t skip_remained);
+    void requeue_pending_task();
 
     // Callbacks for set_remained()
     static void _release_last_context(void*);
@@ -372,6 +374,9 @@ friend class TaskControl;
     // Nonzero during a context switch, including remained-callback execution.
     // Maintained in all build types because push_rq() reads it.
     int _sched_recursive_guard{0};
+    // Task popped from _rq inside a remained callback. Requeue it after
+    // _sched_recursive_guard is balanced. Only accessed by the owning worker.
+    bthread_t _pending_rq_tid{INVALID_BTHREAD};
     // tag of this taskgroup
     bthread_tag_t _tag{BTHREAD_TAG_DEFAULT};
 

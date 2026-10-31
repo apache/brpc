@@ -336,6 +336,8 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // Balance the increment done by sched_to() before entering this fresh
         // stack. Keep the guard held until all remained callbacks finish.
         --g->_sched_recursive_guard;
+        g->requeue_pending_task();
+        g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     }
 
     do {
@@ -823,12 +825,14 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
         g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     }
 
+    --g->_sched_recursive_guard;
+    g->requeue_pending_task();
+    g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+
     // Restore errno
     errno = saved_errno;
     // tls_unique_user_ptr probably changed.
     BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr, saved_unique_user_ptr);
-
-    --g->_sched_recursive_guard;
     *pg = g;
 }
 

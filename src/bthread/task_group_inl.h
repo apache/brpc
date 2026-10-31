@@ -94,20 +94,6 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         //   brpc)
         g->flush_nosignal_tasks();
         LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << g->_rq.capacity();
-        if (g->_sched_recursive_guard != 0) {
-            // Remained callbacks run with the guard held, either in
-            // sched_to()'s remained loop or at task_runner() entry. Re-entering
-            // sched_to() here would be recursive (and fatal in debug builds),
-            // so only wait here.
-            ::usleep(1000);
-            continue;
-        }
-        if (g->is_current_pthread_task() && !g->is_current_main_task()) {
-            // A pthread-mode bthread runs on _main_stack and cannot be
-            // scheduled out, fall back to waiting.
-            ::usleep(1000);
-            continue;
-        }
         const auto pop_task = [g](bthread_t* t) -> bool {
 #ifndef BTHREAD_FAIR_WSQ
             return g->_rq.pop(t);
@@ -115,6 +101,27 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             return g->_rq.steal(t);
 #endif
         };
+        if (g->_sched_recursive_guard != 0) {
+            // Remained callbacks run with the guard held, either in
+            // sched_to()'s remained loop or at task_runner() entry. Re-entering
+            // sched_to() here would be recursive, while waiting here can
+            // livelock if every worker is running a remained callback. Make
+            // room for |tid| and requeue the popped task after the guard is
+            // balanced.
+            CHECK(g->_pending_rq_tid == INVALID_BTHREAD);
+            if (!pop_task(&g->_pending_rq_tid)) {
+                continue;
+            }
+            const bool pushed = g->_rq.push(tid);
+            CHECK(pushed) << "push_rq: failed to push after popping a task";
+            return;
+        }
+        if (g->is_current_pthread_task() && !g->is_current_main_task()) {
+            // A pthread-mode bthread runs on _main_stack and cannot be
+            // scheduled out, fall back to waiting.
+            ::usleep(1000);
+            continue;
+        }
         bthread_t run_tid = 0;
         if (!pop_task(&run_tid)) {
             // The queue was drained by stealers between the failed push and
@@ -184,7 +191,8 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             // same as exchange(). Capture the meta now, current_tid() is
             // |run_tid| by the time the callback runs.
             // The callback may re-enter push_rq() while _rq is still full;
-            // the guard check above prevents another sched_to() from it.
+            // the guard branch above makes room without switching and defers
+            // the popped task until the guard is balanced.
             args.meta = g->_cur_meta;
             g->set_remained(ready_to_run_in_worker_ignoresignal, &args);
         }
@@ -196,6 +204,15 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         // Resume here after the popped bthread (and possibly others) ran,
         // then retry the push of |tid|.
     }
+}
+
+inline void TaskGroup::requeue_pending_task() {
+    if (_pending_rq_tid == INVALID_BTHREAD) {
+        return;
+    }
+    const bthread_t tid = _pending_rq_tid;
+    _pending_rq_tid = INVALID_BTHREAD;
+    push_rq(tid);
 }
 
 inline void TaskGroup::flush_nosignal_tasks_remote() {
