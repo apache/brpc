@@ -25,6 +25,7 @@
 
 #include "butil/string_printf.h"
 #include "butil/string_splitter.h"                  // StringMultiSplitter
+#include "butil/strings/string_number_conversions.h"
 #include "butil/strings/string_util.h"
 #include "butil/sys_byteorder.h"
 #include "butil/time.h"
@@ -420,8 +421,22 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             }
             const std::string* grpc_status = res_header->GetHeader(common->GRPC_STATUS);
             if (grpc_status) {
-                // TODO: More strict parsing
-                GrpcStatus status = (GrpcStatus)strtol(grpc_status->data(), nullptr, 10);
+                int code = 0;
+                bool valid = !grpc_status->empty();
+                for (char c : *grpc_status) {
+                    if (c < '0' || c > '9') {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (!valid || !butil::StringToInt(*grpc_status, &code)) {
+                    cntl->SetFailed(ERESPONSE, "Invalid grpc-status header");
+                    break;
+                }
+                const GrpcStatus status =
+                    code >= GRPC_OK && code < GRPC_MAX
+                        ? static_cast<GrpcStatus>(code)
+                        : GRPC_UNKNOWN;
                 if (status != GRPC_OK) {
                     const std::string* grpc_message =
                         res_header->GetHeader(common->GRPC_MESSAGE);
