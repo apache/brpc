@@ -347,6 +347,10 @@ if(BUILD_FUZZ_TESTS)
         fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf
         fuzz_rtmp)
 
+    if(WITH_THRIFT)
+        list(APPEND FUZZ_TARGETS fuzz_thrift)
+    endif()
+
 
     foreach(target ${FUZZ_TARGETS})
         add_executable(${target} fuzzing/${target}.cpp $<TARGET_OBJECTS:TEST_PROTO_LIB>)

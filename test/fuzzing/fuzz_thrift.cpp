@@ -16,6 +16,7 @@
 // under the License.
 
 #include "brpc/policy/thrift_protocol.h"
+#include "brpc/input_message_base.h"
 
 #define kMinInputLength 5
 #define kMaxInputLength 4096
@@ -31,6 +32,10 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     butil::IOBuf buf;
     buf.append(input);
 
-    brpc::policy::ParseThriftMessage(&buf, nullptr, false, nullptr);
+    brpc::ParseResult result =
+        brpc::policy::ParseThriftMessage(&buf, nullptr, false, nullptr);
+    if (result.is_ok()) {
+        result.message()->Destroy();
+    }
     return 0;
 }
