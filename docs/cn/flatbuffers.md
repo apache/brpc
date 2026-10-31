@@ -340,11 +340,11 @@ Framing 只检查长度，不检查应用 schema。生成的服务会在分派�
 
 ### FRPC 帧格式与兼容性
 
-一帧由 `[12 字节 header][metadata][message][attachment]` 组成。header 包含 `FRPC`、大端 uint32 的 body 大小和大端 uint32 的 metadata 大小；body 大小不含 12 字节 header，但包含后面三段。metadata 前缀明确使用小端，与原先在小端机器上的 FRPC 实验一致，且不依赖 packed 结构体：
+一帧由 `[12 字节 header][metadata][message][attachment]` 组成。header 包含 `FRPC`、uint32 的 body 大小和 uint32 的 metadata 大小；body 大小不含 12 字节 header，但包含后面三段。header 和固定 metadata 前缀中的所有整数都使用大端（网络字节序），与 `baidu_std` 的 header 一致。FlatBuffers message 本身保持 FlatBuffers 定义的小端布局，不属于帧格式。
 
 * 请求：uint32 service ID、int32 method ID、int32 message 大小、int32 attachment 大小、uint64 correlation ID（共 24 字节）。
 * 响应：int32 错误码、int32 message 大小、int32 attachment 大小、uint64 correlation ID（共 20 字节）。
 
 读取方要求完整的已知前缀，然后根据 header 中的 metadata 大小跳过未知的尾部。以后新增的可选字段只能追加，不要重排、改变大小或改变已有字段的含义。前缀过短、大小为负、payload 长度不一致或 body 过大都会被拒绝。错误响应带非零错误码且没有 payload。Method ID 是稀疏的 wire ID，不是数组下标：只有保留显式 ID 时，增加、删除或重排声明才不会改变已有方法的 ID。这并不意味着旧的按序号编号的 schema 能兼容，已删除的 ID 也绝不能复用。
 
-magic 是 `FRPC`，不是 `BRPC`。该格式不保证与更早未发布、使用不同 magic、service hash 或本机大端 metadata 的版本兼容。库的全局 Protocol hook 签名保持不变，现有协议回调实现无需修改。自定义的数字协议 ID 不得与新分配的内置 ID 重叠，`PROTOCOL_FLATBUFFERS_RPC` 使用 ID 30。
+magic 是 `FRPC`，不是 `BRPC`；和 `baidu_std` 的 `PRPC` 一样，server 靠它在与其他协议共用的端口上识别协议。该格式不保证与更早的实验性 FRPC 版本兼容，那些版本使用了不同的 magic、service hash 或字节序。库的全局 Protocol hook 签名保持不变，现有协议回调实现无需修改。自定义的数字协议 ID 不得与新分配的内置 ID 重叠，`PROTOCOL_FLATBUFFERS_RPC` 使用 ID 30。

@@ -397,10 +397,11 @@ above. The example demonstrates these APIs without making a performance claim.
 ### FRPC framing and compatibility
 
 A frame is `[12-byte header][metadata][message][attachment]`. The header contains
-`FRPC`, a big-endian uint32 body size, and a big-endian uint32 metadata size; body
-size excludes the 12-byte header but includes all three following sections.
-The metadata prefix is explicitly little-endian, matching the original FRPC
-experiment on little-endian machines without relying on packed structs:
+`FRPC`, a uint32 body size and a uint32 metadata size; body size excludes the
+12-byte header but includes all three following sections. Every integer in the
+header and in the fixed metadata prefix is big-endian (network byte order), as
+in the `baidu_std` header. The FlatBuffers message itself keeps the
+little-endian layout defined by FlatBuffers and is not part of the frame.
 
 * Request: uint32 service ID, int32 method ID, int32 message size, int32 attachment
   size, uint64 correlation ID (24 bytes).
@@ -416,9 +417,10 @@ array positions: adding, deleting or reordering declarations preserves surviving
 IDs only when explicit IDs are retained. This does not make legacy ordinal-ID
 schemas compatible, and removed IDs must never be reused.
 
-The magic is `FRPC`, not `BRPC`. This format does not promise compatibility with
-older unpublished variants that used different magic, service hashes or native
-big-endian metadata. The library's global Protocol hook signatures remain
+The magic is `FRPC`, not `BRPC`; like `PRPC` for `baidu_std`, it lets the server
+detect the protocol on a port shared with other protocols. This format does not
+promise compatibility with earlier experimental FRPC variants, which used
+different magic, service hashes or byte orders. The library's global Protocol hook signatures remain
 unchanged, so existing protocol callback implementations need no adaptation.
 Private numeric protocol IDs must not overlap newly assigned builtin IDs;
 `PROTOCOL_FLATBUFFERS_RPC` uses ID 30.

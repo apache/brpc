@@ -24,6 +24,7 @@
 #include <memory>
 #include "butil/logging.h"
 #include "butil/macros.h"
+#include "butil/sys_byteorder.h"
 #include "brpc/controller.h"
 #include "brpc/server.h"
 #include "brpc/socket.h"
@@ -44,31 +45,29 @@ const size_t kHeaderSize = 12;
 const size_t kRequestMetaSize = 24;
 const size_t kResponseMetaSize = 20;
 
-// The header is big-endian; the fixed metadata prefix is little-endian, as in
-// the experimental FRPC format on x86/ARM. meta_size permits appended fields.
-// Bytewise access also handles fragmented or unaligned input without packed
-// structs, aliasing violations or host-endian dependencies.
-uint32_t Load32(const unsigned char* p, bool big_endian = false) {
-    uint32_t result = 0;
-    for (size_t i = 0; i < 4; ++i) {
-        result |= static_cast<uint32_t>(p[i]) << (8 * (big_endian ? 3 - i : i));
-    }
-    return result;
+// Every integer in the header and in the fixed metadata prefix is in network
+// byte order (big-endian). meta_size permits appended fields. memcpy handles
+// fragmented or unaligned input without packed structs or aliasing issues.
+uint32_t Load32(const unsigned char* p) {
+    uint32_t value;
+    memcpy(&value, p, sizeof(value));
+    return butil::NetToHost32(value);
 }
 
 uint64_t Load64(const unsigned char* p) {
-    return Load32(p) | (static_cast<uint64_t>(Load32(p + 4)) << 32);
+    uint64_t value;
+    memcpy(&value, p, sizeof(value));
+    return butil::NetToHost64(value);
 }
 
-void Store32(unsigned char* p, uint32_t value, bool big_endian = false) {
-    for (size_t i = 0; i < 4; ++i) {
-        p[i] = static_cast<unsigned char>(value >> (8 * (big_endian ? 3 - i : i)));
-    }
+void Store32(unsigned char* p, uint32_t value) {
+    const uint32_t net = butil::HostToNet32(value);
+    memcpy(p, &net, sizeof(net));
 }
 
 void Store64(unsigned char* p, uint64_t value) {
-    Store32(p, static_cast<uint32_t>(value));
-    Store32(p + 4, static_cast<uint32_t>(value >> 32));
+    const uint64_t net = butil::HostToNet64(value);
+    memcpy(p, &net, sizeof(net));
 }
 
 bool ValidSizes(size_t message_size, size_t attachment_size, size_t meta_size) {
@@ -82,8 +81,8 @@ bool ValidSizes(size_t message_size, size_t attachment_size, size_t meta_size) {
 
 void PackHeader(unsigned char* header, size_t meta_size, size_t payload_size) {
     memcpy(header, "FRPC", 4);
-    Store32(header + 4, static_cast<uint32_t>(meta_size + payload_size), true);
-    Store32(header + 8, static_cast<uint32_t>(meta_size), true);
+    Store32(header + 4, static_cast<uint32_t>(meta_size + payload_size));
+    Store32(header + 8, static_cast<uint32_t>(meta_size));
 }
 
 bool SerializePayload(const flatbuffers::Message& message, butil::IOBuf* out) {
@@ -204,8 +203,8 @@ ParseResult ParseFlatBuffersMessage(butil::IOBuf* source, Socket*, bool,
     if (n < sizeof(header)) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
-    const uint32_t body_size = Load32(header + 4, true);
-    const uint32_t meta_size = Load32(header + 8, true);
+    const uint32_t body_size = Load32(header + 4);
+    const uint32_t meta_size = Load32(header + 8);
     if (body_size > static_cast<uint64_t>(FLAGS_max_body_size)) {
         return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
     }

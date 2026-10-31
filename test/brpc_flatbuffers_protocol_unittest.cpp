@@ -74,40 +74,37 @@ const size_t kRequestMetaSize = 24;
 const size_t kResponseMetaSize = 20;
 
 // These independent byte-level helpers intentionally do not reuse the codec.
-void Put32(std::string* bytes, size_t offset, uint32_t value,
-           bool big_endian = false) {
+// Every FRPC header and fixed-metadata integer is big-endian.
+void Put32(std::string* bytes, size_t offset, uint32_t value) {
     for (size_t i = 0; i < 4; ++i) {
-        (*bytes)[offset + i] = static_cast<char>(
-            value >> (8 * (big_endian ? 3 - i : i)));
+        (*bytes)[offset + i] = static_cast<char>(value >> (8 * (3 - i)));
     }
 }
 
-uint32_t Get32(const std::string& bytes, size_t offset,
-               bool big_endian = false) {
+uint32_t Get32(const std::string& bytes, size_t offset) {
     uint32_t value = 0;
     for (size_t i = 0; i < 4; ++i) {
         value |= static_cast<uint32_t>(
-            static_cast<unsigned char>(bytes[offset + i]))
-            << (8 * (big_endian ? 3 - i : i));
+            static_cast<unsigned char>(bytes[offset + i])) << (8 * (3 - i));
     }
     return value;
 }
 
 void Put64(std::string* bytes, size_t offset, uint64_t value) {
-    Put32(bytes, offset, static_cast<uint32_t>(value));
-    Put32(bytes, offset + 4, static_cast<uint32_t>(value >> 32));
+    Put32(bytes, offset, static_cast<uint32_t>(value >> 32));
+    Put32(bytes, offset + 4, static_cast<uint32_t>(value));
 }
 
 uint64_t Get64(const std::string& bytes, size_t offset) {
-    return Get32(bytes, offset) |
-           (static_cast<uint64_t>(Get32(bytes, offset + 4)) << 32);
+    return (static_cast<uint64_t>(Get32(bytes, offset)) << 32) |
+           Get32(bytes, offset + 4);
 }
 
 std::string Header(uint32_t body_size, uint32_t meta_size) {
     std::string bytes(kHeaderSize, '\0');
     bytes.replace(0, 4, "FRPC");
-    Put32(&bytes, 4, body_size, true);
-    Put32(&bytes, 8, meta_size, true);
+    Put32(&bytes, 4, body_size);
+    Put32(&bytes, 8, meta_size);
     return bytes;
 }
 
@@ -484,8 +481,8 @@ TEST(FlatBuffersSerializationTest, PayloadOnlyAndIndependentRetryHeadersKeepCons
     ASSERT_GE(first_snapshot.size(), kHeaderSize + kRequestMetaSize);
     ASSERT_GE(second_snapshot.size(), kHeaderSize + kRequestMetaSize);
     EXPECT_EQ("FRPC", first_snapshot.substr(0, 4));
-    EXPECT_EQ(first_snapshot.size() - 12, Get32(first_snapshot, 4, true));
-    EXPECT_EQ(24u, Get32(first_snapshot, 8, true));
+    EXPECT_EQ(first_snapshot.size() - 12, Get32(first_snapshot, 4));
+    EXPECT_EQ(24u, Get32(first_snapshot, 8));
     EXPECT_EQ(descriptor.index(), Get32(first_snapshot, 12));
     EXPECT_EQ(41u, Get32(first_snapshot, 16));
     EXPECT_EQ(request.size(), Get32(first_snapshot, 20));
@@ -502,6 +499,46 @@ TEST(FlatBuffersSerializationTest, PayloadOnlyAndIndependentRetryHeadersKeepCons
     EXPECT_EQ(original, Bytes(request));
     EXPECT_EQ(original, first_snapshot.substr(36, request.size()));
     EXPECT_EQ(original, second_snapshot.substr(36, request.size()));
+}
+
+// Pins the exact request frame bytes so the wire format cannot drift silently.
+TEST(FlatBuffersSerializationTest, RequestFrameBytesAreBigEndian) {
+    const Message request = MakePayload();
+    ServiceDescriptor descriptor;
+    ASSERT_EQ(0, descriptor.init({"brpc_fbtest", "Pack", "Echo", {0x0a0b0c0d}}));
+    brpc::Controller cntl;
+    brpc::ControllerPrivateAccessor(&cntl).set_flatbuffers_method(
+        descriptor.method(0));
+    cntl.request_attachment().append("abc", 3);
+    butil::IOBuf serialized;
+    brpc::policy::SerializeFlatBuffersRequest(&serialized, &cntl, &request);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    butil::IOBuf packed;
+    brpc::policy::PackFlatBuffersRequest(&packed, nullptr,
+        0x0102030405060708ULL, nullptr, &cntl, serialized, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    const std::string wire = packed.to_string();
+    const uint32_t size = static_cast<uint32_t>(request.size());
+    const uint32_t body = kRequestMetaSize + size + 3;
+    const uint32_t service = descriptor.index();
+    const unsigned char expected[] = {
+        'F', 'R', 'P', 'C',
+        static_cast<unsigned char>(body >> 24), static_cast<unsigned char>(body >> 16),
+        static_cast<unsigned char>(body >> 8), static_cast<unsigned char>(body),
+        0, 0, 0, 24,
+        static_cast<unsigned char>(service >> 24), static_cast<unsigned char>(service >> 16),
+        static_cast<unsigned char>(service >> 8), static_cast<unsigned char>(service),
+        0x0a, 0x0b, 0x0c, 0x0d,
+        static_cast<unsigned char>(size >> 24), static_cast<unsigned char>(size >> 16),
+        static_cast<unsigned char>(size >> 8), static_cast<unsigned char>(size),
+        0, 0, 0, 3,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    };
+    ASSERT_GE(wire.size(), sizeof(expected));
+    EXPECT_EQ(std::string(reinterpret_cast<const char*>(expected), sizeof(expected)),
+              wire.substr(0, sizeof(expected)));
+    EXPECT_EQ(Bytes(request), wire.substr(sizeof(expected), size));
+    EXPECT_EQ("abc", wire.substr(sizeof(expected) + size));
 }
 
 class RejectingAuthenticator : public brpc::Authenticator {
@@ -1528,8 +1565,8 @@ bool ReadFrame(int fd, std::string* meta, std::string* payload) {
         header.compare(0, 4, "FRPC") != 0) {
         return false;
     }
-    const uint32_t body_size = Get32(header, 4, true);
-    const uint32_t meta_size = Get32(header, 8, true);
+    const uint32_t body_size = Get32(header, 4);
+    const uint32_t meta_size = Get32(header, 8);
     if (meta_size > body_size || body_size > 1024 * 1024) {
         return false;
     }

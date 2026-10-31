@@ -38,7 +38,7 @@ FLATBUFFERS_VERSION = "25.2.10"
 FLATBUFFERS_SHA256 = "b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421"
 GTEST_VERSION = "1.14.0"
 GTEST_SHA256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7"
-TESTS = {"brpc_flatbuffers_unittest": 22, "brpc_flatbuffers_protocol_unittest": 36}
+TESTS = {"brpc_flatbuffers_unittest": 22, "brpc_flatbuffers_protocol_unittest": 37}
 
 
 def list_gtests(text):
