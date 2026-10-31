@@ -36,6 +36,8 @@
 
 #include "urma_api.h"
 
+#include <gflags/gflags.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -47,6 +49,13 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <vector>
+
+// Opt-in contract checking for stream tests. The normal mock also serves raw
+// message API tests, where unordered WRs are legal.
+DEFINE_bool(urma_mock_require_send_order, false,
+            "Reject mock SEND WRs without stream placement/completion ordering");
+DEFINE_uint32(urma_mock_max_send_size, 0,
+              "Reject mock SEND WRs exceeding this total SGE size (0 disables)");
 
 namespace {
 
@@ -549,6 +558,27 @@ urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
     read_lock.unlock();
 
     for (urma_jfs_wr_t* current = wr; current; current = current->next) {
+        if (FLAGS_urma_mock_max_send_size != 0) {
+            uint64_t payload_size = 0;
+            for (uint32_t i = 0; i < current->send.src.num_sge; ++i) {
+                payload_size += current->send.src.sge[i].len;
+            }
+            if (payload_size > FLAGS_urma_mock_max_send_size) {
+                if (bad_wr) {
+                    *bad_wr = current;
+                }
+                return URMA_EINVAL;
+            }
+        }
+        if (FLAGS_urma_mock_require_send_order &&
+            (jetty->jetty_cfg.jfs_cfg.flag.bs.outorder_comp != 0 ||
+             current->flag.bs.place_order != URMA_STRONG_ORDER ||
+             current->flag.bs.comp_order != 1)) {
+            if (bad_wr) {
+                *bad_wr = current;
+            }
+            return URMA_EINVAL;
+        }
         if (!current->tjetty) {
             if (bad_wr) {
                 *bad_wr = current;
@@ -560,10 +590,12 @@ urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
         send_cr.status = URMA_CR_SUCCESS;
         send_cr.user_ctx = current->user_ctx;
         send_cr.flag.bs.s_r = 0;
-        if (current->flag.bs.complete_enable) {
-            PushCompletion(jetty->jetty_cfg.jfs_cfg.jfc,
-                           local_state, send_cr);
-        }
+        auto complete_send = [&]() {
+            if (current->flag.bs.complete_enable) {
+                PushCompletion(jetty->jetty_cfg.jfs_cfg.jfc,
+                               local_state, send_cr);
+            }
+        };
 
         PendingRecv recv{};
         urma_jfc_t* remote_jfc = nullptr;
@@ -571,6 +603,7 @@ urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
             std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
             auto remote_it = jetty_id_map.find(current->tjetty->id.id);
             if (remote_it == jetty_id_map.end()) {
+                complete_send();
                 continue;
             }
             urma_jfr_t* remote_jfr =
@@ -579,6 +612,7 @@ urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
             auto jfc_it = jfr_jfc_map.find(remote_jfr);
             if (recv_it == jfr_recv_map.end() || recv_it->second.empty() ||
                 jfc_it == jfr_jfc_map.end()) {
+                complete_send();
                 continue;
             }
             recv = recv_it->second.front();
@@ -595,6 +629,10 @@ urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
                         reinterpret_cast<const void*>(sge.addr), n);
             copied += n;
         }
+
+        // A send completion transfers buffer ownership back to the caller.
+        // Do not let a polling thread free/reuse it before memcpy finishes.
+        complete_send();
 
         JfcState* remote_state = nullptr;
         {
