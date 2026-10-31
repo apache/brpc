@@ -109,9 +109,11 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             // room for |tid| and requeue the popped task after the guard is
             // balanced.
             CHECK(g->_pending_rq_tid == INVALID_BTHREAD);
-            if (!pop_task(&g->_pending_rq_tid)) {
+            bthread_t pending_tid;
+            if (!pop_task(&pending_tid)) {
                 continue;
             }
+            g->_pending_rq_tid = pending_tid;
             const bool pushed = g->_rq.push(tid);
             CHECK(pushed) << "push_rq: failed to push after popping a task";
             return;
