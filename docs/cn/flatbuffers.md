@@ -261,6 +261,7 @@ Linux Bazel GCC，以及 macOS CMake。本地 gate 通过，不代表 GitHub 托
 `brpc::flatbuffers::MessageBuilder` 传给生成的 `Create...` 函数。
 调用 `Finish(root)` 后，通过 `ReleaseMessage()` 取得消息。
 
+* 大消息要在构造时传入预估大小，例如 `MessageBuilder builder(payload_size + 256);`。默认初始大小是 1 KB，每次扩容都会重新申请缓冲区并拷贝已有数据。在我们的 benchmark 中，不预留大小构造 1 MB 的回包会让 server CPU 翻倍，主要来自反复分配和缺页。
 * `ReleaseMessage()` 不复制 payload。返回的 Message 是 move-only 对象，持有 IOBuf block 引用；builder 复用或析构后，消息仍然有效。
 * Message 和 builder 被移动后，源对象仍可复用。移动启用了 shared string 的 builder 会清空去重缓存，但已生成的 offset 不受影响。
 * `Message::CopyFrom` 和 `MergeFrom` 共享同一个引用计数 IOBuf block，不复制
@@ -336,7 +337,7 @@ Framing 只检查长度，不检查应用 schema。生成的服务会在分派�
 
 不支持鉴权、压缩、校验和与 streaming，遇到时会明确拒绝而不是悄悄忽略。FlatBuffers 服务不能通过仅限内置服务的内部端口访问。本传输层不提供 SelectiveChannel/ParallelChannel、HTTP/JSON 映射和 RPC-dump 回放，也不传输 log ID、用户字段和分布式追踪元数据。
 
-完整的客户端/服务端示例见[第 3 节](#3-通过-example-完成端到端验证)；示例演示这些 API，不做性能结论。
+完整的客户端/服务端示例见[第 3 节](#3-通过-example-完成端到端验证)；示例演示这些 API，其可选的计时模式可以对比 `fb_rpc` 和等价的 `baidu_std` 服务。
 
 ### FRPC 帧格式与兼容性
 

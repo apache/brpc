@@ -277,6 +277,11 @@ Generate `*_generated.h` with upstream `flatc --cpp`. Pass a
 `brpc::flatbuffers::MessageBuilder` to the generated `Create...` functions,
 then call `Finish(root)` and `ReleaseMessage()`.
 
+* For large messages, pass the expected size to the constructor, for example
+  `MessageBuilder builder(payload_size + 256);`. The default initial size is
+  1 KB, and each growth allocates a new buffer and copies the existing bytes.
+  In our benchmark, building a 1 MB reply without a reserved size doubled
+  server CPU, mostly from repeated allocation and page faults.
 * `ReleaseMessage()` returns a move-only Message without copying payload bytes.
   Its IOBuf block reference survives builder reuse or destruction.
 * Moves leave the source Message or builder reusable. Moving a shared-string
@@ -400,7 +405,8 @@ Log IDs, user fields and distributed-tracing metadata are not transmitted.
 
 For a complete generated client/server, follow
 [Verify with the client/server example](#verify-with-the-clientserver-example)
-above. The example demonstrates these APIs without making a performance claim.
+above. The example demonstrates these APIs; its optional timed mode compares
+`fb_rpc` with an equivalent `baidu_std` service.
 
 ### FRPC framing and compatibility
 
