@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 #include <vector>
+#include <type_traits>
+#include <utility>
 
 #include "butil/scoped_generic.h"
 #include <gtest/gtest.h>
@@ -25,6 +27,15 @@ struct IntTraits {
 };
 
 typedef ScopedGeneric<int, IntTraits> ScopedInt;
+
+static_assert(!std::is_copy_constructible<ScopedInt>::value,
+              "ScopedGeneric must not be copy constructible");
+static_assert(!std::is_copy_assignable<ScopedInt>::value,
+              "ScopedGeneric must not be copy assignable");
+static_assert(std::is_move_constructible<ScopedInt>::value,
+              "ScopedGeneric must be move constructible");
+static_assert(!std::is_move_assignable<ScopedInt>::value,
+              "ScopedGeneric must remain construct-only");
 
 }  // namespace
 
@@ -85,13 +96,14 @@ TEST(ScopedGenericTest, ScopedGeneric) {
   EXPECT_EQ(kSecond, values_freed[1]);
   values_freed.clear();
 
-  // Pass.
+  // Move construction preserves ownership and copies stateful traits.
   {
     ScopedInt a(kFirst, traits);
-    ScopedInt b(a.Pass());
+    ScopedInt b(std::move(a));
     EXPECT_TRUE(values_freed.empty());  // Nothing should be freed.
     ASSERT_EQ(IntTraits::InvalidValue(), a.get());
     ASSERT_EQ(kFirst, b.get());
+    EXPECT_EQ(&values_freed, b.get_traits().freed_ints);
   }
   ASSERT_EQ(1u, values_freed.size());
   ASSERT_EQ(kFirst, values_freed[0]);

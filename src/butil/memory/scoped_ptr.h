@@ -33,56 +33,42 @@
 //     foo[10].Method();     // Foo::Method on the 10th element.
 //   }
 //
-// These scopers also implement part of the functionality of C++11 unique_ptr
+// These scopers also implement part of the functionality of std::unique_ptr
 // in that they are "movable but not copyable."  You can use the scopers in
 // the parameter and return types of functions to signify ownership transfer
-// in to and out of a function.  When calling a function that has a scoper
-// as the argument type, it must be called with the result of an analogous
-// scoper's Pass() function or another function that generates a temporary;
-// passing by copy will NOT work.  Here is an example using scoped_ptr:
+// in to and out of a function. Use std::move() to transfer ownership from a
+// named scoped_ptr; passing by copy will not work. Here is an example:
 //
 //   void TakesOwnership(scoped_ptr<Foo> arg) {
 //     // Do something with arg
 //   }
 //   scoped_ptr<Foo> CreateFoo() {
-//     // No need for calling Pass() because we are constructing a temporary
-//     // for the return value.
 //     return scoped_ptr<Foo>(new Foo("new"));
 //   }
 //   scoped_ptr<Foo> PassThru(scoped_ptr<Foo> arg) {
-//     return arg.Pass();
+//     return arg;
 //   }
 //
 //   {
 //     scoped_ptr<Foo> ptr(new Foo("yay"));  // ptr manages Foo("yay").
-//     TakesOwnership(ptr.Pass());           // ptr no longer owns Foo("yay").
+//     TakesOwnership(std::move(ptr));       // ptr no longer owns Foo("yay").
 //     scoped_ptr<Foo> ptr2 = CreateFoo();   // ptr2 owns the return Foo.
 //     scoped_ptr<Foo> ptr3 =                // ptr3 now owns what was in ptr2.
-//         PassThru(ptr2.Pass());            // ptr2 is correspondingly nullptr.
+//         PassThru(std::move(ptr2));        // ptr2 is correspondingly nullptr.
 //   }
 //
-// Notice that if you do not call Pass() when returning from PassThru(), or
-// when invoking TakesOwnership(), the code will not compile because scopers
-// are not copyable; they only implement move semantics which require calling
-// the Pass() function to signify a destructive transfer of state. CreateFoo()
-// is different though because we are constructing a temporary on the return
-// line and thus can avoid needing to call Pass().
-//
-// Pass() properly handles upcast in initialization, i.e. you can use a
+// std::move() properly handles upcast in initialization, i.e. you can use a
 // scoped_ptr<Child> to initialize a scoped_ptr<Parent>:
 //
 //   scoped_ptr<Foo> foo(new Foo());
-//   scoped_ptr<FooParent> parent(foo.Pass());
+//   scoped_ptr<FooParent> parent(std::move(foo));
 //
-// PassAs<>() should be used to upcast return value in return statement:
+// A converting move constructor supports upcasting a local return value:
 //
 //   scoped_ptr<Foo> CreateFoo() {
 //     scoped_ptr<FooChild> result(new FooChild());
-//     return result.PassAs<Foo>();
+//     return result;
 //   }
-//
-// Note that PassAs<>() is implemented only for scoped_ptr<T>, but not for
-// scoped_ptr<T[]>. This is because casting array pointers may not be safe.
 
 #ifndef BUTIL_MEMORY_SCOPED_PTR_H_
 #define BUTIL_MEMORY_SCOPED_PTR_H_
@@ -95,10 +81,11 @@
 #include <stdlib.h>
 
 #include <algorithm>  // For std::swap().
+#include <type_traits>
+#include <utility>
 
 #include "butil/basictypes.h"
 #include "butil/compiler_specific.h"
-#include "butil/move.h"
 #include "butil/type_traits.h"
 
 namespace butil {
@@ -114,24 +101,11 @@ class RefCountedThreadSafeBase;
 template <class T>
 struct DefaultDeleter {
   DefaultDeleter() {}
-  template <typename U> DefaultDeleter(const DefaultDeleter<U>&) {
-    // IMPLEMENTATION NOTE: C++11 20.7.1.1.2p2 only provides this constructor
-    // if U* is implicitly convertible to T* and U is not an array type.
-    //
-    // Correct implementation should use SFINAE to disable this
-    // constructor. However, since there are no other 1-argument constructors,
-    // using a COMPILE_ASSERT() based on is_convertible<> and requiring
-    // complete types is simpler and will cause compile failures for equivalent
-    // misuses.
-    //
-    // Note, the is_convertible<U*, T*> check also ensures that U is not an
-    // array. T is guaranteed to be a non-array, so any U* where U is an array
-    // cannot convert to T*.
-    enum { T_must_be_complete = sizeof(T) };
-    enum { U_must_be_complete = sizeof(U) };
-    COMPILE_ASSERT((butil::is_convertible<U*, T*>::value),
-                   U_ptr_must_implicitly_convert_to_T_ptr);
-  }
+
+  template <typename U,
+            typename std::enable_if<std::is_convertible<U*, T*>::value,
+                                    int>::type = 0>
+  DefaultDeleter(const DefaultDeleter<U>&) {}
   inline void operator()(T* ptr) const {
     enum { type_must_be_complete = sizeof(T) };
     delete ptr;
@@ -199,10 +173,7 @@ class scoped_ptr_impl {
   template <typename U, typename V>
   scoped_ptr_impl(scoped_ptr_impl<U, V>* other)
       : data_(other->release(), other->get_deleter()) {
-    // We do not support move-only deleters.  We could modify our move
-    // emulation to have butil::subtle::move() and butil::subtle::forward()
-    // functions that are imperfect emulations of their C++11 equivalents,
-    // but until there's a requirement, just assume deleters are copyable.
+    // Deleters are copied intentionally. Move-only deleters are unsupported.
   }
 
   template <typename U, typename V>
@@ -301,14 +272,12 @@ class scoped_ptr_impl {
 // increase the size proportional to whatever state they need to have. See
 // comments inside scoped_ptr_impl<> for details.
 //
-// Current implementation targets having a strict subset of  C++11's
+// Current implementation targets having a strict subset of C++14's
 // unique_ptr<> features. Known deficiencies include not supporting move-only
-// deleteres, function pointers as deleters, and deleters with reference
+// deleters, function pointers as deleters, and deleters with reference
 // types.
 template <class T, class D = butil::DefaultDeleter<T> >
 class scoped_ptr {
-  MOVE_ONLY_TYPE_FOR_CPP_03(scoped_ptr, RValue)
-
   COMPILE_ASSERT(butil::internal::IsNotRefCounted<T>::value,
                  T_is_refcounted_type_and_needs_scoped_refptr);
 
@@ -326,37 +295,35 @@ class scoped_ptr {
   // Constructor.  Allows initialization of a stateful deleter.
   scoped_ptr(element_type* p, const D& d) : impl_(p, d) { }
 
-  // Constructor.  Allows construction from a scoped_ptr rvalue for a
-  // convertible type and deleter.
-  //
-  // IMPLEMENTATION NOTE: C++11 unique_ptr<> keeps this constructor distinct
-  // from the normal move constructor. By C++11 20.7.1.2.1.21, this constructor
-  // has different post-conditions if D is a reference type. Since this
-  // implementation does not support deleters with reference type,
-  // we do not need a separate move constructor allowing us to avoid one
-  // use of SFINAE. You only need to care about this if you modify the
-  // implementation of scoped_ptr.
-  template <typename U, typename V>
-  scoped_ptr(scoped_ptr<U, V> other) : impl_(&other.impl_) {
-    COMPILE_ASSERT(!butil::is_array<U>::value, U_cannot_be_an_array);
+  scoped_ptr(const scoped_ptr&) = delete;
+  scoped_ptr& operator=(const scoped_ptr&) = delete;
+
+  // Move operations copy the deleter to preserve existing behavior. Move-only
+  // deleters are intentionally unsupported.
+  scoped_ptr(scoped_ptr&& other) : impl_(&other.impl_) { }
+
+  scoped_ptr& operator=(scoped_ptr&& rhs) {
+    if (this != &rhs) {
+      impl_.TakeState(&rhs.impl_);
+    }
+    return *this;
   }
 
-  // Constructor.  Move constructor for C++03 move emulation of this type.
-  scoped_ptr(RValue rvalue) : impl_(&rvalue.object->impl_) { }
+  template <typename U, typename V,
+            typename std::enable_if<
+                !std::is_array<U>::value &&
+                    std::is_convertible<U*, element_type*>::value &&
+                    std::is_constructible<deleter_type, const V&>::value,
+                int>::type = 0>
+  scoped_ptr(scoped_ptr<U, V>&& other) : impl_(&other.impl_) { }
 
-  // operator=.  Allows assignment from a scoped_ptr rvalue for a convertible
-  // type and deleter.
-  //
-  // IMPLEMENTATION NOTE: C++11 unique_ptr<> keeps this operator= distinct from
-  // the normal move assignment operator. By C++11 20.7.1.2.3.4, this templated
-  // form has different requirements on for move-only Deleters. Since this
-  // implementation does not support move-only Deleters, we do not need a
-  // separate move assignment operator allowing us to avoid one use of SFINAE.
-  // You only need to care about this if you modify the implementation of
-  // scoped_ptr.
-  template <typename U, typename V>
-  scoped_ptr& operator=(scoped_ptr<U, V> rhs) {
-    COMPILE_ASSERT(!butil::is_array<U>::value, U_cannot_be_an_array);
+  template <typename U, typename V,
+            typename std::enable_if<
+                !std::is_array<U>::value &&
+                    std::is_convertible<U*, element_type*>::value &&
+                    std::is_assignable<deleter_type&, const V&>::value,
+                int>::type = 0>
+  scoped_ptr& operator=(scoped_ptr<U, V>&& rhs) {
     impl_.TakeState(&rhs.impl_);
     return *this;
   }
@@ -415,17 +382,6 @@ class scoped_ptr {
     return impl_.release();
   }
 
-  // C++98 doesn't support functions templates with default parameters which
-  // makes it hard to write a PassAs() that understands converting the deleter
-  // while preserving simple calling semantics.
-  //
-  // Until there is a use case for PassAs() with custom deleters, just ignore
-  // the custom deleter.
-  template <typename PassAsType>
-  scoped_ptr<PassAsType> PassAs() {
-    return scoped_ptr<PassAsType>(Pass());
-  }
-
  private:
   // Needed to reach into |impl_| in the constructor.
   template <typename U, typename V> friend class scoped_ptr;
@@ -444,8 +400,6 @@ class scoped_ptr {
 
 template <class T, class D>
 class scoped_ptr<T[], D> {
-  MOVE_ONLY_TYPE_FOR_CPP_03(scoped_ptr, RValue)
-
  public:
   // The element and deleter types.
   typedef T element_type;
@@ -472,12 +426,15 @@ class scoped_ptr<T[], D> {
   //   NOT use implicit_cast<Base*>() to upcast the static type of the array.
   explicit scoped_ptr(element_type* array) : impl_(array) { }
 
-  // Constructor.  Move constructor for C++03 move emulation of this type.
-  scoped_ptr(RValue rvalue) : impl_(&rvalue.object->impl_) { }
+  scoped_ptr(const scoped_ptr&) = delete;
+  scoped_ptr& operator=(const scoped_ptr&) = delete;
 
-  // operator=.  Move operator= for C++03 move emulation of this type.
-  scoped_ptr& operator=(RValue rhs) {
-    impl_.TakeState(&rhs.object->impl_);
+  scoped_ptr(scoped_ptr&& other) : impl_(&other.impl_) { }
+
+  scoped_ptr& operator=(scoped_ptr&& rhs) {
+    if (this != &rhs) {
+      impl_.TakeState(&rhs.impl_);
+    }
     return *this;
   }
 

@@ -9,7 +9,6 @@
 
 #include "butil/basictypes.h"
 #include "butil/logging.h"
-#include "butil/move.h"
 #include "butil/stl_util.h"
 
 namespace butil {
@@ -18,8 +17,6 @@ namespace butil {
 // destructor.
 template <class T>
 class ScopedVector {
-  MOVE_ONLY_TYPE_FOR_CPP_03(ScopedVector, RValue)
-
  public:
   typedef typename std::vector<T*>::allocator_type allocator_type;
   typedef typename std::vector<T*>::size_type size_type;
@@ -37,13 +34,16 @@ class ScopedVector {
 
   ScopedVector() {}
   ~ScopedVector() { clear(); }
-  ScopedVector(RValue other) { swap(*other.object); }
-#if __cplusplus >= 201103L  // >= C++11
+  ScopedVector(const ScopedVector&) = delete;
+  ScopedVector& operator=(const ScopedVector&) = delete;
+  ScopedVector(ScopedVector&& other) noexcept { swap(other); }
   ScopedVector(std::initializer_list<value_type> il) : v_(il) {}
-#endif
 
-  ScopedVector& operator=(RValue rhs) {
-    swap(*rhs.object);
+  ScopedVector& operator=(ScopedVector&& rhs) {
+    if (this != &rhs) {
+      clear();
+      swap(rhs);
+    }
     return *this;
   }
 

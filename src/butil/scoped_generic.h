@@ -8,9 +8,9 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <utility>
 
 #include "butil/compiler_specific.h"
-#include "butil/move.h"
 #include "butil/macros.h"
 
 namespace butil {
@@ -54,8 +54,6 @@ namespace butil {
 //   typedef ScopedGeneric<int, FooScopedTraits> ScopedFoo;
 template<typename T, typename Traits>
 class ScopedGeneric {
-  MOVE_ONLY_TYPE_FOR_CPP_03(ScopedGeneric, RValue)
-
  private:
   // This must be first since it's used inline below.
   //
@@ -84,10 +82,14 @@ class ScopedGeneric {
       : data_(value, traits) {
   }
 
-  // Move constructor for C++03 move emulation.
-  ScopedGeneric(RValue rvalue)
-      : data_(rvalue.object->release(), rvalue.object->get_traits()) {
+  ScopedGeneric(const ScopedGeneric&) = delete;
+  ScopedGeneric& operator=(const ScopedGeneric&) = delete;
+
+  ScopedGeneric(ScopedGeneric&& other)
+      : data_(other.release(), other.get_traits()) {
   }
+
+  ScopedGeneric& operator=(ScopedGeneric&&) = delete;
 
   ~ScopedGeneric() {
     FreeIfNecessary();

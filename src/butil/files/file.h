@@ -19,7 +19,6 @@
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
 #include "butil/files/scoped_file.h"
-#include "butil/move.h"
 #include "butil/time/time.h"
 
 #if defined(OS_WIN)
@@ -53,8 +52,6 @@ typedef struct stat64 stat_wrapper_t;
 // to the OS is not considered const, even if there is no apparent change to
 // member variables.
 class BUTIL_EXPORT File {
-  MOVE_ONLY_TYPE_FOR_CPP_03(File, RValue)
-
  public:
   // FLAG_(OPEN|CREATE).* are mutually exclusive. You should specify exactly one
   // of the five (possibly combining with other flags) when opening or creating
@@ -167,13 +164,14 @@ class BUTIL_EXPORT File {
   // Creates an object with a specific error_details code.
   explicit File(Error error_details);
 
-  // Move constructor for C++03 move emulation of this type.
-  File(RValue other);
+  File(const File&) = delete;
+  File& operator=(const File&) = delete;
+
+  File(File&& other) noexcept;
 
   ~File();
 
-  // Move operator= for C++03 move emulation of this type.
-  File& operator=(RValue other);
+  File& operator=(File&& other) noexcept;
 
   // Creates or opens the given file.
   void Initialize(const FilePath& name, uint32_t flags);
