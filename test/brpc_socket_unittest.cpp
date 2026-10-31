@@ -977,6 +977,116 @@ TEST_F(SocketTest, client_binding_endpoint_types) {
     }
 }
 
+TEST_F(SocketTest, derived_socket_options) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_socket_keepalive = true;
+    brpc::FLAGS_socket_keepalive_idle_s = 101;
+    brpc::FLAGS_socket_keepalive_interval_s = 102;
+    brpc::FLAGS_socket_keepalive_count = 103;
+    brpc::FLAGS_socket_tcp_user_timeout_ms = 104;
+
+    brpc::SocketOptions options;
+    options.keepalive_options.emplace();
+    options.keepalive_options->keepalive_idle_s = 11;
+    options.keepalive_options->keepalive_interval_s = 12;
+    options.keepalive_options->keepalive_count = 13;
+    options.tcp_user_timeout_ms = 1400;
+    // No fd is registered in this test, so a non-default tag does not require
+    // starting a separate group of bthread workers.
+    options.bthread_tag = bthread_self_tag() + 1;
+    options.force_ssl = true;
+    options.hc_option.health_check_path = "/custom-health";
+    options.hc_option.health_check_timeout_ms = 1500;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+
+    // Changing the caller's configuration after creation must not affect the
+    // parent or any of its future sub-sockets.
+    options.keepalive_options->keepalive_idle_s = 99;
+    ASSERT_TRUE(ptr->_keepalive_options.has_value());
+    EXPECT_EQ(11, ptr->_keepalive_options->keepalive_idle_s);
+
+    for (int pooled = 0; pooled < 2; ++pooled) {
+        SCOPED_TRACE(pooled);
+        brpc::SocketUniquePtr child;
+        ASSERT_EQ(0, pooled ? ptr->GetPooledSocket(&child)
+                            : ptr->GetShortSocket(&child));
+        BRPC_SCOPE_EXIT { child->SetFailed(); };
+        ASSERT_TRUE(child->_keepalive_options.has_value());
+        EXPECT_EQ(11, child->_keepalive_options->keepalive_idle_s);
+        EXPECT_EQ(12, child->_keepalive_options->keepalive_interval_s);
+        EXPECT_EQ(13, child->_keepalive_options->keepalive_count);
+        EXPECT_EQ(options.tcp_user_timeout_ms, child->_tcp_user_timeout_ms);
+        EXPECT_EQ(options.bthread_tag, child->_io_event.bthread_tag());
+        EXPECT_FALSE(child->_force_ssl);
+        EXPECT_TRUE(child->health_check_path().empty());
+        EXPECT_EQ(brpc::HealthCheckOption().health_check_timeout_ms,
+                  child->health_check_timeout_ms());
+        EXPECT_FALSE(child->HCEnabled());
+        EXPECT_EQ(-1, child->fd());
+    }
+}
+
+TEST_F(SocketTest, derived_socket_keeps_parent_keepalive_options) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_socket_keepalive = true;
+    const int defaults[][3] = {
+        {-1, -1, -1}, {101, 102, 103}, {201, 202, 203}
+    };
+
+    // Unset fields are filled from gflags when sub-sockets are created.
+    brpc::SocketOptions options;
+    options.keepalive_options.emplace();
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+
+    for (int pooled = 0; pooled < 2; ++pooled) {
+        SCOPED_TRACE(pooled);
+        brpc::SocketUniquePtr children[3];
+        BRPC_SCOPE_EXIT {
+            for (auto& child : children) {
+                if (child) {
+                    child->SetFailed();
+                }
+            }
+        };
+        for (size_t i = 0; i < ARRAY_SIZE(children); ++i) {
+            SCOPED_TRACE(i);
+            brpc::FLAGS_socket_keepalive_idle_s = defaults[i][0];
+            brpc::FLAGS_socket_keepalive_interval_s = defaults[i][1];
+            brpc::FLAGS_socket_keepalive_count = defaults[i][2];
+            // Keep existing children in use so the pool must create a new one.
+            ASSERT_EQ(0, pooled ? ptr->GetPooledSocket(&children[i])
+                                : ptr->GetShortSocket(&children[i]));
+            // Changing defaults for a new child must not change older siblings.
+            for (size_t j = 0; j <= i; ++j) {
+                ASSERT_TRUE(children[j]->_keepalive_options.has_value());
+                EXPECT_EQ(defaults[j][0],
+                          children[j]->_keepalive_options->keepalive_idle_s);
+                EXPECT_EQ(defaults[j][1],
+                          children[j]->_keepalive_options->keepalive_interval_s);
+                EXPECT_EQ(defaults[j][2],
+                          children[j]->_keepalive_options->keepalive_count);
+            }
+            // Neither the parent's stored configuration nor the caller's
+            // options may be changed while filling defaults for a child.
+            ASSERT_TRUE(ptr->_keepalive_options.has_value());
+            EXPECT_EQ(-1, ptr->_keepalive_options->keepalive_idle_s);
+            EXPECT_EQ(-1, ptr->_keepalive_options->keepalive_interval_s);
+            EXPECT_EQ(-1, ptr->_keepalive_options->keepalive_count);
+            EXPECT_EQ(-1, options.keepalive_options->keepalive_idle_s);
+            EXPECT_EQ(-1, options.keepalive_options->keepalive_interval_s);
+            EXPECT_EQ(-1, options.keepalive_options->keepalive_count);
+        }
+    }
+}
+
 TEST_F(SocketTest, client_binding_ipv6_connect) {
     butil::EndPoint point;
     ASSERT_EQ(0, butil::str2endpoint("[::1]:0", &point));
@@ -1423,6 +1533,47 @@ void CheckKeepalive(int fd,
     ASSERT_EQ(expected_keepalive_count, keepalive_count);
 }
 
+TEST_F(SocketTest, derived_socket_connection_options) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::FLAGS_socket_keepalive = true;
+    brpc::FLAGS_socket_keepalive_idle_s = 101;
+    brpc::FLAGS_socket_keepalive_interval_s = 102;
+    brpc::FLAGS_socket_keepalive_count = 103;
+    brpc::FLAGS_socket_tcp_user_timeout_ms = 104;
+    brpc::SocketOptions options;
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&options.remote_side, &listening_fd));
+    options.keepalive_options.emplace();
+    options.keepalive_options->keepalive_idle_s = 11;
+    options.keepalive_options->keepalive_interval_s = 12;
+    options.keepalive_options->keepalive_count = 13;
+    options.tcp_user_timeout_ms = 1400;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
+    BRPC_SCOPE_EXIT { brpc::Socket::SetFailed(id); };
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &ptr));
+    for (int pooled = 0; pooled < 2; ++pooled) {
+        SCOPED_TRACE(pooled);
+        brpc::SocketUniquePtr child;
+        ASSERT_EQ(0, pooled ? ptr->GetPooledSocket(&child)
+                            : ptr->GetShortSocket(&child));
+        BRPC_SCOPE_EXIT { child->SetFailed(); };
+        const timespec deadline = butil::milliseconds_from_now(1000);
+        butil::fd_guard fd(child->Connect(&deadline, nullptr, nullptr));
+        ASSERT_GE(fd, 0) << berror();
+        ASSERT_EQ(0, child->ResetFileDescriptor(fd.release()));
+        ASSERT_NO_FATAL_FAILURE(CheckKeepalive(child->fd(), true, 11, 12, 13));
+#if defined(OS_LINUX)
+        int timeout_ms = 0;
+        socklen_t len = sizeof(timeout_ms);
+        ASSERT_EQ(0, getsockopt(child->fd(), IPPROTO_TCP, TCP_USER_TIMEOUT,
+                               &timeout_ms, &len));
+        EXPECT_EQ(options.tcp_user_timeout_ms, timeout_ms);
+#endif
+    }
+}
+
 struct SocketBufferValues {
     int recv_buffer;
     int send_buffer;
@@ -1439,20 +1590,50 @@ void GetSocketBufferValues(int fd, SocketBufferValues* values) {
                             &values->send_buffer, &len));
 }
 
-void GetExpectedSocketBufferValues(int buffer_size,
-                                   SocketBufferValues* expected) {
-    SocketBufferValues default_values;
-    butil::fd_guard default_fd(socket(AF_INET, SOCK_STREAM, 0));
-    ASSERT_GT(default_fd, 0);
-    GetSocketBufferValues(default_fd, &default_values);
+void SetReferenceSocketBufferValues(int fd, int buffer_size) {
+    if (buffer_size <= 0) {
+        return;
+    }
+    ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buffer_size,
+                            sizeof(buffer_size)));
+    ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buffer_size,
+                            sizeof(buffer_size)));
+}
 
-    butil::fd_guard reference_fd(socket(AF_INET, SOCK_STREAM, 0));
-    ASSERT_GT(reference_fd, 0);
-    ASSERT_EQ(0, setsockopt(reference_fd, SOL_SOCKET, SO_RCVBUF, &buffer_size,
-                            sizeof(buffer_size)));
-    ASSERT_EQ(0, setsockopt(reference_fd, SOL_SOCKET, SO_SNDBUF, &buffer_size,
-                            sizeof(buffer_size)));
-    GetSocketBufferValues(reference_fd, expected);
+struct SocketBufferReference {
+    SocketBufferValues listener;
+    SocketBufferValues client;
+    SocketBufferValues accepted;
+};
+
+void GetExpectedSocketBufferValues(int listener_buffer_size,
+                                   int client_buffer_size,
+                                   SocketBufferReference* expected) {
+    // Compare sockets at the same TCP lifecycle stage. On macOS, the kernel
+    // can adjust buffer sizes when a connection is established, so an unused
+    // socket's getsockopt() values are not a valid connected-socket baseline.
+    butil::fd_guard listener(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_GE(listener, 0);
+    ASSERT_NO_FATAL_FAILURE(
+        SetReferenceSocketBufferValues(listener, listener_buffer_size));
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ASSERT_EQ(0, bind(listener, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
+    ASSERT_EQ(0, listen(listener, 1));
+    socklen_t addr_len = sizeof(addr);
+    ASSERT_EQ(0, getsockname(listener, reinterpret_cast<sockaddr*>(&addr), &addr_len));
+    ASSERT_NO_FATAL_FAILURE(GetSocketBufferValues(listener, &expected->listener));
+
+    butil::fd_guard client(socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_GE(client, 0);
+    ASSERT_NO_FATAL_FAILURE(
+        SetReferenceSocketBufferValues(client, client_buffer_size));
+    ASSERT_EQ(0, connect(client, reinterpret_cast<sockaddr*>(&addr), addr_len));
+    butil::fd_guard accepted(accept(listener, nullptr, nullptr));
+    ASSERT_GE(accepted, 0);
+    ASSERT_NO_FATAL_FAILURE(GetSocketBufferValues(client, &expected->client));
+    ASSERT_NO_FATAL_FAILURE(GetSocketBufferValues(accepted, &expected->accepted));
 }
 
 void CheckSocketBufferValues(int fd, const SocketBufferValues& expected) {
@@ -1497,7 +1678,7 @@ TEST_F(SocketTest, keepalive) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         brpc::SocketId id;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
         brpc::SocketUniquePtr ptr;
@@ -1513,7 +1694,7 @@ TEST_F(SocketTest, keepalive) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_idle_s = keepalive_idle;
         brpc::SocketId id;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
@@ -1531,7 +1712,7 @@ TEST_F(SocketTest, keepalive) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_interval_s = keepalive_interval;
         brpc::SocketId id;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
@@ -1548,7 +1729,7 @@ TEST_F(SocketTest, keepalive) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_count = keepalive_count;
         brpc::SocketId id;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
@@ -1565,7 +1746,7 @@ TEST_F(SocketTest, keepalive) {
         ASSERT_GT(sockfd, 0);
         brpc::SocketOptions options;
         options.fd = sockfd;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_idle_s = keepalive_idle;
         options.keepalive_options->keepalive_interval_s = keepalive_interval;
         options.keepalive_options->keepalive_count = keepalive_count;
@@ -1689,7 +1870,7 @@ TEST_F(SocketTest, keepalive_input_message) {
         brpc::SocketOptions options;
         options.remote_side = point;
         options.connect_on_create = true;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_idle_s = keepalive_idle;
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
@@ -1706,7 +1887,7 @@ TEST_F(SocketTest, keepalive_input_message) {
         brpc::SocketOptions options;
         options.remote_side = point;
         options.connect_on_create = true;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_interval_s = keepalive_interval;
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
@@ -1722,7 +1903,7 @@ TEST_F(SocketTest, keepalive_input_message) {
         brpc::SocketOptions options;
         options.remote_side = point;
         options.connect_on_create = true;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_count = keepalive_count;
         brpc::SocketId id = brpc::INVALID_SOCKET_ID;
         ASSERT_EQ(0, brpc::get_or_new_client_side_messenger()->Create(options, &id));
@@ -1738,7 +1919,7 @@ TEST_F(SocketTest, keepalive_input_message) {
         brpc::SocketOptions options;
         options.remote_side = point;
         options.connect_on_create = true;
-        options.keepalive_options = std::make_shared<brpc::SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_idle_s = keepalive_idle;
         options.keepalive_options->keepalive_interval_s = keepalive_interval;
         options.keepalive_options->keepalive_count = keepalive_count;
@@ -1764,8 +1945,8 @@ TEST_F(SocketTest, socket_buffer_options_before_connect) {
     brpc::FLAGS_socket_recv_buffer_size = buffer_size;
     brpc::FLAGS_socket_send_buffer_size = buffer_size;
 
-    SocketBufferValues expected;
-    GetExpectedSocketBufferValues(buffer_size, &expected);
+    SocketBufferReference expected;
+    ASSERT_NO_FATAL_FAILURE(GetExpectedSocketBufferValues(0, buffer_size, &expected));
 
     butil::EndPoint point;
     butil::fd_guard listening_fd;
@@ -1782,7 +1963,7 @@ TEST_F(SocketTest, socket_buffer_options_before_connect) {
     const timespec duetime = butil::milliseconds_from_now(1000);
     butil::fd_guard connected_fd(ptr->Connect(&duetime, nullptr, nullptr));
     ASSERT_GT(connected_fd, 0);
-    CheckSocketBufferValues(connected_fd, expected);
+    CheckSocketBufferValues(connected_fd, expected.client);
 
     ASSERT_EQ(0, ptr->SetFailed());
 }
@@ -1793,8 +1974,9 @@ TEST_F(SocketTest, socket_buffer_options_before_accept) {
     brpc::FLAGS_socket_recv_buffer_size = buffer_size;
     brpc::FLAGS_socket_send_buffer_size = buffer_size;
 
-    SocketBufferValues expected;
-    GetExpectedSocketBufferValues(buffer_size, &expected);
+    SocketBufferReference expected;
+    ASSERT_NO_FATAL_FAILURE(
+        GetExpectedSocketBufferValues(buffer_size, buffer_size / 2, &expected));
 
     butil::EndPoint point;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:0", &point));
@@ -1806,7 +1988,7 @@ TEST_F(SocketTest, socket_buffer_options_before_accept) {
         brpc::ServerPrivateAccessor(&server).acceptor();
     ASSERT_TRUE(messenger != nullptr);
     ASSERT_GT(messenger->listened_fd(), 0);
-    CheckSocketBufferValues(messenger->listened_fd(), expected);
+    CheckSocketBufferValues(messenger->listened_fd(), expected.listener);
 
     // Accepted sockets should inherit the listener's buffer sizes, not use
     // the flags at accept time.
@@ -1839,7 +2021,7 @@ TEST_F(SocketTest, socket_buffer_options_before_accept) {
         brpc::SocketUniquePtr accepted_socket;
         ASSERT_EQ(0, brpc::Socket::Address(connections[0], &accepted_socket));
         ASSERT_GT(accepted_socket->fd(), 0);
-        CheckSocketBufferValues(accepted_socket->fd(), expected);
+        CheckSocketBufferValues(accepted_socket->fd(), expected.accepted);
         ASSERT_EQ(0, accepted_socket->SetFailed());
     }
 

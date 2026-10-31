@@ -2799,6 +2799,26 @@ void Socket::ShareStats(Socket* main_socket) {
     }
 }
 
+SocketOptions Socket::GetSubSocketOptions() const {
+    SocketOptions opt;
+    opt.remote_side = remote_side();
+    opt.local_side = _bind_local_side;
+    opt.device_name = _device_name;
+    opt.user = user();
+    opt.on_edge_triggered_events = _on_edge_triggered_events;
+    opt.need_on_edge_trigger = _need_on_edge_trigger;
+    opt.initial_ssl_ctx = _ssl_ctx;
+    opt.keytable_pool = _keytable_pool;
+    opt.app_connect = _app_connect;
+    opt.socket_mode = _socket_mode;
+    opt.keepalive_options = _keepalive_options;
+    opt.tcp_user_timeout_ms = _tcp_user_timeout_ms;
+    opt.bthread_tag = _io_event.bthread_tag();
+    // Sub-sockets do not run health checks or enforce server-side SSL policy.
+    // Leave fd, parsing context, force_ssl and HC options at their defaults.
+    return opt;
+}
+
 int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
     if (pooled_socket == nullptr) {
         LOG(ERROR) << "pooled_socket is NULL";
@@ -2812,20 +2832,7 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
     // Create socket_pool optimistically.
     SocketPool* socket_pool = main_sp->socket_pool.load(butil::memory_order_consume);
     if (socket_pool == nullptr) {
-        SocketOptions opt;
-        opt.remote_side = remote_side();
-        // Propagate the configured client binding (source IP + device) to
-        // pooled sub-sockets so that they keep the same binding policy.
-        opt.local_side = _bind_local_side;
-        opt.device_name = _device_name;
-        opt.user = user();
-        opt.on_edge_triggered_events = _on_edge_triggered_events;
-        opt.need_on_edge_trigger = _need_on_edge_trigger;
-        opt.initial_ssl_ctx = _ssl_ctx;
-        opt.keytable_pool = _keytable_pool;
-        opt.app_connect = _app_connect;
-        opt.socket_mode = _socket_mode;
-        socket_pool = new SocketPool(opt);
+        socket_pool = new SocketPool(GetSubSocketOptions());
         SocketPool* expected = nullptr;
         if (!main_sp->socket_pool.compare_exchange_strong(
                 expected, socket_pool, butil::memory_order_acq_rel)) {
@@ -2918,19 +2925,7 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
         return -1;
     }
     SocketId id;
-    SocketOptions opt;
-    opt.remote_side = remote_side();
-    // Propagate the configured client binding (source IP + device) to short
-    // sub-sockets so that they keep the same binding policy.
-    opt.local_side = _bind_local_side;
-    opt.device_name = _device_name;
-    opt.user = user();
-    opt.on_edge_triggered_events = _on_edge_triggered_events;
-    opt.need_on_edge_trigger = _need_on_edge_trigger;
-    opt.initial_ssl_ctx = _ssl_ctx;
-    opt.keytable_pool = _keytable_pool;
-    opt.app_connect = _app_connect;
-    opt.socket_mode = _socket_mode;
+    SocketOptions opt = GetSubSocketOptions();
     if (get_client_side_messenger()->Create(opt, &id) != 0 ||
         Address(id, short_socket) != 0) {
         return -1;
