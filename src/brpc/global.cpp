@@ -69,7 +69,7 @@
 
 // Protocols
 #include "brpc/protocol.h"
-#include "brpc/policy/rdma_handshake_protocol.h"
+#include "brpc/policy/transport_handshake_protocol.h"
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/policy/http2_rpc_protocol.h"
@@ -438,12 +438,13 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     // Protocols
-    Protocol rdma_handshake_protocol = {
-        ParseRdmaHandshake, nullptr, nullptr,
-        ProcessRdmaHandshake, nullptr,
+    Protocol transport_handshake_protocol = {
+        ParseTransportHandshake, nullptr, nullptr,
+        ProcessTransportHandshake, nullptr,
         nullptr, nullptr, nullptr,
-        CONNECTION_TYPE_ALL, "rdma_handshake" };
-    if (RegisterProtocol(PROTOCOL_RDMA_HANDSHAKE, rdma_handshake_protocol) != 0) {
+        CONNECTION_TYPE_ALL, "transport_handshake" };
+    if (RegisterProtocol(PROTOCOL_TRANSPORT_HANDSHAKE,
+                         transport_handshake_protocol) != 0) {
         exit(1);
     }
 

@@ -619,8 +619,8 @@ BUTIL_FORCE_INLINE bool is_http_protocol(const char* name) {
     return strcmp(name, "http") == 0 || strcmp(name, "h2") == 0;
 }
 
-BUTIL_FORCE_INLINE bool is_rdma_handshake_protocol(const char* name) {
-    return strcmp(name, "rdma_handshake") == 0;
+BUTIL_FORCE_INLINE bool is_transport_handshake_protocol(const char* name) {
+    return strcmp(name, "transport_handshake") == 0;
 }
 
 Acceptor* Server::BuildAcceptor() {
@@ -641,12 +641,12 @@ Acceptor* Server::BuildAcceptor() {
             continue;
         }
         // Erase whatever the exemptions below say. http, h2 and
-        // rdma_handshake are always served, but they are still
+        // transport_handshake are always served, but they are still
         // valid names for the whitelist.
         bool in_whitelist = (whitelist.erase(protocols[i].name) != 0);
         if (has_whitelist && !in_whitelist &&
             !is_http_protocol(protocols[i].name) &&
-            !is_rdma_handshake_protocol(protocols[i].name)) {
+            !is_transport_handshake_protocol(protocols[i].name)) {
             // the protocol is not allowed to serve.
             RPC_VLOG << "Skip protocol=" << protocols[i].name;
             continue;
