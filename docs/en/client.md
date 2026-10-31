@@ -601,6 +601,8 @@ If the server does not respond and connection is good, retry is not triggered. I
 
 How it works: If response does not return within the timeout specified by backup_request_ms, send another request, take whatever the first returned. New request will be sent to a different server that never tried before by best efforts. NOTE: If backup_request_ms is greater than timeout_ms, backup request will never be sent. backup request consumes one retry. backup request does not imply a server-side cancellation.
 
+If no retry budget remains, the backup request is skipped. The in-flight request continues until it completes or the overall RPC timeout expires.
+
 ChannelOptions.backup_request_ms affects all RPC via the Channel, unit is milliseconds, Default value is -1(disabled), Controller.set_backup_request_ms() overrides value for one RPC.
 
 ### Timeout is not reached
