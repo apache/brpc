@@ -1529,8 +1529,9 @@ bool CouchbaseOperations::CouchbaseResponse::popCollectionId(
   }
 
   // Success case: we expect extras_length >= 12 (8 bytes manifest + 4 bytes
-  // collection id)
-  if (header.extras_length < 12) {
+  // collection id). total_body_length counts those extras, so it must be at
+  // least 12 as well; both fields are attacker-controlled and independent.
+  if (header.extras_length < 12 || header.total_body_length < 12) {
     butil::string_printf(&_err, "Extras too small to contain collection ID");
     // remove the response from buffer so you don't re‐process
     _buf.pop_front(sizeof(header) + header.total_body_length);
@@ -1556,7 +1557,10 @@ bool CouchbaseOperations::CouchbaseResponse::popCollectionId(
   *collection_id = static_cast<int>(cid_host);
   _buf.pop_front(sizeof(cid_net));
 
-  _buf.pop_front(header.total_body_length);
+  // The 12 extras bytes read above are part of total_body_length; only the
+  // remainder of the body is still in the buffer. Popping total_body_length
+  // again would consume 12 bytes of the next pipelined response.
+  _buf.pop_front(header.total_body_length - 12);
   _err.clear();
   return true;
 }
