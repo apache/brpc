@@ -83,7 +83,8 @@ inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
 }
 
 inline void TaskGroup::push_rq(bthread_t tid) {
-    while (!_rq.push(tid)) {
+    TaskGroup* g = this;
+    while (!g->_rq.push(tid)) {
         // Created too many bthreads: a promising approach is to insert the
         // task into another TaskGroup, but we don't use it because:
         // * There're already many bthreads to run, inserting the bthread
@@ -91,9 +92,9 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         // * Insertions into other TaskGroups perform worse when all workers
         //   are busy at creating bthreads (proved by test_input_messenger in
         //   brpc)
-        flush_nosignal_tasks();
-        LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << _rq.capacity();
-        if (_sched_recursive_guard != 0) {
+        g->flush_nosignal_tasks();
+        LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << g->_rq.capacity();
+        if (g->_sched_recursive_guard != 0) {
             // Remained callbacks run with the guard held, either in
             // sched_to()'s remained loop or at task_runner() entry. Re-entering
             // sched_to() here would be recursive (and fatal in debug builds),
@@ -101,17 +102,17 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             ::usleep(1000);
             continue;
         }
-        if (is_current_pthread_task() && !is_current_main_task()) {
+        if (g->is_current_pthread_task() && !g->is_current_main_task()) {
             // A pthread-mode bthread runs on _main_stack and cannot be
             // scheduled out, fall back to waiting.
             ::usleep(1000);
             continue;
         }
-        const auto pop_task = [this](bthread_t* t) -> bool {
+        const auto pop_task = [g](bthread_t* t) -> bool {
 #ifndef BTHREAD_FAIR_WSQ
-            return _rq.pop(t);
+            return g->_rq.pop(t);
 #else
-            return _rq.steal(t);
+            return g->_rq.steal(t);
 #endif
         };
         bthread_t run_tid = 0;
@@ -120,7 +121,7 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             // the pop, retrying the push will succeed.
             continue;
         }
-        if (is_current_main_task() &&
+        if (g->is_current_main_task() &&
             address_meta(run_tid)->attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
             // pthread-mode tasks are run inline on _main_stack by the
             // dispatch loops (run_main_task/task_runner). Switching to one
@@ -152,7 +153,7 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             // and stealers never push, so these pushes must succeed.
             // Reverse order restores their relative order in the queue.
             for (int i = npending - 1; i >= 0; --i) {
-                const bool pushed = _rq.push(pending[i]);
+                const bool pushed = g->_rq.push(pending[i]);
                 CHECK(pushed) << "push_rq: failed to put back held task";
             }
             if (!found) {
@@ -173,8 +174,8 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         // read by the remained-callback after the switch, so it must stay in
         // this scope: if it were declared inside the branch below, its slot
         // could be reused before the callback has finished reading it.
-        ReadyToRunArgs args = { tag(), nullptr, false };
-        if (!is_current_main_task()) {
+        ReadyToRunArgs args = { g->tag(), nullptr, false };
+        if (!g->is_current_main_task()) {
             // Preserve the task being scheduled out. The push is deferred to
             // a remained-callback: publishing a still-running task into _rq
             // lets a stealer jump into it and run the same context
@@ -184,14 +185,13 @@ inline void TaskGroup::push_rq(bthread_t tid) {
             // |run_tid| by the time the callback runs.
             // The callback may re-enter push_rq() while _rq is still full;
             // the guard check above prevents another sched_to() from it.
-            args.meta = _cur_meta;
-            set_remained(ready_to_run_in_worker_ignoresignal, &args);
+            args.meta = g->_cur_meta;
+            g->set_remained(ready_to_run_in_worker_ignoresignal, &args);
         }
         // The main task is never queued; ending_sched() resumes it via
         // _main_tid when the queue drains. Jumping to a pthread-mode task
         // from a normal bthread resumes the dispatch loop on _main_stack
         // which runs it inline, same as ending_sched() does.
-        TaskGroup* g = this;
         sched_to(&g, run_tid);
         // Resume here after the popped bthread (and possibly others) ran,
         // then retry the push of |tid|.

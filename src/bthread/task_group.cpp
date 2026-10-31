@@ -847,13 +847,16 @@ void TaskGroup::ready_to_run(TaskMeta* meta, bool nosignal) {
     _control->_task_tracer.set_status(TASK_STATUS_READY, meta);
 #endif // BRPC_BTHREAD_TRACER
     push_rq(meta->tid);
+    // push_rq() may switch context and the current task may be resumed by
+    // another group. Use the current group for all subsequent accounting.
+    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
     if (nosignal) {
-        ++_num_nosignal;
+        ++g->_num_nosignal;
     } else {
-        const int additional_signal = _num_nosignal;
-        _num_nosignal = 0;
-        _nsignaled += 1 + additional_signal;
-        _control->signal_task(1 + additional_signal, _tag);
+        const int additional_signal = g->_num_nosignal;
+        g->_num_nosignal = 0;
+        g->_nsignaled += 1 + additional_signal;
+        g->_control->signal_task(1 + additional_signal, g->_tag);
     }
 }
 
