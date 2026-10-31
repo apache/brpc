@@ -33,6 +33,7 @@ namespace bthread {
 DECLARE_uint32(key_table_list_size);
 DECLARE_uint32(borrow_from_globle_size);
 class KeyTable;
+class KeyTableList;
 // defined in bthread/key.cpp
 extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
 extern KeyTable* borrow_keytable(bthread_keytable_pool_t*);
@@ -426,6 +427,56 @@ TEST(KeyTest, using_pool) {
     }
 
     ASSERT_EQ(0, bthread_key_delete(key));
+}
+
+struct PoolDestructorLockCheck {
+    bthread_keytable_pool_t* pool;
+    butil::ThreadLocal<KeyTableList>* lists;
+    int pool_lock_result;
+    int list_lock_result;
+    int calls;
+};
+
+static void check_pool_destructor_locks(void* arg) {
+    PoolDestructorLockCheck* check = static_cast<PoolDestructorLockCheck*>(arg);
+    ++check->calls;
+    // A successful try-lock proves that the TLS destructor is not running
+    // under either cache-management lock.
+    check->pool_lock_result = pthread_rwlock_trywrlock(&check->pool->rwlock);
+    if (check->pool_lock_result == 0) {
+        pthread_rwlock_unlock(&check->pool->rwlock);
+    }
+    check->list_lock_result = pthread_mutex_trylock(&check->lists->_mutex);
+    if (check->list_lock_result == 0) {
+        pthread_mutex_unlock(&check->lists->_mutex);
+    }
+}
+
+static void* create_pool_destructor_lock_check(const void* arg) {
+    return const_cast<void*>(arg);
+}
+
+TEST(KeyTest, pooled_destructor_runs_outside_cache_locks) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    bthread::FLAGS_borrow_from_globle_size = 1;
+    bthread_keytable_pool_t pool;
+    ASSERT_EQ(0, bthread_keytable_pool_init(&pool));
+    PoolDestructorLockCheck check = {
+        &pool, static_cast<butil::ThreadLocal<KeyTableList>*>(pool.list), -1, -1, 0
+    };
+    bthread_key_t key;
+    ASSERT_EQ(0, bthread_key_create(&key, check_pool_destructor_locks));
+    bthread_keytable_pool_reserve(&pool, 1, key,
+                                  create_pool_destructor_lock_check, &check);
+    KeyTable* kt = borrow_keytable(&pool);
+    ASSERT_NE(nullptr, kt);
+    return_keytable(&pool, kt);
+    ASSERT_EQ(0, bthread_keytable_pool_destroy(&pool));
+    EXPECT_EQ(1, check.calls);
+    EXPECT_EQ(0, check.pool_lock_result);
+    EXPECT_EQ(0, check.list_lock_result);
+    EXPECT_EQ(0, bthread_key_delete(key));
+    EXPECT_EQ(0, pthread_rwlock_destroy(&pool.rwlock));
 }
 
 bthread_keytable_pool_t test_pool;
