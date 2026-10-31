@@ -137,7 +137,10 @@ public:
     // To support cache-aligned objects, align Block.items by cacheline.
     struct BAIDU_CACHELINE_ALIGNMENT Block {
         BlockItem items[BLOCK_NITEM];
-        size_t nitem;
+        // Written by the owning LocalPool and read by describe_objects().
+        // Publish the count after construction so statistics never observe a
+        // partially constructed object.
+        butil::atomic<size_t> nitem;
 
         Block() : nitem(0) {}
     };
@@ -199,22 +202,29 @@ public:
         }                                                               \
         T* obj = nullptr;                                                  \
         /* Fetch memory from local block */                             \
-        if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {            \
-            auto item = _cur_block->items + _cur_block->nitem;          \
-            obj = new (item->void_data()) T CTOR_ARGS;                  \
-            if (!ObjectPoolValidator<T>::validate(obj)) {               \
-                obj->~T();                                              \
-                return nullptr;                                            \
+        if (_cur_block) {                                                \
+            const size_t nitem =                                        \
+                _cur_block->nitem.load(butil::memory_order_relaxed);    \
+            if (nitem < BLOCK_NITEM) {                                  \
+                auto item = _cur_block->items + nitem;                  \
+                obj = new (item->void_data()) T CTOR_ARGS;              \
+                if (!ObjectPoolValidator<T>::validate(obj)) {           \
+                    obj->~T();                                          \
+                    return nullptr;                                     \
+                }                                                       \
+                /* It's poisoned prior to use. */                       \
+                OBJECT_POOL_ASAN_POISON_MEMORY_REGION(obj);             \
+                _cur_block->nitem.store(nitem + 1,                       \
+                                        butil::memory_order_release);    \
+                return obj;                                             \
             }                                                           \
-            /* It's poisoned prior to use. */                           \
-            OBJECT_POOL_ASAN_POISON_MEMORY_REGION(obj);                 \
-            ++_cur_block->nitem;                                        \
-            return obj;                                                 \
         }                                                               \
         /* Fetch a Block from global */                                 \
         _cur_block = add_block(&_cur_block_index);                      \
         if (_cur_block != nullptr) {                                       \
-            auto item = _cur_block->items + _cur_block->nitem;          \
+            const size_t nitem =                                        \
+                _cur_block->nitem.load(butil::memory_order_relaxed);    \
+            auto item = _cur_block->items + nitem;                      \
             obj = new (item->void_data()) T CTOR_ARGS;                  \
             if (!ObjectPoolValidator<T>::validate(obj)) {               \
                 obj->~T();                                              \
@@ -222,7 +232,8 @@ public:
             }                                                           \
             /* It's poisoned prior to use. */                           \
             OBJECT_POOL_ASAN_POISON_MEMORY_REGION(obj);                 \
-            ++_cur_block->nitem;                                        \
+            _cur_block->nitem.store(nitem + 1,                           \
+                                    butil::memory_order_release);        \
             return obj;                                                 \
         }                                                               \
         return nullptr;                                                    \
@@ -374,7 +385,7 @@ public:
             for (size_t j = 0; j < nblock; ++j) {
                 Block* b = bg->blocks[j].load(butil::memory_order_consume);
                 if (nullptr != b) {
-                    info.item_num += b->nitem;
+                    info.item_num += b->nitem.load(butil::memory_order_acquire);
                 }
             }
         }
@@ -449,7 +460,8 @@ private:
                 if (nullptr == b) {
                     continue;
                 }
-                for (size_t k = 0; k < b->nitem; ++k) {
+                const size_t nitem = b->nitem.load(butil::memory_order_acquire);
+                for (size_t k = 0; k < nitem; ++k) {
                     asan_unpoison_memory_region((T*)&b->items[k]);
                 }
             }
@@ -562,7 +574,8 @@ private:
                 if (nullptr == b) {
                     continue;
                 }
-                for (size_t k = 0; k < b->nitem; ++k) {
+                const size_t nitem = b->nitem.load(butil::memory_order_relaxed);
+                for (size_t k = 0; k < nitem; ++k) {
                     T* obj = (T*)&b->items[k];
                     // Unpoison to avoid affecting other allocator.
                     OBJECT_POOL_ASAN_UNPOISON_MEMORY_REGION(obj);
