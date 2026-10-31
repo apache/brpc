@@ -1897,7 +1897,14 @@ TEST_F(HttpTest, http2_client_upload_timeout_sends_rst_and_cleans_server_stream)
     brpc::Server server;
     EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     brpc::ServerOptions srv_options;
-    srv_options.h2_settings.stream_window_size = 0;
+    // Configure stream_window_size (256KB) > connection_window_size (64KB) so a
+    // 100KB request sends HEADERS + the first ~64KB of DATA frames to the server
+    // (stored in server sctx->body(), which is < quota=128KB so server does not
+    // immediately send WINDOW_UPDATE), while the remaining ~36KB of DATA stays
+    // buffered in client _pending_data until the RPC times out mid-upload.
+    srv_options.h2_settings.stream_window_size = 256 * 1024;
+    srv_options.h2_settings.connection_window_size =
+        brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE;
     EXPECT_EQ(0, server.Start(port, &srv_options));
 
     brpc::Channel channel;
@@ -1905,8 +1912,8 @@ TEST_F(HttpTest, http2_client_upload_timeout_sends_rst_and_cleans_server_stream)
     options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
-    // Warmup RPC completes using the initial 65535 stream window before the
-    // server's SETTINGS(stream_window_size=0) frame arrives at the client.
+    // Warmup RPC ensures the connection is established and the client has
+    // received the server's SETTINGS frame.
     {
         brpc::Controller cntl;
         test::EchoRequest req;
@@ -1927,15 +1934,16 @@ TEST_F(HttpTest, http2_client_upload_timeout_sends_rst_and_cleans_server_stream)
     };
     const int64_t base_stream_count = read_bvar("h2_stream_context_count");
 
-    // Now the client has received SETTINGS(stream_window_size=0). A new POST
-    // request sends HEADERS without END_STREAM and buffers its DATA frame.
-    // When it times out, DestroyStreamUserData must send RST_STREAM(CANCEL) so
-    // the server releases its half-open H2StreamContext.
+    // Send a 100KB POST request: ~64KB of DATA is uploaded to the server and
+    // ~36KB remains buffered on the client waiting for connection WINDOW_UPDATE.
+    // When it times out mid-upload, DestroyStreamUserData must send
+    // RST_STREAM(CANCEL) so the server releases its half-open H2StreamContext
+    // and partial request body.
     {
         brpc::Controller cntl;
         test::EchoRequest req;
         test::EchoResponse res;
-        req.set_message(std::string(1024, 'a'));
+        req.set_message(std::string(100 * 1024, 'a'));
         cntl.set_timeout_ms(50);
         cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
         cntl.http_request().uri() = "/EchoService/Echo";

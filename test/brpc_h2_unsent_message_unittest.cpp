@@ -324,6 +324,8 @@ TEST(H2UnsentMessage, request_throughput) {
         new brpc::policy::H2Context(h2_server_sock.get(), &server);
     CHECK_EQ(srv_ctx->Init(), 0);
     h2_server_sock->initialize_parsing_context(&srv_ctx);
+    srv_ctx->_unack_local_settings.max_concurrent_streams =
+        std::numeric_limits<uint32_t>::max();
     srv_ctx->_remote_settings.stream_window_size = brpc::H2Settings::MAX_WINDOW_SIZE;
     srv_ctx->_remote_window_left = brpc::H2Settings::MAX_WINDOW_SIZE;
     for (int i = 0; i < ntotal; ++i) {
