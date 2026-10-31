@@ -114,7 +114,13 @@ int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         return EHOSTDOWN;
     }
     int64_t total_weight = 0;
-    std::pair<SocketUniquePtr, int64_t> ptrs[8];
+    std::pair<SocketUniquePtr, int64_t> stack_ptrs[8];
+    std::vector<std::pair<SocketUniquePtr, int64_t> > heap_ptrs;
+    std::pair<SocketUniquePtr, int64_t>* ptrs = stack_ptrs;
+    if (n > ARRAY_SIZE(stack_ptrs)) {
+        heap_ptrs.resize(n);
+        ptrs = heap_ptrs.data();
+    }
     int nptr = 0;
     bool exclusion = true;
     do {
@@ -124,7 +130,6 @@ int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
                 && Socket::Address(id, &ptrs[nptr].first) == 0) {
                 int w = schan::GetSubChannelWeight(ptrs[nptr].first->user());
                 total_weight += w;
-                RELEASE_ASSERT_VERBOSE(nptr < 8, "Not supported yet");
                 ptrs[nptr].second = total_weight;
                 ++nptr;
             }
