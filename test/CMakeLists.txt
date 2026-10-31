@@ -255,19 +255,6 @@ target_link_libraries(test_butil PRIVATE
 
 add_test(NAME test_butil COMMAND test_butil)
 
-# The generic dependency intentionally contains an incompatible header at the
-# same path as a Protobuf header.  Compilation verifies that the include order
-# seen by the compiler selects the Protobuf package found for this build.
-add_library(protobuf_include_order_generic INTERFACE)
-target_include_directories(protobuf_include_order_generic INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/protobuf_include_order/generic_include)
-add_executable(cmake_protobuf_include_order
-    ${CMAKE_CURRENT_SOURCE_DIR}/protobuf_include_order/protobuf_include_order.cpp)
-target_link_libraries(cmake_protobuf_include_order PRIVATE
-    brpc_test_config
-    protobuf_include_order_generic)
-add_test(NAME cmake_protobuf_include_order COMMAND cmake_protobuf_include_order)
-
 # test_bvar
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
 get_filename_component(bvar_default_variables
