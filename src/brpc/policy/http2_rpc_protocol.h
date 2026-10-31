@@ -30,6 +30,8 @@
 namespace brpc {
 namespace policy {
 
+DECLARE_int64(h2_max_pending_data_bytes);
+
 class H2StreamContext;
 
 class H2ParseResult {
@@ -292,7 +294,10 @@ friend class H2Context;
     H2Error _rejected_error;
     butil::IOBuf _remaining_header_fragment;
     // Request or response body which cannot be sent yet due to remote flow control.
-    // Accessed under H2Context::_stream_mutex.
+    // Accessed under H2Context::_stream_mutex. Bounded per connection by
+    // -h2_max_pending_data_bytes (or -socket_max_unwritten_bytes when 0);
+    // stalled peers that stop sending WINDOW_UPDATE without closing the
+    // connection are reclaimed via -idle_timeout_second or TCP keepalive.
     butil::IOBuf _pending_data;
     // Encoded gRPC trailer headers waiting for _pending_data to be flushed.
     // Accessed under H2Context::_stream_mutex.
@@ -407,13 +412,18 @@ friend void InitFrameHandlers();
     // no stream, window, or pending-DATA state is changed.
     butil::Status TryToInsertClientStream(
         int stream_id, H2StreamContext*, const butil::IOBuf&, butil::IOBuf*);
+    butil::Status TryToInsertClientStreamLocked(
+        int stream_id, H2StreamContext*, const butil::IOBuf&, butil::IOBuf*);
     int CheckServerStreamBeforeHeaders(int stream_id, size_t data_size,
                                        H2Settings* out_remote_settings);
     void CommitServerResponse(int stream_id, const butil::IOBuf& data,
                               butil::IOBuf* trailer_headers,
                               butil::IOBuf* out);
     void AppendPendingDataLocked(H2StreamContext*, butil::IOBuf*);
-    void ClearPendingData(int stream_id);
+    // Clears any unsent _pending_data / _pending_trailer for stream_id.
+    // Returns true if the stream still had unsent data/trailers (i.e. END_STREAM
+    // had not been sent yet).
+    bool ClearPendingData(int stream_id);
     bool FlushPendingData(int stream_id);
     void AddPendingDataSize(size_t n);
     void SubPendingDataSize(size_t n);
@@ -437,9 +447,13 @@ friend void InitFrameHandlers();
     typedef butil::FlatMap<int, H2StreamContext*> StreamMap;
     mutable butil::Mutex _stream_mutex;
     StreamMap _pending_streams;
+    // Relaxed atomic snapshot of _pending_streams.size(), updated under
+    // _stream_mutex and read lock-free by VolatilePendingStreamSize().
+    butil::atomic<size_t> _volatile_pending_stream_size;
     // Total bytes retained in H2StreamContext::_pending_data on this
-    // connection. Accessed under _stream_mutex.
-    size_t _pending_data_size;
+    // connection. Modified under _stream_mutex; read lock-free via relaxed
+    // atomic load in PendingDataOvercrowded().
+    butil::atomic<size_t> _pending_data_size;
     int _last_flushed_stream_id;
     butil::atomic<int64_t> _deferred_window_update;
 };

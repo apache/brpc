@@ -105,7 +105,7 @@ TEST(H2UnsentMessage, split_request_data_by_remote_window) {
     EXPECT_EQ("e", payload);
     EXPECT_TRUE(out.empty());
     EXPECT_EQ(5u, sctx->_pending_data.size());
-    EXPECT_EQ(5u, ctx->_pending_data_size);
+    EXPECT_EQ(5u, ctx->_pending_data_size.load());
     EXPECT_EQ(1, ctx->_remote_window_left);
     EXPECT_EQ(0, sctx->_remote_window_left);
 
@@ -120,7 +120,7 @@ TEST(H2UnsentMessage, split_request_data_by_remote_window) {
     EXPECT_EQ(0, frame.flags & 0x1);
     EXPECT_EQ("fgh", payload);
     EXPECT_TRUE(out.empty());
-    EXPECT_EQ(2u, ctx->_pending_data_size);
+    EXPECT_EQ(2u, ctx->_pending_data_size.load());
 
     ctx->_remote_window_left.fetch_add(2, butil::memory_order_relaxed);
     sctx->_remote_window_left.fetch_add(2, butil::memory_order_relaxed);
@@ -134,7 +134,7 @@ TEST(H2UnsentMessage, split_request_data_by_remote_window) {
     EXPECT_EQ("ij", payload);
     EXPECT_TRUE(out.empty());
     EXPECT_TRUE(sctx->_pending_data.empty());
-    EXPECT_EQ(0u, ctx->_pending_data_size);
+    EXPECT_EQ(0u, ctx->_pending_data_size.load());
 }
 
 TEST(H2UnsentMessage, request_does_not_fail_when_body_exceeds_window) {
@@ -168,7 +168,7 @@ TEST(H2UnsentMessage, request_does_not_fail_when_body_exceeds_window) {
     brpc::policy::H2StreamContext* sctx = ctx->FindStream(1);
     ASSERT_TRUE(sctx != nullptr);
     EXPECT_EQ(7u, sctx->_pending_data.size());
-    EXPECT_EQ(7u, ctx->_pending_data_size);
+    EXPECT_EQ(7u, ctx->_pending_data_size.load());
     EXPECT_EQ(0, ctx->_remote_window_left);
     EXPECT_EQ(0, sctx->_remote_window_left);
 }
@@ -189,16 +189,41 @@ TEST(H2UnsentMessage, invalid_window_update_does_not_change_window) {
     ctx->_remote_window_left = max_window_size;
 
     const char increment[] = {0, 0, 0, 1};
-    butil::IOBuf payload;
-    payload.append(increment, sizeof(increment));
-    butil::IOBufBytesIterator it(payload);
-    const brpc::policy::H2FrameHead frame = {
-        4, brpc::policy::H2_FRAME_WINDOW_UPDATE, 0, 0};
-    const brpc::policy::H2ParseResult result = ctx->OnWindowUpdate(it, frame);
+    {
+        butil::IOBuf payload;
+        payload.append(increment, sizeof(increment));
+        butil::IOBufBytesIterator it(payload);
+        const brpc::policy::H2FrameHead frame = {
+            4, brpc::policy::H2_FRAME_WINDOW_UPDATE, 0, 0};
+        const brpc::policy::H2ParseResult result = ctx->OnWindowUpdate(it, frame);
 
-    EXPECT_EQ(brpc::H2_FLOW_CONTROL_ERROR, result.error());
-    EXPECT_EQ(max_window_size,
-              ctx->_remote_window_left.load(butil::memory_order_relaxed));
+        EXPECT_EQ(brpc::H2_FLOW_CONTROL_ERROR, result.error());
+        EXPECT_EQ(0, result.stream_id());
+        EXPECT_EQ(max_window_size,
+                  ctx->_remote_window_left.load(butil::memory_order_relaxed));
+    }
+
+    // Stream-level WINDOW_UPDATE overflow must return a stream error (stream_id = 1)
+    // per RFC 7540 Section 6.9.1 rather than a connection error.
+    brpc::policy::H2StreamContext* sctx =
+        new brpc::policy::H2StreamContext(false);
+    sctx->Init(ctx, 1);
+    ASSERT_EQ(0, ctx->TryToInsertStream(1, sctx));
+    sctx->_remote_window_left = max_window_size;
+    {
+        butil::IOBuf payload;
+        payload.append(increment, sizeof(increment));
+        butil::IOBufBytesIterator it(payload);
+        const brpc::policy::H2FrameHead frame = {
+            4, brpc::policy::H2_FRAME_WINDOW_UPDATE, 0, 1};
+        const brpc::policy::H2ParseResult result = ctx->OnWindowUpdate(it, frame);
+
+        EXPECT_EQ(brpc::H2_FLOW_CONTROL_ERROR, result.error());
+        EXPECT_EQ(1, result.stream_id());
+        EXPECT_EQ(max_window_size,
+                  sctx->_remote_window_left.load(butil::memory_order_relaxed));
+    }
+    sctx->Destroy();
 }
 
 TEST(H2UnsentMessage, clear_pending_data_releases_overcrowded_buffer) {
@@ -228,7 +253,7 @@ TEST(H2UnsentMessage, clear_pending_data_releases_overcrowded_buffer) {
         ctx->TryToInsertClientStream(1, sctx.get(), body, &out).ok());
     brpc::policy::H2StreamContext* inserted_sctx = sctx.release();
     ASSERT_TRUE(out.empty());
-    ASSERT_EQ(body.size(), ctx->_pending_data_size);
+    ASSERT_EQ(body.size(), ctx->_pending_data_size.load());
     EXPECT_TRUE(ctx->PendingDataOvercrowded());
 
     std::unique_ptr<brpc::policy::H2StreamContext> rejected_sctx(
@@ -240,13 +265,14 @@ TEST(H2UnsentMessage, clear_pending_data_releases_overcrowded_buffer) {
         3, rejected_sctx.get(), rejected_body, &out);
     EXPECT_EQ(brpc::EOVERCROWDED, rejected.error_code());
     EXPECT_EQ(nullptr, ctx->FindStream(3));
-    EXPECT_EQ(body.size(), ctx->_pending_data_size);
+    EXPECT_EQ(body.size(), ctx->_pending_data_size.load());
 
-    ctx->ClearPendingData(1);
+    EXPECT_TRUE(ctx->ClearPendingData(1));
+    EXPECT_FALSE(ctx->ClearPendingData(1));
     EXPECT_FALSE(ctx->PendingDataOvercrowded());
 
     EXPECT_TRUE(inserted_sctx->_pending_data.empty());
-    EXPECT_EQ(0u, ctx->_pending_data_size);
+    EXPECT_EQ(0u, ctx->_pending_data_size.load());
 }
 
 TEST(H2UnsentMessage, request_throughput) {
@@ -287,6 +313,28 @@ TEST(H2UnsentMessage, request_throughput) {
         << dummy_buf.size() * 1000000L / elapsed << "/s";
 
     // calc H2UnsentResponse throughput
+    brpc::Server server;
+    brpc::SocketId srv_id;
+    brpc::SocketUniquePtr h2_server_sock;
+    brpc::SocketOptions h2_server_options;
+    EXPECT_EQ(0, brpc::Socket::Create(h2_server_options, &srv_id));
+    EXPECT_EQ(0, brpc::Socket::Address(srv_id, &h2_server_sock));
+
+    brpc::policy::H2Context* srv_ctx =
+        new brpc::policy::H2Context(h2_server_sock.get(), &server);
+    CHECK_EQ(srv_ctx->Init(), 0);
+    h2_server_sock->initialize_parsing_context(&srv_ctx);
+    srv_ctx->_remote_settings.stream_window_size = brpc::H2Settings::MAX_WINDOW_SIZE;
+    srv_ctx->_remote_window_left = brpc::H2Settings::MAX_WINDOW_SIZE;
+    for (int i = 0; i < ntotal; ++i) {
+        const int stream_id = 2 * i + 1;
+        brpc::policy::H2StreamContext* sctx =
+            new brpc::policy::H2StreamContext(false);
+        sctx->Init(srv_ctx, stream_id);
+        sctx->_remote_ended = true;
+        CHECK_EQ(0, srv_ctx->TryToInsertStream(stream_id, sctx));
+    }
+
     dummy_buf.clear();
     start_us = butil::cpuwide_time_us();
     for (int i = 0; i < ntotal; ++i) {
@@ -294,8 +342,9 @@ TEST(H2UnsentMessage, request_throughput) {
         // cntl.response_attachment()
         cntl.http_response().set_content_type("text/plain");
         cntl.response_attachment().append("0123456789abcedef");
-        brpc::policy::H2UnsentResponse* res = brpc::policy::H2UnsentResponse::New(&cntl, 0, false);
-        res->AppendAndDestroySelf(&dummy_buf, h2_client_sock.get());
+        brpc::policy::H2UnsentResponse* res =
+            brpc::policy::H2UnsentResponse::New(&cntl, 2 * i + 1, false);
+        res->AppendAndDestroySelf(&dummy_buf, h2_server_sock.get());
     }
     end_us = butil::cpuwide_time_us();
     elapsed = end_us - start_us;
@@ -367,7 +416,7 @@ TEST(H2UnsentMessage, split_response_data_and_defer_grpc_trailer_by_remote_windo
     // Trailer must be deferred because 5 bytes of DATA are still pending
     EXPECT_TRUE(out.empty());
     EXPECT_EQ(5u, sctx->_pending_data.size());
-    EXPECT_EQ(5u, ctx->_pending_data_size);
+    EXPECT_EQ(5u, ctx->_pending_data_size.load());
     EXPECT_TRUE(sctx->_has_pending_trailer);
     EXPECT_EQ(1, ctx->_remote_window_left);
     EXPECT_EQ(0, sctx->_remote_window_left);
@@ -385,7 +434,7 @@ TEST(H2UnsentMessage, split_response_data_and_defer_grpc_trailer_by_remote_windo
     EXPECT_EQ(0, frame.flags & H2_FLAGS_END_STREAM);
     EXPECT_EQ("fgh", payload);
     EXPECT_TRUE(out.empty());
-    EXPECT_EQ(2u, ctx->_pending_data_size);
+    EXPECT_EQ(2u, ctx->_pending_data_size.load());
     EXPECT_TRUE(sctx->_has_pending_trailer);
 
     // Final window update (+2 bytes): sends "ij" followed by Trailer HEADERS(END_STREAM)
@@ -411,7 +460,7 @@ TEST(H2UnsentMessage, split_response_data_and_defer_grpc_trailer_by_remote_windo
         EXPECT_EQ(1, frame.stream_id);
     }
     EXPECT_TRUE(out.empty());
-    EXPECT_EQ(0u, ctx->_pending_data_size);
+    EXPECT_EQ(0u, ctx->_pending_data_size.load());
 }
 
 TEST(H2UnsentMessage, deferred_trailer_does_not_corrupt_cross_stream_hpack) {
@@ -526,7 +575,7 @@ TEST(H2UnsentMessage, server_pending_response_cleaned_up_on_rst_stream) {
         brpc::policy::H2UnsentResponse::New(&cntl, 1, true);
     butil::IOBuf out;
     ASSERT_TRUE(response->AppendAndDestroySelf(&out, sock.get()).ok());
-    EXPECT_EQ(10u, ctx->_pending_data_size);
+    EXPECT_EQ(10u, ctx->_pending_data_size.load());
     ASSERT_NE(nullptr, ctx->FindStream(1));
 
     // Simulate client sending RST_STREAM(CANCEL) for stream 1
@@ -539,7 +588,7 @@ TEST(H2UnsentMessage, server_pending_response_cleaned_up_on_rst_stream) {
     brpc::policy::H2ParseResult res = ctx->OnResetStream(it, rst_head);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(nullptr, ctx->FindStream(1));
-    EXPECT_EQ(0u, ctx->_pending_data_size);
+    EXPECT_EQ(0u, ctx->_pending_data_size.load());
 }
 
 TEST(H2UnsentMessage, server_pending_response_overcrowded_sends_rst_stream) {
@@ -572,7 +621,7 @@ TEST(H2UnsentMessage, server_pending_response_overcrowded_sends_rst_stream) {
         brpc::policy::H2UnsentResponse::New(&cntl1, 1, false);
     butil::IOBuf out1;
     ASSERT_TRUE(res1->AppendAndDestroySelf(&out1, sock.get()).ok());
-    EXPECT_EQ(8u, ctx->_pending_data_size);
+    EXPECT_EQ(8u, ctx->_pending_data_size.load());
     EXPECT_TRUE(ctx->PendingDataOvercrowded());
 
     // Stream 3 arrives while overcrowded -> emits RST_STREAM(ENHANCE_YOUR_CALM)
@@ -596,7 +645,7 @@ TEST(H2UnsentMessage, server_pending_response_overcrowded_sends_rst_stream) {
     EXPECT_EQ(4u, frame.payload_size);
     EXPECT_TRUE(out3.empty());
     EXPECT_EQ(nullptr, ctx->FindStream(3));
-    EXPECT_EQ(8u, ctx->_pending_data_size);
+    EXPECT_EQ(8u, ctx->_pending_data_size.load());
 }
 
 TEST(H2UnsentMessage, flush_pending_data_round_robin_fairness) {
@@ -632,24 +681,24 @@ TEST(H2UnsentMessage, flush_pending_data_round_robin_fairness) {
         butil::IOBuf hdr_out;
         ASSERT_TRUE(res->AppendAndDestroySelf(&hdr_out, sock.get()).ok());
     }
-    EXPECT_EQ(16u, ctx->_pending_data_size);
+    EXPECT_EQ(16u, ctx->_pending_data_size.load());
 
     // Replenish connection window by 4 bytes -> FlushPendingData flushes stream 1 ("1111")
     ctx->_remote_window_left.fetch_add(4, butil::memory_order_relaxed);
     ASSERT_TRUE(ctx->FlushPendingData(0));
     EXPECT_EQ(1, ctx->_last_flushed_stream_id);
-    EXPECT_EQ(12u, ctx->_pending_data_size);
+    EXPECT_EQ(12u, ctx->_pending_data_size.load());
 
     // Replenish connection window by 4 bytes -> Round-robin flushes stream 3 ("3333") next!
     ctx->_remote_window_left.fetch_add(4, butil::memory_order_relaxed);
     ASSERT_TRUE(ctx->FlushPendingData(0));
     EXPECT_EQ(3, ctx->_last_flushed_stream_id);
-    EXPECT_EQ(8u, ctx->_pending_data_size);
+    EXPECT_EQ(8u, ctx->_pending_data_size.load());
 
     // Replenish connection window by 8 bytes -> Flushes remaining stream 1 ("2222") and stream 3 ("4444")
     ctx->_remote_window_left.fetch_add(8, butil::memory_order_relaxed);
     ASSERT_TRUE(ctx->FlushPendingData(0));
-    EXPECT_EQ(0u, ctx->_pending_data_size);
+    EXPECT_EQ(0u, ctx->_pending_data_size.load());
     EXPECT_EQ(nullptr, ctx->FindStream(1));
     EXPECT_EQ(nullptr, ctx->FindStream(3));
 
