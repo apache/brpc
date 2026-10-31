@@ -228,21 +228,19 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     // OWNS_CHANNEL).
     ptr->set_user(sub_chan);
     cleanup_subchan.dismiss();
-    if (rc > 0 && !ptr->HCEnabled()) {
-        LOG(ERROR) << "Health check of SocketId="
-                   << sock_id << " is disabled";
+    auto cleanup_socket = butil::MakeScopeGuard([&]() noexcept {
         // sub_chan will be deleted when the socket is recycled.
         ptr->SetFailed();
-        // Cancel health checking.
+        // Permanently prevent revival before releasing the HC reference.
+        ptr->ReleaseAdditionalReference();
         ptr->ReleaseHCRelatedReference();
+    });
+    if (rc > 0 && !ptr->HCEnabled()) {
+        LOG(ERROR) << "Health check of SocketId=" << sock_id << " is disabled";
         return -1;
     }
     if (!AddServer(ServerId(sock_id, subopt.tag))) {
         LOG(ERROR) << "Duplicated sub_channel=" << sub_channel;
-        // sub_chan will be deleted when the socket is recycled.
-        ptr->SetFailed();
-        // Cancel health checking.
-        ptr->ReleaseHCRelatedReference();
         return -1;
     }
     // The health-check-related reference has been held on created.
@@ -251,6 +249,7 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
         handle->id = sock_id;
         handle->tag = subopt.tag;
     }
+    cleanup_socket.dismiss();
     return 0;
 }
 
@@ -266,9 +265,9 @@ void ChannelBalancer::RemoveAndDestroyChannel(const SelectiveChannel::ChannelHan
             BAIDU_SCOPED_LOCK(_mutex);
             CHECK_EQ(1UL, _chan_map.erase(sub->chan));
         }
-        if (rc == 0) {
-            ptr->ReleaseAdditionalReference();
-        }
+        // Even a failed socket must be marked as permanently removed before
+        // releasing the HC reference, otherwise a concurrent HC can revive it.
+        ptr->ReleaseAdditionalReference();
         // Cancel health checking.
         ptr->ReleaseHCRelatedReference();
     }

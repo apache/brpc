@@ -2576,6 +2576,25 @@ TEST_F(ChannelTest, init_using_unknown_naming_service) {
     ASSERT_EQ(-1, channel.Init("unknown://unknown", "unknown", nullptr));
 }
 
+TEST_F(ChannelTest, selective_channel_invalid_load_balancer) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+#if !BRPC_WITH_GLOG
+    // Invalid configuration must return an error even when fatal logs abort.
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+                     "crash_on_fatal_log", "true").empty());
+#endif
+    const char* invalid_options[] = {
+        "", "unknown", "rr:invalid=1", "random:invalid=1"
+    };
+    for (const char* option : invalid_options) {
+        SCOPED_TRACE(option);
+        brpc::SelectiveChannel channel;
+        EXPECT_EQ(-1, channel.Init(option, nullptr));
+        // A failed initialization must leave the channel usable for retry.
+        EXPECT_EQ(0, channel.Init("rr", nullptr));
+    }
+}
+
 TEST_F(ChannelTest, init_using_unexist_fns) {
     brpc::Channel channel;
     ASSERT_EQ(-1, channel.Init("fiLe://no_such_file", "rr", nullptr));
@@ -3976,6 +3995,31 @@ public:
     ~CountingSubChannel() override { --s_alive; }
 };
 int CountingSubChannel::s_alive = 0;
+
+TEST_F(ChannelTest, selective_channel_removal_prevents_revival) {
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+    brpc::SelectiveChannel::ChannelHandle handle;
+    ASSERT_EQ(0, channel.AddChannel(new CountingSubChannel, &handle));
+    ASSERT_EQ(1, CountingSubChannel::s_alive);
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(handle.id, &ptr));
+
+    // Keep the HC reference but disable automatic scheduling: the retained
+    // pointer below simulates the health check task resuming after removal.
+    ptr->_is_hc_related_ref_held = false;
+    EXPECT_EQ(0, ptr->SetFailed());
+    ptr->_is_hc_related_ref_held = true;
+    channel.RemoveAndDestroyChannel(handle);
+    EXPECT_FALSE(ptr->HCEnabled());
+    ptr->Revive(1);
+    EXPECT_TRUE(ptr->Failed());
+    EXPECT_EQ(1, ptr->nref());
+    // Also clean up the leaked additional reference if this test regresses.
+    ptr->SetFailed();
+    ptr.reset();
+    EXPECT_EQ(0, CountingSubChannel::s_alive);
+}
 
 TEST_F(ChannelTest, selective_channel_add_failure_ownership) {
     // nullptr sub channel is rejected without touching ownership.
