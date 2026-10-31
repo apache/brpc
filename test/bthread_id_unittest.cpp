@@ -16,6 +16,8 @@
 // under the License.
 
 #include <iostream>
+#include <atomic>
+#include <thread>
 #include <gtest/gtest.h>
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -26,6 +28,8 @@
 namespace bthread {
 void id_status(bthread_id_t, std::ostream &);
 uint32_t id_value(bthread_id_t id);
+extern void (*g_bthread_id_join_before_wait_for_test)(void*);
+extern void* g_bthread_id_join_before_wait_arg_for_test;
 }
 
 namespace {
@@ -110,6 +114,51 @@ TEST(BthreadIdTest, join_before_destroy) {
         non_null_ret += (ret[i] != nullptr);
     }
     ASSERT_EQ(1UL, non_null_ret);
+}
+
+struct JoinRaceArgs {
+    bthread_id_t id;
+    std::atomic<bool> join_butex_read;
+    std::atomic<bool> allow_wait;
+};
+
+void pause_join_before_wait(void* arg) {
+    JoinRaceArgs* args = static_cast<JoinRaceArgs*>(arg);
+    args->join_butex_read.store(true, std::memory_order_release);
+    while (!args->allow_wait.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+}
+
+void* join_race_waiter(void* arg) {
+    JoinRaceArgs* args = static_cast<JoinRaceArgs*>(arg);
+    EXPECT_EQ(0, bthread_id_join(args->id));
+    return nullptr;
+}
+
+TEST(BthreadIdTest, join_races_with_destroy) {
+    bthread_id_t id;
+    ASSERT_EQ(0, bthread_id_create(&id, nullptr, nullptr));
+    JoinRaceArgs args;
+    args.id = id;
+    args.join_butex_read.store(false, std::memory_order_relaxed);
+    args.allow_wait.store(false, std::memory_order_relaxed);
+    bthread::g_bthread_id_join_before_wait_for_test = pause_join_before_wait;
+    bthread::g_bthread_id_join_before_wait_arg_for_test = &args;
+
+    pthread_t waiter;
+    ASSERT_EQ(0, pthread_create(&waiter, nullptr, join_race_waiter, &args));
+    while (!args.join_butex_read.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+    void* data = nullptr;
+    ASSERT_EQ(0, bthread_id_trylock(id, &data));
+    ASSERT_EQ(0, bthread_id_unlock_and_destroy(id));
+    args.allow_wait.store(true, std::memory_order_release);
+    ASSERT_EQ(0, pthread_join(waiter, nullptr));
+
+    bthread::g_bthread_id_join_before_wait_for_test = nullptr;
+    bthread::g_bthread_id_join_before_wait_arg_for_test = nullptr;
 }
 
 struct OnResetArg {
