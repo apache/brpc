@@ -775,6 +775,15 @@ inline ssize_t HPacker::DecodeWithKnownPrefix(
             LOG(ERROR) << "Fail to decode name";
             return -1;
         }
+        // RFC 7541 requires a literal header name to be non-empty. A
+        // zero-length name consumes one byte on the wire (the 0x00 length
+        // octet), so name_bytes above is 1 and does not reject it. Letting it
+        // through would trip CHECK(!h.name.empty()) in IndexTable::AddHeader()
+        // when the header is indexed.
+        if (h->name.empty()) {
+            LOG(ERROR) << "Empty header name";
+            return -1;
+        }
         tolower(&h->name);
     }
     ssize_t value_bytes = DecodeString(iter, &h->value);
