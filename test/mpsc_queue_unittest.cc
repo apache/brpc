@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 #include <pthread.h>
+#include <chrono>
+#include <thread>
+#include <utility>
+#include <vector>
 #include "butil/containers/mpsc_queue.h"
 
 namespace {
@@ -118,6 +122,63 @@ TEST(MPSCQueueTest, mpsc_multi_thread) {
     }
     pthread_join(consume_tid, nullptr);
 
+}
+
+template <typename Alloc>
+void CheckConcurrentPublication() {
+    const unsigned producer_count = 4;
+    const unsigned items_per_producer = 10000;
+    const unsigned total = producer_count * items_per_producer;
+    using Item = std::pair<unsigned, unsigned>;
+    butil::MPSCQueue<Item, Alloc> queue;
+    butil::atomic<bool> start(false);
+    std::vector<std::thread> producers;
+    for (unsigned p = 0; p < producer_count; ++p) {
+        producers.emplace_back([&, p] {
+            while (!start.load(butil::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            for (unsigned i = 0; i < items_per_producer; ++i) {
+                const unsigned value = p * items_per_producer + i;
+                queue.Enqueue(Item(value, ~value));
+            }
+        });
+    }
+    std::vector<bool> seen(total, false);
+    unsigned consumed = 0;
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(30);
+    start.store(true, butil::memory_order_release);
+    while (consumed < total && std::chrono::steady_clock::now() < deadline) {
+        Item item;
+        if (!queue.Dequeue(item)) {
+            std::this_thread::yield();
+            continue;
+        }
+        EXPECT_EQ(~item.first, item.second);
+        EXPECT_LT(item.first, total);
+        if (item.first < total) {
+            EXPECT_FALSE(seen[item.first]);
+            seen[item.first] = true;
+        }
+        ++consumed;
+    }
+    for (auto& producer : producers) {
+        producer.join();
+    }
+    EXPECT_EQ(total, consumed);
+    Item item;
+    EXPECT_FALSE(queue.Dequeue(item));
+}
+
+TEST(MPSCQueueTest, concurrent_publication) {
+    CheckConcurrentPublication<
+        butil::DefaultAllocator<std::pair<unsigned, unsigned>>>();
+}
+
+TEST(MPSCQueueTest, concurrent_publication_with_object_pool) {
+    CheckConcurrentPublication<
+        butil::ObjectPoolAllocator<std::pair<unsigned, unsigned>>>();
 }
 
 struct MyObject {};
