@@ -35,6 +35,8 @@
 # define cpu_relax() asm volatile(".word 0x0100000f\n": : :"memory")
 #elif defined(ARCH_CPU_LOONGARCH64_FAMILY)
 # define cpu_relax() asm volatile("nop\n": : :"memory")
+#elif defined(ARCH_CPU_PPC64_FAMILY)
+# define cpu_relax() asm volatile("or 1,1,1\n\tor 2,2,2\n": : :"memory")
 #else
 # define cpu_relax() asm volatile("pause\n": : :"memory")
 #endif

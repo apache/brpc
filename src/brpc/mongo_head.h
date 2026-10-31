@@ -62,12 +62,12 @@ struct mongo_head_t {
     int32_t op_code;         // request type, see MongoOpCode.
 
     void make_host_endian() {
-        if (!ARCH_CPU_LITTLE_ENDIAN) {
-            message_length = butil::ByteSwap((uint32_t)message_length);
-            request_id = butil::ByteSwap((uint32_t)request_id);
-            response_to = butil::ByteSwap((uint32_t)response_to);
-            op_code = butil::ByteSwap((uint32_t)op_code);
-        }
+#if !defined(ARCH_CPU_LITTLE_ENDIAN)
+        message_length = butil::ByteSwap((uint32_t)message_length);
+        request_id = butil::ByteSwap((uint32_t)request_id);
+        response_to = butil::ByteSwap((uint32_t)response_to);
+        op_code = butil::ByteSwap((uint32_t)op_code);
+#endif
     }
 };
 #pragma pack()

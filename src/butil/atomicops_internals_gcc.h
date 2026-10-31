@@ -99,6 +99,88 @@ inline Atomic32 Release_Load(volatile const Atomic32* ptr) {
   return *ptr;
 }
 
+#ifdef ARCH_CPU_64_BITS
+
+inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr,
+                                         Atomic64 old_value,
+                                         Atomic64 new_value) {
+  Atomic64 prev_value;
+  do {
+    if (__sync_bool_compare_and_swap(ptr, old_value, new_value))
+      return old_value;
+    prev_value = *ptr;
+  } while (prev_value == old_value);
+  return prev_value;
+}
+
+inline Atomic64 NoBarrier_AtomicExchange(volatile Atomic64* ptr,
+                                         Atomic64 new_value) {
+  Atomic64 old_value;
+  do {
+    old_value = *ptr;
+  } while (!__sync_bool_compare_and_swap(ptr, old_value, new_value));
+  return old_value;
+}
+
+inline Atomic64 Barrier_AtomicIncrement(volatile Atomic64* ptr,
+                                        Atomic64 increment) {
+  for (;;) {
+    Atomic64 old_value = *ptr;
+    Atomic64 new_value = old_value + increment;
+    if (__sync_bool_compare_and_swap(ptr, old_value, new_value)) {
+      return new_value;
+    }
+  }
+}
+
+inline Atomic64 NoBarrier_AtomicIncrement(volatile Atomic64* ptr,
+                                          Atomic64 increment) {
+  return Barrier_AtomicIncrement(ptr, increment);
+}
+
+inline Atomic64 Acquire_CompareAndSwap(volatile Atomic64* ptr,
+                                       Atomic64 old_value,
+                                       Atomic64 new_value) {
+  return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
+}
+
+inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
+                                       Atomic64 old_value,
+                                       Atomic64 new_value) {
+  return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
+}
+
+inline void NoBarrier_Store(volatile Atomic64* ptr, Atomic64 value) {
+  *ptr = value;
+}
+
+inline void Acquire_Store(volatile Atomic64* ptr, Atomic64 value) {
+  *ptr = value;
+  MemoryBarrier();
+}
+
+inline void Release_Store(volatile Atomic64* ptr, Atomic64 value) {
+  MemoryBarrier();
+  *ptr = value;
+}
+
+inline Atomic64 NoBarrier_Load(volatile const Atomic64* ptr) {
+  return *ptr;
+}
+
+inline Atomic64 Acquire_Load(volatile const Atomic64* ptr) {
+  Atomic64 value = *ptr;
+  MemoryBarrier();
+  return value;
+}
+
+inline Atomic64 Release_Load(volatile const Atomic64* ptr) {
+  MemoryBarrier();
+  return *ptr;
+}
+
+#endif  // ARCH_CPU_64_BITS
+
 }  // namespace butil::subtle
 }  // namespace butil
 
