@@ -23,6 +23,7 @@
 #include "butil/strings/string_piece.h"   // butil::StringPiece
 #include "butil/arena.h"                  // butil::Arena
 #include "butil/logging.h"                // CHECK
+#include "brpc/details/redis_line_scanner.h"
 #include "parse_result.h"                 // ParseError
 
 
@@ -141,6 +142,7 @@ public:
 
 private:
     static const int npos;
+    static const int kScanningLine = -2;
 
     // RedisReply does not own the memory of fields, copying must be done
     // by calling CopyFrom[Different|Same]Arena.
@@ -152,7 +154,8 @@ private:
     void SetStringImpl(const butil::StringPiece& str, RedisReplyType type);
     
     RedisReplyType _type;
-    int _length;  // length of short_str/long_str, count of replies
+    // Length of strings/arrays, or kScanningLine during a partial simple line.
+    int _length;
     union {
         int64_t integer;
         char short_str[16];
@@ -165,6 +168,8 @@ private:
             uint32_t used_bytes;
             RedisReply* replies;
         } array;
+        // Reuse the union while scanning so the reply does not grow.
+        detail::RedisLineScanState line;
         uint64_t padding[2]; // For swapping, must cover all bytes.
     } _data;
     butil::Arena* _arena;

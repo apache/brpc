@@ -26,6 +26,7 @@
 #include "butil/status.h"
 #include "butil/arena.h"
 #include "brpc/parse_result.h"
+#include "brpc/details/redis_line_scanner.h"
 
 namespace brpc {
 
@@ -73,6 +74,7 @@ private:
                                          butil::Arena* arena,
                                          ParseError* err);
 
+    detail::RedisLineScanState _line_scan;
     bool _parsing_array;            // if the parser has met array indicator '*'
     int _length;                    // array length
     int _index;                     // current parsing array index
