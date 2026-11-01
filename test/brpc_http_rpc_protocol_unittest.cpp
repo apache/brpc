@@ -37,6 +37,7 @@
 #include <brpc/policy/http_rpc_protocol.h>
 #include <butil/base64.h>
 #include "brpc/http_method.h"
+#include "brpc/grpc.h"
 #include "butil/iobuf.h"
 #include "butil/logging.h"
 #include "butil/files/scoped_file.h"
@@ -635,6 +636,39 @@ TEST_F(HttpTest, process_request_wrong_method) {
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
     ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     CheckResponseCode(false, brpc::HTTP_STATUS_NOT_FOUND);
+}
+
+TEST_F(HttpTest, grpc_response_status_validation) {
+    const std::string invalid[] = {
+        "", "invalid", "0junk", "+0", "-0", "-1", " 0", "0 ",
+        "4294967296",
+        "18446744073709551616", std::string(1000, '9'),
+        std::string("0\0junk", 6),
+    };
+    auto check = [this](const std::string& status, int expected_error) {
+        SCOPED_TRACE(status);
+        brpc::Controller cntl;
+        auto* msg = new brpc::policy::H2StreamContext(false);
+        msg->set_correlation_id(cntl.call_id().value);
+        msg->header().set_status_code(brpc::HTTP_STATUS_OK);
+        msg->header().set_content_type("application/grpc");
+        msg->header().SetHeader("grpc-status", status);
+        // gRPC prefix for an empty, uncompressed message.
+        const char prefix[5] = {};
+        msg->body().append(prefix, sizeof(prefix));
+        ProcessMessage(brpc::policy::ProcessHttpResponse, msg, false);
+        EXPECT_EQ(expected_error, cntl.ErrorCode()) << cntl.ErrorText();
+    };
+    for (const auto& status : invalid) {
+        check(status, brpc::ERESPONSE);
+    }
+    check("000", 0);
+    check("17", brpc::GrpcStatusToErrorCode(brpc::GRPC_UNKNOWN));
+    check("256", brpc::GrpcStatusToErrorCode(brpc::GRPC_UNKNOWN));
+    for (int code = brpc::GRPC_OK; code < brpc::GRPC_MAX; ++code) {
+        check(std::to_string(code),
+              brpc::GrpcStatusToErrorCode(static_cast<brpc::GrpcStatus>(code)));
+    }
 }
 
 TEST_F(HttpTest, process_response_after_eof) {
