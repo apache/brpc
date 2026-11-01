@@ -198,6 +198,35 @@ if(Protobuf_VERSION VERSION_GREATER 4.21)
         absl::variant
     )
 endif()
+
+# Cacheline-aligned types such as ResourcePool<Socket> are created with plain
+# `new'. C++17 uses the aligned operator new for them; C++14 does so only with
+# -faligned-new, and otherwise glibc returns 16-byte aligned storage. Their
+# headers are installed, so consumers need the flag too (see brpc.pc).
+set(BRPC_PC_EXTRA_CFLAGS "")
+if(BRPC_CXX_STANDARD LESS 17)
+    include(CheckCXXSourceCompiles)
+    set(_brpc_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
+    set(CMAKE_REQUIRED_FLAGS
+        "${CMAKE_REQUIRED_FLAGS} -std=c++${BRPC_CXX_STANDARD} -faligned-new")
+    # Link an over-aligned allocation so the C++ runtime is checked as well.
+    check_cxx_source_compiles("
+        struct alignas(64) BrpcAlignedNewProbe { char c; };
+        int main() {
+            BrpcAlignedNewProbe* p = new BrpcAlignedNewProbe;
+            delete p;
+            return 0;
+        }" BRPC_HAS_ALIGNED_NEW)
+    set(CMAKE_REQUIRED_FLAGS "${_brpc_saved_required_flags}")
+    if(NOT BRPC_HAS_ALIGNED_NEW)
+        message(FATAL_ERROR
+            "C++${BRPC_CXX_STANDARD} builds need -faligned-new and an aligned "
+            "operator new in the C++ runtime (GCC 7+, Clang 4+ or libc++). "
+            "Use a newer toolchain or build with C++17.")
+    endif()
+    list(APPEND BRPC_COMMON_COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CXX>:-faligned-new>)
+    set(BRPC_PC_EXTRA_CFLAGS " -faligned-new")
+endif()
 find_package(Threads REQUIRED)
 
 list(REMOVE_DUPLICATES BRPC_COMMON_INCLUDE_DIRS)

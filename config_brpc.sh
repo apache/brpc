@@ -396,6 +396,25 @@ else
     print_success "Found protobuf version $PROTOBUF_VERSION"
 fi
 
+# Cacheline-aligned types such as ResourcePool<Socket> are created with plain
+# `new'. C++17 uses the aligned operator new for them; C++14 does so only with
+# -faligned-new, and otherwise glibc returns 16-byte aligned storage. Link an
+# over-aligned allocation so the C++ runtime is checked as well. config.mk
+# carries the flag to code built against this tree.
+if [ "$CXXFLAGS" = "-std=c++14" ]; then
+    ALIGNED_NEW_PROBE=$(mktemp "${TMPDIR:-/tmp}/brpc_aligned_new.XXXXXX")
+    if printf '%s\n' 'struct alignas(64) P { char c; };' \
+            'int main() { P* p = new P; delete p; return 0; }' | \
+            $CXX $CXXFLAGS -faligned-new -x c++ - -o "$ALIGNED_NEW_PROBE" >/dev/null 2>&1; then
+        CXXFLAGS="${CXXFLAGS} -faligned-new"
+        rm -f "$ALIGNED_NEW_PROBE"
+    else
+        rm -f "$ALIGNED_NEW_PROBE"
+        >&2 $ECHO "C++14 builds need -faligned-new and an aligned operator new in the C++ runtime (GCC 7+, Clang 4+ or libc++)"
+        exit 1
+    fi
+fi
+
 CPPFLAGS=
 
 if [ $WITH_ASAN != 0 ]; then

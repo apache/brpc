@@ -21,6 +21,6 @@ libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 Name: brpc
 Description: Apache bRPC is an Industrial-grade RPC framework using C++ Language, which is often used in high performance system such as Search, Storage, Machine learning, Advertisement, Recommendation etc. "bRPC" means "better RPC".
 Version: @BRPC_VERSION@
-Cflags: -I${includedir}
+Cflags: -I${includedir}@BRPC_PC_EXTRA_CFLAGS@
 Libs: -L${libdir}/ -lbrpc
 Libs.private: @BRPC_PRIVATE_LIBS@

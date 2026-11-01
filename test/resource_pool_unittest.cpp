@@ -456,4 +456,34 @@ TEST_F(ResourcePoolTest, verify_get) {
 
     clear_resources<int>();
 }
+
+struct BAIDU_CACHELINE_ALIGNMENT CachelineObject {
+    int value;
+};
+
+TEST_F(ResourcePoolTest, plain_new_honors_cacheline_alignment) {
+    // Pools, their per-thread LocalPool and brpc's SocketPool are
+    // cacheline-aligned and created with plain `new'. C++14 builds need
+    // -faligned-new for that; glibc malloc then returns 16-byte aligned
+    // storage. tcmalloc, linked into this test, may hide the problem, so
+    // also require the compiler to use aligned new.
+#if !defined(__cpp_aligned_new)
+    FAIL() << "Build with C++17 or -faligned-new";
+#endif
+    std::vector<CachelineObject*> objects;
+    for (int i = 0; i < 256; ++i) {
+        objects.push_back(new CachelineObject);
+    }
+    size_t misaligned = 0;
+    for (size_t i = 0; i < objects.size(); ++i) {
+        // The compiler may assume `new' honored alignof and fold a direct
+        // check to false; reading through a volatile keeps the real address.
+        volatile uintptr_t addr = reinterpret_cast<uintptr_t>(objects[i]);
+        if (addr % alignof(CachelineObject)) {
+            ++misaligned;
+        }
+        delete objects[i];
+    }
+    ASSERT_EQ(0u, misaligned);
+}
 } // namespace
