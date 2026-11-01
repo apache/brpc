@@ -16,6 +16,7 @@
 // under the License.
 
 #include <algorithm>
+#include <sched.h>
 #include <gtest/gtest.h>
 #include <bthread/bthread.h>
 #include <bthread/butex.h>
@@ -132,6 +133,103 @@ TEST(SemaphoreTest, trywait) {
     ASSERT_EQ(0, bthread_join(th, nullptr));
 
     ASSERT_EQ(0, bthread_sem_destroy(&sem));
+}
+
+typedef int (*SemWaitOp)(bthread_sem_t*);
+
+int sem_timedwait_fast(bthread_sem_t* sem) {
+    // An available permit must be consumed even with an expired deadline.
+    const timespec deadline = { -2, 0 };
+    return bthread_sem_timedwait(sem, &deadline);
+}
+
+struct SemPublicationArgs {
+    bthread_sem_t* sem;
+    SemWaitOp wait;
+    const int* payload;
+    int observed[16];
+    int rc;
+};
+
+void* sem_publication_waiter(void* arg) {
+    auto args = static_cast<SemPublicationArgs*>(arg);
+    auto value = reinterpret_cast<butil::atomic<unsigned>*>(args->sem->butex);
+    const int64_t deadline = butil::gettimeofday_us() + 10 * 1000 * 1000;
+    // Observe available permits without acquiring the payload. Each thread
+    // consumes only once, and the post supplies enough permits for all of them.
+    // This keeps consumers off the blocking path and its additional locks.
+    while (value->load(butil::memory_order_relaxed) == 0) {
+        if (butil::gettimeofday_us() >= deadline) {
+            args->rc = ETIMEDOUT;
+            return nullptr;
+        }
+        sched_yield();
+    }
+    args->rc = args->wait(args->sem);
+    if (args->rc == 0) {
+        // Snapshot non-atomic data before join or any assertion can introduce
+        // synchronization. Only the successful semaphore wait may acquire it.
+        std::copy(args->payload, args->payload + ARRAY_SIZE(args->observed),
+                  args->observed);
+    }
+    return nullptr;
+}
+
+void check_post_publication(bool batch) {
+    const SemWaitOp wait_ops[] = {
+        bthread_sem_wait, sem_timedwait_fast, bthread_sem_trywait
+    };
+    const size_t nwaiters = batch ? ARRAY_SIZE(wait_ops) : 1;
+    for (int round = 0; round < 1000; ++round) {
+        SCOPED_TRACE(round);
+        bthread_sem_t sem;
+        ASSERT_EQ(0, bthread_sem_init(&sem, 0));
+        int payload[16] = {};
+        SemPublicationArgs args[ARRAY_SIZE(wait_ops)] = {};
+        pthread_t threads[ARRAY_SIZE(wait_ops)];
+        size_t started = 0;
+        int create_rc = 0;
+        // Start every consumer before writing the payload, so pthread_create
+        // cannot publish it. Use pthreads to avoid bthread scheduler handoffs.
+        for (; started < nwaiters; ++started) {
+            args[started].sem = &sem;
+            args[started].wait = wait_ops[(round + started) % ARRAY_SIZE(wait_ops)];
+            args[started].payload = payload;
+            create_rc = pthread_create(&threads[started], nullptr,
+                                       sem_publication_waiter, &args[started]);
+            if (create_rc != 0) {
+                break;
+            }
+        }
+        for (size_t i = 0; i < ARRAY_SIZE(payload); ++i) {
+            payload[i] = round + 1 + static_cast<int>(i);
+        }
+        // For a batch, later consumers must acquire the original publication
+        // through the release sequence extended by earlier consumers' CASes.
+        const int post_rc = batch ? bthread_sem_post_n(&sem, nwaiters)
+                                  : bthread_sem_post(&sem);
+        for (size_t i = 0; i < started; ++i) {
+            EXPECT_EQ(0, pthread_join(threads[i], nullptr));
+        }
+        EXPECT_EQ(0, bthread_sem_destroy(&sem));
+        ASSERT_EQ(0, create_rc);
+        ASSERT_EQ(0, post_rc);
+        for (size_t i = 0; i < nwaiters; ++i) {
+            ASSERT_EQ(0, args[i].rc) << "waiter=" << i;
+            for (size_t j = 0; j < ARRAY_SIZE(payload); ++j) {
+                ASSERT_EQ(payload[j], args[i].observed[j])
+                    << "waiter=" << i << " index=" << j;
+            }
+        }
+    }
+}
+
+TEST(SemaphoreTest, post_publishes_data_to_fast_waiters) {
+    check_post_publication(false);
+}
+
+TEST(SemaphoreTest, post_n_publishes_data_to_fast_waiters) {
+    check_post_publication(true);
 }
 
 struct SemButexWaitArgs {
