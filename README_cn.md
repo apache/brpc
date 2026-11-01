@@ -12,25 +12,25 @@
 
 你可以使用它：
 
-* 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
-  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io)。使用bRPC的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
+* 搭建能在**一个端口**支持多协议的服务, 或访问各种服务：
+  * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io)。使用bRPC的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议。
   * [redis](docs/cn/redis_client.md)和[memcached](docs/cn/memcache_client.md), 线程安全，比官方client更方便。
-  * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server).
-  * hadoop_rpc(可能开源)
-  * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)
-  * 支持[thrift](docs/cn/thrift.md) , 线程安全，比官方client更方便
-  * 各种百度内使用的协议: [baidu_std](docs/cn/baidu_std.md), [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc和使用nshead的各种协议.
+  * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server)。
+  * hadoop_rpc(可能开源)。
+  * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)。
+  * 支持[thrift](docs/cn/thrift.md) , 线程安全，比官方client更方便。
+  * 各种百度内使用的协议: [baidu_std](docs/cn/baidu_std.md), [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc和使用nshead的各种协议。
   * 基于工业级的[RAFT算法](https://raft.github.io)实现搭建[高可用](https://en.wikipedia.org/wiki/High_availability)分布式系统，已在[braft](https://github.com/brpc/braft)开源。
 * Server能[同步](docs/cn/server.md)或[异步](docs/cn/server.md#异步service)处理请求。
 * Client支持[同步](docs/cn/client.md#同步访问)、[异步](docs/cn/client.md#异步访问)、[半同步](docs/cn/client.md#半同步)，或使用[组合channels](docs/cn/combo_channel.md)简化复杂的分库或并发访问。
-* [通过http界面](docs/cn/builtin_service.md)调试服务, 使用[cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md), [contention](docs/cn/contention_profiler.md) profilers.
-* 获得[更好的延时和吞吐](docs/cn/overview.md#更好的延时和吞吐).
-* 把你组织中使用的协议快速地[加入bRPC](docs/cn/new_protocol.md)，或定制各类组件, 包括[命名服务](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [负载均衡](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
+* [通过http界面](docs/cn/builtin_service.md)调试服务, 使用[cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md), [contention](docs/cn/contention_profiler.md) profilers。
+* 获得[更好的延时和吞吐](docs/cn/overview.md#更好的延时和吞吐)。
+* 把你组织中使用的协议快速地[加入bRPC](docs/cn/new_protocol.md)，或定制各类组件, 包括[命名服务](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [负载均衡](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)。
 
 # 试一下!
 
 * 通过[概述](docs/cn/overview.md)了解哪里可以用bRPC及其优势。
-* 阅读[编译步骤](docs/cn/getting_started.md)了解如何开始使用, 之后可以运行一下[示例程序](https://github.com/apache/brpc/tree/master/example/).
+* 阅读[编译步骤](docs/cn/getting_started.md)了解如何开始使用, 之后可以运行一下[示例程序](https://github.com/apache/brpc/tree/master/example/)。
 * 文档:
   * [性能测试](docs/cn/benchmark.md)
   * [bvar](docs/cn/bvar.md)
@@ -117,9 +117,9 @@
 
 # 反馈和参与
 
-* bug、疑惑、修改建议都欢迎提在[Github Issues](https://github.com/apache/brpc/issues)中
-* 订阅邮件列表(dev-subscribe@brpc.apache.org)获得项目最新信息
+* bug、疑惑、修改建议都欢迎提在[Github Issues](https://github.com/apache/brpc/issues)中。
+* 订阅邮件列表(dev-subscribe@brpc.apache.org)获得项目最新信息。
 
 
 # 行为准则
-我们遵守Apache软件基金会的行为准则, 请参考如下 [链接](https://www.apache.org/foundation/policies/conduct)
+我们遵守Apache软件基金会的行为准则, 请参考如下 [链接](https://www.apache.org/foundation/policies/conduct)。
