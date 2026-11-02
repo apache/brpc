@@ -25,7 +25,8 @@
 #include <unistd.h>
 #include "urma_api.h"
 
-typedef urma_status_t (*PostSend)(urma_jetty_t*, urma_jfs_wr_t*, urma_jfs_wr_t**);
+typedef urma_status_t (*PostSend)(urma_jetty_t*, urma_jfs_wr_t*,
+                                  urma_jfs_wr_t**);
 static PostSend g_post_send;
 static pthread_once_t g_resolve_once = PTHREAD_ONCE_INIT;
 static atomic_bool g_injected = ATOMIC_VAR_INIT(0);
@@ -33,7 +34,8 @@ static atomic_bool g_injected = ATOMIC_VAR_INIT(0);
 static void ResolvePostSend(void) {
     g_post_send = (PostSend)dlsym(RTLD_NEXT, "urma_post_jetty_send_wr");
     if (!g_post_send) {
-        fprintf(stderr, "URMA injector: cannot resolve real post_send: %s\n", dlerror());
+        fprintf(stderr, "URMA injector: cannot resolve real post_send: %s\n",
+                dlerror());
     }
 }
 
@@ -41,7 +43,7 @@ static void ResolvePostSend(void) {
 // by BRPC_URMA_FAIL_ONCE_FILE rejects one data SEND before it reaches liburma.
 // Credit ACKs and all subsequent sends are forwarded to the provider.
 urma_status_t urma_post_jetty_send_wr(urma_jetty_t* jetty, urma_jfs_wr_t* wr,
-                                     urma_jfs_wr_t** bad_wr) {
+                                      urma_jfs_wr_t** bad_wr) {
     pthread_once(&g_resolve_once, ResolvePostSend);
     if (!g_post_send) {
         if (bad_wr) {
@@ -54,12 +56,16 @@ urma_status_t urma_post_jetty_send_wr(urma_jetty_t* jetty, urma_jfs_wr_t* wr,
     if (wr && wr->opcode == URMA_OPC_SEND && marker && marker[0] &&
         access(marker, F_OK) == 0 && !atomic_exchange(&g_injected, 1)) {
         if (unlink(marker) != 0) {
-            fprintf(stderr, "URMA injector: cannot remove marker: %s\n", marker);
+            fprintf(stderr, "URMA injector: cannot remove marker: %s\n",
+                    marker);
         }
         if (bad_wr) {
             *bad_wr = wr;
         }
-        fprintf(stderr, "URMA injector: injected one data SEND post failure, errno=%d\n", EIO);
+        fprintf(
+            stderr,
+            "URMA injector: injected one data SEND post failure, errno=%d\n",
+            EIO);
         errno = EIO;
         return EIO;
     }

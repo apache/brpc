@@ -41,8 +41,9 @@ DECLARE_int32(urma_client_handshake_version);
 namespace {
 
 class CopiedEchoService : public test::EchoService {
-    void Echo(google::protobuf::RpcController* base, const test::EchoRequest* request,
-              test::EchoResponse* response, google::protobuf::Closure* done) override {
+    void Echo(google::protobuf::RpcController* base,
+              const test::EchoRequest* request, test::EchoResponse* response,
+              google::protobuf::Closure* done) override {
         brpc::ClosureGuard guard(done);
         auto* cntl = static_cast<brpc::Controller*>(base);
         response->set_message(request->message());
@@ -61,7 +62,7 @@ protected:
         int count = 0;
         auto** devices = urma_get_device_list(&count);
         _mock = devices && count > 0 &&
-            strcmp(devices[0]->name, "mock_urma_device") == 0;
+                strcmp(devices[0]->name, "mock_urma_device") == 0;
         urma_free_device_list(devices);
         if (status == URMA_SUCCESS) {
             urma_uninit();
@@ -87,7 +88,8 @@ protected:
 };
 bool UrmaCopiedRpcTest::_mock = false;
 
-TEST_P(UrmaCopiedRpcTest, copies_payload_and_attachment_across_wrs_and_credit_returns) {
+TEST_P(UrmaCopiedRpcTest,
+       copies_payload_and_attachment_across_wrs_and_credit_returns) {
     CopiedEchoService service;
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
@@ -111,7 +113,8 @@ TEST_P(UrmaCopiedRpcTest, copies_payload_and_attachment_across_wrs_and_credit_re
         test::EchoResponse response;
         request.set_message(payload);
         cntl.request_attachment().append(payload);
-        test::EchoService_Stub(&channel).Echo(&cntl, &request, &response, nullptr);
+        test::EchoService_Stub(&channel).Echo(&cntl, &request, &response,
+                                              nullptr);
         EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
         EXPECT_EQ(payload, response.message());
         EXPECT_EQ(payload, cntl.response_attachment().to_string());
@@ -122,7 +125,8 @@ TEST_P(UrmaCopiedRpcTest, copies_payload_and_attachment_across_wrs_and_credit_re
     server.Join();
 }
 
-INSTANTIATE_TEST_SUITE_P(HandshakeVersions, UrmaCopiedRpcTest, ::testing::Values(2, 3));
+INSTANTIATE_TEST_SUITE_P(HandshakeVersions, UrmaCopiedRpcTest,
+                         ::testing::Values(2, 3));
 
 }  // namespace
 #endif  // BRPC_WITH_URMA

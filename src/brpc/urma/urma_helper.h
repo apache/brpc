@@ -101,7 +101,7 @@ bool InitUrmaLocalSge(urma_sge_t* sge, uint64_t address, size_t length,
 constexpr size_t URMA_SEND_BUFFER_ALIGNMENT = 64;
 // Copy host payloads into one aligned block and transfer its ownership to buffer.
 bool CopyUrmaSendBuffer(butil::IOBuf* buffer, urma_sge_t* sge,
-                       urma_target_seg_t* (*lookup)(void*) = GetPoolSegFor);
+                        urma_target_seg_t* (*lookup)(void*) = GetPoolSegFor);
 
 // If the URMA environment is available.
 bool IsUrmaAvailable();

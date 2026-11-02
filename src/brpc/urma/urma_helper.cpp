@@ -434,9 +434,8 @@ bool InitUrmaLocalSge(urma_sge_t* sge, uint64_t address, size_t length,
     }
     const uint64_t base = segment->seg.ubva.va;
     const uint64_t size = segment->seg.len;
-    if (size > std::numeric_limits<uint64_t>::max() - base ||
-        address < base || address - base > size ||
-        length > size - (address - base)) {
+    if (size > std::numeric_limits<uint64_t>::max() - base || address < base ||
+        address - base > size || length > size - (address - base)) {
         errno = ERDMAMEM;
         return false;
     }
@@ -445,7 +444,7 @@ bool InitUrmaLocalSge(urma_sge_t* sge, uint64_t address, size_t length,
 }
 
 bool CopyUrmaSendBuffer(butil::IOBuf* buffer, urma_sge_t* sge,
-                       urma_target_seg_t* (*lookup)(void*)) {
+                        urma_target_seg_t* (*lookup)(void*)) {
     const size_t length = buffer->size();
     const size_t capacity = GetUrmaRecvBlockSize();
     if (length == 0 || capacity < URMA_SEND_BUFFER_ALIGNMENT ||
@@ -464,9 +463,10 @@ bool CopyUrmaSendBuffer(butil::IOBuf* buffer, urma_sge_t* sge,
             errno = ENOMEM;
             return false;
         }
-        padding = (URMA_SEND_BUFFER_ALIGNMENT -
-                   reinterpret_cast<uintptr_t>(data) % URMA_SEND_BUFFER_ALIGNMENT) %
-                  URMA_SEND_BUFFER_ALIGNMENT;
+        padding =
+            (URMA_SEND_BUFFER_ALIGNMENT -
+             reinterpret_cast<uintptr_t>(data) % URMA_SEND_BUFFER_ALIGNMENT) %
+            URMA_SEND_BUFFER_ALIGNMENT;
         if (padding + length > static_cast<size_t>(available)) {
             errno = ENOMEM;
             return false;
@@ -476,7 +476,8 @@ bool CopyUrmaSendBuffer(butil::IOBuf* buffer, urma_sge_t* sge,
         stream.BackUp(available - static_cast<int>(padding + length));
     }
     copied.pop_front(padding);
-    if (!InitUrmaLocalSge(sge, reinterpret_cast<uint64_t>(data), length, lookup(data))) {
+    if (!InitUrmaLocalSge(sge, reinterpret_cast<uint64_t>(data), length,
+                          lookup(data))) {
         return false;
     }
     buffer->swap(copied);
@@ -597,8 +598,8 @@ static bool GlobalUrmaInitializeImpl() {
         g_device = nullptr;
         return false;
     }
-    if (!SelectUrmaTransportPath(g_device_attr, FLAGS_urma_tp_type,
-                                  &g_tp_type, &g_jetty_priority)) {
+    if (!SelectUrmaTransportPath(g_device_attr, FLAGS_urma_tp_type, &g_tp_type,
+                                 &g_jetty_priority)) {
         LOG(ERROR) << "URMA path selection failed: requested="
                    << FLAGS_urma_tp_type << " device=" << device_name
                    << " ctp_priority="
