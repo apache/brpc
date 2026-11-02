@@ -896,7 +896,7 @@ static DH* SSLGetDH8192() {
     BIGNUM* g = nullptr;
     BN_dec2bn(&g, "2");
     if (!g) {
-        BN_free(g);
+        BN_free(p);
         return nullptr;
     }
     DH *dh = DH_new();
