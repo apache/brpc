@@ -42,8 +42,9 @@ DECLARE_int32(urma_client_handshake_version);
 namespace {
 
 class PathEchoService : public test::EchoService {
-    void Echo(google::protobuf::RpcController* base, const test::EchoRequest* request,
-              test::EchoResponse* response, google::protobuf::Closure* done) override {
+    void Echo(google::protobuf::RpcController* base,
+              const test::EchoRequest* request, test::EchoResponse* response,
+              google::protobuf::Closure* done) override {
         brpc::ClosureGuard guard(done);
         auto* cntl = static_cast<brpc::Controller*>(base);
         response->set_message(request->message());
@@ -62,7 +63,7 @@ protected:
         int count = 0;
         auto** devices = urma_get_device_list(&count);
         _mock = devices && count > 0 &&
-            strcmp(devices[0]->name, "mock_urma_device") == 0;
+                strcmp(devices[0]->name, "mock_urma_device") == 0;
         urma_free_device_list(devices);
         if (status == URMA_SUCCESS) {
             urma_uninit();
@@ -123,7 +124,8 @@ TEST_P(UrmaTransportTest, exchanges_zero_copy_payloads_and_receive_credits) {
         test::EchoResponse response;
         request.set_message(payload);
         cntl.request_attachment().append(payload);
-        test::EchoService_Stub(&channel).Echo(&cntl, &request, &response, nullptr);
+        test::EchoService_Stub(&channel).Echo(&cntl, &request, &response,
+                                              nullptr);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         EXPECT_EQ(payload, response.message());
         EXPECT_EQ(payload, cntl.response_attachment().to_string());
@@ -134,7 +136,8 @@ TEST_P(UrmaTransportTest, exchanges_zero_copy_payloads_and_receive_credits) {
     server.Join();
 }
 
-TEST_P(UrmaTransportTest, switches_new_connections_from_auto_to_tcp_only_and_back) {
+TEST_P(UrmaTransportTest,
+       switches_new_connections_from_auto_to_tcp_only_and_back) {
     PathEchoService service;
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
@@ -161,13 +164,15 @@ TEST_P(UrmaTransportTest, switches_new_connections_from_auto_to_tcp_only_and_bac
             test::EchoRequest request;
             test::EchoResponse response;
             request.set_message("switch");
-            test::EchoService_Stub(&channel).Echo(&cntl, &request, &response, nullptr);
+            test::EchoService_Stub(&channel).Echo(&cntl, &request, &response,
+                                                  nullptr);
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             EXPECT_EQ("switch", response.message());
         }
         const auto after = brpc::urma::GetUrmaRecoveryStatus();
         if (mode == brpc::urma::UrmaRecoveryMode::TCP_ONLY) {
-            EXPECT_EQ(before.negotiated_connections, after.negotiated_connections);
+            EXPECT_EQ(before.negotiated_connections,
+                      after.negotiated_connections);
             EXPECT_EQ(before.tcp_only_admissions + requests_per_mode,
                       after.tcp_only_admissions);
         } else {
@@ -180,7 +185,8 @@ TEST_P(UrmaTransportTest, switches_new_connections_from_auto_to_tcp_only_and_bac
     server.Join();
 }
 
-INSTANTIATE_TEST_SUITE_P(HandshakeVersions, UrmaTransportTest, ::testing::Values(2, 3));
+INSTANTIATE_TEST_SUITE_P(HandshakeVersions, UrmaTransportTest,
+                         ::testing::Values(2, 3));
 
 }  // namespace
 #endif  // BRPC_WITH_URMA

@@ -46,8 +46,9 @@ extern bool g_skip_urma_init;
 class UrmaQosTestPeer {
 public:
     static int Priority(UrmaEndpoint* endpoint) {
-        return endpoint->_resource && endpoint->_resource->jetty ?
-            endpoint->_resource->jetty->jetty_cfg.jfs_cfg.priority : -1;
+        return endpoint->_resource && endpoint->_resource->jetty
+                   ? endpoint->_resource->jetty->jetty_cfg.jfs_cfg.priority
+                   : -1;
     }
     static ssize_t FailCompletion(UrmaEndpoint* endpoint) {
         urma_cr_t cr{};
@@ -73,12 +74,14 @@ bool WaitUntil(const std::function<bool()>& ready) {
 }
 
 class QosEcho : public test::EchoService {
-    void Echo(google::protobuf::RpcController* base, const test::EchoRequest* request,
-              test::EchoResponse* response, google::protobuf::Closure* done) override {
+    void Echo(google::protobuf::RpcController* base,
+              const test::EchoRequest* request, test::EchoResponse* response,
+              google::protobuf::Closure* done) override {
         ClosureGuard guard(done);
         auto* controller = static_cast<Controller*>(base);
         response->set_message(request->message());
-        controller->response_attachment().append(controller->request_attachment());
+        controller->response_attachment().append(
+            controller->request_attachment());
     }
 };
 
@@ -93,7 +96,7 @@ protected:
         int count = 0;
         auto** devices = urma_get_device_list(&count);
         _mock = devices && count > 0 &&
-            std::strcmp(devices[0]->name, "mock_urma_device") == 0;
+                std::strcmp(devices[0]->name, "mock_urma_device") == 0;
         urma_free_device_list(devices);
         if (status == URMA_SUCCESS) {
             urma_uninit();
@@ -157,7 +160,8 @@ protected:
             payload[i] = static_cast<char>((i + sequence) % 251);
         }
         controller.request_attachment().append(payload);
-        test::EchoService_Stub(channel).Echo(&controller, &request, &response, nullptr);
+        test::EchoService_Stub(channel).Echo(&controller, &request, &response,
+                                             nullptr);
         ASSERT_FALSE(controller.Failed()) << controller.ErrorText();
         EXPECT_EQ(request.message(), response.message());
         EXPECT_EQ(payload, controller.response_attachment().to_string());
@@ -182,11 +186,12 @@ protected:
                 peer->remote_side() == socket->local_side()) {
                 found = true;
                 EXPECT_EQ(2, peer->urma_qos().service_level);
-                auto* peer_transport = static_cast<UrmaTransport*>(peer->_transport.get());
-                const int expected_priority = use_urma ?
-                    (urma::GetUrmaTpType() == URMA_RTP ? 0 : 6) : -1;
-                EXPECT_EQ(expected_priority,
-                          urma::UrmaQosTestPeer::Priority(peer_transport->GetUrmaEp()));
+                auto* peer_transport =
+                    static_cast<UrmaTransport*>(peer->_transport.get());
+                const int expected_priority =
+                    use_urma ? (urma::GetUrmaTpType() == URMA_RTP ? 0 : 6) : -1;
+                EXPECT_EQ(expected_priority, urma::UrmaQosTestPeer::Priority(
+                                                 peer_transport->GetUrmaEp()));
             }
         }
         EXPECT_TRUE(found);
@@ -209,8 +214,10 @@ TEST_P(UrmaQosChurnTest, short_connections_release_resources) {
     _client_ids.push_back(channel._server_id);
     for (int i = 0; i < 64; ++i) {
         ASSERT_NO_FATAL_FAILURE(Echo(&channel, i));
-        ASSERT_TRUE(WaitUntil([this] { return _server._am->ConnectionCount() == 0; }))
-            << "Accepted short connection retained after RPC " << i;
+        ASSERT_TRUE(WaitUntil([this] {
+            return _server._am->ConnectionCount() == 0;
+        })) << "Accepted short connection retained after RPC "
+            << i;
     }
 }
 
@@ -224,7 +231,8 @@ TEST_P(UrmaQosChurnTest, cooldown_and_fresh_connections_preserve_business_qos) {
     SocketUniquePtr socket;
     ASSERT_EQ(0, Socket::Address(original._server_id, &socket));
     auto* transport = static_cast<UrmaTransport*>(socket->_transport.get());
-    EXPECT_EQ(-1, urma::UrmaQosTestPeer::FailCompletion(transport->GetUrmaEp()));
+    EXPECT_EQ(-1,
+              urma::UrmaQosTestPeer::FailCompletion(transport->GetUrmaEp()));
     socket->SetFailed(EIO, "Injected completion error");
     socket.reset();
 
@@ -236,7 +244,8 @@ TEST_P(UrmaQosChurnTest, cooldown_and_fresh_connections_preserve_business_qos) {
     ASSERT_NO_FATAL_FAILURE(CheckConnection(&tcp, false));
     EXPECT_GT(urma::GetUrmaRecoveryStatus().peer_cooldown_admissions,
               baseline.peer_cooldown_admissions);
-    ASSERT_TRUE(WaitUntil([] { return urma::GetUrmaRecoveryStatus().cooled_peers == 0; }));
+    ASSERT_TRUE(WaitUntil(
+        [] { return urma::GetUrmaRecoveryStatus().cooled_peers == 0; }));
 
     _options.connection_group = "qos-recovered";
     Channel recovered;
@@ -250,7 +259,8 @@ TEST_P(UrmaQosChurnTest, cooldown_and_fresh_connections_preserve_business_qos) {
     EXPECT_GT(after.negotiated_connections, baseline.negotiated_connections);
 }
 
-INSTANTIATE_TEST_SUITE_P(HandshakeVersions, UrmaQosChurnTest, testing::Values(2, 3));
+INSTANTIATE_TEST_SUITE_P(HandshakeVersions, UrmaQosChurnTest,
+                         testing::Values(2, 3));
 }  // namespace
 #endif  // BRPC_WITH_URMA
 

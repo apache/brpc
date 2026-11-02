@@ -435,9 +435,8 @@ bool InitUrmaLocalSge(urma_sge_t* sge, uint64_t address, size_t length,
     }
     const uint64_t base = segment->seg.ubva.va;
     const uint64_t size = segment->seg.len;
-    if (size > std::numeric_limits<uint64_t>::max() - base ||
-        address < base || address - base > size ||
-        length > size - (address - base)) {
+    if (size > std::numeric_limits<uint64_t>::max() - base || address < base ||
+        address - base > size || length > size - (address - base)) {
         errno = ERDMAMEM;
         return false;
     }
@@ -446,7 +445,7 @@ bool InitUrmaLocalSge(urma_sge_t* sge, uint64_t address, size_t length,
 }
 
 bool CopyUrmaSendBuffer(butil::IOBuf* buffer, urma_sge_t* sge,
-                       urma_target_seg_t* (*lookup)(void*)) {
+                        urma_target_seg_t* (*lookup)(void*)) {
     const size_t length = buffer->size();
     const size_t capacity = GetUrmaRecvBlockSize();
     if (length == 0 || capacity < URMA_SEND_BUFFER_ALIGNMENT ||
@@ -465,9 +464,10 @@ bool CopyUrmaSendBuffer(butil::IOBuf* buffer, urma_sge_t* sge,
             errno = ENOMEM;
             return false;
         }
-        padding = (URMA_SEND_BUFFER_ALIGNMENT -
-                   reinterpret_cast<uintptr_t>(data) % URMA_SEND_BUFFER_ALIGNMENT) %
-                  URMA_SEND_BUFFER_ALIGNMENT;
+        padding =
+            (URMA_SEND_BUFFER_ALIGNMENT -
+             reinterpret_cast<uintptr_t>(data) % URMA_SEND_BUFFER_ALIGNMENT) %
+            URMA_SEND_BUFFER_ALIGNMENT;
         if (padding + length > static_cast<size_t>(available)) {
             errno = ENOMEM;
             return false;
@@ -477,7 +477,8 @@ bool CopyUrmaSendBuffer(butil::IOBuf* buffer, urma_sge_t* sge,
         stream.BackUp(available - static_cast<int>(padding + length));
     }
     copied.pop_front(padding);
-    if (!InitUrmaLocalSge(sge, reinterpret_cast<uint64_t>(data), length, lookup(data))) {
+    if (!InitUrmaLocalSge(sge, reinterpret_cast<uint64_t>(data), length,
+                          lookup(data))) {
         return false;
     }
     buffer->swap(copied);
@@ -598,8 +599,8 @@ static bool GlobalUrmaInitializeImpl() {
         g_device = nullptr;
         return false;
     }
-    if (!SelectUrmaTransportPath(g_device_attr, FLAGS_urma_tp_type,
-                                  &g_tp_type, &g_jetty_priority)) {
+    if (!SelectUrmaTransportPath(g_device_attr, FLAGS_urma_tp_type, &g_tp_type,
+                                 &g_jetty_priority)) {
         LOG(ERROR) << "URMA path selection failed: requested="
                    << FLAGS_urma_tp_type << " device=" << device_name
                    << " ctp_priority="
@@ -712,8 +713,8 @@ static bool GlobalUrmaInitializeImpl() {
               << " bonding=" << g_is_bonding_device
               << " tp_type=" << (g_tp_type == URMA_CTP ? "ctp" : "rtp")
               << " priority=" << static_cast<unsigned>(g_jetty_priority)
-              << " max_sge=" << g_max_sge
-              << " default_sl=" << GetUrmaServiceLevelForPriority(g_jetty_priority)
+              << " max_sge=" << g_max_sge << " default_sl="
+              << GetUrmaServiceLevelForPriority(g_jetty_priority)
               << " copy_send=" << FLAGS_urma_copy_send
               << " buffer_size=" << g_pool_buffer_size
               << " buffer_count=" << g_pool->buffer_count();
@@ -832,8 +833,8 @@ static std::string DescribeUrmaSlMap(const urma_device_attr_t& attr,
 }
 
 bool ResolveUrmaJettyPriority(const urma_device_attr_t& attr,
-                             const UrmaQosOptions& qos, urma_tp_type_t tp_type,
-                             uint8_t default_priority, uint8_t* priority) {
+                              const UrmaQosOptions& qos, urma_tp_type_t tp_type,
+                              uint8_t default_priority, uint8_t* priority) {
     if (!qos.IsValid() || !priority ||
         (tp_type != URMA_CTP && tp_type != URMA_RTP)) {
         errno = EINVAL;
@@ -852,22 +853,24 @@ bool ResolveUrmaJettyPriority(const urma_device_attr_t& attr,
                 return true;
             }
         }
-        LOG(ERROR) << "URMA SL " << qos.service_level
-                   << " has no " << (tp_type == URMA_CTP ? "CTP" : "RTP")
+        LOG(ERROR) << "URMA SL " << qos.service_level << " has no "
+                   << (tp_type == URMA_CTP ? "CTP" : "RTP")
                    << " priority; supported priority:SL="
                    << DescribeUrmaSlMap(attr, tp_type);
     } else if (!IsUrmaPrioritySupported(attr, qos.priority, tp_type)) {
-        LOG(ERROR) << "URMA priority " << qos.priority
-                   << " does not advertise " << (tp_type == URMA_CTP ? "CTP" : "RTP")
-                   << " on the selected device; requested SL=" << qos.service_level
-                   << "; supported priority:SL=" << DescribeUrmaSlMap(attr, tp_type);
+        LOG(ERROR) << "URMA priority " << qos.priority << " does not advertise "
+                   << (tp_type == URMA_CTP ? "CTP" : "RTP")
+                   << " on the selected device; requested SL="
+                   << qos.service_level << "; supported priority:SL="
+                   << DescribeUrmaSlMap(attr, tp_type);
     } else if (qos.service_level != -1 &&
                attr.dev_cap.priority_info[qos.priority].SL !=
                    static_cast<uint32_t>(qos.service_level)) {
         LOG(ERROR) << "URMA priority " << qos.priority << " maps to SL "
                    << attr.dev_cap.priority_info[qos.priority].SL
                    << ", requested SL=" << qos.service_level
-                   << "; supported priority:SL=" << DescribeUrmaSlMap(attr, tp_type);
+                   << "; supported priority:SL="
+                   << DescribeUrmaSlMap(attr, tp_type);
     } else {
         *priority = static_cast<uint8_t>(qos.priority);
         return true;

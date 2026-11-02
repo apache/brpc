@@ -29,15 +29,18 @@
 
 DEFINE_string(server, "127.0.0.1:8003", "Performance test server address");
 DEFINE_string(mode, "auto", "Initial mode: legacy, auto, tcp_only");
-DEFINE_string(mode_file, "", "Read a recovery mode from this file while running");
-DEFINE_string(connection_type, "short", "short exercises new admission on each RPC");
+DEFINE_string(mode_file, "",
+              "Read a recovery mode from this file while running");
+DEFINE_string(connection_type, "short",
+              "short exercises new admission on each RPC");
 DEFINE_string(transport, "urma", "urma or tcp");
 DEFINE_int32(seconds, 60, "Duration of the fault-injection run");
 DEFINE_int32(interval_ms, 100, "Pause between RPCs");
 DEFINE_int32(timeout_ms, 1000, "RPC deadline");
 DEFINE_int32(cooldown_ms, 5000, "Path cooldown");
 DEFINE_int32(dummy_port, 8001, "Local /vars port; 0 disables it");
-DEFINE_int32(attachment_size, 0, "Echo attachment bytes and verify the returned content");
+DEFINE_int32(attachment_size, 0,
+             "Echo attachment bytes and verify the returned content");
 
 static bool SetMode(const std::string& value) {
     using brpc::urma::UrmaRecoveryMode;
@@ -60,18 +63,18 @@ int main(int argc, char* argv[]) {
         std::cerr << "Invalid transport\n";
         return 1;
     }
-    const bool cooldown_ok = brpc::urma::SetUrmaRecoveryCooldownMs(FLAGS_cooldown_ms);
+    const bool cooldown_ok =
+        brpc::urma::SetUrmaRecoveryCooldownMs(FLAGS_cooldown_ms);
     if (FLAGS_seconds <= 0 || FLAGS_interval_ms < 0 || FLAGS_timeout_ms <= 0 ||
-        FLAGS_attachment_size < 0 ||
-        !cooldown_ok ||
-        !SetMode(FLAGS_mode)) {
-        std::cerr << "Invalid duration, interval, timeout, cooldown, mode or attachment size\n";
+        FLAGS_attachment_size < 0 || !cooldown_ok || !SetMode(FLAGS_mode)) {
+        std::cerr
+            << "Invalid duration, interval, timeout, cooldown, mode or attachment size\n";
         return 1;
     }
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.socket_mode = FLAGS_transport == "urma" ? brpc::SOCKET_MODE_URMA :
-        brpc::SOCKET_MODE_TCP;
+    options.socket_mode = FLAGS_transport == "urma" ? brpc::SOCKET_MODE_URMA
+                                                    : brpc::SOCKET_MODE_TCP;
     options.connection_type = FLAGS_connection_type;
     options.timeout_ms = FLAGS_timeout_ms;
     options.connect_timeout_ms = FLAGS_timeout_ms;
@@ -92,10 +95,12 @@ int main(int argc, char* argv[]) {
     }
     const int64_t start = butil::monotonic_time_us();
     int64_t next_report = start;
-    std::cout << "seconds,mode,success,failure,transport_negotiated,tcp_fallback_admissions,"
-                 "cooled_peers\n";
+    std::cout
+        << "seconds,mode,success,failure,transport_negotiated,tcp_fallback_admissions,"
+           "cooled_peers\n";
     while (!brpc::IsAskedToQuit() &&
-           butil::monotonic_time_us() - start < static_cast<int64_t>(FLAGS_seconds) * 1000000) {
+           butil::monotonic_time_us() - start <
+               static_cast<int64_t>(FLAGS_seconds) * 1000000) {
         if (!FLAGS_mode_file.empty()) {
             std::ifstream input(FLAGS_mode_file);
             std::string value;
@@ -103,7 +108,8 @@ int main(int argc, char* argv[]) {
                 if (SetMode(value)) {
                     mode = value;
                 } else {
-                    std::cerr << "Ignoring invalid recovery mode: " << value << '\n';
+                    std::cerr << "Ignoring invalid recovery mode: " << value
+                              << '\n';
                 }
             }
         }
@@ -116,23 +122,27 @@ int main(int argc, char* argv[]) {
             payload[i] = static_cast<char>(sequence >> (i * 8));
         }
         cntl.request_attachment().append(payload);
-        test::PerfTestService_Stub(&channel).Test(&cntl, &request, &response, nullptr);
+        test::PerfTestService_Stub(&channel).Test(&cntl, &request, &response,
+                                                  nullptr);
         if (cntl.Failed()) {
             ++failed;
             std::cerr << "RPC failure: " << cntl.ErrorText() << '\n';
-        } else if (!payload.empty() && cntl.response_attachment().to_string() != payload) {
+        } else if (!payload.empty() &&
+                   cntl.response_attachment().to_string() != payload) {
             ++failed;
             ++validation_failed;
             std::cerr << "Attachment mismatch: expected=" << payload.size()
-                      << " actual=" << cntl.response_attachment().size() << '\n';
+                      << " actual=" << cntl.response_attachment().size()
+                      << '\n';
         } else {
             ++succeeded;
         }
         const int64_t now = butil::monotonic_time_us();
         if (now >= next_report) {
             const auto s = brpc::urma::GetUrmaRecoveryStatus();
-            std::cout << (now - start) / 1000000 << ',' << mode << ',' << succeeded
-                      << ',' << failed << ',' << s.negotiated_connections << ','
+            std::cout << (now - start) / 1000000 << ',' << mode << ','
+                      << succeeded << ',' << failed << ','
+                      << s.negotiated_connections << ','
                       << s.tcp_only_admissions + s.peer_cooldown_admissions
                       << ',' << s.cooled_peers << std::endl;
             next_report = now + 1000000;

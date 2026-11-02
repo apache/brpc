@@ -28,7 +28,7 @@ static int g_posts;
 int UrmaInjectorTestPostCount(void) { return g_posts; }
 
 urma_status_t urma_post_jetty_send_wr(urma_jetty_t* jetty, urma_jfs_wr_t* wr,
-                                     urma_jfs_wr_t** bad_wr) {
+                                      urma_jfs_wr_t** bad_wr) {
     (void)jetty;
     (void)wr;
     if (bad_wr) {
@@ -41,12 +41,13 @@ urma_status_t urma_post_jetty_send_wr(urma_jetty_t* jetty, urma_jfs_wr_t* wr,
 #else
 
 int UrmaInjectorTestPostCount(void);
-#define CHECK(expr) do { \
-    if (!(expr)) { \
-        fprintf(stderr, "Check failed: %s at line %d\n", #expr, __LINE__); \
-        return 1; \
-    } \
-} while (0)
+#define CHECK(expr)                                                            \
+    do {                                                                       \
+        if (!(expr)) {                                                         \
+            fprintf(stderr, "Check failed: %s at line %d\n", #expr, __LINE__); \
+            return 1;                                                          \
+        }                                                                      \
+    } while (0)
 
 int main(void) {
     char marker[] = "/tmp/brpc-urma-injector-XXXXXX";
@@ -83,7 +84,8 @@ int main(void) {
     CHECK(urma_post_jetty_send_wr(NULL, &wr, &bad) == URMA_SUCCESS);
     CHECK(UrmaInjectorTestPostCount() == 4);
     CHECK(unlink(marker) == 0);
-    puts("PASS: forwarding, credit ACK, single failure, and resumed forwarding");
+    puts(
+        "PASS: forwarding, credit ACK, single failure, and resumed forwarding");
     return 0;
 }
 

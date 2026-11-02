@@ -78,12 +78,9 @@ ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
 }
 
 static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
-    if (opt.socket_mode != SOCKET_MODE_URMA &&
-        opt.auth == nullptr &&
-        !opt.has_ssl_options() &&
-        opt.client_host.empty() &&
-        opt.device_name.empty() &&
-        opt.connection_group.empty() &&
+    if (opt.socket_mode != SOCKET_MODE_URMA && opt.auth == nullptr &&
+        !opt.has_ssl_options() && opt.client_host.empty() &&
+        opt.device_name.empty() && opt.connection_group.empty() &&
         opt.hc_option.health_check_path.empty()) {
         // Returning zeroized result by default is more intuitive for users.
         return ChannelSignature();
@@ -142,8 +139,10 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
             buf.append("|rdma");
         } else if (opt.socket_mode == SOCKET_MODE_URMA) {
             buf.append("|urma");
-            buf.append("|priority=").append(std::to_string(opt.urma_qos.priority));
-            buf.append("|sl=").append(std::to_string(opt.urma_qos.service_level));
+            buf.append("|priority=")
+                .append(std::to_string(opt.urma_qos.priority));
+            buf.append("|sl=").append(
+                std::to_string(opt.urma_qos.service_level));
         }
         butil::MurmurHash3_x64_128_Update(&mm_ctx, buf.data(), buf.size());
         buf.clear();
@@ -190,7 +189,8 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
     if (options) {  // Override default options if user provided one.
         _options = *options;
     }
-    if (_options.socket_mode == SOCKET_MODE_URMA && !_options.urma_qos.IsValid()) {
+    if (_options.socket_mode == SOCKET_MODE_URMA &&
+        !_options.urma_qos.IsValid()) {
         LOG(ERROR) << "URMA priority must be -1 or in [0,15], "
                       "and SL must be -1 or in [0,255]";
         return -1;

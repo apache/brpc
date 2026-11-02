@@ -716,7 +716,8 @@ void SetSocketBufferOptions(int fd) {
 //   version: from version part of _versioned_nref, must be an EVEN number.
 //   slot: designated by ResourcePool.
 int Socket::Create(const SocketOptions& options, SocketId* id) {
-    if (options.socket_mode == SOCKET_MODE_URMA && !options.urma_qos.IsValid()) {
+    if (options.socket_mode == SOCKET_MODE_URMA &&
+        !options.urma_qos.IsValid()) {
         errno = EINVAL;
         return -1;
     }

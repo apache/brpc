@@ -30,7 +30,8 @@
 
 DEFINE_int32(port, 8003, "TCP Port of this server");
 DEFINE_bool(use_urma, true, "Use URMA transport (true) or TCP (false)");
-DEFINE_int32(urma_priority, -1, "Outbound URMA priority: -1 automatic, or [0,15]");
+DEFINE_int32(urma_priority, -1,
+             "Outbound URMA priority: -1 automatic, or [0,15]");
 DEFINE_int32(urma_sl, -1, "Outbound URMA SL: -1 unspecified, or [0,255]");
 
 butil::atomic<uint64_t> g_last_time(0);

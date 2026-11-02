@@ -170,7 +170,8 @@ void UrmaEndpoint::Reset() {
     DeallocateResources();
     _state = UNINIT;
     _recovery_epoch = 0;
-    _runtime_failure.store(UrmaFailureReason::NONE, butil::memory_order_relaxed);
+    _runtime_failure.store(UrmaFailureReason::NONE,
+                           butil::memory_order_relaxed);
     _handshake_version = 0;
     _remote_recv_block_size = 0;
     _local_window_capacity = 0;
@@ -672,13 +673,15 @@ public:
                 this_len = max_len - len;
             }
             if (!InitUrmaLocalSge(&sglist[*sge_index],
-                                  reinterpret_cast<uint64_t>(start), this_len, tseg)) {
+                                  reinterpret_cast<uint64_t>(start), this_len,
+                                  tseg)) {
                 LOG(ERROR) << "Invalid URMA send SGE: address="
                            << reinterpret_cast<uint64_t>(start)
                            << " length=" << this_len
                            << " segment_va=" << tseg->seg.ubva.va
                            << " segment_len=" << tseg->seg.len
-                           << " context_matches=" << (tseg->urma_ctx == GetUrmaContext());
+                           << " context_matches="
+                           << (tseg->urma_ctx == GetUrmaContext());
                 return -1;
             }
             cutn(to, this_len);
@@ -727,7 +730,7 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
                              : GetUrmaRecvBlockSize();
         if (copy_send) {
             max_len = std::min(max_len, GetUrmaRecvBlockSize() -
-                                       (URMA_SEND_BUFFER_ALIGNMENT - 1));
+                                            (URMA_SEND_BUFFER_ALIGNMENT - 1));
         }
         while (sge_index < static_cast<size_t>(max_sge) &&
                this_len < max_len && current < ndata) {
@@ -736,10 +739,11 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
                 ++current;
                 continue;
             }
-            ssize_t n = copy_send ?
-                static_cast<ssize_t>(data->cutn(to, max_len - this_len)) :
-                data->cut_into_sglist(sglist, &sge_index, to,
-                                     max_sge, max_len - this_len);
+            ssize_t n =
+                copy_send
+                    ? static_cast<ssize_t>(data->cutn(to, max_len - this_len))
+                    : data->cut_into_sglist(sglist, &sge_index, to, max_sge,
+                                            max_len - this_len);
             if (n < 0) {
                 if (errno == ERDMAMEM) {
                     ReportFailure(UrmaFailureReason::ACCESS_ERROR);
@@ -753,8 +757,9 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         }
         if (copy_send) {
             if (!CopyUrmaSendBuffer(to, &sglist[0])) {
-                LOG(ERROR) << "Fail to prepare aligned URMA send buffer: length="
-                           << this_len << " errno=" << errno;
+                LOG(ERROR)
+                    << "Fail to prepare aligned URMA send buffer: length="
+                    << this_len << " errno=" << errno;
                 ReportFailure(UrmaFailureReason::ACCESS_ERROR);
                 return -1;
             }
@@ -973,46 +978,47 @@ ssize_t UrmaEndpoint::HandleCompletion(const urma_cr_t& cr) {
                      << " urma_priority=" << _socket->urma_qos().priority
                      << " urma_sl=" << _socket->urma_qos().service_level
                      << " urma_effective_priority="
-                     << (_resource && _resource->jetty ?
-                         static_cast<int>(
-                             _resource->jetty->jetty_cfg.jfs_cfg.priority) : -1)
+                     << (_resource && _resource->jetty
+                             ? static_cast<int>(
+                                   _resource->jetty->jetty_cfg.jfs_cfg.priority)
+                             : -1)
                      << " urma_effective_sl="
-                     << (_resource && _resource->jetty ?
-                         GetUrmaServiceLevelForPriority(
-                             _resource->jetty->jetty_cfg.jfs_cfg.priority) : -1)
+                     << (_resource && _resource->jetty
+                             ? GetUrmaServiceLevelForPriority(
+                                   _resource->jetty->jetty_cfg.jfs_cfg.priority)
+                             : -1)
                      << " flags=" << static_cast<unsigned>(cr.flag.value)
-                     << " opcode=" << cr.opcode
-                     << " local_id=" << cr.local_id
-                     << " tpn=" << cr.tpn
-                     << " user_ctx=" << cr.user_ctx
-                     << " completion_len=" << cr.completion_len
-                     << " jetty_id="
-                     << (_resource && _resource->jetty ?
-                         _resource->jetty->jetty_id.id : 0)
+                     << " opcode=" << cr.opcode << " local_id=" << cr.local_id
+                     << " tpn=" << cr.tpn << " user_ctx=" << cr.user_ctx
+                     << " completion_len=" << cr.completion_len << " jetty_id="
+                     << (_resource && _resource->jetty
+                             ? _resource->jetty->jetty_id.id
+                             : 0)
                      << " jfr_id="
-                     << (_resource && _resource->jfr ?
-                         _resource->jfr->jfr_id.id : 0)
-                     << " state=" << GetStateStr()
-                     << " on " << _socket->description();
+                     << (_resource && _resource->jfr ? _resource->jfr->jfr_id.id
+                                                     : 0)
+                     << " state=" << GetStateStr() << " on "
+                     << _socket->description();
         if (!cr.flag.bs.s_r && cr.user_ctx > 0 && cr.user_ctx <= _sbuf.size()) {
             const size_t slot = static_cast<size_t>(cr.user_ctx - 1);
             const auto& buffer = _sbuf[slot];
             LOG(WARNING) << "URMA failed SEND buffer: slot=" << slot
                          << " bytes=" << buffer.size()
-                         << " blocks=" << buffer.backing_block_num()
-                         << " on " << _socket->description();
+                         << " blocks=" << buffer.backing_block_num() << " on "
+                         << _socket->description();
             for (size_t i = 0; i < buffer.backing_block_num(); ++i) {
                 const auto block = buffer.backing_block(i);
                 auto* segment = GetPoolSegFor(const_cast<char*>(block.data()));
-                LOG(WARNING) << "URMA failed SEND block: slot=" << slot
-                             << " block=" << i
-                             << " address=" << reinterpret_cast<uint64_t>(block.data())
-                             << " length=" << block.size()
-                             << " pool_segment=" << (segment != nullptr)
-                             << " segment_va=" << (segment ? segment->seg.ubva.va : 0)
-                             << " segment_len=" << (segment ? segment->seg.len : 0)
-                             << " segment_token_id=" << (segment ? segment->seg.token_id : 0)
-                             << " on " << _socket->description();
+                LOG(WARNING)
+                    << "URMA failed SEND block: slot=" << slot << " block=" << i
+                    << " address=" << reinterpret_cast<uint64_t>(block.data())
+                    << " length=" << block.size()
+                    << " pool_segment=" << (segment != nullptr)
+                    << " segment_va=" << (segment ? segment->seg.ubva.va : 0)
+                    << " segment_len=" << (segment ? segment->seg.len : 0)
+                    << " segment_token_id="
+                    << (segment ? segment->seg.token_id : 0) << " on "
+                    << _socket->description();
             }
         }
         switch (cr.status) {
@@ -1430,8 +1436,9 @@ void UrmaEndpoint::ReportFailure(UrmaFailureReason reason) {
         return;
     }
     GlobalUrmaRecoveryPolicy().ReportPeerFailure(
-        _socket->CreatedByConnect() ?
-            butil::endpoint2str(_socket->remote_side()).c_str() : "",
+        _socket->CreatedByConnect()
+            ? butil::endpoint2str(_socket->remote_side()).c_str()
+            : "",
         _recovery_epoch, reason);
 }
 
@@ -1461,9 +1468,9 @@ void* UrmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     SocketUniquePtr s(ep->_socket);
     auto* tp = static_cast<UrmaTransport*>(s->_transport.get());
     UrmaConnect::RunGuard guard(static_cast<UrmaConnect*>(s->_app_connect.get()));
-    if (!IsUrmaAvailable() ||
-        !GlobalUrmaRecoveryPolicy().AllowNewConnection(
-            butil::endpoint2str(s->remote_side()).c_str(), &ep->_recovery_epoch)) {
+    if (!IsUrmaAvailable() || !GlobalUrmaRecoveryPolicy().AllowNewConnection(
+                                  butil::endpoint2str(s->remote_side()).c_str(),
+                                  &ep->_recovery_epoch)) {
         ep->FallbackToTcp(tp, true);
         return nullptr;
     }
@@ -1552,11 +1559,12 @@ void* UrmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->FailHandshake(tp, EPROTO, "invalid client hello");
         return nullptr;
     }
-    if (!IsUrmaAvailable() ||
-        !GlobalUrmaRecoveryPolicy().AllowNewConnection("", &ep->_recovery_epoch)) {
+    if (!IsUrmaAvailable() || !GlobalUrmaRecoveryPolicy().AllowNewConnection(
+                                  "", &ep->_recovery_epoch)) {
         tp->_urma_state = UrmaTransport::URMA_OFF;
         if (hs->SendLocalHello() < 0) {
-            ep->FailHandshake(tp, errno ? errno : EIO, "send TCP fallback hello");
+            ep->FailHandshake(tp, errno ? errno : EIO,
+                              "send TCP fallback hello");
             return nullptr;
         }
         ep->FallbackToTcp(tp, true);
@@ -1612,7 +1620,8 @@ void* UrmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         }
         tp->_urma_state = UrmaTransport::URMA_ON;
         ep->_state = ESTABLISHED;
-        GlobalUrmaRecoveryPolicy().RecordNegotiatedConnection(ep->_recovery_epoch);
+        GlobalUrmaRecoveryPolicy().RecordNegotiatedConnection(
+            ep->_recovery_epoch);
         ep->DispatchReceivedBytes(s, 0);
         ep->DrainEstablishedTcp();
     } else {
@@ -1699,19 +1708,23 @@ std::string UrmaEndpoint::GetStateStr() const {
 }
 
 void UrmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece) const {
-    os << "state=" << GetStateStr()
-       << " sq_size=" << _sq_size << " rq_size=" << _rq_size
+    os << "state=" << GetStateStr() << " sq_size=" << _sq_size
+       << " rq_size=" << _rq_size
        << " remote_recv_block_size=" << _remote_recv_block_size
        << " sq_window=" << _sq_window_size.load(butil::memory_order_relaxed)
-       << " remote_rq_window=" << _remote_rq_window_size.load(butil::memory_order_relaxed)
+       << " remote_rq_window="
+       << _remote_rq_window_size.load(butil::memory_order_relaxed)
        << " urma_priority=" << _socket->urma_qos().priority
        << " urma_sl=" << _socket->urma_qos().service_level
        << " urma_effective_priority="
-       << (_resource && _resource->jetty ?
-           static_cast<int>(_resource->jetty->jetty_cfg.jfs_cfg.priority) : -1)
+       << (_resource && _resource->jetty
+               ? static_cast<int>(_resource->jetty->jetty_cfg.jfs_cfg.priority)
+               : -1)
        << " urma_effective_sl="
-       << (_resource && _resource->jetty ? GetUrmaServiceLevelForPriority(
-               _resource->jetty->jetty_cfg.jfs_cfg.priority) : -1)
+       << (_resource && _resource->jetty
+               ? GetUrmaServiceLevelForPriority(
+                     _resource->jetty->jetty_cfg.jfs_cfg.priority)
+               : -1)
        << " recovery_epoch=" << _recovery_epoch
        << " runtime_failure=" << UrmaFailureReasonName(_runtime_failure.load())
        << " handshake_version=" << _handshake_version

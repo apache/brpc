@@ -120,8 +120,8 @@ TEST_F(UrmaRecoveryTest, concurrent_admission_failure_and_mode_change) {
             for (int j = 0; j < 200; ++j) {
                 uint64_t epoch;
                 const std::string peer = std::to_string(i);
-                policy.SetMode(j % 2 ? UrmaRecoveryMode::AUTO :
-                                      UrmaRecoveryMode::TCP_ONLY);
+                policy.SetMode(j % 2 ? UrmaRecoveryMode::AUTO
+                                     : UrmaRecoveryMode::TCP_ONLY);
                 policy.AllowNewConnection(peer, &epoch);
                 policy.ReportPeerFailure(peer, epoch);
             }
@@ -146,7 +146,8 @@ TEST_F(UrmaRecoveryTest, reports_reasons_and_admission_counters) {
     EXPECT_EQ(1u, status.cooled_peers);
     EXPECT_EQ(1u, status.negotiated_connections);
     EXPECT_EQ(1u, status.peer_cooldown_admissions);
-    EXPECT_EQ(1u, status.failures[static_cast<size_t>(UrmaFailureReason::QP_FATAL)]);
+    EXPECT_EQ(
+        1u, status.failures[static_cast<size_t>(UrmaFailureReason::QP_FATAL)]);
     policy.ReportPeerFailure("b", epoch, UrmaFailureReason::ACCESS_ERROR);
     EXPECT_TRUE(policy.AllowNewConnection("b"));
     now_us += 5000000;
@@ -155,7 +156,9 @@ TEST_F(UrmaRecoveryTest, reports_reasons_and_admission_counters) {
     EXPECT_FALSE(policy.AllowNewConnection("b"));
     EXPECT_EQ(1u, policy.GetStatus().tcp_only_admissions);
     policy.ReportPeerFailure("b", epoch, UrmaFailureReason::CQ_ERROR);
-    EXPECT_EQ(0u, policy.GetStatus().failures[static_cast<size_t>(UrmaFailureReason::CQ_ERROR)]);
+    EXPECT_EQ(0u,
+              policy.GetStatus()
+                  .failures[static_cast<size_t>(UrmaFailureReason::CQ_ERROR)]);
 }
 
 }  // namespace

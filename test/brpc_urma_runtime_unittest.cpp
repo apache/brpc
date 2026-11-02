@@ -62,7 +62,8 @@ TEST(UrmaRuntimeHelperTest, combined_priority_and_invalid_transport_type) {
                       attr, static_cast<urma_tp_type_t>(255)));
 }
 
-TEST(UrmaRuntimeHelperTest, auto_path_prefers_ctp_and_selects_rtp_on_rtp_only_devices) {
+TEST(UrmaRuntimeHelperTest,
+     auto_path_prefers_ctp_and_selects_rtp_on_rtp_only_devices) {
     urma_device_attr_t attr{};
     attr.dev_cap.priority_info[0].tp_type.bs.rtp = 1;
     attr.dev_cap.priority_info[0].SL = 2;
@@ -77,7 +78,8 @@ TEST(UrmaRuntimeHelperTest, auto_path_prefers_ctp_and_selects_rtp_on_rtp_only_de
     EXPECT_EQ(7, priority);
 }
 
-TEST(UrmaRuntimeHelperTest, explicit_path_uses_matching_priority_and_combined_capabilities) {
+TEST(UrmaRuntimeHelperTest,
+     explicit_path_uses_matching_priority_and_combined_capabilities) {
     urma_device_attr_t attr{};
     attr.dev_cap.priority_info[2].tp_type.bs.rtp = 1;
     attr.dev_cap.priority_info[2].tp_type.bs.ctp = 1;
@@ -85,13 +87,15 @@ TEST(UrmaRuntimeHelperTest, explicit_path_uses_matching_priority_and_combined_ca
     urma_tp_type_t path = URMA_UTP;
     uint8_t priority = 15;
     for (const auto& requested : {"rtp", "ctp"}) {
-        ASSERT_TRUE(urma::SelectUrmaTransportPath(attr, requested, &path, &priority));
+        ASSERT_TRUE(
+            urma::SelectUrmaTransportPath(attr, requested, &path, &priority));
         EXPECT_EQ(std::string(requested) == "rtp" ? URMA_RTP : URMA_CTP, path);
         EXPECT_EQ(2, priority);
     }
 }
 
-TEST(UrmaRuntimeHelperTest, rejects_unsupported_paths_in_a_reported_capability_table) {
+TEST(UrmaRuntimeHelperTest,
+     rejects_unsupported_paths_in_a_reported_capability_table) {
     urma_device_attr_t attr{};
     attr.dev_cap.priority_info[0].tp_type.bs.rtp = 1;
     urma_tp_type_t path = URMA_UTP;
@@ -105,12 +109,14 @@ TEST(UrmaRuntimeHelperTest, rejects_unsupported_paths_in_a_reported_capability_t
     EXPECT_FALSE(urma::SelectUrmaTransportPath(attr, "rtp", &path, &priority));
 }
 
-TEST(UrmaRuntimeHelperTest, providers_without_path_capabilities_keep_compatibility_priorities) {
+TEST(UrmaRuntimeHelperTest,
+     providers_without_path_capabilities_keep_compatibility_priorities) {
     urma_device_attr_t attr{};
     urma_tp_type_t path = URMA_UTP;
     uint8_t priority = 15;
     for (const auto& requested : {"auto", "ctp", "rtp"}) {
-        ASSERT_TRUE(urma::SelectUrmaTransportPath(attr, requested, &path, &priority));
+        ASSERT_TRUE(
+            urma::SelectUrmaTransportPath(attr, requested, &path, &priority));
         const bool rtp = std::string(requested) == "rtp";
         EXPECT_EQ(rtp ? URMA_RTP : URMA_CTP, path);
         EXPECT_EQ(rtp ? 0 : 6, priority);
@@ -122,13 +128,16 @@ TEST(UrmaRuntimeHelperTest, rejects_invalid_path_configuration) {
     urma_tp_type_t path = URMA_CTP;
     uint8_t priority = 6;
     for (const auto& requested : {"", "utp", "RM", "typo"}) {
-        EXPECT_FALSE(urma::SelectUrmaTransportPath(attr, requested, &path, &priority));
+        EXPECT_FALSE(
+            urma::SelectUrmaTransportPath(attr, requested, &path, &priority));
     }
-    EXPECT_FALSE(urma::SelectUrmaTransportPath(attr, "auto", nullptr, &priority));
+    EXPECT_FALSE(
+        urma::SelectUrmaTransportPath(attr, "auto", nullptr, &priority));
     EXPECT_FALSE(urma::SelectUrmaTransportPath(attr, "auto", &path, nullptr));
 }
 
-TEST(UrmaRuntimeHelperTest, local_sge_initializes_optional_fields_and_accepts_segment_edges) {
+TEST(UrmaRuntimeHelperTest,
+     local_sge_initializes_optional_fields_and_accepts_segment_edges) {
     urma_target_seg_t segment{};
     segment.urma_ctx = urma::GetUrmaContext();
     segment.seg.ubva.va = 0x1000;
@@ -152,9 +161,12 @@ TEST(UrmaRuntimeHelperTest, local_sge_rejects_out_of_range_and_wrong_context) {
     segment.seg.len = 8192;
     urma_sge_t sge{};
     for (auto values : {std::pair<uint64_t, size_t>(0xfff, 1),
-                        {0x3000, 1}, {0x2fff, 2}, {0x1000, 0},
+                        {0x3000, 1},
+                        {0x2fff, 2},
+                        {0x1000, 0},
                         {0x1000, static_cast<size_t>(UINT32_MAX) + 1}}) {
-        EXPECT_FALSE(urma::InitUrmaLocalSge(&sge, values.first, values.second, &segment));
+        EXPECT_FALSE(urma::InitUrmaLocalSge(&sge, values.first, values.second,
+                                            &segment));
         EXPECT_EQ(ERDMAMEM, errno);
     }
     EXPECT_FALSE(urma::InitUrmaLocalSge(&sge, 0x1000, 1, nullptr));
@@ -177,16 +189,15 @@ static urma_target_seg_t* ResolveCopyTestSegment(void* address) {
     return &g_copy_test_segment;
 }
 
-static urma_target_seg_t* RejectCopyTestSegment(void*) {
-    return nullptr;
-}
+static urma_target_seg_t* RejectCopyTestSegment(void*) { return nullptr; }
 
 static void DeleteCopyTestData(void* data) {
     ++g_copy_test_releases;
     delete[] static_cast<char*>(data);
 }
 
-TEST(UrmaRuntimeHelperTest, copied_send_coalesces_host_fragments_and_retains_aligned_payload) {
+TEST(UrmaRuntimeHelperTest,
+     copied_send_coalesces_host_fragments_and_retains_aligned_payload) {
     g_copy_test_releases = 0;
     butil::IOBuf buffer;
     for (const char* text : {"first", "second"}) {
@@ -197,22 +208,27 @@ TEST(UrmaRuntimeHelperTest, copied_send_coalesces_host_fragments_and_retains_ali
     }
     ASSERT_EQ(2u, buffer.backing_block_num());
     urma_sge_t sge{};
-    ASSERT_TRUE(urma::CopyUrmaSendBuffer(&buffer, &sge, ResolveCopyTestSegment));
+    ASSERT_TRUE(
+        urma::CopyUrmaSendBuffer(&buffer, &sge, ResolveCopyTestSegment));
     EXPECT_EQ(2, g_copy_test_releases);
     EXPECT_EQ("firstsecond", buffer.to_string());
     ASSERT_EQ(1u, buffer.backing_block_num());
     EXPECT_EQ(0u, sge.addr % urma::URMA_SEND_BUFFER_ALIGNMENT);
-    EXPECT_EQ(reinterpret_cast<uint64_t>(buffer.backing_block(0).data()), sge.addr);
+    EXPECT_EQ(reinterpret_cast<uint64_t>(buffer.backing_block(0).data()),
+              sge.addr);
     EXPECT_EQ(buffer.size(), sge.len);
     EXPECT_EQ(&g_copy_test_segment, sge.tseg);
     EXPECT_EQ(nullptr, sge.user_tseg);
-    EXPECT_EQ("firstsecond", std::string(reinterpret_cast<const char*>(sge.addr), sge.len));
+    EXPECT_EQ("firstsecond",
+              std::string(reinterpret_cast<const char*>(sge.addr), sge.len));
 
     buffer.clear();
-    const std::string large(urma::GetUrmaRecvBlockSize() -
-                           (urma::URMA_SEND_BUFFER_ALIGNMENT - 1), 'x');
+    const std::string large(
+        urma::GetUrmaRecvBlockSize() - (urma::URMA_SEND_BUFFER_ALIGNMENT - 1),
+        'x');
     buffer.append(large);
-    ASSERT_TRUE(urma::CopyUrmaSendBuffer(&buffer, &sge, ResolveCopyTestSegment));
+    ASSERT_TRUE(
+        urma::CopyUrmaSendBuffer(&buffer, &sge, ResolveCopyTestSegment));
     EXPECT_EQ(0u, sge.addr % urma::URMA_SEND_BUFFER_ALIGNMENT);
     EXPECT_EQ(large, buffer.to_string());
     EXPECT_EQ(large.size(), sge.len);
@@ -222,13 +238,15 @@ TEST(UrmaRuntimeHelperTest, copied_send_failure_preserves_source_payload) {
     butil::IOBuf buffer;
     buffer.append("unchanged");
     urma_sge_t sge{};
-    EXPECT_FALSE(urma::CopyUrmaSendBuffer(&buffer, &sge, RejectCopyTestSegment));
+    EXPECT_FALSE(
+        urma::CopyUrmaSendBuffer(&buffer, &sge, RejectCopyTestSegment));
     EXPECT_EQ(ERDMAMEM, errno);
     EXPECT_EQ("unchanged", buffer.to_string());
     const std::string large(urma::GetUrmaRecvBlockSize(), 'y');
     buffer.clear();
     buffer.append(large);
-    EXPECT_FALSE(urma::CopyUrmaSendBuffer(&buffer, &sge, ResolveCopyTestSegment));
+    EXPECT_FALSE(
+        urma::CopyUrmaSendBuffer(&buffer, &sge, ResolveCopyTestSegment));
     EXPECT_EQ(EMSGSIZE, errno);
     EXPECT_EQ(large, buffer.to_string());
 }
@@ -255,7 +273,8 @@ protected:
                 EXPECT_EQ(URMA_SUCCESS, urma_uninit());
                 _owns_urma_init = false;
             }
-            GTEST_SKIP() << "UrmaRuntimeMockTest requires the URMA link-time mock";
+            GTEST_SKIP()
+                << "UrmaRuntimeMockTest requires the URMA link-time mock";
         }
     }
 
@@ -387,9 +406,11 @@ TEST_F(UrmaRecoveryTest, recovery_mode_and_metrics) {
     EXPECT_FALSE(urma::SetUrmaRecoveryCooldownMs(0));
     EXPECT_TRUE(urma::SetUrmaRecoveryCooldownMs(5000));
     EXPECT_NE(std::string::npos,
-              bvar::Variable::describe_exposed("urma_recovery_status").find("tcp_only"));
+              bvar::Variable::describe_exposed("urma_recovery_status")
+                  .find("tcp_only"));
     EXPECT_FALSE(bvar::Variable::describe_exposed(
-        "urma_recovery_tcp_fallback_admissions").empty());
+                     "urma_recovery_tcp_fallback_admissions")
+                     .empty());
 }
 
 TEST_F(UrmaRecoveryTest, rejects_mismatched_path_before_importing_resources) {
@@ -414,19 +435,25 @@ TEST_F(UrmaRecoveryTest, completion_errors_cool_peer_once) {
         urma::UrmaRecoveryTestPeer::Establish(&ep);
         const auto before = urma::GetUrmaRecoveryStatus();
         EXPECT_EQ(-1, urma::UrmaRecoveryTestPeer::Complete(&ep, status));
-        const auto reason = status == URMA_CR_ACK_TIMEOUT_ERR ?
-            urma::UrmaFailureReason::RETRY_EXHAUSTED :
-            status == URMA_CR_RNR_RETRY_CNT_EXC_ERR ? urma::UrmaFailureReason::RNR :
-            status == URMA_CR_LOC_ACCESS_ERR ? urma::UrmaFailureReason::ACCESS_ERROR :
-                                             urma::UrmaFailureReason::TRANSPORT_ERROR;
+        const auto reason = status == URMA_CR_ACK_TIMEOUT_ERR
+                                ? urma::UrmaFailureReason::RETRY_EXHAUSTED
+                            : status == URMA_CR_RNR_RETRY_CNT_EXC_ERR
+                                ? urma::UrmaFailureReason::RNR
+                            : status == URMA_CR_LOC_ACCESS_ERR
+                                ? urma::UrmaFailureReason::ACCESS_ERROR
+                                : urma::UrmaFailureReason::TRANSPORT_ERROR;
         EXPECT_EQ(before.failures[static_cast<size_t>(reason)] + 1,
-                  urma::GetUrmaRecoveryStatus().failures[static_cast<size_t>(reason)]);
+                  urma::GetUrmaRecoveryStatus()
+                      .failures[static_cast<size_t>(reason)]);
         EXPECT_EQ(status == URMA_CR_LOC_ACCESS_ERR,
-                  urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
-        urma::UrmaRecoveryTestPeer::Report(&ep, urma::UrmaFailureReason::CQ_POLL);
-        EXPECT_EQ(before.failures[static_cast<size_t>(urma::UrmaFailureReason::CQ_POLL)],
-                  urma::GetUrmaRecoveryStatus().failures[
-                      static_cast<size_t>(urma::UrmaFailureReason::CQ_POLL)]);
+                  urma::GlobalUrmaRecoveryPolicy().AllowNewConnection(
+                      "127.0.0.1:8123"));
+        urma::UrmaRecoveryTestPeer::Report(&ep,
+                                           urma::UrmaFailureReason::CQ_POLL);
+        EXPECT_EQ(before.failures[static_cast<size_t>(
+                      urma::UrmaFailureReason::CQ_POLL)],
+                  urma::GetUrmaRecoveryStatus().failures[static_cast<size_t>(
+                      urma::UrmaFailureReason::CQ_POLL)]);
         socket->SetFailed();
     }
 }
@@ -437,12 +464,15 @@ TEST_F(UrmaRecoveryTest, flush_backpressure_and_old_epoch_do_not_cool_peer) {
     urma::UrmaEndpoint ep(socket.get());
     urma::UrmaRecoveryTestPeer::Establish(&ep);
     EXPECT_TRUE(urma::UrmaRecoveryTestPeer::Backpressure(&ep));
-    EXPECT_EQ(-1, urma::UrmaRecoveryTestPeer::Complete(&ep, URMA_CR_WR_FLUSH_ERR));
-    EXPECT_TRUE(urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
+    EXPECT_EQ(-1,
+              urma::UrmaRecoveryTestPeer::Complete(&ep, URMA_CR_WR_FLUSH_ERR));
+    EXPECT_TRUE(
+        urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
     urma::SetUrmaRecoveryMode(urma::UrmaRecoveryMode::TCP_ONLY);
     urma::SetUrmaRecoveryMode(urma::UrmaRecoveryMode::AUTO);
     urma::UrmaRecoveryTestPeer::Report(&ep, urma::UrmaFailureReason::CQ_POLL);
-    EXPECT_TRUE(urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
+    EXPECT_TRUE(
+        urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
     socket->SetFailed();
 }
 
@@ -452,7 +482,8 @@ TEST_F(UrmaRecoveryTest, ack_post_failure_propagates) {
     urma::UrmaEndpoint ep(socket.get());
     urma::UrmaRecoveryTestPeer::Establish(&ep);
     EXPECT_EQ(-1, urma::UrmaRecoveryTestPeer::FailedAck(&ep));
-    EXPECT_FALSE(urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
+    EXPECT_FALSE(
+        urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
     socket->SetFailed();
 }
 
@@ -464,15 +495,20 @@ TEST_F(UrmaRecoveryTest, jfc_poll_failure_fails_socket_and_cools_peer) {
     const auto before = urma::GetUrmaRecoveryStatus();
     urma::UrmaRecoveryTestPeer::PollFailure(&ep);
     EXPECT_TRUE(socket->Failed());
-    EXPECT_FALSE(urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
-    EXPECT_EQ(before.failures[static_cast<size_t>(urma::UrmaFailureReason::CQ_POLL)] + 1,
-              urma::GetUrmaRecoveryStatus().failures[
-                  static_cast<size_t>(urma::UrmaFailureReason::CQ_POLL)]);
+    EXPECT_FALSE(
+        urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("127.0.0.1:8123"));
+    EXPECT_EQ(
+        before.failures[static_cast<size_t>(urma::UrmaFailureReason::CQ_POLL)] +
+            1,
+        urma::GetUrmaRecoveryStatus()
+            .failures[static_cast<size_t>(urma::UrmaFailureReason::CQ_POLL)]);
 }
 
 class UrmaRecoveryEcho : public ::test::EchoService {
-    void Echo(google::protobuf::RpcController*, const ::test::EchoRequest* request,
-              ::test::EchoResponse* response, google::protobuf::Closure* done) override {
+    void Echo(google::protobuf::RpcController*,
+              const ::test::EchoRequest* request,
+              ::test::EchoResponse* response,
+              google::protobuf::Closure* done) override {
         response->set_message(request->message());
         done->Run();
     }
@@ -512,7 +548,7 @@ TEST_F(UrmaRecoveryTest, tcp_only_client_completes_rpc_on_urma_server) {
         urma::UrmaEndpoint failed_ep(failed_socket.get());
         urma::UrmaRecoveryTestPeer::Establish(&failed_ep);
         EXPECT_EQ(-1, urma::UrmaRecoveryTestPeer::Complete(
-            &failed_ep, URMA_CR_RNR_RETRY_CNT_EXC_ERR));
+                          &failed_ep, URMA_CR_RNR_RETRY_CNT_EXC_ERR));
     }
     failed_socket->SetFailed();
     const auto before = urma::GetUrmaRecoveryStatus();
@@ -534,10 +570,12 @@ TEST_F(UrmaRecoveryTest, server_declines_v2_and_v3_without_allocating_jetty) {
     so.socket_mode = SOCKET_MODE_URMA;
     ASSERT_EQ(0, server.Start("127.0.0.1:0", &so));
     for (int version : {2, 3}) {
-        butil::fd_guard fd(butil::tcp_connect(server.listen_address(), nullptr));
+        butil::fd_guard fd(
+            butil::tcp_connect(server.listen_address(), nullptr));
         ASSERT_GE(fd, 0);
         timeval timeout{2, 0};
-        ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)));
+        ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                                sizeof(timeout)));
         urma::v2_wire::HelloMessage hello;
         hello.msg_len = urma::v2_wire::HELLO_PACKET_LEN;
         hello.hello_ver = urma::v2_wire::HELLO_V2_VERSION;
@@ -554,9 +592,12 @@ TEST_F(UrmaRecoveryTest, server_declines_v2_and_v3_without_allocating_jetty) {
             uint8_t packet[urma::v2_wire::HELLO_PACKET_LEN];
             memcpy(packet, "URMA", 4);
             hello.Serialize(packet + 4);
-            ASSERT_EQ(sizeof(packet), static_cast<size_t>(write(fd, packet, sizeof(packet))));
+            ASSERT_EQ(sizeof(packet),
+                      static_cast<size_t>(write(fd, packet, sizeof(packet))));
             uint8_t reply[sizeof(packet)];
-            ASSERT_EQ(sizeof(reply), static_cast<size_t>(recv(fd, reply, sizeof(reply), MSG_WAITALL)));
+            ASSERT_EQ(sizeof(reply),
+                      static_cast<size_t>(
+                          recv(fd, reply, sizeof(reply), MSG_WAITALL)));
             EXPECT_EQ(0, memcmp(reply, "URMA", 4));
             urma::v2_wire::HelloMessage rejected;
             rejected.Deserialize(reply + 4);
@@ -580,7 +621,8 @@ TEST_F(UrmaRecoveryTest, server_declines_v2_and_v3_without_allocating_jetty) {
             std::string packet("URM3", 4);
             packet.append(reinterpret_cast<const char*>(&size), 4);
             packet.append(body);
-            ASSERT_EQ(packet.size(), static_cast<size_t>(write(fd, packet.data(), packet.size())));
+            ASSERT_EQ(packet.size(), static_cast<size_t>(write(
+                                         fd, packet.data(), packet.size())));
             char header[8];
             ASSERT_EQ(8, recv(fd, header, 8, MSG_WAITALL));
             EXPECT_EQ(0, memcmp(header, "URM3", 4));
@@ -588,13 +630,16 @@ TEST_F(UrmaRecoveryTest, server_declines_v2_and_v3_without_allocating_jetty) {
             size = butil::NetToHost32(size);
             ASSERT_LE(size, 4096u);
             std::string reply(size, '\0');
-            ASSERT_EQ(size, static_cast<uint32_t>(recv(fd, &reply[0], size, MSG_WAITALL)));
+            ASSERT_EQ(size, static_cast<uint32_t>(
+                                recv(fd, &reply[0], size, MSG_WAITALL)));
             urma::UrmaHello rejected;
             ASSERT_TRUE(rejected.ParseFromString(reply));
             EXPECT_EQ(0u, rejected.jetty_id());
         }
-        const std::string request = "GET /version HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        ASSERT_EQ(request.size(), static_cast<size_t>(write(fd, request.data(), request.size())));
+        const std::string request =
+            "GET /version HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        ASSERT_EQ(request.size(), static_cast<size_t>(write(fd, request.data(),
+                                                            request.size())));
         char response[4096];
         const ssize_t nr = recv(fd, response, sizeof(response), 0);
         ASSERT_GT(nr, 0);

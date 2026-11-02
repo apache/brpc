@@ -30,8 +30,19 @@ namespace urma {
 enum class UrmaRecoveryMode { LEGACY, AUTO, TCP_ONLY };
 
 enum class UrmaFailureReason {
-    NONE, RETRY_EXHAUSTED, RNR, QP_FATAL, CQ_ERROR, CQ_POLL,
-    CQ_EVENT, CQ_NOTIFY, SEND_POST, ACCESS_ERROR, TRANSPORT_ERROR, RECV_POST, COUNT
+    NONE,
+    RETRY_EXHAUSTED,
+    RNR,
+    QP_FATAL,
+    CQ_ERROR,
+    CQ_POLL,
+    CQ_EVENT,
+    CQ_NOTIFY,
+    SEND_POST,
+    ACCESS_ERROR,
+    TRANSPORT_ERROR,
+    RECV_POST,
+    COUNT
 };
 
 const char* UrmaFailureReasonName(UrmaFailureReason reason);
@@ -58,8 +69,9 @@ public:
     // Positive milliseconds, at most INT32_MAX. Applies to future failures.
     bool SetCooldownMs(int64_t cooldown_ms);
     bool AllowNewConnection(const std::string& peer, uint64_t* epoch = nullptr);
-    void ReportPeerFailure(const std::string& peer, uint64_t epoch,
-                           UrmaFailureReason reason = UrmaFailureReason::RETRY_EXHAUSTED);
+    void ReportPeerFailure(
+        const std::string& peer, uint64_t epoch,
+        UrmaFailureReason reason = UrmaFailureReason::RETRY_EXHAUSTED);
     UrmaRecoveryStatus GetStatus();
     void RecordNegotiatedConnection(uint64_t epoch);
 

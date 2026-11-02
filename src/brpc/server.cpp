@@ -875,7 +875,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     const ServerOptions default_opt;
     const ServerOptions& real_opt = opt ? *opt : default_opt;
 
-    if (real_opt.socket_mode == SOCKET_MODE_URMA && !real_opt.urma_qos.IsValid()) {
+    if (real_opt.socket_mode == SOCKET_MODE_URMA &&
+        !real_opt.urma_qos.IsValid()) {
         LOG(ERROR) << "URMA priority must be -1 or in [0,15], "
                       "and SL must be -1 or in [0,255]";
         return -1;

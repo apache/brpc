@@ -26,7 +26,6 @@
 #include "brpc/socket_mode.h"
 #include "brpc/urma/urma_qos.h"
 
-
 namespace brpc {
 
 struct ConnectStatistics {

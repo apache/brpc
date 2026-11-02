@@ -22,12 +22,14 @@ namespace brpc {
 
 // Outbound RM QoS, resolved through the selected device's priority/SL map.
 struct UrmaQosOptions {
-    int priority = -1;  // -1 selects from SL or device default; explicit [0, 15].
-    int service_level = -1;  // -1 leaves SL unspecified; explicit range [0, 255].
+    // -1 selects from SL or the device default; explicit range [0, 15].
+    int priority = -1;
+    // -1 leaves SL unspecified; explicit range [0, 255].
+    int service_level = -1;
 
     bool IsValid() const {
-        return priority >= -1 && priority <= 15 &&
-               service_level >= -1 && service_level <= 255;
+        return priority >= -1 && priority <= 15 && service_level >= -1 &&
+               service_level <= 255;
     }
 };
 
