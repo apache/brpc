@@ -15,13 +15,7 @@ namespace subtle {
 inline Atomic32 NoBarrier_CompareAndSwap(volatile Atomic32* ptr,
                                          Atomic32 old_value,
                                          Atomic32 new_value) {
-  Atomic32 prev_value;
-  do {
-    if (__sync_bool_compare_and_swap(ptr, old_value, new_value))
-      return old_value;
-    prev_value = *ptr;
-  } while (prev_value == old_value);
-  return prev_value;
+  return __sync_val_compare_and_swap(ptr, old_value, new_value);
 }
 
 inline Atomic32 NoBarrier_AtomicExchange(volatile Atomic32* ptr,
@@ -55,7 +49,7 @@ inline Atomic32 Barrier_AtomicIncrement(volatile Atomic32* ptr,
 inline Atomic32 Acquire_CompareAndSwap(volatile Atomic32* ptr,
                                        Atomic32 old_value,
                                        Atomic32 new_value) {
-  // Since NoBarrier_CompareAndSwap uses __sync_bool_compare_and_swap, which
+  // Since NoBarrier_CompareAndSwap uses __sync_val_compare_and_swap, which
   // is a full memory barrier, none is needed here or below in Release.
   return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
@@ -104,13 +98,7 @@ inline Atomic32 Release_Load(volatile const Atomic32* ptr) {
 inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr,
                                          Atomic64 old_value,
                                          Atomic64 new_value) {
-  Atomic64 prev_value;
-  do {
-    if (__sync_bool_compare_and_swap(ptr, old_value, new_value))
-      return old_value;
-    prev_value = *ptr;
-  } while (prev_value == old_value);
-  return prev_value;
+  return __sync_val_compare_and_swap(ptr, old_value, new_value);
 }
 
 inline Atomic64 NoBarrier_AtomicExchange(volatile Atomic64* ptr,
