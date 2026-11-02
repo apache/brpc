@@ -3154,6 +3154,56 @@ TEST_F(HttpTest, http_expect) {
     ASSERT_EQ(imsg_guard->header().status_code(), brpc::HTTP_STATUS_OK);
 }
 
+TEST_F(HttpTest, http_expect_answered_once) {
+    brpc::Server server;
+    HttpServiceImpl svc;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+
+    const butil::EndPoint ep = server.listen_address();
+    brpc::SocketOptions options;
+    options.remote_side = ep;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr sock;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
+
+    butil::IOBuf content;
+    content.append("hello world");
+    brpc::HttpHeader header;
+    header.set_method(brpc::HTTP_METHOD_POST);
+    header.uri().set_path("/HttpService/Expect");
+    header.SetHeader("Expect", "100-continue");
+    header.SetHeader("Content-Length", std::to_string(content.size()));
+    butil::IOBuf header_buf;
+    MakeHttpRequestHeaders(&header_buf, &header, ep);
+
+    ASSERT_EQ(0, sock->Write(&header_buf));
+    int64_t start_time = butil::cpuwide_time_us();
+    while (sock->fd() < 0) {
+        bthread_usleep(1000);
+        ASSERT_LT(butil::cpuwide_time_us(), start_time + 1000000L) << "Too long!";
+    }
+    // 100 Continue
+    brpc::DestroyingPtr<brpc::policy::HttpContext> imsg_guard;
+    ReadOneResponse(sock, imsg_guard);
+    ASSERT_EQ(imsg_guard->header().status_code(), brpc::HTTP_STATUS_CONTINUE);
+
+    // Send the body in pieces with a pause in between, so that the server
+    // gets each piece in a separate read. The expectation was already
+    // answered above, so no piece may be answered with another 100 Continue.
+    while (content.size() > 1) {
+        butil::IOBuf piece;
+        content.cutn(&piece, content.size() / 2);
+        ASSERT_EQ(0, sock->Write(&piece));
+        bthread_usleep(50 * 1000);
+    }
+    ASSERT_EQ(0, sock->Write(&content));
+    // 200 Ok
+    ReadOneResponse(sock, imsg_guard);
+    ASSERT_EQ(imsg_guard->header().status_code(), brpc::HTTP_STATUS_OK);
+}
+
 TEST_F(HttpTest, pipelined_requests_get_one_response_each) {
     brpc::Server server;
     server.set_version("pipelined");
