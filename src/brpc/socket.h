@@ -691,6 +691,21 @@ public:
     void fail_me_at_server_stop() { _fail_me_at_server_stop = true; }
     bool shall_fail_me_at_server_stop() const { return _fail_me_at_server_stop; }
 
+    // Track references held by deferred responses waiting for peer activity
+    // (such as HTTP/2 WINDOW_UPDATE). Unlike fail_me_at_server_stop(), these
+    // references are allowed to drain gracefully on Server.Stop(), but must
+    // trigger SetFailed() when the socket becomes idle so NotifyOnFailed()
+    // callbacks can clean up buffered state and release the socket.
+    void AddIdleFailRef() {
+        _idle_fail_ref_count.fetch_add(1, butil::memory_order_relaxed);
+    }
+    void ReleaseIdleFailRef() {
+        _idle_fail_ref_count.fetch_sub(1, butil::memory_order_relaxed);
+    }
+    bool shall_fail_me_at_idle_timeout() const {
+        return _idle_fail_ref_count.load(butil::memory_order_relaxed) > 0;
+    }
+
     // Tag the socket so that the response coming back from socket will be
     // parsed progressively. For example: in HTTP, the RPC may end w/o reading
     // the body part fully.
@@ -1024,6 +1039,7 @@ private:
     butil::atomic<bool> _controller_released_socket;
 
     bool _fail_me_at_server_stop;
+    butil::atomic<int32_t> _idle_fail_ref_count;
 
     // Set by SetLogOff
     butil::atomic<bool> _logoff_flag;
