@@ -44,12 +44,15 @@ TEST_F(CouchbaseUnitTest, ManifestJsonNesting) {
   brpc::CouchbaseManifestManager manager;
   brpc::CouchbaseManifestManager::CollectionManifest manifest;
   const std::string prefix = "{\"uid\":\"1\",\"scopes\":[],\"extra\":";
-  for (size_t depth : {size_t(99), size_t(100), size_t(20000)}) {
-    const std::string json = prefix + std::string(depth, '[') + "0"
+  auto make_json = [&](size_t depth) {
+    return prefix + std::string(depth, '[') + "0"
         + std::string(depth, ']') + "}";
-    EXPECT_EQ(depth < 100, manager.jsonToCollectionManifest(json, &manifest))
-        << "depth=" << depth;
-  }
+  };
+  // The root object plus 99 arrays reaches the accepted depth of 100.
+  // Keep explicit expectations to independently check this boundary.
+  EXPECT_TRUE(manager.jsonToCollectionManifest(make_json(99), &manifest));
+  EXPECT_FALSE(manager.jsonToCollectionManifest(make_json(100), &manifest));
+  EXPECT_FALSE(manager.jsonToCollectionManifest(make_json(20000), &manifest));
   EXPECT_TRUE(manager.jsonToCollectionManifest(
       "{\"uid\":\"1\",\"scopes\":[],\"extra\":\"[\\\"{]\"}", &manifest));
   std::string with_nul = "{\"uid\":\"1\",\"scopes\":[]}";

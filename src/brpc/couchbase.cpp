@@ -33,6 +33,7 @@ static bool DBUG = false;  // Set to true to enable debug logs
 #include <cinttypes>
 #include <iostream>
 
+#include "brpc/details/json_util.h"
 #include "brpc/policy/couchbase_protocol.h"
 #include "brpc/proto_base.pb.h"
 #include "butil/logging.h"
@@ -51,16 +52,6 @@ constexpr uint32_t DEFAULT_VBUCKET_COUNT ALLOW_UNUSED = 1024;
 constexpr int CONNECTION_ID_SIZE = 33;
 constexpr size_t RANDOM_ID_HEX_SIZE = 67;  // 33 bytes * 2 + null terminator
 
-// Bound nesting before building the DOM, whose destruction is recursive.
-struct ManifestDepthHandler
-    : BUTIL_RAPIDJSON_NAMESPACE::BaseReaderHandler<
-          BUTIL_RAPIDJSON_NAMESPACE::UTF8<>, ManifestDepthHandler> {
-  unsigned depth = 0;
-  bool StartObject() { return ++depth <= 100; }
-  bool StartArray() { return ++depth <= 100; }
-  bool EndObject(BUTIL_RAPIDJSON_NAMESPACE::SizeType) { --depth; return true; }
-  bool EndArray(BUTIL_RAPIDJSON_NAMESPACE::SizeType) { --depth; return true; }
-};
 }  // namespace
 
 // Static member definitions
@@ -135,18 +126,8 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
     return false;
   }
 
-  BUTIL_RAPIDJSON_NAMESPACE::Reader reader;
-  BUTIL_RAPIDJSON_NAMESPACE::StringStream stream(json.c_str());
-  ManifestDepthHandler handler;
-  if (!reader.Parse<BUTIL_RAPIDJSON_NAMESPACE::kParseIterativeFlag>(stream, handler)
-      || stream.Tell() != json.size()) {
-    return false;
-  }
-
   BUTIL_RAPIDJSON_NAMESPACE::Document document;
-  document.Parse<BUTIL_RAPIDJSON_NAMESPACE::kParseIterativeFlag>(json.c_str());
-
-  if (document.HasParseError()) {
+  if (!ParseJsonWithDepthLimit(json, &document)) {
     DEBUG_PRINT("Failed to parse JSON: " << document.GetParseError());
     return false;
   }
