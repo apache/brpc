@@ -138,6 +138,9 @@ FpState g_clobber_state;
 bool g_context_saw_its_state;
 int g_context_entry_rounding_mode;
 int g_context_rounding_mode;
+uintptr_t g_stack_begin;
+uintptr_t g_stack_end;
+bool g_stack_walk_terminated;
 
 extern "C" intptr_t jump_with_fp_state(
     bthread_fcontext_t* old_context, bthread_fcontext_t new_context,
@@ -340,6 +343,38 @@ TEST(BthreadContextTest, preserves_fpscr_rounding_mode) {
     EXPECT_EQ(FE_UPWARD, std::fegetround());
 
     std::fesetround(saved_rounding_mode);
+    std::free(stack);
+}
+
+void walk_back_chain_and_return(intptr_t) {
+    // Follow the back chains from our frame. The walk must end on a zero
+    // word inside the context's stack, without ever leaving the stack.
+    void* const* frame =
+        static_cast<void* const*>(__builtin_frame_address(0));
+    int steps = 0;
+    while (frame != nullptr &&
+           reinterpret_cast<uintptr_t>(frame) >= g_stack_begin &&
+           reinterpret_cast<uintptr_t>(frame) < g_stack_end && ++steps < 16) {
+        frame = static_cast<void* const*>(frame[0]);
+    }
+    g_stack_walk_terminated = frame == nullptr;
+    bthread_jump_fcontext(&g_test_context, g_main_context, 0);
+}
+
+TEST(BthreadContextTest, stack_walk_of_new_context_terminates) {
+    void* stack = std::malloc(kStackSize);
+    ASSERT_NE(nullptr, stack);
+    // bthread reuses stacks, so the memory holds stale data.
+    std::memset(stack, 0xa5, kStackSize);
+    g_stack_begin = reinterpret_cast<uintptr_t>(stack);
+    g_stack_end = g_stack_begin + kStackSize;
+    g_stack_walk_terminated = false;
+    g_main_context = nullptr;
+    g_test_context = bthread_make_fcontext(
+        static_cast<char*>(stack) + kStackSize, kStackSize,
+        walk_back_chain_and_return);
+    bthread_jump_fcontext(&g_main_context, g_test_context, 0);
+    EXPECT_TRUE(g_stack_walk_terminated);
     std::free(stack);
 }
 
