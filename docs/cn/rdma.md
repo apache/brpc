@@ -1,8 +1,3 @@
-# 运行期故障恢复
-
-模式切换、端口与对端冷却及 TCP 回落见
-[RDMA 与 URMA 运行期故障恢复](rdma_runtime_recovery.md)。
-
 # 编译
 
 由于RDMA对驱动与硬件有要求，目前仅支持在Linux系统编译并运行RDMA功能。

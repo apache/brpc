@@ -29,7 +29,6 @@
 #include "brpc/reloadable_flags.h"
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_helper.h"
-#include "brpc/rdma/rdma_recovery_policy.h"
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma_transport.h"
 #include "brpc/rdma/rdma_handshake.h"
@@ -132,8 +131,6 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     : _socket(s)
     , _state(UNINIT)
     , _handshake_version(0)
-    , _recovery_epoch(0)
-    , _runtime_failure(RdmaFailureReason::NONE)
     , _resource(nullptr)
     , _send_cq_events(0)
     , _recv_cq_events(0)
@@ -181,8 +178,6 @@ void RdmaEndpoint::Reset() {
 
     _state.store(UNINIT, butil::memory_order_relaxed);
     _handshake_version = 0;
-    _recovery_epoch = 0;
-    _runtime_failure.store(RdmaFailureReason::NONE, butil::memory_order_relaxed);
     _outgoing_ece.reset();
     _resource = nullptr;
     _send_cq_events = 0;
@@ -217,10 +212,7 @@ void RdmaConnect::StartConnect(const Socket* socket,
     if (Socket::Address(socket->id(), &s) != 0) {
         return;
     }
-    if (!IsRdmaAvailable() ||
-        !GlobalRdmaRecoveryPolicy().AllowNewConnection(
-            butil::endpoint2str(socket->remote_side()).c_str(),
-            &rdma_transport->_rdma_ep->_recovery_epoch)) {
+    if (!IsRdmaAvailable()) {
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         rdma_transport->_rdma_ep->_state.store(
             RdmaEndpoint::FALLBACK_TCP, butil::memory_order_release);
@@ -243,50 +235,6 @@ void RdmaConnect::StartConnect(const Socket* socket,
 }
 
 void RdmaConnect::StopConnect(Socket* socket) { }
-
-void RdmaEndpoint::ReportFailure(RdmaFailureReason reason) {
-    RdmaFailureReason expected = RdmaFailureReason::NONE;
-    if (reason == RdmaFailureReason::NONE ||
-        !_runtime_failure.compare_exchange_strong(expected, reason)) {
-        return;
-    }
-    if (_state.load(butil::memory_order_acquire) != ESTABLISHED) {
-        return;
-    }
-    GlobalRdmaRecoveryPolicy().ReportPeerFailure(
-        _socket->CreatedByConnect() ?
-            butil::endpoint2str(_socket->remote_side()).c_str() : "",
-        _recovery_epoch, reason);
-    LOG(WARNING) << "RDMA runtime failure=" << RdmaFailureReasonName(reason)
-                 << " socket=" << _socket->id()
-                 << " port=" << static_cast<int>(GetRdmaPortNum())
-                 << " epoch=" << _recovery_epoch;
-}
-
-void RdmaEndpoint::OnAsyncError(Socket* socket, const ibv_async_event& event) {
-    auto* transport = dynamic_cast<RdmaTransport*>(socket->_transport.get());
-    RdmaEndpoint* ep = transport ? transport->GetRdmaEp() : nullptr;
-    if (!ep || !ep->_resource) {
-        return;
-    }
-    RdmaFailureReason reason;
-    if (event.event_type == IBV_EVENT_CQ_ERR) {
-        if (event.element.cq != ep->_resource->send_cq &&
-            event.element.cq != ep->_resource->recv_cq &&
-            event.element.cq != ep->_resource->polling_cq) {
-            return;
-        }
-        reason = RdmaFailureReason::CQ_ERROR;
-    } else {
-        if (event.element.qp != ep->_resource->qp) {
-            return;
-        }
-        reason = event.event_type == IBV_EVENT_QP_FATAL ?
-            RdmaFailureReason::QP_FATAL : RdmaFailureReason::ACCESS_ERROR;
-    }
-    ep->ReportFailure(reason);
-    socket->SetFailed(ERDMA, "RDMA async error: %s", RdmaFailureReasonName(reason));
-}
 
 void RdmaConnect::Run() {
     _done(errno, _data);
@@ -633,7 +581,6 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
 
     if (rdma_transport->_rdma_state == RdmaTransport::RDMA_ON) {
         ep->_state.store(ESTABLISHED, butil::memory_order_release);
-        GlobalRdmaRecoveryPolicy().RecordNegotiatedConnection(ep->_recovery_epoch);
         // The handshake is over, so the QP stream may start parsing now.
         if (ep->StartCqEvents() < 0) {
             const int saved_errno = errno;
@@ -736,9 +683,7 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         }
 
         // Negotiate + allocate resources.
-        bool negotiated = r == RemoteHelloResult::NEGOTIATED &&
-            GlobalRdmaRecoveryPolicy().AllowNewConnection(
-                "", &ep->_recovery_epoch);
+        bool negotiated = r == RemoteHelloResult::NEGOTIATED;
         if (negotiated) {
             ep->ApplyRemoteHello(remote);
             ep->_state.store(S_ALLOC_QPCQ, butil::memory_order_relaxed);
@@ -820,7 +765,6 @@ ParseResult RdmaEndpoint::ExecuteServerHandshake(butil::IOBuf* source, Socket* s
         << ") on " << s->description();
     rdma_transport->_rdma_state = RdmaTransport::RDMA_ON;
     ep->_state.store(ESTABLISHED, butil::memory_order_release);
-    GlobalRdmaRecoveryPolicy().RecordNegotiatedConnection(ep->_recovery_epoch);
     s->reset_parsing_context(nullptr);
 
     // Two things are deliberately not done here.
@@ -1033,9 +977,6 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             std::ostringstream oss;
             DebugInfo(oss, ", ");
             LOG(WARNING) << "Fail to ibv_post_send: " << berror(err) << " " << oss.str();
-            if (err == EIO || err == ENETDOWN || err == ENETUNREACH || err == ETIMEDOUT) {
-                ReportFailure(RdmaFailureReason::SEND_POST);
-            }
             errno = err;
             return -1;
         }
@@ -1086,10 +1027,6 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
         // We use other way to guarantee the Send Queue is not full.
         // So we just consider this error as an unrecoverable error.
         LOG(WARNING) << "Fail to ibv_post_send: " << berror(err) << " " << oss.str();
-        if (err == EIO || err == ENETDOWN || err == ENETUNREACH || err == ETIMEDOUT) {
-            ReportFailure(RdmaFailureReason::SEND_POST);
-        }
-        errno = err;
         return -1;
     }
 
@@ -1107,7 +1044,8 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
         if (0 == wc.wr_id) {
             _sq_imm_window_size += 1;
             // If there are any unacknowledged recvs, send an ack.
-            return SendAck(0);
+            SendAck(0);
+            return 0;
         }
         // Update SQ window.
         uint16_t wnd_to_update = wc.wr_id;
@@ -1160,8 +1098,8 @@ ssize_t RdmaEndpoint::HandleCompletion(ibv_wc& wc) {
         if (PostRecv(1, zerocopy) < 0) {
             return -1;
         }
-        if (wc.byte_len > 0 && SendAck(1) < 0) {
-            return -1;
+        if (wc.byte_len > 0) {
+            SendAck(1);
         }
         return wc.byte_len;
     }
@@ -1189,8 +1127,6 @@ int RdmaEndpoint::DoPostRecv(void* block, size_t block_size) {
     int err = ibv_post_recv(_resource->qp, &wr, &bad);
     if (err != 0) {
         LOG(WARNING) << "Fail to ibv_post_recv: " << berror(err);
-        ReportFailure(RdmaFailureReason::RECV_POST);
-        errno = err;
         return -1;
     }
     return 0;
@@ -1398,8 +1334,6 @@ int RdmaEndpoint::DoAllocateResources() {
         return -1;
     }
 
-    BindResourceToSocket();
-
     if (!FLAGS_rdma_use_polling) {
         if (0 != ReqNotifyCq(true, false)) {
             return -1;
@@ -1423,20 +1357,6 @@ int RdmaEndpoint::DoAllocateResources() {
     }
 
     return 0;
-}
-
-void RdmaEndpoint::BindResourceToSocket() {
-    void* owner = reinterpret_cast<void*>(_socket->id());
-    _resource->qp->qp_context = owner;
-    if (_resource->send_cq) {
-        _resource->send_cq->cq_context = owner;
-    }
-    if (_resource->recv_cq) {
-        _resource->recv_cq->cq_context = owner;
-    }
-    if (_resource->polling_cq) {
-        _resource->polling_cq->cq_context = owner;
-    }
 }
 
 int RdmaEndpoint::StartCqEvents() {
@@ -1624,8 +1544,7 @@ void RdmaEndpoint::DeallocateResources() {
         PollerRemoveCqSid();
     }
     bool move_to_rdma_resource_list = false;
-    if (_runtime_failure.load(butil::memory_order_relaxed) == RdmaFailureReason::NONE &&
-        _sq_size <= FLAGS_rdma_prepared_qp_size &&
+    if (_sq_size <= FLAGS_rdma_prepared_qp_size &&
         _rq_size <= FLAGS_rdma_prepared_qp_size &&
         FLAGS_rdma_prepared_qp_cnt > 0) {
         ibv_qp_attr attr;
@@ -1732,7 +1651,6 @@ int RdmaEndpoint::GetAndAckEvents(SocketUniquePtr& s) {
             if (errno != EAGAIN) {
                 const int saved_errno = errno;
                 PLOG(ERROR) << "Fail to get cq event from " << s->description();
-                ReportFailure(RdmaFailureReason::CQ_EVENT);
                 s->SetFailed(saved_errno, "Fail to get cq event from %s: %s",
                              s->description().c_str(), berror(saved_errno));
                 return -1;
@@ -1773,7 +1691,6 @@ int RdmaEndpoint::ReqNotifyCq(bool send_cq, bool fatal_on_error) {
         PLOG(WARNING) << "Fail to arm " << (send_cq ? "send" : "recv")
                       << " CQ comp channel from " << _socket->description();
         if (fatal_on_error) {
-            ReportFailure(RdmaFailureReason::CQ_NOTIFY);
             _socket->SetFailed(err, "Fail to arm %s CQ channel from %s: %s",
                                send_cq ? "send" : "recv", _socket->description().c_str(),
                                berror(err));
@@ -1827,7 +1744,6 @@ void RdmaEndpoint::PollCq(Socket* m) {
         if (cnt < 0) {
             const int saved_errno = errno;
             PLOG(WARNING) << "Fail to poll cq: " << s->description();
-            ep->ReportFailure(RdmaFailureReason::CQ_POLL);
             s->SetFailed(saved_errno, "Fail to poll cq from %s: %s",
                     s->description().c_str(), berror(saved_errno));
             return;
@@ -1896,7 +1812,6 @@ void RdmaEndpoint::PollCq(Socket* m) {
             }
 
             if (wc[i].status != IBV_WC_SUCCESS) {
-                ep->ReportFailure(ClassifyRdmaCompletion(wc[i].status));
                 PLOG(WARNING) << "Fail to handle RDMA completion, error status("
                               << wc[i].status << "): " << s->description();
                 s->SetFailed(ERDMA, "RDMA completion error(%d) from %s: %s",

@@ -1690,7 +1690,7 @@ void UrmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece) const {
        << " sq_window=" << _sq_window_size.load(butil::memory_order_relaxed)
        << " remote_rq_window=" << _remote_rq_window_size.load(butil::memory_order_relaxed)
        << " recovery_epoch=" << _recovery_epoch
-       << " runtime_failure=" << rdma::RdmaFailureReasonName(_runtime_failure.load())
+       << " runtime_failure=" << UrmaFailureReasonName(_runtime_failure.load())
        << " handshake_version=" << _handshake_version
        << " read_buf=" << _input_processor.read_buf().size();
 }

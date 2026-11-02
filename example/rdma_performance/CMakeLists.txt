@@ -40,7 +40,3 @@ brpc_example_configure_target(server)
 
 target_link_libraries(client PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
 target_link_libraries(server PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
-
-add_executable(recovery_client recovery_client.cpp ${PROTO_SRC} ${PROTO_HEADER})
-brpc_example_configure_target(recovery_client)
-target_link_libraries(recovery_client PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
