@@ -1713,7 +1713,7 @@ void UrmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece) const {
        << (_resource && _resource->jetty ? GetUrmaServiceLevelForPriority(
                _resource->jetty->jetty_cfg.jfs_cfg.priority) : -1)
        << " recovery_epoch=" << _recovery_epoch
-       << " runtime_failure=" << rdma::RdmaFailureReasonName(_runtime_failure.load())
+       << " runtime_failure=" << UrmaFailureReasonName(_runtime_failure.load())
        << " handshake_version=" << _handshake_version
        << " read_buf=" << _input_processor.read_buf().size();
 }

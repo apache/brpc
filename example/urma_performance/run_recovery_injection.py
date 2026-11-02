@@ -45,7 +45,7 @@ def decode_bvar(text):
 def read_samples(path):
     with path.open() as stream:
         return [list(map(int, row[:1] + row[2:])) for row in csv.reader(stream)
-                if len(row) == 9 and row[0].isdigit()]
+                if len(row) == 7 and row[0].isdigit()]
 
 
 def wait_for(proc, predicate, timeout, description):

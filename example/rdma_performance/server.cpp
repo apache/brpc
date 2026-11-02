@@ -28,8 +28,6 @@
 
 DEFINE_int32(port, 8002, "TCP Port of this server");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
-DEFINE_int32(rdma_sl, 0, "Outbound RDMA service level [0,15]");
-DEFINE_int32(rdma_traffic_class, 0, "Outbound RDMA traffic class byte [0,255]");
 
 butil::atomic<uint64_t> g_last_time(0);
 
@@ -79,8 +77,6 @@ int main(int argc, char* argv[]) {
 
     brpc::ServerOptions options;
     options.socket_mode = FLAGS_use_rdma? brpc::SOCKET_MODE_RDMA : brpc::SOCKET_MODE_TCP;
-    options.rdma_qos.service_level = FLAGS_rdma_sl;
-    options.rdma_qos.traffic_class = FLAGS_rdma_traffic_class;
     if (server.Start(FLAGS_port, &options) != 0) {
         LOG(ERROR) << "Fail to start EchoServer";
         return -1;

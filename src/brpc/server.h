@@ -46,7 +46,6 @@
 #include "brpc/baidu_master_service.h"
 #include "brpc/rpc_pb_message_factory.h"
 #include "brpc/socket_mode.h"
-#include "brpc/rdma/rdma_qos.h"
 #include "brpc/urma/urma_qos.h"
 
 namespace brpc {
@@ -243,9 +242,6 @@ struct ServerOptions {
     // Transport used by accepted sockets.
     // Default: SOCKET_MODE_TCP
     SocketMode socket_mode;
-
-    // Outbound RDMA QoS for responses on this server's accepted connections.
-    RdmaQosOptions rdma_qos;
 
     // Outbound URMA QoS for responses on accepted connections.
     UrmaQosOptions urma_qos;

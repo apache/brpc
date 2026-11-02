@@ -205,7 +205,7 @@ brpc::urma::SetUrmaRecoveryMode(brpc::urma::UrmaRecoveryMode::AUTO);
 
 默认冷却 5 秒，故障来源包括重试耗尽、RNR、JFC 错误和 WR 提交失败。
 同一连接记录首个运行期故障；访问错误单独计数，窗口耗尽保持 EAGAIN。
-URMA 与 RDMA 独立维护模式、epoch 和冷却缓存，模式切换过滤旧连接上报。
+恢复策略维护进程级模式、epoch 和对端冷却缓存，模式切换过滤旧连接上报。
 
 `GetUrmaRecoveryStatus()` 和 `/vars/urma_recovery_status` 提供故障原因、冷却状态及协商数；
 `/vars/urma_recovery_tcp_fallback_admissions` 按连接累计 TCP 准入。

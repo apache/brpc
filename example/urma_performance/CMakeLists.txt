@@ -55,7 +55,7 @@ target_link_libraries(urma_performance_client PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB}
 target_link_libraries(urma_performance_server PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
 
 add_executable(urma_recovery_client
-    ../rdma_performance/recovery_client.cpp ${PROTO_SRC} ${PROTO_HEADER})
+    recovery_client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 brpc_example_configure_target(urma_recovery_client)
 target_link_libraries(urma_recovery_client PRIVATE ${BRPC_LIB} ${DYNAMIC_LIB})
 

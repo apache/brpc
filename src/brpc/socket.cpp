@@ -716,10 +716,6 @@ void SetSocketBufferOptions(int fd) {
 //   version: from version part of _versioned_nref, must be an EVEN number.
 //   slot: designated by ResourcePool.
 int Socket::Create(const SocketOptions& options, SocketId* id) {
-    if (options.socket_mode == SOCKET_MODE_RDMA && !options.rdma_qos.IsValid()) {
-        errno = EINVAL;
-        return -1;
-    }
     if (options.socket_mode == SOCKET_MODE_URMA && !options.urma_qos.IsValid()) {
         errno = EINVAL;
         return -1;
@@ -739,7 +735,6 @@ int Socket::OnCreated(const SocketOptions& options) {
     });
     // start build the transport
     _socket_mode = options.socket_mode;
-    _rdma_qos = options.rdma_qos;
     _urma_qos = options.urma_qos;
     _transport = TransportFactory::CreateTransport(options.socket_mode);
     CHECK(nullptr != _transport);
@@ -2840,7 +2835,6 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
         opt.keytable_pool = _keytable_pool;
         opt.app_connect = _app_connect;
         opt.socket_mode = _socket_mode;
-        opt.rdma_qos = _rdma_qos;
         opt.urma_qos = _urma_qos;
         socket_pool = new SocketPool(opt);
         SocketPool* expected = nullptr;
@@ -2948,7 +2942,6 @@ int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     opt.keytable_pool = _keytable_pool;
     opt.app_connect = _app_connect;
     opt.socket_mode = _socket_mode;
-    opt.rdma_qos = _rdma_qos;
     opt.urma_qos = _urma_qos;
     if (get_client_side_messenger()->Create(opt, &id) != 0 ||
         Address(id, short_socket) != 0) {

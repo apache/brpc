@@ -366,12 +366,9 @@ protected:
         urma::g_skip_urma_init = true;
         urma::SetUrmaRecoveryMode(urma::UrmaRecoveryMode::LEGACY);
         urma::SetUrmaRecoveryMode(urma::UrmaRecoveryMode::AUTO);
-        rdma::SetRdmaRecoveryMode(rdma::RdmaRecoveryMode::LEGACY);
-        urma::GlobalUrmaRecoveryPolicy().ReportPortState(true);
     }
     void TearDown() override {
         urma::SetUrmaRecoveryMode(urma::UrmaRecoveryMode::LEGACY);
-        rdma::SetRdmaRecoveryMode(rdma::RdmaRecoveryMode::LEGACY);
         UrmaRuntimeMockTest::TearDown();
     }
     void CreateSocket(SocketUniquePtr* socket) {
@@ -384,11 +381,9 @@ protected:
     }
 };
 
-TEST_F(UrmaRecoveryTest, independent_transport_modes_and_metrics) {
+TEST_F(UrmaRecoveryTest, recovery_mode_and_metrics) {
     ASSERT_TRUE(urma::SetUrmaRecoveryMode(urma::UrmaRecoveryMode::TCP_ONLY));
     EXPECT_FALSE(urma::GlobalUrmaRecoveryPolicy().AllowNewConnection("peer"));
-    EXPECT_TRUE(rdma::GlobalRdmaRecoveryPolicy().AllowNewConnection("peer"));
-    EXPECT_EQ(rdma::RdmaRecoveryMode::LEGACY, rdma::GetRdmaRecoveryMode());
     EXPECT_FALSE(urma::SetUrmaRecoveryCooldownMs(0));
     EXPECT_TRUE(urma::SetUrmaRecoveryCooldownMs(5000));
     EXPECT_NE(std::string::npos,

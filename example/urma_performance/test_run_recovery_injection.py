@@ -41,9 +41,9 @@ class RecoveryInjectionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "client.csv"
             path.write_text("seconds,mode,success,failure\n"
-                            "0,auto,1,0,1,0,0,1,0\n1,auto,"
+                            "0,auto,1,0,1,0,0\n1,auto,"
                             "\ncompleted success=1 failure=0\n")
-            self.assertEqual([[0, 1, 0, 1, 0, 0, 1, 0]], runner.read_samples(path))
+            self.assertEqual([[0, 1, 0, 1, 0, 0]], runner.read_samples(path))
 
     def phases(self):
         baseline = {"mode": "auto", "epoch": 2, "negotiated_connections": 10,

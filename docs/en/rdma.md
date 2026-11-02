@@ -1,19 +1,3 @@
-# Business QoS
-
-Configure `ChannelOptions.rdma_qos` for outgoing requests and
-`ServerOptions.rdma_qos` for outgoing responses. `service_level` accepts 0–15;
-`traffic_class` accepts the full 8-bit GRH/IP byte, 0–255, including DSCP and ECN.
-Both default to 0. The network configures SL→VL and PCP/DSCP mappings and scheduling.
-
-Different QoS settings use separate connections and QPs; equal settings share them.
-Naming services, pooled and short connections, accepted sockets and rebuilt QPs
-inherit the settings. v2/v3 handshake formats stay the same. Connection diagnostics
-show `rdma_sl` and `rdma_traffic_class`.
-
-Both examples in `example/rdma_performance` accept `--rdma_sl` and
-`--rdma_traffic_class`. Check QP attributes and packet markings, then compare
-throughput and P99 under competing traffic.
-
 # Build
 
 Since RDMA requires driver and hardware support, only the build on linux is verified.

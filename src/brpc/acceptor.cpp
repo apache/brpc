@@ -338,7 +338,6 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.force_ssl = am->_force_ssl;
         options.initial_ssl_ctx = am->_ssl_ctx;
         options.socket_mode = am->_socket_mode;
-        options.rdma_qos = am->_rdma_qos;
         options.urma_qos = am->_urma_qos;
         options.bthread_tag = am->_bthread_tag;
         if (Socket::Create(options, &socket_id) != 0) {

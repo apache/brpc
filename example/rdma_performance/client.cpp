@@ -42,8 +42,6 @@ DEFINE_string(connection_type, "single", "Connection type of the channel");
 DEFINE_string(protocol, "baidu_std", "Protocol type.");
 DEFINE_string(servers, "0.0.0.0:8002+0.0.0.0:8002", "IP Address of servers");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
-DEFINE_int32(rdma_sl, 0, "Outbound RDMA service level [0,15]");
-DEFINE_int32(rdma_traffic_class, 0, "Outbound RDMA traffic class byte [0,255]");
 DEFINE_int32(rpc_timeout_ms, 2000, "RPC call timeout");
 DEFINE_int32(test_seconds, 20, "Test running time");
 DEFINE_int32(test_iterations, 0, "Test iterations");
@@ -105,8 +103,6 @@ public:
     int Init() {
         brpc::ChannelOptions options;
         options.socket_mode = FLAGS_use_rdma? brpc::SOCKET_MODE_RDMA : brpc::SOCKET_MODE_TCP;
-        options.rdma_qos.service_level = FLAGS_rdma_sl;
-        options.rdma_qos.traffic_class = FLAGS_rdma_traffic_class;
         options.protocol = FLAGS_protocol;
         options.connection_type = FLAGS_connection_type;
         options.timeout_ms = FLAGS_rpc_timeout_ms;
@@ -277,14 +273,6 @@ void Test(int thread_num, int attachment_size) {
 
 int main(int argc, char* argv[]) {
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
-
-    brpc::RdmaQosOptions qos;
-    qos.service_level = FLAGS_rdma_sl;
-    qos.traffic_class = FLAGS_rdma_traffic_class;
-    if (FLAGS_use_rdma && !qos.IsValid()) {
-        LOG(ERROR) << "RDMA SL must be in [0,15] and traffic class in [0,255]";
-        return 1;
-    }
 
     // Initialize RDMA environment in advance.
     if (FLAGS_use_rdma) {

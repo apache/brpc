@@ -29,8 +29,6 @@
 namespace brpc {
 namespace rdma {
 
-enum class RdmaFailureReason;
-
 // Initialize RDMA environment
 // Exit if failed
 void GlobalRdmaInitializeOrDie();
@@ -90,10 +88,6 @@ bool IsRdmaAvailable();
 
 // Disable RDMA in the remaining lifetime of the process
 void GlobalDisableRdma();
-
-// Completion failures that indicate an unusable path or exhausted receive credits.
-bool IsRdmaPathFailure(ibv_wc_status status);
-RdmaFailureReason ClassifyRdmaCompletion(ibv_wc_status status);
 
 // If the given protocol supported by RDMA
 bool SupportedByRdma(std::string protocol);

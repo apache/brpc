@@ -218,8 +218,8 @@ brpc::urma::SetUrmaRecoveryMode(brpc::urma::UrmaRecoveryMode::AUTO);
 The default cooldown is five seconds. Sources include retry exhaustion, RNR,
 JFC errors and WR submission failures. Each connection records its first runtime
 failure; access errors have a separate counter, and exhausted windows return EAGAIN.
-URMA and RDMA keep separate modes, epochs and cooldown caches. Mode changes filter
-reports from older connections.
+The recovery policy maintains process-level modes, epochs and peer cooldowns.
+Mode changes filter reports from older connections.
 
 `GetUrmaRecoveryStatus()` and `/vars/urma_recovery_status` expose failure reasons,
 cooldown state and negotiation counts. `/vars/urma_recovery_tcp_fallback_admissions`

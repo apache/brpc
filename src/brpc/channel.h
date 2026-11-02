@@ -38,7 +38,6 @@
 #include "brpc/naming_service_filter.h"
 #include "brpc/health_check_option.h"
 #include "brpc/socket_mode.h"
-#include "brpc/rdma/rdma_qos.h"
 #include "brpc/urma/urma_qos.h"
 
 namespace brpc {
@@ -112,9 +111,6 @@ struct ChannelOptions {
     // See SocketMode for supported values.
     // Default: SOCKET_MODE_TCP
     SocketMode socket_mode;
-
-    // Outbound RDMA QoS for this Channel. Used when socket_mode is RDMA.
-    RdmaQosOptions rdma_qos;
 
     // Outbound URMA QoS for this Channel. Used when socket_mode is URMA.
     UrmaQosOptions urma_qos;

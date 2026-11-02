@@ -59,7 +59,7 @@ endif
 
 .PHONY:all
 ifdef WITH_RDMA
-all: client server recovery_client
+all: client server
 else
 all: 
 endif
@@ -67,7 +67,7 @@ endif
 .PHONY:clean
 clean:
 	@echo "> Cleaning"
-	rm -rf client server recovery_client recovery_client.o $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS)
+	rm -rf client server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS)
 
 client:$(PROTO_OBJS) $(CLIENT_OBJS)
 	@echo "> Linking $@"
@@ -79,13 +79,6 @@ endif
 
 server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "> Linking $@"
-ifneq ("$(LINK_SO)", "")
-	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
-else
-	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
-endif
-
-recovery_client:$(PROTO_OBJS) recovery_client.o
 ifneq ("$(LINK_SO)", "")
 	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else

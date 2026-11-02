@@ -15,45 +15,42 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "brpc/rdma/rdma_recovery_policy.h"
 #include "brpc/urma/urma_recovery_policy.h"
 #include "butil/time.h"
 #include "bvar/passive_status.h"
 
 namespace brpc {
-namespace rdma {
+namespace urma {
 
-const char* RdmaFailureReasonName(RdmaFailureReason reason) {
+const char* UrmaFailureReasonName(UrmaFailureReason reason) {
     switch (reason) {
-    case RdmaFailureReason::NONE: return "none";
-    case RdmaFailureReason::RETRY_EXHAUSTED: return "retry_exhausted";
-    case RdmaFailureReason::RNR: return "rnr";
-    case RdmaFailureReason::QP_FATAL: return "qp_fatal";
-    case RdmaFailureReason::CQ_ERROR: return "cq_error";
-    case RdmaFailureReason::CQ_POLL: return "cq_poll";
-    case RdmaFailureReason::CQ_EVENT: return "cq_event";
-    case RdmaFailureReason::CQ_NOTIFY: return "cq_notify";
-    case RdmaFailureReason::SEND_POST: return "send_post";
-    case RdmaFailureReason::ACCESS_ERROR: return "access_error";
-    case RdmaFailureReason::TRANSPORT_ERROR: return "transport_error";
-    case RdmaFailureReason::RECV_POST: return "recv_post";
+    case UrmaFailureReason::NONE: return "none";
+    case UrmaFailureReason::RETRY_EXHAUSTED: return "retry_exhausted";
+    case UrmaFailureReason::RNR: return "rnr";
+    case UrmaFailureReason::QP_FATAL: return "qp_fatal";
+    case UrmaFailureReason::CQ_ERROR: return "cq_error";
+    case UrmaFailureReason::CQ_POLL: return "cq_poll";
+    case UrmaFailureReason::CQ_EVENT: return "cq_event";
+    case UrmaFailureReason::CQ_NOTIFY: return "cq_notify";
+    case UrmaFailureReason::SEND_POST: return "send_post";
+    case UrmaFailureReason::ACCESS_ERROR: return "access_error";
+    case UrmaFailureReason::TRANSPORT_ERROR: return "transport_error";
+    case UrmaFailureReason::RECV_POST: return "recv_post";
     default: return "unknown";
     }
 }
 
-RdmaRecoveryPolicy::RdmaRecoveryPolicy(Clock clock, size_t max_peers)
+UrmaRecoveryPolicy::UrmaRecoveryPolicy(Clock clock, size_t max_peers)
     : _clock(clock)
     , _max_peers(max_peers)
-    , _mode(RdmaRecoveryMode::LEGACY)
+    , _mode(UrmaRecoveryMode::LEGACY)
     , _epoch(1)
-    , _cooldown_us(5000000)
-    , _port_active(true)
-    , _port_retry_at(0) {
+    , _cooldown_us(5000000) {
 }
 
-bool RdmaRecoveryPolicy::SetMode(RdmaRecoveryMode mode) {
-    if (mode != RdmaRecoveryMode::LEGACY && mode != RdmaRecoveryMode::AUTO &&
-        mode != RdmaRecoveryMode::TCP_ONLY) {
+bool UrmaRecoveryPolicy::SetMode(UrmaRecoveryMode mode) {
+    if (mode != UrmaRecoveryMode::LEGACY && mode != UrmaRecoveryMode::AUTO &&
+        mode != UrmaRecoveryMode::TCP_ONLY) {
         return false;
     }
     std::lock_guard<std::mutex> lock(_mutex);
@@ -65,12 +62,12 @@ bool RdmaRecoveryPolicy::SetMode(RdmaRecoveryMode mode) {
     return true;
 }
 
-RdmaRecoveryMode RdmaRecoveryPolicy::GetMode() {
+UrmaRecoveryMode UrmaRecoveryPolicy::GetMode() {
     std::lock_guard<std::mutex> lock(_mutex);
     return _mode;
 }
 
-bool RdmaRecoveryPolicy::SetCooldownMs(int64_t cooldown_ms) {
+bool UrmaRecoveryPolicy::SetCooldownMs(int64_t cooldown_ms) {
     if (cooldown_ms <= 0 || cooldown_ms > INT32_MAX) {
         return false;
     }
@@ -79,24 +76,20 @@ bool RdmaRecoveryPolicy::SetCooldownMs(int64_t cooldown_ms) {
     return true;
 }
 
-bool RdmaRecoveryPolicy::AllowNewConnection(const std::string& peer,
-                                            uint64_t* epoch) {
+bool UrmaRecoveryPolicy::AllowNewConnection(const std::string& peer,
+                                           uint64_t* epoch) {
     std::lock_guard<std::mutex> lock(_mutex);
     if (epoch != nullptr) {
         *epoch = _epoch;
     }
-    if (_mode == RdmaRecoveryMode::LEGACY) {
+    if (_mode == UrmaRecoveryMode::LEGACY) {
         return true;
     }
-    if (_mode == RdmaRecoveryMode::TCP_ONLY) {
+    if (_mode == UrmaRecoveryMode::TCP_ONLY) {
         ++_status.tcp_only_admissions;
         return false;
     }
     const int64_t now = _clock();
-    if (!_port_active || now < _port_retry_at) {
-        ++_status.port_cooldown_admissions;
-        return false;
-    }
     auto it = _peers.find(peer);
     if (it == _peers.end()) {
         return true;
@@ -109,17 +102,17 @@ bool RdmaRecoveryPolicy::AllowNewConnection(const std::string& peer,
     return true;
 }
 
-void RdmaRecoveryPolicy::ReportPeerFailure(const std::string& peer,
+void UrmaRecoveryPolicy::ReportPeerFailure(const std::string& peer,
                                           uint64_t epoch,
-                                          RdmaFailureReason reason) {
+                                          UrmaFailureReason reason) {
     std::lock_guard<std::mutex> lock(_mutex);
-    if (epoch != _epoch || reason <= RdmaFailureReason::NONE ||
-        reason >= RdmaFailureReason::COUNT) {
+    if (epoch != _epoch || reason <= UrmaFailureReason::NONE ||
+        reason >= UrmaFailureReason::COUNT) {
         return;
     }
     ++_status.failures[static_cast<size_t>(reason)];
-    if (_mode != RdmaRecoveryMode::AUTO || peer.empty() || _max_peers == 0 ||
-        reason == RdmaFailureReason::ACCESS_ERROR) {
+    if (_mode != UrmaRecoveryMode::AUTO || peer.empty() || _max_peers == 0 ||
+        reason == UrmaFailureReason::ACCESS_ERROR) {
         return;
     }
     const int64_t now = _clock();
@@ -143,31 +136,19 @@ void RdmaRecoveryPolicy::ReportPeerFailure(const std::string& peer,
     _peers[peer] = now + _cooldown_us;
 }
 
-void RdmaRecoveryPolicy::ReportPortState(bool active) {
+UrmaRecoveryStatus UrmaRecoveryPolicy::GetStatus() {
     std::lock_guard<std::mutex> lock(_mutex);
-    _port_active = active;
-    if (!active) {
-        ++_status.port_errors;
-        _port_retry_at = _clock() + _cooldown_us;
-    }
-}
-
-RdmaRecoveryStatus RdmaRecoveryPolicy::GetStatus() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    RdmaRecoveryStatus result = _status;
+    UrmaRecoveryStatus result = _status;
     result.mode = _mode;
     result.epoch = _epoch;
-    result.port_active = _port_active;
     const int64_t now = _clock();
-    result.port_cooldown_ms = _port_retry_at > now ?
-        (_port_retry_at - now + 999) / 1000 : 0;
     for (const auto& peer : _peers) {
         result.cooled_peers += peer.second > now;
     }
     return result;
 }
 
-void RdmaRecoveryPolicy::RecordNegotiatedConnection(uint64_t epoch) {
+void UrmaRecoveryPolicy::RecordNegotiatedConnection(uint64_t epoch) {
     std::lock_guard<std::mutex> lock(_mutex);
     if (epoch == _epoch) {
         ++_status.negotiated_connections;
@@ -175,79 +156,44 @@ void RdmaRecoveryPolicy::RecordNegotiatedConnection(uint64_t epoch) {
 }
 
 static void DescribeRecovery(std::ostream& os, void* arg) {
-    const auto s = static_cast<RdmaRecoveryPolicy*>(arg)->GetStatus();
+    const auto s = static_cast<UrmaRecoveryPolicy*>(arg)->GetStatus();
     os << "{\"mode\":\""
-       << (s.mode == RdmaRecoveryMode::AUTO ? "auto" :
-           s.mode == RdmaRecoveryMode::TCP_ONLY ? "tcp_only" : "legacy")
+       << (s.mode == UrmaRecoveryMode::AUTO ? "auto" :
+           s.mode == UrmaRecoveryMode::TCP_ONLY ? "tcp_only" : "legacy")
        << "\",\"epoch\":" << s.epoch
-       << ",\"port_active\":" << (s.port_active ? "true" : "false")
-       << ",\"port_cooldown_ms\":" << s.port_cooldown_ms
        << ",\"cooled_peers\":" << s.cooled_peers
        << ",\"tcp_only_admissions\":" << s.tcp_only_admissions
-       << ",\"port_cooldown_admissions\":" << s.port_cooldown_admissions
        << ",\"peer_cooldown_admissions\":" << s.peer_cooldown_admissions
-       << ",\"port_errors\":" << s.port_errors
        << ",\"cache_evictions\":" << s.cache_evictions
        << ",\"negotiated_connections\":" << s.negotiated_connections
        << ",\"failures\":{";
-    for (size_t i = 1; i < static_cast<size_t>(RdmaFailureReason::COUNT); ++i) {
+    for (size_t i = 1; i < static_cast<size_t>(UrmaFailureReason::COUNT); ++i) {
         if (i > 1) {
             os << ',';
         }
-        os << '"' << RdmaFailureReasonName(static_cast<RdmaFailureReason>(i))
+        os << '"' << UrmaFailureReasonName(static_cast<UrmaFailureReason>(i))
            << "\":" << s.failures[i];
     }
     os << "}}";
 }
 
 struct RecoveryMetrics {
-    RecoveryMetrics(RdmaRecoveryPolicy* policy, const char* status_name,
+    RecoveryMetrics(UrmaRecoveryPolicy* policy, const char* status_name,
                     const char* fallback_name)
         : status(status_name, DescribeRecovery, policy)
         , fallbacks(fallback_name, [](void* arg) {
-            const auto s = static_cast<RdmaRecoveryPolicy*>(arg)->GetStatus();
-            return s.tcp_only_admissions + s.port_cooldown_admissions +
-                   s.peer_cooldown_admissions;
+            const auto s = static_cast<UrmaRecoveryPolicy*>(arg)->GetStatus();
+            return s.tcp_only_admissions + s.peer_cooldown_admissions;
           }, policy) {
     }
     bvar::PassiveStatus<std::string> status;
     bvar::PassiveStatus<uint64_t> fallbacks;
 };
 
-RdmaRecoveryPolicy& GlobalRdmaRecoveryPolicy() {
-    // Async event callbacks may outlive ordinary static destructors.
-    static RdmaRecoveryPolicy* policy =
-        new RdmaRecoveryPolicy(butil::monotonic_time_us);
-    static RecoveryMetrics* metrics = new RecoveryMetrics(
-        policy, "rdma_recovery_status", "rdma_recovery_tcp_fallback_admissions");
-    (void)metrics;
-    return *policy;
-}
-
-bool SetRdmaRecoveryMode(RdmaRecoveryMode mode) {
-    return GlobalRdmaRecoveryPolicy().SetMode(mode);
-}
-
-RdmaRecoveryMode GetRdmaRecoveryMode() {
-    return GlobalRdmaRecoveryPolicy().GetMode();
-}
-
-bool SetRdmaRecoveryCooldownMs(int64_t cooldown_ms) {
-    return GlobalRdmaRecoveryPolicy().SetCooldownMs(cooldown_ms);
-}
-
-RdmaRecoveryStatus GetRdmaRecoveryStatus() {
-    return GlobalRdmaRecoveryPolicy().GetStatus();
-}
-
-}  // namespace rdma
-
-namespace urma {
-
 UrmaRecoveryPolicy& GlobalUrmaRecoveryPolicy() {
     static UrmaRecoveryPolicy* policy =
         new UrmaRecoveryPolicy(butil::monotonic_time_us);
-    static rdma::RecoveryMetrics* metrics = new rdma::RecoveryMetrics(
+    static RecoveryMetrics* metrics = new RecoveryMetrics(
         policy, "urma_recovery_status", "urma_recovery_tcp_fallback_admissions");
     (void)metrics;
     return *policy;
