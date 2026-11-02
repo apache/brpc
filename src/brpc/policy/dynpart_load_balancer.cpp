@@ -115,7 +115,7 @@ int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     }
     int64_t total_weight = 0;
     std::pair<SocketUniquePtr, int64_t> stack_ptrs[8];
-    std::vector<std::pair<SocketUniquePtr, int64_t> > heap_ptrs;
+    std::vector<std::pair<SocketUniquePtr, int64_t>> heap_ptrs;
     std::pair<SocketUniquePtr, int64_t>* ptrs = stack_ptrs;
     if (n > ARRAY_SIZE(stack_ptrs)) {
         heap_ptrs.resize(n);
