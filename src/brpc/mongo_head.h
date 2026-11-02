@@ -69,6 +69,9 @@ struct mongo_head_t {
         op_code = butil::ByteSwap((uint32_t)op_code);
 #endif
     }
+    // The wire format is little-endian, so the conversion between it and the
+    // host byte order is the same swap in both directions.
+    void make_wire_endian() { make_host_endian(); }
 };
 #pragma pack()
 
