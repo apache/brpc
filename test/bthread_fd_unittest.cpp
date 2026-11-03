@@ -364,13 +364,15 @@ TEST(FDTest, mod_closed_fd) {
     // Conclusion:
     //   If fd is never added into epoll, MOD returns ENOENT
     //   If fd is inside epoll and valid, MOD returns 0
-    //   If fd is closed and not-reused, MOD returns EBADF
+    //   If fd is invalid, MOD returns EBADF
     //   If fd is closed and reused, MOD returns ENOENT again
     
-    const int epfd = epoll_create(1024);
-    int new_fd[2];
+    butil::fd_guard epfd(epoll_create(1024));
+    ASSERT_GE(epfd, 0);
     int fd[2];
     ASSERT_EQ(0, pipe(fd));
+    butil::fd_guard read_fd(fd[0]);
+    butil::fd_guard write_fd(fd[1]);
     epoll_event e = { EPOLLIN, { nullptr } };
     errno = 0;
     ASSERT_EQ(-1, epoll_ctl(epfd, EPOLL_CTL_MOD, fd[0], &e));
@@ -380,22 +382,24 @@ TEST(FDTest, mod_closed_fd) {
     ASSERT_EQ(0, epoll_ctl(epfd, EPOLL_CTL_MOD, fd[0], &e));
     // mod after mod
     ASSERT_EQ(0, epoll_ctl(epfd, EPOLL_CTL_MOD, fd[0], &e));
-    ASSERT_EQ(0, close(fd[0]));
-    ASSERT_EQ(0, close(fd[1]));
 
+    // A closed fd may be reused by another thread before epoll_ctl runs.
+    // Use an always-invalid fd to check EBADF without that race.
     errno = 0;
-    ASSERT_EQ(-1, epoll_ctl(epfd, EPOLL_CTL_MOD, fd[0], &e));
+    ASSERT_EQ(-1, epoll_ctl(epfd, EPOLL_CTL_MOD, -1, &e));
     ASSERT_EQ(EBADF, errno) << berror();
 
+    int new_fd[2];
     ASSERT_EQ(0, pipe(new_fd));
-    ASSERT_EQ(fd[0], new_fd[0]);
-    ASSERT_EQ(fd[1], new_fd[1]);
+    butil::fd_guard new_read_fd(new_fd[0]);
+    butil::fd_guard new_write_fd(new_fd[1]);
+    // pipe() need not reuse the same numbers. Close and replace the registered
+    // fd atomically, while its number is still owned by this test.
+    ASSERT_EQ(fd[0], dup2(new_fd[0], fd[0]));
     
     errno = 0;
     ASSERT_EQ(-1, epoll_ctl(epfd, EPOLL_CTL_MOD, fd[0], &e));
     ASSERT_EQ(ENOENT, errno) << berror();
-    
-    ASSERT_EQ(0, close(epfd));
 #endif
 }
 
