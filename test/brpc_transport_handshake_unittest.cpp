@@ -307,7 +307,7 @@ public:
     }
 };
 
-class TestServerHandshakeAdapter : public StandardHandshakeAdapter {
+class TestServerHandshakeAdapter : public HandshakeAdapter {
 public:
     TestServerHandshakeAdapter() { session.SetIOForTest(&io); }
     MemoryHandshakeIO io;

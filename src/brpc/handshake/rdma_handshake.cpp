@@ -76,16 +76,6 @@ const handshake::FrameSpec& RdmaHandshakeAdapter::AckFrameSpec() const {
     return RdmaAckFrameSpec();
 }
 
-handshake::StepResult RdmaHandshakeAdapter::BuildHello(
-    bool enabled, std::string* payload) {
-    return BuildLocalHello(enabled, payload);
-}
-
-handshake::StepResult RdmaHandshakeAdapter::ParseHello(
-    const std::string& payload) {
-    return ParseRemoteHello(payload, &_remote);
-}
-
 namespace v2_wire {
 
 void HelloMessage::Serialize(void* data) const {
@@ -179,12 +169,7 @@ static handshake::StepResult ParsePayload(
 
 }  // namespace v2_wire
 
-const handshake::FrameSpec&
-RdmaClientHandshakeAdapterV2::HelloFrameSpec() const {
-    return RdmaHelloFrameSpec(2);
-}
-
-handshake::StepResult RdmaClientHandshakeAdapterV2::BuildLocalHello(
+handshake::StepResult RdmaClientHandshakeAdapterV2::BuildHello(
     bool enabled, std::string* payload) {
     CHECK(enabled);
     ParsedHello local{};
@@ -194,17 +179,7 @@ handshake::StepResult RdmaClientHandshakeAdapterV2::BuildLocalHello(
     return v2_wire::SerializePayload(msg, payload);
 }
 
-handshake::StepResult RdmaClientHandshakeAdapterV2::ParseRemoteHello(
-    const std::string& payload, ParsedHello* remote) {
-    return v2_wire::ParsePayload(payload, remote);
-}
-
-const handshake::FrameSpec&
-RdmaServerHandshakeAdapterV2::HelloFrameSpec() const {
-    return RdmaHelloFrameSpec(2);
-}
-
-handshake::StepResult RdmaServerHandshakeAdapterV2::BuildLocalHello(
+handshake::StepResult RdmaServerHandshakeAdapterV2::BuildHello(
     bool enabled, std::string* payload) {
     v2_wire::HelloMessage msg{};
     msg.msg_len = HELLO_V2_MSG_LEN_MIN;
@@ -214,11 +189,6 @@ handshake::StepResult RdmaServerHandshakeAdapterV2::BuildLocalHello(
         v2_wire::FillMessage(local, &msg);
     }
     return v2_wire::SerializePayload(msg, payload);
-}
-
-handshake::StepResult RdmaServerHandshakeAdapterV2::ParseRemoteHello(
-    const std::string& payload, ParsedHello* remote) {
-    return v2_wire::ParsePayload(payload, remote);
 }
 
 namespace v3_wire {
@@ -306,12 +276,7 @@ static void FillDisabledHello(RdmaHello* msg) {
 
 }  // namespace v3_wire
 
-const handshake::FrameSpec&
-RdmaClientHandshakeAdapterV3::HelloFrameSpec() const {
-    return RdmaHelloFrameSpec(3);
-}
-
-handshake::StepResult RdmaClientHandshakeAdapterV3::BuildLocalHello(
+handshake::StepResult RdmaClientHandshakeAdapterV3::BuildHello(
     bool enabled, std::string* payload) {
     CHECK(enabled);
     PrepareClientEce();
@@ -322,17 +287,7 @@ handshake::StepResult RdmaClientHandshakeAdapterV3::BuildLocalHello(
     return v3_wire::SerializePayload(msg, payload);
 }
 
-handshake::StepResult RdmaClientHandshakeAdapterV3::ParseRemoteHello(
-    const std::string& payload, ParsedHello* remote) {
-    return v3_wire::ParsePayload(payload, remote);
-}
-
-const handshake::FrameSpec&
-RdmaServerHandshakeAdapterV3::HelloFrameSpec() const {
-    return RdmaHelloFrameSpec(3);
-}
-
-handshake::StepResult RdmaServerHandshakeAdapterV3::BuildLocalHello(
+handshake::StepResult RdmaServerHandshakeAdapterV3::BuildHello(
     bool enabled, std::string* payload) {
     RdmaHello msg;
     if (enabled) {
@@ -345,9 +300,10 @@ handshake::StepResult RdmaServerHandshakeAdapterV3::BuildLocalHello(
     return v3_wire::SerializePayload(msg, payload);
 }
 
-handshake::StepResult RdmaServerHandshakeAdapterV3::ParseRemoteHello(
-    const std::string& payload, ParsedHello* remote) {
-    return v3_wire::ParsePayload(payload, remote);
+handshake::StepResult RdmaHandshakeAdapter::ParseHello(
+    const std::string& payload) {
+    return _version == 2 ? v2_wire::ParsePayload(payload, &_remote)
+                         : v3_wire::ParsePayload(payload, &_remote);
 }
 
 std::unique_ptr<RdmaHandshakeAdapter> CreateClientHandshakeAdapter(
@@ -376,7 +332,7 @@ CreateServerHandshakeAdapters(RdmaEndpoint* ep) {
 namespace brpc {
 namespace handshake {
 
-class RdmaServerHandshakeAdapter : public StandardHandshakeAdapter {
+class RdmaServerHandshakeAdapter : public HandshakeAdapter {
 public:
     RdmaServerHandshakeAdapter() = default;
 

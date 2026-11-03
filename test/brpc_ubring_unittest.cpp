@@ -610,24 +610,13 @@ TEST(IpcV2UbrDispatchTest, rejects_uninitialized_remote_ring) {
     EXPECT_EQ(0u, context.remote_rx_event.io_id);
 }
 
-struct __attribute__((packed)) HelloMessageLayout {
-    uint16_t msg_len;
-    uint16_t hello_ver;
-    uint16_t impl_ver;
-    uint64_t len;
-    char shm_name[SHM_MAX_NAME_BUFF_LEN];
-};
-}
+constexpr size_t UB_HELLO_PAYLOAD_SIZE = 64 - 2;
+}  // namespace
 
 class HelloMessageTest : public ::testing::Test {
 protected:
-    void SetUp() override {
-        memset(&msg, 0, sizeof(msg));
-        buffer.resize(256, 0);
-    }
-
-    brpc::ubring::HelloMessage msg;
-    std::string buffer;
+    brpc::ubring::HelloMessage msg{64, 2, 1, 4 * 1024 * 1024, {0}};
+    char buffer[UB_HELLO_PAYLOAD_SIZE]{};
 };
 
 TEST(HelloFormatExtensionTest, wire_encoding_and_format_selection) {
@@ -693,23 +682,20 @@ TEST(UBShmHandshakeAdapterTest, extension_negotiation) {
 }
 
 TEST_F(HelloMessageTest, serialize_deserialize_roundtrip) {
-    msg.msg_len = 64;
-    msg.hello_ver = 2;
-    msg.impl_ver = 1;
-    msg.len = 4 * 1024 * 1024;
-    memcpy(msg.shm_name, "UBRING_test_C", 14);
-
-    msg.Serialize(&buffer[0]);
-
-    brpc::ubring::HelloMessage decoded;
-    memset(&decoded, 0, sizeof(decoded));
-    decoded.Deserialize(&buffer[0]);
-
-    EXPECT_EQ(msg.msg_len, decoded.msg_len);
-    EXPECT_EQ(msg.hello_ver, decoded.hello_ver);
-    EXPECT_EQ(msg.impl_ver, decoded.impl_ver);
-    EXPECT_EQ(msg.len, decoded.len);
-    EXPECT_EQ(0, memcmp(msg.shm_name, decoded.shm_name, SHM_MAX_NAME_BUFF_LEN));
+    const uint64_t lengths[] = {4 * 1024 * 1024, 0xFFFFFFFFFFFFFFFFULL};
+    for (uint64_t len : lengths) {
+        SCOPED_TRACE(len);
+        msg.len = len;
+        memcpy(msg.shm_name, "UBRING_test_C", 14);
+        msg.Serialize(buffer);
+        brpc::ubring::HelloMessage decoded{};
+        decoded.Deserialize(buffer);
+        EXPECT_EQ(msg.msg_len, decoded.msg_len);
+        EXPECT_EQ(msg.hello_ver, decoded.hello_ver);
+        EXPECT_EQ(msg.impl_ver, decoded.impl_ver);
+        EXPECT_EQ(msg.len, decoded.len);
+        EXPECT_EQ(0, memcmp(msg.shm_name, decoded.shm_name, SHM_MAX_NAME_BUFF_LEN));
+    }
 }
 
 TEST_F(HelloMessageTest, serialize_uses_network_byte_order) {
@@ -721,39 +707,14 @@ TEST_F(HelloMessageTest, serialize_uses_network_byte_order) {
 
     msg.Serialize(&buffer[0]);
 
-    HelloMessageLayout* raw = reinterpret_cast<HelloMessageLayout*>(&buffer[0]);
-    EXPECT_EQ(butil::HostToNet16(0x0102), raw->msg_len);
-    EXPECT_EQ(butil::HostToNet16(0x0304), raw->hello_ver);
-    EXPECT_EQ(butil::HostToNet16(0x0506), raw->impl_ver);
-    EXPECT_EQ(butil::HostToNet64(0x0102030405060708ULL), raw->len);
-}
-
-TEST_F(HelloMessageTest, large_len_value) {
-    msg.msg_len = 64;
-    msg.hello_ver = 2;
-    msg.impl_ver = 1;
-    msg.len = 0xFFFFFFFFFFFFFFFFULL;
-    memset(msg.shm_name, 0, SHM_MAX_NAME_BUFF_LEN);
-
-    msg.Serialize(&buffer[0]);
-
-    brpc::ubring::HelloMessage decoded;
-    memset(&decoded, 0, sizeof(decoded));
-    decoded.Deserialize(&buffer[0]);
-
-    EXPECT_EQ(0xFFFFFFFFFFFFFFFFULL, decoded.len);
+    const unsigned char expected[] = {
+        1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 7, 8};
+    EXPECT_EQ(0, memcmp(expected, buffer, sizeof(expected)));
 }
 
 TEST_F(HelloMessageTest, full_shm_name) {
-    // A peer that fills every byte of shm_name leaves no terminator on the
-    // wire. Deserialize must still hand back a valid C-string, because the
-    // handshake feeds the decoded name straight into strncpy/strrchr/
-    // snprintf("%s") and the shm allocate/map calls; without a terminator
-    // those scan past shm_name.
+    // A full wire name is terminated before use by the SHM mapping functions.
     memset(msg.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN);
-    msg.msg_len = 64;
-    msg.hello_ver = 2;
-    msg.impl_ver = 1;
     msg.len = 0;
     msg.Serialize(&buffer[0]);
 
@@ -769,10 +730,6 @@ TEST_F(HelloMessageTest, full_shm_name) {
 }
 
 TEST_F(HelloMessageTest, toString_contains_fields) {
-    msg.msg_len = 64;
-    msg.hello_ver = 2;
-    msg.impl_ver = 1;
-    msg.len = 4194304;
     memcpy(msg.shm_name, "UBRING_test", 12);
 
     std::string s = msg.toString();
@@ -851,8 +808,7 @@ TEST(UBShmHandshakeAdapterTest, rejects_unterminated_remote_name) {
     message.len = 4096;
     memset(message.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN);
 
-    std::string payload(
-        sizeof(HelloMessageLayout), '\0');
+    std::string payload(UB_HELLO_PAYLOAD_SIZE, '\0');
     message.Serialize(&payload[0]);
 
     brpc::ubring::UBShmHandshakeAdapter adapter;
@@ -870,7 +826,7 @@ TEST(UBShmHandshakeAdapterTest, accepts_name_terminated_at_wire_boundary) {
     message.impl_ver = 1;
     message.len = 4096;
     memset(message.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN - 1);
-    std::string payload(sizeof(HelloMessageLayout), '\0');
+    std::string payload(UB_HELLO_PAYLOAD_SIZE, '\0');
     message.Serialize(&payload[0]);
 
     brpc::ubring::UBShmHandshakeAdapter adapter;

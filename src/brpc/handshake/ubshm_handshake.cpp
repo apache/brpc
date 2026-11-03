@@ -298,7 +298,7 @@ bool UBShmHandshakeAdapter::NegotiationValid(
 namespace brpc {
 namespace handshake {
 
-class UBShmServerHandshakeAdapter : public StandardHandshakeAdapter {
+class UBShmServerHandshakeAdapter : public HandshakeAdapter {
 public:
     UBShmServerHandshakeAdapter() = default;
 

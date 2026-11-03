@@ -32,39 +32,22 @@ class Socket;
 
 namespace handshake {
 
-// The minimal seam between an upgrade protocol and InputMessenger. Protocols
-// that cannot use the standard parser lifecycle implement this interface
-// directly.
+// Common InputMessenger parser lifecycle. Protocol adapters provide the server
+// step and connection session.
 class HandshakeAdapter {
 public:
     virtual ~HandshakeAdapter() = default;
-
     virtual ParseResult ExecuteServerHandshake(
-        butil::IOBuf* source, Socket* socket) = 0;
+        butil::IOBuf* source, Socket* socket);
 
 protected:
     HandshakeAdapter() = default;
-
-private:
-    DISALLOW_COPY_AND_ASSIGN(HandshakeAdapter);
-};
-
-// Reusable InputMessenger implementation. Protocol adapters provide only the
-// protocol-specific server step; the common session owns all phases.
-class StandardHandshakeAdapter : public HandshakeAdapter {
-public:
-    ParseResult ExecuteServerHandshake(
-        butil::IOBuf* source, Socket* socket) override;
-
-protected:
-    StandardHandshakeAdapter() = default;
-
     virtual StepResult RunServerStep(
         butil::IOBuf* source, Socket* socket) = 0;
     virtual HandshakeSession* GetSession(Socket* socket) const = 0;
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(StandardHandshakeAdapter);
+    DISALLOW_COPY_AND_ASSIGN(HandshakeAdapter);
 };
 
 }  // namespace handshake

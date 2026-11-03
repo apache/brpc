@@ -79,17 +79,13 @@ public:
 
     int ProtocolVersion() const override { return _version; }
     const handshake::FrameSpec& AckFrameSpec() const override;
-    handshake::StepResult BuildHello(
-        bool enabled, std::string* payload) override;
     handshake::StepResult ParseHello(
         const std::string& payload) override;
     const ParsedHello& remote() const { return _remote; }
 
-    const handshake::FrameSpec& HelloFrameSpec() const override = 0;
-    virtual handshake::StepResult BuildLocalHello(
-        bool enabled, std::string* payload) = 0;
-    virtual handshake::StepResult ParseRemoteHello(
-        const std::string& payload, ParsedHello* remote) = 0;
+    const handshake::FrameSpec& HelloFrameSpec() const override {
+        return RdmaHelloFrameSpec(_version);
+    }
 
 protected:
     void FillLocalHello(ParsedHello* local) const;
@@ -107,44 +103,32 @@ class RdmaClientHandshakeAdapterV2 : public RdmaHandshakeAdapter {
 public:
     explicit RdmaClientHandshakeAdapterV2(RdmaEndpoint* ep)
         : RdmaHandshakeAdapter(ep, 2) {}
-    const handshake::FrameSpec& HelloFrameSpec() const override;
-    handshake::StepResult BuildLocalHello(
+    handshake::StepResult BuildHello(
         bool enabled, std::string* payload) override;
-    handshake::StepResult ParseRemoteHello(
-        const std::string& payload, ParsedHello* remote) override;
 };
 
 class RdmaServerHandshakeAdapterV2 : public RdmaHandshakeAdapter {
 public:
     explicit RdmaServerHandshakeAdapterV2(RdmaEndpoint* ep)
         : RdmaHandshakeAdapter(ep, 2) {}
-    const handshake::FrameSpec& HelloFrameSpec() const override;
-    handshake::StepResult BuildLocalHello(
+    handshake::StepResult BuildHello(
         bool enabled, std::string* payload) override;
-    handshake::StepResult ParseRemoteHello(
-        const std::string& payload, ParsedHello* remote) override;
 };
 
 class RdmaClientHandshakeAdapterV3 : public RdmaHandshakeAdapter {
 public:
     explicit RdmaClientHandshakeAdapterV3(RdmaEndpoint* ep)
         : RdmaHandshakeAdapter(ep, 3) {}
-    const handshake::FrameSpec& HelloFrameSpec() const override;
-    handshake::StepResult BuildLocalHello(
+    handshake::StepResult BuildHello(
         bool enabled, std::string* payload) override;
-    handshake::StepResult ParseRemoteHello(
-        const std::string& payload, ParsedHello* remote) override;
 };
 
 class RdmaServerHandshakeAdapterV3 : public RdmaHandshakeAdapter {
 public:
     explicit RdmaServerHandshakeAdapterV3(RdmaEndpoint* ep)
         : RdmaHandshakeAdapter(ep, 3) {}
-    const handshake::FrameSpec& HelloFrameSpec() const override;
-    handshake::StepResult BuildLocalHello(
+    handshake::StepResult BuildHello(
         bool enabled, std::string* payload) override;
-    handshake::StepResult ParseRemoteHello(
-        const std::string& payload, ParsedHello* remote) override;
 };
 
 std::unique_ptr<RdmaHandshakeAdapter> CreateClientHandshakeAdapter(

@@ -27,7 +27,7 @@ namespace handshake {
 // so a single stateless adapter can serve every connection. The parsing
 // context retains that selected adapter while waiting for the peer extension
 // or ACK, whose frames have no protocol magic of their own.
-ParseResult StandardHandshakeAdapter::ExecuteServerHandshake(
+ParseResult HandshakeAdapter::ExecuteServerHandshake(
     butil::IOBuf* source, Socket* socket) {
     const StepResult result = RunServerStep(source, socket);
     if (result == STEP_NEED_MORE) {
