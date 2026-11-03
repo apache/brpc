@@ -37,6 +37,7 @@
 #if BRPC_WITH_URMA
 #include "butil/atomicops.h"
 #include "butil/fd_guard.h"
+#include "butil/memory/scope_guard.h"
 #include "brpc/input_messenger.h"
 #include "butil/sys_byteorder.h"
 #include "urma_api.h"
@@ -1253,6 +1254,9 @@ TEST_F(UrmaMockTest, send_completion_releases_source_only_after_copy) {
 }
 
 TEST_F(UrmaMockTest, segmented_stream_survives_send_queue_wraparound) {
+    BRPC_SCOPE_EXIT {
+        gflags::SetCommandLineOption("urma_mock_send_fail_after", "-1");
+    };
     int device_count = 0;
     urma_device_t** devices = urma_get_device_list(&device_count);
     ASSERT_NE(nullptr, devices);
@@ -1334,6 +1338,7 @@ TEST_F(UrmaMockTest, segmented_stream_survives_send_queue_wraparound) {
     urma_target_seg_t segment{};
     segment.seg.len = std::numeric_limits<uint64_t>::max();
     for (int round = 0; round < 64; ++round) {
+        endpoint._stream_trace.reset(new urma::UrmaStreamTrace);
         endpoint._sq_window_size.store(capacity, butil::memory_order_relaxed);
         endpoint._remote_rq_window_size.store(capacity, butil::memory_order_relaxed);
         std::vector<butil::IOBuf> messages(64);
@@ -1355,10 +1360,34 @@ TEST_F(UrmaMockTest, segmented_stream_survives_send_queue_wraparound) {
         }
         std::string received;
         size_t sent = 0;
+        ASSERT_FALSE(gflags::SetCommandLineOption("urma_mock_send_fail_after",
+            round % 3 == 0 ? "0" : round % 3 == 1 ? "1" : "-1").empty());
+        const size_t budget = round % 3 == 2
+            ? 37 : static_cast<size_t>(std::numeric_limits<int>::max());
+        bool reached_budget = false;
         while (sent < expected.size()) {
-            const ssize_t bytes = endpoint.CutFromIOBufList(list.data(), list.size());
+            const std::string before = expected.substr(sent);
+            const ssize_t bytes = endpoint.CutFromIOBufList(
+                list.data(), list.size(), budget);
+            std::string remaining;
+            for (const auto& message : messages) {
+                remaining.append(message.to_string());
+            }
+            if (bytes < 0) {
+                ASSERT_EQ(EAGAIN, errno);
+                ASSERT_EQ(before, remaining);
+                EXPECT_TRUE(endpoint._sbuf[endpoint._sq_current].empty());
+                EXPECT_EQ(sent, endpoint._stream_trace->_offsets[
+                    urma::UrmaStreamTrace::TX]);
+                continue;
+            }
             ASSERT_GT(bytes, 0);
+            EXPECT_LE(static_cast<size_t>(bytes), budget);
+            EXPECT_EQ(before.substr(bytes), remaining);
+            reached_budget |= static_cast<size_t>(bytes) == budget;
             sent += bytes;
+            EXPECT_EQ(sent, endpoint._stream_trace->_offsets[
+                urma::UrmaStreamTrace::TX]);
             urma_cr_t cr{};
             while (urma_poll_jfc(resource->jfc, 1, &cr) == 1) {
                 if (cr.flag.bs.s_r == 0) {
@@ -1375,6 +1404,9 @@ TEST_F(UrmaMockTest, segmented_stream_survives_send_queue_wraparound) {
             }
         }
         ASSERT_EQ(expected, received) << "round=" << round;
+        if (round % 3 == 2) {
+            EXPECT_TRUE(reached_budget);
+        }
     }
 }
 

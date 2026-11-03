@@ -79,15 +79,8 @@ std::shared_ptr<AppConnect> UrmaTransport::Connect() {
 }
 
 int UrmaTransport::CutFromIOBuf(butil::IOBuf* buf) {
-    // AdapterTransport selects TcpTransport until the handshake is established.
-    // Reaching this transport earlier is an error, not a second TCP fallback.
-    if (!_urma_ep ||
-        _urma_state.load(butil::memory_order_acquire) != URMA_ON) {
-        errno = ENOTCONN;
-        return -1;
-    }
     butil::IOBuf* data_arr[1] = {buf};
-    return _urma_ep->CutFromIOBufList(data_arr, 1);
+    return static_cast<int>(CutFromIOBufList(data_arr, 1));
 }
 
 ssize_t UrmaTransport::CutFromIOBufList(butil::IOBuf** buf, size_t ndata) {

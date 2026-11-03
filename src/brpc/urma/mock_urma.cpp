@@ -56,6 +56,8 @@ DEFINE_bool(urma_mock_require_send_order, false,
             "Reject mock SEND WRs without stream placement/completion ordering");
 DEFINE_uint32(urma_mock_max_send_size, 0,
               "Reject mock SEND WRs exceeding this total SGE size (0 disables)");
+DEFINE_int32(urma_mock_send_fail_after, -1,
+             "Return EAGAIN once after this many post calls (-1 disables)");
 
 namespace {
 
@@ -556,6 +558,17 @@ urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
     }
     JfcState* local_state = local_jfc_it->second;
     read_lock.unlock();
+
+    if (FLAGS_urma_mock_send_fail_after == 0) {
+        FLAGS_urma_mock_send_fail_after = -1;
+        if (bad_wr) {
+            *bad_wr = wr;
+        }
+        return URMA_EAGAIN;
+    }
+    if (FLAGS_urma_mock_send_fail_after > 0) {
+        --FLAGS_urma_mock_send_fail_after;
+    }
 
     for (urma_jfs_wr_t* current = wr; current; current = current->next) {
         if (FLAGS_urma_mock_max_send_size != 0) {

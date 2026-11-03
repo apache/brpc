@@ -20,6 +20,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <vector>
@@ -109,8 +110,11 @@ public:
 
     // ---- Data path (called by UrmaTransport) ----
     // Cut data from the IOBuf list and post it via URMA SEND.
+    // Commit at most max_bytes (bounded by INT_MAX) after successful posts.
     // Returns bytes sent, or -1 (errno set; EAGAIN when windows are full).
-    ssize_t CutFromIOBufList(butil::IOBuf** data, size_t ndata);
+    ssize_t CutFromIOBufList(
+        butil::IOBuf** data, size_t ndata,
+        size_t max_bytes = std::numeric_limits<int>::max());
 
     // Whether the endpoint can post more sends (both windows non-empty).
     bool IsWritable() const;

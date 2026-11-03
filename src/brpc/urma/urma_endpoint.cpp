@@ -537,7 +537,8 @@ public:
     }
 };
 
-ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
+ssize_t UrmaEndpoint::CutFromIOBufList(
+    butil::IOBuf** from, size_t ndata, size_t max_bytes) {
     if (!_resource || !_resource->jetty || !_resource->remote_jetty) {
         errno = ENOTCONN;
         return -1;
@@ -556,7 +557,9 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
 
     size_t current = 0;
     ssize_t total_len = 0;
-    while (current < ndata) {
+    max_bytes = std::min(max_bytes,
+        static_cast<size_t>(std::numeric_limits<int>::max()));
+    while (current < ndata && static_cast<size_t>(total_len) < max_bytes) {
         uint16_t remote_wnd = _remote_rq_window_size.load(butil::memory_order_relaxed);
         uint16_t sq_wnd = _sq_window_size.load(butil::memory_order_acquire);
         if (remote_wnd == 0 || sq_wnd == 0) {
@@ -567,6 +570,7 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             return -1;
         }
         butil::IOBuf* to = &_sbuf[_sq_current];
+        const size_t first = current;
         size_t sge_index = 0;
         size_t this_len = 0;
         size_t max_len = _remote_recv_block_size > 0
@@ -575,19 +579,37 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         // UrmaTransport advertises CTP in both hello versions. Limit the sum
         // of all SGEs, not each SGE, while retaining larger receive buffers.
         max_len = std::min(max_len, MAX_CTP_SEND_SIZE);
+        max_len = std::min(max_len, max_bytes - total_len);
         while (sge_index < static_cast<size_t>(max_sge) &&
                this_len < max_len && current < ndata) {
-            auto* data = reinterpret_cast<UrmaIOBuf*>(from[current]);
-            if (data->empty()) {
+            if (from[current]->empty()) {
                 ++current;
                 continue;
             }
+            // Hold references for this WR without consuming the input.
+            auto* source = reinterpret_cast<UrmaIOBuf*>(from[current]);
+            size_t pending_len = 0;
+            const size_t nref = std::min(source->_ref_num(),
+                static_cast<size_t>(max_sge) - sge_index);
+            for (size_t i = 0; i < nref && pending_len < max_len - this_len; ++i) {
+                pending_len += std::min<size_t>(source->_ref_at(i).length,
+                    max_len - this_len - pending_len);
+            }
+            butil::IOBuf pending;
+            from[current]->append_to(&pending, pending_len);
+            auto* data = reinterpret_cast<UrmaIOBuf*>(&pending);
             ssize_t n = data->cut_into_sglist(sglist, &sge_index, to,
                                               max_sge, max_len - this_len);
             if (n < 0) {
+                to->clear();
                 return -1;
             }
             this_len += n;
+            if (static_cast<size_t>(n) == from[current]->size()) {
+                ++current;
+            } else {
+                break;
+            }
         }
         if (sge_index == 0) {
             break;
@@ -645,15 +667,16 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         // connection.
         _remote_rq_window_size.fetch_sub(1, butil::memory_order_relaxed);
         _sq_window_size.fetch_sub(1, butil::memory_order_relaxed);
-        if (_stream_trace) {
-            _stream_trace->Record(UrmaStreamTrace::TX, sq_slot, wr.user_ctx, 0,
-                                  sglist, sge_index);
-        }
         int rc = urma_post_jetty_send_wr(_resource->jetty, &wr, &bad_wr);
         if (rc != URMA_SUCCESS) {
             const int provider_errno = errno;
             _remote_rq_window_size.fetch_add(1, butil::memory_order_relaxed);
             _sq_window_size.fetch_add(1, butil::memory_order_relaxed);
+            to->clear();
+            if (rc == URMA_EAGAIN) {
+                errno = EAGAIN;
+                return total_len > 0 ? total_len : -1;
+            }
             LOG(WARNING) << "urma_post_jetty_send_wr failed: " << rc
                          << ", provider_errno=" << provider_errno
                          << " (" << berror(provider_errno) << ')'
@@ -672,6 +695,14 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             errno = rc;
             DumpStreamTrace("data post failed");
             return -1;
+        }
+        if (_stream_trace) {
+            _stream_trace->Record(UrmaStreamTrace::TX, sq_slot, wr.user_ctx, 0,
+                                  sglist, sge_index);
+        }
+        size_t remaining = this_len;
+        for (size_t i = first; remaining != 0; ++i) {
+            remaining -= from[i]->pop_front(remaining);
         }
         _sq_current = (_sq_current + 1) % (_sq_size - RESERVED_WR_NUM);
         total_len += static_cast<ssize_t>(this_len);
