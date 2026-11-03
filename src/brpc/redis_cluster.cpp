@@ -342,7 +342,7 @@ bool RedisClusterChannel::ParseRequest(const RedisRequest& request,
         for (size_t i = 0; i < args.size(); ++i) {
             cmd.args.push_back(args[i].as_string());
         }
-        commands->push_back(cmd);
+        commands->push_back(std::move(cmd));
     }
     return true;
 }
@@ -476,12 +476,12 @@ bool RedisClusterChannel::ExecuteMGet(const ParsedCommand& cmd,
         if (!ExecuteSingleCommand(sub_args, nullptr, &sub_result, cntl)) {
             return false;
         }
-        values.push_back(sub_result.encoded_reply);
+        values.push_back(sub_result.encoded_reply.movable());
     }
 
     AppendArrayHeader(encoded_reply, values.size());
     for (size_t i = 0; i < values.size(); ++i) {
-        encoded_reply->append(values[i]);
+        encoded_reply->append(values[i].movable());
     }
     return true;
 }
