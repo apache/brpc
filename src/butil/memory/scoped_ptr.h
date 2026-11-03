@@ -57,13 +57,15 @@
 //         PassThru(std::move(ptr2));        // ptr2 is correspondingly nullptr.
 //   }
 //
-// std::move() properly handles upcast in initialization, i.e. you can use a
-// scoped_ptr<Child> to initialize a scoped_ptr<Parent>:
+// scoped_ptr's converting move constructor supports upcasting from
+// scoped_ptr<Child> to scoped_ptr<Parent>. std::move() casts the named source
+// to an rvalue so that this constructor can be selected:
 //
 //   scoped_ptr<Foo> foo(new Foo());
 //   scoped_ptr<FooParent> parent(std::move(foo));
 //
-// A converting move constructor supports upcasting a local return value:
+// Returning a local scoped_ptr can implicitly select the converting move
+// constructor, so no explicit std::move() is needed:
 //
 //   scoped_ptr<Foo> CreateFoo() {
 //     scoped_ptr<FooChild> result(new FooChild());
