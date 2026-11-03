@@ -5,6 +5,7 @@
 #ifndef BUTIL_MEMORY_SCOPED_VECTOR_H_
 #define BUTIL_MEMORY_SCOPED_VECTOR_H_
 
+#include <utility>
 #include <vector>
 
 #include "butil/basictypes.h"
@@ -41,8 +42,8 @@ class ScopedVector {
 
   ScopedVector& operator=(ScopedVector&& rhs) {
     if (this != &rhs) {
-      clear();
-      swap(rhs);
+      ScopedVector tmp(std::move(rhs));
+      swap(tmp);
     }
     return *this;
   }

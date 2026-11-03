@@ -285,6 +285,22 @@ class DeleteCounter {
   DISALLOW_COPY_AND_ASSIGN(DeleteCounter);
 };
 
+class NestedVectorNode {
+ public:
+  explicit NestedVectorNode(int* deletes) : deletes_(deletes) {}
+
+  ~NestedVectorNode() {
+    ++*deletes_;
+  }
+
+  butil::ScopedVector<NestedVectorNode> children;
+
+ private:
+  int* const deletes_;
+
+  DISALLOW_COPY_AND_ASSIGN(NestedVectorNode);
+};
+
 TEST(ScopedVectorTest, MoveAssignDeletesPopulatedTarget) {
   int source_deletes = 0;
   int target_deletes = 0;
@@ -318,6 +334,27 @@ TEST(ScopedVectorTest, SelfMoveAssignmentPreservesOwnership) {
     EXPECT_EQ(0, deletes);
   }
   EXPECT_EQ(1, deletes);
+}
+
+TEST(ScopedVectorTest, MoveAssignmentFromNestedVectorPreservesChildren) {
+  int parent_deletes = 0;
+  int child_deletes = 0;
+  {
+    butil::ScopedVector<NestedVectorNode> nodes;
+    NestedVectorNode* parent = new NestedVectorNode(&parent_deletes);
+    NestedVectorNode* child = new NestedVectorNode(&child_deletes);
+    parent->children.push_back(child);
+    nodes.push_back(parent);
+
+    nodes = std::move(nodes[0]->children);
+
+    EXPECT_EQ(1, parent_deletes);
+    EXPECT_EQ(0, child_deletes);
+    ASSERT_EQ(1u, nodes.size());
+    EXPECT_EQ(child, nodes[0]);
+  }
+  EXPECT_EQ(1, parent_deletes);
+  EXPECT_EQ(1, child_deletes);
 }
 
 template <typename T>

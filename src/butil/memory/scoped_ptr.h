@@ -182,8 +182,10 @@ class scoped_ptr_impl {
   void TakeState(scoped_ptr_impl<U, V>* other) {
     // See comment in templated constructor above regarding lack of support
     // for move-only deleters.
-    reset(other->release());
-    get_deleter() = other->get_deleter();
+    V deleter(other->get_deleter());
+    T* p = other->release();
+    reset(p);
+    get_deleter() = deleter;
   }
 
   ~scoped_ptr_impl() {

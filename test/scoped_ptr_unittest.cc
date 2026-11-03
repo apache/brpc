@@ -54,6 +54,46 @@ struct CountingDeleterChild : public CountingDeleter {
   explicit CountingDeleterChild(int* count) : CountingDeleter(count) {}
 };
 
+struct NestedNode;
+
+struct NestedNodeDeletionState {
+  int parent_deletes = 0;
+  int child_deletes = 0;
+};
+
+struct NestedNodeDeleter {
+  NestedNodeDeleter(NestedNodeDeletionState* state, bool deletes_child)
+      : state(state), deletes_child(deletes_child) {}
+
+  void operator()(NestedNode* node) const;
+
+  NestedNodeDeletionState* state;
+  bool deletes_child;
+};
+
+struct NestedNode {
+  explicit NestedNode(const NestedNodeDeleter& next_deleter)
+      : next(nullptr, next_deleter) {}
+
+  ~NestedNode() {
+    // Make stale reads of an embedded source deleter deterministic.
+    next.get_deleter().state = nullptr;
+  }
+
+  scoped_ptr<NestedNode, NestedNodeDeleter> next;
+};
+
+void NestedNodeDeleter::operator()(NestedNode* node) const {
+  if (state != nullptr) {
+    if (deletes_child) {
+      ++state->child_deletes;
+    } else {
+      ++state->parent_deletes;
+    }
+  }
+  delete node;
+}
+
 class OverloadedNewAndDelete {
  public:
   void* operator new(size_t size) {
@@ -460,6 +500,28 @@ TEST(ScopedPtrTest, SelfMoveAssignmentPreservesOwnership) {
 
   EXPECT_EQ(original, scoper.get());
   EXPECT_EQ(1, constructed);
+}
+
+TEST(ScopedPtrTest, MoveAssignmentFromNestedOwnerPreservesDeleter) {
+  NestedNodeDeletionState state;
+  NestedNodeDeleter parent_deleter(&state, false);
+  NestedNodeDeleter child_deleter(&state, true);
+  {
+    scoped_ptr<NestedNode, NestedNodeDeleter> head(
+        new NestedNode(child_deleter), parent_deleter);
+    head->next.reset(new NestedNode(child_deleter));
+    NestedNode* child = head->next.get();
+
+    head = std::move(head->next);
+
+    EXPECT_EQ(child, head.get());
+    EXPECT_EQ(&state, head.get_deleter().state);
+    EXPECT_TRUE(head.get_deleter().deletes_child);
+    EXPECT_EQ(1, state.parent_deletes);
+    EXPECT_EQ(0, state.child_deletes);
+  }
+  EXPECT_EQ(1, state.parent_deletes);
+  EXPECT_EQ(1, state.child_deletes);
 }
 
 TEST(ScopedPtrTest, ArraySelfMoveAssignmentPreservesOwnership) {
