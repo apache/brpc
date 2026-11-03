@@ -49,6 +49,29 @@
 namespace brpc {
 namespace handshake {
 
+class HandshakeSocketPair {
+public:
+    void Init() {
+        int fds[2];
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        peer_fd.reset(fds[1]);
+        SocketOptions options;
+        options.fd = fds[0];
+        SocketId id;
+        ASSERT_EQ(0, Socket::Create(options, &id));
+        ASSERT_EQ(0, Socket::Address(id, &socket));
+    }
+
+    ~HandshakeSocketPair() {
+        if (socket) {
+            socket->SetFailed();
+        }
+    }
+
+    butil::fd_guard peer_fd;
+    SocketUniquePtr socket;
+};
+
 class MemoryHandshakeIO : public HandshakeIO {
 public:
     explicit MemoryHandshakeIO(const std::string& input = std::string())
@@ -369,15 +392,9 @@ TEST(TransportHandshakeTest, registered_protocol_uses_transport_name) {
 }
 
 TEST(TransportHandshakeTest, adapter_retains_context_for_fragmented_extension) {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    butil::fd_guard peer_fd(fds[1]);
-    SocketOptions options;
-    options.fd = fds[0];
-    SocketId id;
-    ASSERT_EQ(0, Socket::Create(options, &id));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(id, &socket));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    auto& socket = pair.socket;
     TestServerHandshakeAdapter adapter;
     adapter.protocol.EnableExtension(2);
     butil::IOBuf source;
@@ -403,15 +420,9 @@ TEST(TransportHandshakeTest, adapter_retains_context_for_fragmented_extension) {
 }
 
 TEST(TransportHandshakeTest, adapter_rejects_tcp_data_coalesced_with_upgrade_ack) {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    butil::fd_guard peer_fd(fds[1]);
-    SocketOptions options;
-    options.fd = fds[0];
-    SocketId id;
-    ASSERT_EQ(0, Socket::Create(options, &id));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(id, &socket));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    auto& socket = pair.socket;
     TestServerHandshakeAdapter adapter;
     butil::IOBuf source;
     source.append("HSOK1RPC", 8);
@@ -489,15 +500,10 @@ TEST(TransportHandshakeTest, socket_io_pushback_prepends_buffered_input) {
 
 TEST(HandshakeFrameTest,
      socket_magic_mismatch_restores_prefix_before_buffered_input) {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    butil::fd_guard peer_fd(fds[1]);
-    SocketOptions options;
-    options.fd = fds[0];
-    SocketId id;
-    ASSERT_EQ(0, Socket::Create(options, &id));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(id, &socket));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    auto& peer_fd = pair.peer_fd;
+    auto& socket = pair.socket;
     socket->fd_input_processor().read_buf().append("tail");
     ASSERT_EQ(4, write(peer_fd, "PRPC", 4));
 
@@ -995,15 +1001,9 @@ TEST(TransportHandshakeTest, server_enters_hello_phase_after_magic_matches) {
 
 TEST(TransportHandshakeTest,
      impossible_magic_prefixes_try_other_protocols_without_consuming) {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    butil::fd_guard peer_fd(fds[1]);
-    SocketOptions options;
-    options.fd = fds[0];
-    SocketId id;
-    ASSERT_EQ(0, Socket::Create(options, &id));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(id, &socket));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    auto& socket = pair.socket;
 
     const char* const invalid_prefixes[] = {
         "X", "UX", "RX", "RDN", "RDMB",
@@ -1028,15 +1028,9 @@ TEST(TransportHandshakeTest,
 
 TEST(TransportHandshakeTest,
      partial_rdma_magic_waits_for_more_data_without_consuming) {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    butil::fd_guard peer_fd(fds[1]);
-    SocketOptions options;
-    options.fd = fds[0];
-    SocketId id;
-    ASSERT_EQ(0, Socket::Create(options, &id));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(id, &socket));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    auto& socket = pair.socket;
 
     const char* const partial_prefixes[] = {
         "R", "RD", "RDM",
@@ -1061,15 +1055,10 @@ TEST(TransportHandshakeTest,
 
 TEST(TransportHandshakeTest,
      plain_tcp_server_incrementally_rejects_ubshm_upgrade) {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    butil::fd_guard peer_fd(fds[1]);
-    SocketOptions options;
-    options.fd = fds[0];
-    SocketId id;
-    ASSERT_EQ(0, Socket::Create(options, &id));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(id, &socket));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    auto& peer_fd = pair.peer_fd;
+    auto& socket = pair.socket;
 
     const std::string hello = MakeUBShmHello();
     butil::IOBuf source;
@@ -1116,15 +1105,9 @@ TEST(TransportHandshakeTest,
 
 TEST(TransportHandshakeTest,
      plain_tcp_server_preserves_data_coalesced_behind_ubshm_ack) {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    butil::fd_guard peer_fd(fds[1]);
-    SocketOptions options;
-    options.fd = fds[0];
-    SocketId id;
-    ASSERT_EQ(0, Socket::Create(options, &id));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(id, &socket));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    auto& socket = pair.socket;
 
     butil::IOBuf source;
     source.append(MakeUBShmHello());

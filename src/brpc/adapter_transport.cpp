@@ -126,6 +126,18 @@ struct ClientHandshakeTask {
     SocketUniquePtr socket;
 };
 
+#if BRPC_WITH_RDMA || BRPC_WITH_UBRING
+template <typename T>
+void FailClientHandshake(T* transport, Socket* socket,
+                         int* connect_error, const char* name) {
+    const int saved_errno = errno != 0 ? errno : EPROTO;
+    transport->DeactivateUpgrade();
+    *connect_error = saved_errno;
+    socket->SetFailed(saved_errno, "Fail to complete %s handshake from %s: %s",
+                      name, socket->description().c_str(), berror(saved_errno));
+}
+#endif
+
 #if BRPC_WITH_RDMA
 class RdmaClientHandshakeTransport : public handshake::HandshakeTransport {
 public:
@@ -154,13 +166,7 @@ public:
     void OnFallback() override { _transport->DeactivateUpgrade(); }
 
     void OnFailed() override {
-        const int saved_errno = errno != 0 ? errno : EPROTO;
-        _transport->DeactivateUpgrade();
-        *_connect_error = saved_errno;
-        _socket->SetFailed(saved_errno,
-                           "Fail to complete rdma handshake from %s: %s",
-                           _socket->description().c_str(),
-                           berror(saved_errno));
+        FailClientHandshake(_transport, _socket, _connect_error, "rdma");
     }
 
 private:
@@ -206,13 +212,7 @@ public:
     void OnFallback() override { _transport->DeactivateUpgrade(); }
 
     void OnFailed() override {
-        const int saved_errno = errno != 0 ? errno : EPROTO;
-        _transport->DeactivateUpgrade();
-        *_connect_error = saved_errno;
-        _socket->SetFailed(saved_errno,
-                           "Fail to complete ubring handshake from %s: %s",
-                           _socket->description().c_str(),
-                           berror(saved_errno));
+        FailClientHandshake(_transport, _socket, _connect_error, "ubring");
     }
 
 private:

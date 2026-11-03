@@ -1475,76 +1475,101 @@ TEST_F(UBShmEndpointTest, malformed_hello_releases_allocated_ring_and_poller) {
     EXPECT_EQ(ENOENT, errno);
 }
 
-TEST_F(UBShmEndpointTest, shared_memory_rpc_waits_for_final_tcp_ack) {
+class UBShmHandshakeTest : public UBShmEndpointTest {
+protected:
+    void PrepareUntilAck(const char* prefix, int timeout_s) {
+        ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+        brpc::ServerOptions options;
+        options.socket_mode = brpc::SOCKET_MODE_UBRING;
+        options.enabled_protocols = "baidu_std";
+        options.internal_port = -1;
+        ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+
+        peer.reset(::socket(AF_INET, SOCK_STREAM, 0));
+        ASSERT_GE(peer, 0);
+        timeval timeout = {timeout_s, 0};
+        ASSERT_EQ(0, setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO,
+                               &timeout, sizeof(timeout)));
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(server.listen_address().port);
+        ASSERT_EQ(0, connect(peer, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
+        ASSERT_TRUE(WaitForUBCondition([&] {
+            std::vector<brpc::SocketId> ids;
+            server._am->ListConnections(&ids);
+            return !ids.empty() && brpc::Socket::Address(ids[0], &server_socket) == 0;
+        }));
+
+        brpc::SocketOptions client_options;
+        client_options.socket_mode = brpc::SOCKET_MODE_UBRING;
+        brpc::SocketId client_id;
+        ASSERT_EQ(0, brpc::Socket::Create(client_options, &client_id));
+        ASSERT_EQ(0, brpc::Socket::Address(client_id, &client_socket));
+        client_transport = brpc::UBShmTransport::Get(client_socket.get());
+        local.len = 4 * 1024 * 1024;
+        local.fd = peer;
+        name = std::string(prefix) + std::to_string(getpid());
+        ASSERT_EQ(0, client_transport->PrepareUpgradeResources(&local, name.c_str()));
+        brpc::ubring::UBShmHandshakeAdapter protocol(
+            brpc::ubring::PreferredDataFormatForShmType(brpc::ubring::GetShmType()));
+        protocol.ConfigureClientHello(local);
+        std::string payload;
+        ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildHello(true, &payload));
+        std::string hello;
+        ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
+            protocol.HelloFrameSpec(), payload, &hello));
+        ASSERT_TRUE(TransferUBTestBytes(peer, &hello[0], hello.size(), true));
+        char reply[64];
+        ASSERT_TRUE(TransferUBTestBytes(peer, reply, sizeof(reply), false));
+        server_hello.Deserialize(reply + 2);
+        ASSERT_GT(server_hello.len, 0u);
+        std::string extension_payload;
+        ASSERT_EQ(brpc::handshake::STEP_OK,
+                  protocol.BuildExtension(true, &extension_payload));
+        std::string extension;
+        ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
+            protocol.ExtensionFrameSpec(), extension_payload, &extension));
+        ASSERT_TRUE(TransferUBTestBytes(peer, &extension[0], extension.size(), true));
+        char extension_reply[brpc::ubring::HelloFormatExtension::WIRE_SIZE];
+        ASSERT_TRUE(TransferUBTestBytes(peer, extension_reply,
+                                       sizeof(extension_reply), false));
+        adapter = brpc::AdapterTransport::Get(server_socket.get());
+        ASSERT_TRUE(WaitForUBCondition([&] {
+            return adapter->handshake_phase() == brpc::handshake::ACK_WAIT;
+        }));
+        format = protocol.local_format();
+    }
+
+    void TearDown() override {
+        if (client_socket) {
+            client_socket->SetFailed();
+        }
+        peer.reset(-1);
+        client_socket.reset();
+        server_socket.reset();
+        server.Stop(0);
+        server.Join();
+        UBShmEndpointTest::TearDown();
+    }
+
     UBFallbackEchoService service;
     brpc::Server server;
-    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    brpc::ServerOptions options;
-    options.socket_mode = brpc::SOCKET_MODE_UBRING;
-    options.enabled_protocols = "baidu_std";
-    options.internal_port = -1;
-    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
-
     brpc::SocketUniquePtr server_socket;
     brpc::SocketUniquePtr client_socket;
-    butil::fd_guard peer(::socket(AF_INET, SOCK_STREAM, 0));
-    ASSERT_GE(peer, 0);
-    timeval timeout = {5, 0};
-    ASSERT_EQ(0, setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO,
-                           &timeout, sizeof(timeout)));
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = htons(server.listen_address().port);
-    ASSERT_EQ(0, connect(peer, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
-    ASSERT_TRUE(WaitForUBCondition([&] {
-        std::vector<brpc::SocketId> ids;
-        server._am->ListConnections(&ids);
-        return !ids.empty() && brpc::Socket::Address(ids[0], &server_socket) == 0;
-    }));
-
-    brpc::SocketOptions client_options;
-    client_options.socket_mode = brpc::SOCKET_MODE_UBRING;
-    brpc::SocketId client_id;
-    ASSERT_EQ(0, brpc::Socket::Create(client_options, &client_id));
-    ASSERT_EQ(0, brpc::Socket::Address(client_id, &client_socket));
-    BRPC_SCOPE_EXIT { client_socket->SetFailed(); };
-    auto* client_transport = brpc::UBShmTransport::Get(client_socket.get());
+    butil::fd_guard peer;
     brpc::ubring::SHM local{};
-    local.len = 4 * 1024 * 1024;
-    local.fd = peer;
-    const std::string name = "ack_race_" + std::to_string(getpid());
-    ASSERT_EQ(0, client_transport->PrepareUpgradeResources(&local, name.c_str()));
-    brpc::ubring::UBShmHandshakeAdapter protocol(
-        brpc::ubring::PreferredDataFormatForShmType(brpc::ubring::GetShmType()));
-    protocol.ConfigureClientHello(local);
-    std::string payload;
-    ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildHello(true, &payload));
-    std::string hello;
-    ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
-        protocol.HelloFrameSpec(), payload, &hello));
-    ASSERT_TRUE(TransferUBTestBytes(peer, &hello[0], hello.size(), true));
-    char reply[64];
-    ASSERT_TRUE(TransferUBTestBytes(peer, reply, sizeof(reply), false));
     brpc::ubring::HelloMessage server_hello{};
-    server_hello.Deserialize(reply + 2);
-    ASSERT_GT(server_hello.len, 0u);
-    std::string extension_payload;
-    ASSERT_EQ(brpc::handshake::STEP_OK,
-              protocol.BuildExtension(true, &extension_payload));
-    std::string extension;
-    ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
-        protocol.ExtensionFrameSpec(), extension_payload, &extension));
-    ASSERT_TRUE(TransferUBTestBytes(peer, &extension[0], extension.size(), true));
-    char extension_reply[brpc::ubring::HelloFormatExtension::WIRE_SIZE];
-    ASSERT_TRUE(TransferUBTestBytes(peer, extension_reply,
-                                   sizeof(extension_reply), false));
-    auto* adapter = brpc::AdapterTransport::Get(server_socket.get());
-    ASSERT_TRUE(WaitForUBCondition([&] {
-        return adapter->handshake_phase() == brpc::handshake::ACK_WAIT;
-    }));
+    std::string name;
+    brpc::ubring::UbrDataFormat format;
+    brpc::UBShmTransport* client_transport = nullptr;
+    brpc::AdapterTransport* adapter = nullptr;
+};
+
+TEST_F(UBShmHandshakeTest, shared_memory_rpc_waits_for_final_tcp_ack) {
+    ASSERT_NO_FATAL_FAILURE(PrepareUntilAck("ack_race_", 5));
     ASSERT_EQ(0, client_transport->NegotiateUpgradeResources(
-        &local, name.c_str(), server_hello.len, protocol.local_format()));
+        &local, name.c_str(), server_hello.len, format));
 
     test::EchoRequest request;
     request.set_message("RPC queued before the final ACK");
@@ -1607,10 +1632,6 @@ TEST_F(UBShmEndpointTest, shared_memory_rpc_waits_for_final_tcp_ack) {
     EXPECT_EQ(brpc::handshake::ESTABLISHED, adapter->handshake_phase());
     EXPECT_TRUE(server_ep->_receive_events_started.load(butil::memory_order_acquire));
     client_transport->DeactivateUpgrade();
-    peer.reset(-1);
-    server_socket.reset();
-    server.Stop(0);
-    server.Join();
 }
 
 TEST_F(UBShmEndpointTest, upgraded_client_receives_shared_memory_rpc_responses) {
@@ -1694,74 +1715,8 @@ TEST(UBRingRecvChunkHeaderTest, crafted_chunk_is_rejected) {
         chunk.header[UBR_MSG_LEN_INDEX], chunk.header[UBR_MSG_CUR_INDEX]));
 }
 
-TEST_F(UBShmEndpointTest, negative_ack_after_server_allocation_serves_tcp_without_delay) {
-    UBFallbackEchoService service;
-    brpc::Server server;
-    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    brpc::ServerOptions options;
-    options.socket_mode = brpc::SOCKET_MODE_UBRING;
-    options.enabled_protocols = "baidu_std";
-    options.internal_port = -1;
-    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
-
-    brpc::SocketUniquePtr server_socket;
-    brpc::SocketUniquePtr client_socket;
-    butil::fd_guard peer(::socket(AF_INET, SOCK_STREAM, 0));
-    ASSERT_GE(peer, 0);
-    timeval timeout = {1, 0};
-    ASSERT_EQ(0, setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO,
-                           &timeout, sizeof(timeout)));
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = htons(server.listen_address().port);
-    ASSERT_EQ(0, connect(peer, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
-    ASSERT_TRUE(WaitForUBCondition([&] {
-        std::vector<brpc::SocketId> ids;
-        server._am->ListConnections(&ids);
-        return !ids.empty() && brpc::Socket::Address(ids[0], &server_socket) == 0;
-    }));
-
-    brpc::SocketOptions client_options;
-    client_options.socket_mode = brpc::SOCKET_MODE_UBRING;
-    brpc::SocketId client_id;
-    ASSERT_EQ(0, brpc::Socket::Create(client_options, &client_id));
-    ASSERT_EQ(0, brpc::Socket::Address(client_id, &client_socket));
-    BRPC_SCOPE_EXIT { client_socket->SetFailed(); };
-    auto* client_transport = brpc::UBShmTransport::Get(client_socket.get());
-    brpc::ubring::SHM local{};
-    local.len = 4 * 1024 * 1024;
-    local.fd = peer;
-    const std::string name = "negative_ack_" + std::to_string(getpid());
-    ASSERT_EQ(0, client_transport->PrepareUpgradeResources(&local, name.c_str()));
-    brpc::ubring::UBShmHandshakeAdapter protocol(
-        brpc::ubring::PreferredDataFormatForShmType(brpc::ubring::GetShmType()));
-    protocol.ConfigureClientHello(local);
-    std::string payload;
-    ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildHello(true, &payload));
-    std::string hello;
-    ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
-        protocol.HelloFrameSpec(), payload, &hello));
-    ASSERT_TRUE(TransferUBTestBytes(peer, &hello[0], hello.size(), true));
-    char reply[64];
-    ASSERT_TRUE(TransferUBTestBytes(peer, reply, sizeof(reply), false));
-    brpc::ubring::HelloMessage server_hello{};
-    server_hello.Deserialize(reply + 2);
-    ASSERT_GT(server_hello.len, 0u);
-    std::string extension_payload;
-    ASSERT_EQ(brpc::handshake::STEP_OK,
-              protocol.BuildExtension(true, &extension_payload));
-    std::string extension;
-    ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
-        protocol.ExtensionFrameSpec(), extension_payload, &extension));
-    ASSERT_TRUE(TransferUBTestBytes(peer, &extension[0], extension.size(), true));
-    char extension_reply[brpc::ubring::HelloFormatExtension::WIRE_SIZE];
-    ASSERT_TRUE(TransferUBTestBytes(peer, extension_reply,
-                                   sizeof(extension_reply), false));
-    auto* adapter = brpc::AdapterTransport::Get(server_socket.get());
-    ASSERT_TRUE(WaitForUBCondition([&] {
-        return adapter->handshake_phase() == brpc::handshake::ACK_WAIT;
-    }));
+TEST_F(UBShmHandshakeTest, negative_ack_after_server_allocation_serves_tcp_without_delay) {
+    ASSERT_NO_FATAL_FAILURE(PrepareUntilAck("negative_ack_", 1));
 
     ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, true, 301));
     EXPECT_EQ(brpc::handshake::FALLBACK_TCP, adapter->handshake_phase());
@@ -1770,10 +1725,6 @@ TEST_F(UBShmEndpointTest, negative_ack_after_server_allocation_serves_tcp_withou
     EXPECT_EQ(brpc::INVALID_SOCKET_ID, ep->_poller_sid);
     ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, false, 302));
     client_transport->DeactivateUpgrade();
-    peer.reset(-1);
-    server_socket.reset();
-    server.Stop(0);
-    server.Join();
 }
 
 #if defined(OS_LINUX)

@@ -200,16 +200,6 @@ static void DispatchTimer(uint32_t fd, uint32_t generation,
     pthread_mutex_unlock(&g_timer_mutex);
 }
 
-void *UnifiedCallback(void *args) {
-    TimerFdCtx* ctx = static_cast<TimerFdCtx*>(args);
-    pthread_mutex_lock(&g_timer_mutex);
-    const uint32_t fd = ctx->fd;
-    const uint32_t generation = ctx->generation;
-    pthread_mutex_unlock(&g_timer_mutex);
-    DispatchTimer(fd, generation, false);
-    return nullptr;
-}
-
 void *TimerEpoll(void *args) {
     UNREFERENCE_PARAM(args);
 #if defined(OS_LINUX)
@@ -392,24 +382,6 @@ void TimerModuleDestroy(void) {
         LOG(ERROR) << "Failed to join pthread, during destroying timer module. ret=" << ret;
         return;
     }
-}
-
-RETURN_CODE TimerFdCtxValidate(uint32_t fd) {
-    BAIDU_SCOPED_LOCK(g_timer_mutex);
-    if (fd >= g_max_system_fd) {
-        LOG(ERROR) << "TimerFd=" << fd << " is out of range=" << g_max_system_fd;
-        return UBRING_ERR;
-    }
-    if (g_timer_fd_ctx_map[fd].status == TIMER_CONTEXT_NOT_USING) {
-        LOG(ERROR) << "TimerFd=" << fd << " has wrong status=" << g_timer_fd_ctx_map[fd].status;
-        return UBRING_ERR;
-    }
-    if (g_timer_fd_ctx_map[fd].cb == nullptr) {
-        LOG(ERROR) << "The callback is not set.";
-        return UBRING_ERR;
-    }
-
-    return UBRING_OK;
 }
 
 #if defined(OS_MACOSX)
