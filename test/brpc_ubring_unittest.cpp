@@ -31,6 +31,7 @@
 #include <functional>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -71,6 +72,8 @@ DECLARE_int32(ub_event_queue_timer_interval_us);
 DECLARE_int32(ub_flying_io_timeout_s);
 
 extern bool g_skip_ub_init;
+extern int (*ubsmem_shmem_deallocate)(const char*);
+extern int (*ubsmem_shmem_unmap)(void*, size_t);
 }  // namespace ubring
 }  // namespace brpc
 
@@ -889,6 +892,18 @@ TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
                   USEC_TO_NSEC);
 }
 
+TEST(UBRingConfigurationTest, cleanup_delay_requires_positive_seconds) {
+    const int saved = brpc::ubring::FLAGS_ub_flying_io_timeout_s;
+    BRPC_SCOPE_EXIT { brpc::ubring::FLAGS_ub_flying_io_timeout_s = saved; };
+    for (const char* value : {"0", "-1"}) {
+        EXPECT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption(
+            "ub_flying_io_timeout_s", value).empty());
+        EXPECT_EQ(saved, brpc::ubring::FLAGS_ub_flying_io_timeout_s);
+    }
+    EXPECT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+        "ub_flying_io_timeout_s", "1").empty());
+}
+
 namespace brpc {
 namespace ubring {
 class UBShmEndpointTest : public ::testing::Test {
@@ -1020,11 +1035,12 @@ TEST_F(UBShmEndpointTest, expired_one_shot_timer_releases_its_descriptor) {
 TEST_F(UBShmEndpointTest, repeated_close_preserves_deferred_cleanup_timer) {
     using namespace brpc::ubring;
     for (UbrCloseType type : {UBR_SEND_CLOSE, UBR_CALL_BACK_CLOSE}) {
-        UbrTrx trx{};
-        UbrEventQMsg event{};
-        event.flag = UBR_STATE_CONNECTED;
-        trx.ubr_tx.local_tx_event_q.addr =
-            reinterpret_cast<uint8_t*>(&event);
+        UBRing ring;
+        SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+        ASSERT_EQ(0, ring.UbrAllocateLocalShm(&local, "close_once"));
+        UbrTrx& trx = *ring._trx;
+        reinterpret_cast<UbrEventQMsg*>(trx.ubr_tx.local_tx_event_q.addr)
+            ->flag = UBR_STATE_CONNECTED;
         itimerspec spec{};
         spec.it_interval.tv_sec = 10;
         spec.it_value.tv_sec = 10;
@@ -1035,23 +1051,26 @@ TEST_F(UBShmEndpointTest, repeated_close_preserves_deferred_cleanup_timer) {
         ASSERT_GE(trx.hb_timer_fd, 0);
         BRPC_SCOPE_EXIT {
             DeleteTimerSafe(trx.clear_timer_fd);
-            if (type == UBR_CALL_BACK_CLOSE) {
-                DeleteTimerSafe(trx.timer_fd);
+            if (ATOMIC_LOAD(trx.ref_count) == 2) {
+                UBRing::UbrAsynClearCallback(&trx);
             }
+            ring.UbrTrxAbort();
         };
-        ASSERT_EQ(UBRING_OK, UBRing::ClearTrxResource(&trx, 0, type));
+        ASSERT_EQ(UBRING_OK, UBRing::ClearTrxResource(&trx, type));
         EXPECT_EQ(UBRING_REENTRY,
-                  UBRing::ClearTrxResource(&trx, 0, UBR_SEND_CLOSE));
+                  UBRing::ClearTrxResource(&trx, UBR_SEND_CLOSE));
         EXPECT_GE(fcntl(trx.clear_timer_fd, F_GETFD), 0);
     }
 }
 
 TEST_F(UBShmEndpointTest, concurrent_close_schedules_one_cleanup_timer) {
     using namespace brpc::ubring;
-    UbrTrx trx{};
-    UbrEventQMsg event{};
-    event.flag = UBR_STATE_CONNECTED;
-    trx.ubr_tx.local_tx_event_q.addr = reinterpret_cast<uint8_t*>(&event);
+    UBRing ring;
+    SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_EQ(0, ring.UbrAllocateLocalShm(&local, "close_concurrently"));
+    UbrTrx& trx = *ring._trx;
+    reinterpret_cast<UbrEventQMsg*>(trx.ubr_tx.local_tx_event_q.addr)
+        ->flag = UBR_STATE_CONNECTED;
     itimerspec spec{};
     spec.it_value.tv_sec = 10;
     auto noop = [](void*) -> void* { return nullptr; };
@@ -1059,12 +1078,18 @@ TEST_F(UBShmEndpointTest, concurrent_close_schedules_one_cleanup_timer) {
     trx.hb_timer_fd = TimerStart(&spec, noop, nullptr);
     ASSERT_GE(trx.timer_fd, 0);
     ASSERT_GE(trx.hb_timer_fd, 0);
-    BRPC_SCOPE_EXIT { DeleteTimerSafe(trx.clear_timer_fd); };
+    BRPC_SCOPE_EXIT {
+        DeleteTimerSafe(trx.clear_timer_fd);
+        if (ATOMIC_LOAD(trx.ref_count) == 2) {
+            UBRing::UbrAsynClearCallback(&trx);
+        }
+        ring.UbrTrxAbort();
+    };
     bthread::CountdownEvent start;
     int results[2];
     auto close = [&](int i) {
         start.wait();
-        results[i] = UBRing::ClearTrxResource(&trx, 0, UBR_SEND_CLOSE);
+        results[i] = UBRing::ClearTrxResource(&trx, UBR_SEND_CLOSE);
     };
     std::thread first(close, 0);
     std::thread second(close, 1);
@@ -1084,6 +1109,12 @@ TEST_F(UBShmEndpointTest, failed_cleanup_timer_releases_transaction_after_io_wai
     const int saved_timeout = FLAGS_ub_flying_io_timeout_s;
     FLAGS_ub_flying_io_timeout_s = 1;
     BRPC_SCOPE_EXIT { FLAGS_ub_flying_io_timeout_s = saved_timeout; };
+    struct sigaction action{};
+    struct sigaction saved_action;
+    action.sa_handler = [](int) {};
+    sigemptyset(&action.sa_mask);
+    ASSERT_EQ(0, sigaction(SIGUSR1, &action, &saved_action));
+    BRPC_SCOPE_EXIT { sigaction(SIGUSR1, &saved_action, nullptr); };
     struct rlimit limit;
     ASSERT_EQ(0, getrlimit(RLIMIT_NOFILE, &limit));
     for (UbrCloseType type : {UBR_SEND_CLOSE, UBR_CALL_BACK_CLOSE}) {
@@ -1118,6 +1149,12 @@ TEST_F(UBShmEndpointTest, failed_cleanup_timer_releases_transaction_after_io_wai
         ASSERT_GE(trx->timer_fd, 0);
         ASSERT_GE(trx->hb_timer_fd, 0);
 
+        const pthread_t closing_thread = pthread_self();
+        std::thread interrupt([closing_thread] {
+            usleep(100000);
+            pthread_kill(closing_thread, SIGUSR1);
+        });
+        BRPC_SCOPE_EXIT { interrupt.join(); };
         // Closing existing descriptors still works, but timerfd_create fails.
         struct rlimit exhausted = limit;
         exhausted.rlim_cur = 0;
@@ -1126,9 +1163,12 @@ TEST_F(UBShmEndpointTest, failed_cleanup_timer_releases_transaction_after_io_wai
         const int64_t start = butil::gettimeofday_us();
         const RETURN_CODE result = type == UBR_SEND_CLOSE
             ? ring.UbrTrxClose()
-            : UBRing::ClearTrxResource(trx, 0, type);
+            : UBRing::ClearTrxResource(trx, type);
         const int64_t elapsed = butil::gettimeofday_us() - start;
         ASSERT_EQ(0, setrlimit(RLIMIT_NOFILE, &limit));
+        if (type == UBR_CALL_BACK_CLOSE) {
+            EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+        }
         EXPECT_EQ(UBRING_OK, result);
         EXPECT_GE(elapsed, 1000000);
         EXPECT_EQ(allocated, UBRingManager::g_ubr_mgr.trx_num);
@@ -1277,6 +1317,145 @@ void SendAndCheckUBFallbackRPC(int fd, bool include_ack, uint64_t id) {
     ASSERT_EQ(request.message(), echo.message());
 }
 }  // namespace
+
+class UBRingLifetimeTest : public UBShmEndpointTest {
+protected:
+    void SetUp() override {
+        UBShmEndpointTest::SetUp();
+        using namespace brpc::ubring;
+        saved_delay = brpc::ubring::FLAGS_ub_flying_io_timeout_s;
+        saved_timeout = brpc::ubring::FLAGS_ub_disconnect_timeout_s;
+        brpc::ubring::FLAGS_ub_flying_io_timeout_s = 1;
+        local.len = peer.len = 4 * 1024 * 1024;
+        const std::string name = "lifetime_" + std::to_string(getpid());
+        ASSERT_EQ(0, ring.UbrAllocateLocalShm(&local, name.c_str()));
+        snprintf(peer.name, sizeof(peer.name), "lifetime_peer_%d", getpid());
+        ASSERT_EQ(UBRING_OK, ShmLocalCalloc(&peer));
+        ASSERT_EQ(UBRING_OK, ring.UbrTrxMapRemoteShm(&peer));
+        auto* trx = ring._trx;
+        reinterpret_cast<UbrEventQMsg*>(trx->ubr_tx.local_tx_event_q.addr)
+            ->flag = UBR_STATE_CONNECTED;
+        reinterpret_cast<UbrEventQMsg*>(trx->ubr_rx.local_rx_event_q.addr)
+            ->flag = UBR_STATE_CONNECTED;
+        timers = brpc::ubring::GetActiveTimerNum();
+    }
+
+    void TearDown() override {
+        ring.UbrTrxAbort();
+        shm_unlink(peer.name);
+        UBShmEndpointTest::TearDown();
+        brpc::ubring::FLAGS_ub_flying_io_timeout_s = saved_delay;
+        brpc::ubring::FLAGS_ub_disconnect_timeout_s = saved_timeout;
+    }
+
+    brpc::ubring::UBRing ring;
+    brpc::ubring::SHM local{};
+    brpc::ubring::SHM peer{};
+    int saved_delay = 0;
+    int saved_timeout = 0;
+    uint32_t timers = 0;
+};
+
+TEST_F(UBRingLifetimeTest, timed_out_close_detaches_before_pool_slot_reuse) {
+    using namespace brpc::ubring;
+    FLAGS_ub_disconnect_timeout_s = 0;
+    UbrTrx* old_trx = ring._trx;
+    ASSERT_EQ(UBRING_ERR_TIMEOUT, ring.UbrTrxClose());
+    EXPECT_EQ(nullptr, ring._trx);
+    ASSERT_TRUE(WaitForUBCondition([&] { return GetActiveTimerNum() == timers; }));
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
+
+    UBRing replacement;
+    SHM next = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_EQ(0, replacement.UbrAllocateLocalShm(&next, "timeout_replacement"));
+    BRPC_SCOPE_EXIT { replacement.UbrTrxAbort(); };
+    EXPECT_EQ(old_trx, replacement._trx);
+    EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    butil::fd_guard fd(shm_open(next.name, O_RDONLY, 0));
+    EXPECT_GE(fd, 0);
+}
+
+TEST_F(UBRingLifetimeTest, concurrent_device_events_share_cleanup_and_keep_ring_reference) {
+    using namespace brpc::ubring;
+    bthread::CountdownEvent start;
+    RETURN_CODE results[2];
+    auto close = [&](int i) {
+        start.wait();
+        results[i] = static_cast<RETURN_CODE>(
+            UBRingManager::UbEventCallback(local.name));
+    };
+    std::thread first(close, 0);
+    std::thread second(close, 1);
+    start.signal();
+    first.join();
+    second.join();
+    EXPECT_EQ(UBRING_OK, results[0]);
+    EXPECT_EQ(UBRING_OK, results[1]);
+    ASSERT_TRUE(WaitForUBCondition([&] { return GetActiveTimerNum() == timers; }));
+    EXPECT_EQ(nullptr, ring._trx->local_shm.addr);
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_EQ(1, ATOMIC_LOAD(ring._trx->ref_count));
+
+    UBRing replacement;
+    SHM next = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_EQ(0, replacement.UbrAllocateLocalShm(&next, "passive_replacement"));
+    BRPC_SCOPE_EXIT { replacement.UbrTrxAbort(); };
+    EXPECT_NE(ring._trx, replacement._trx);
+    EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    butil::fd_guard fd(shm_open(peer.name, O_RDONLY, 0));
+    EXPECT_LT(fd, 0);
+    EXPECT_EQ(ENOENT, errno);
+}
+
+TEST_F(UBRingLifetimeTest, device_event_completes_an_active_close_once) {
+    using namespace brpc::ubring;
+    UbrTrx* trx = ring._trx;
+    ATOMIC_ADD(trx->ref_count, 1);
+    BRPC_SCOPE_EXIT { UBRingManager::ReleaseUbrTrxFromMgr(trx); };
+    RETURN_CODE result = UBRING_ERR;
+    std::thread close([&] { result = ring.UbrTrxClose(); });
+    const bool closing = WaitForUBCondition([&] {
+        return ATOMIC_LOAD(trx->close_cnt) == MAX_CLOSE_COUNT - 1;
+    });
+    const int event_result = UBRingManager::UbEventCallback(local.name);
+    close.join();
+    EXPECT_TRUE(closing);
+    EXPECT_EQ(UBRING_OK, event_result);
+    EXPECT_EQ(UBRING_OK, result);
+    EXPECT_EQ(nullptr, ring._trx);
+    ASSERT_TRUE(WaitForUBCondition([&] { return GetActiveTimerNum() == timers; }));
+    EXPECT_EQ(1, ATOMIC_LOAD(trx->ref_count));
+}
+
+TEST_F(UBShmEndpointTest, ubs_unlink_preserves_mapping_until_unmap) {
+    using namespace brpc::ubring;
+    const SHM_TYPE saved_type = GetShmType();
+    const auto saved_deallocate = ubsmem_shmem_deallocate;
+    const auto saved_unmap = ubsmem_shmem_unmap;
+    BRPC_SCOPE_EXIT {
+        SetShmType(saved_type);
+        ubsmem_shmem_deallocate = saved_deallocate;
+        ubsmem_shmem_unmap = saved_unmap;
+    };
+    SetShmType(SHM_TYPE_UBS);
+    static int unmaps = 0;
+    unmaps = 0;
+    ubsmem_shmem_deallocate = [](const char*) { return 0; };
+    ubsmem_shmem_unmap = [](void*, size_t) { ++unmaps; return 0; };
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    BRPC_SCOPE_EXIT { ring.ReleaseTrx(); };
+    uint8_t mapped_byte = 0;
+    ring._trx->local_shm = {&mapped_byte, 4 * 1024 * 1024, 0, {0}, 0};
+    strcpy(ring._trx->local_shm.name, "ubs_mapping");
+    ASSERT_EQ(UBRING_OK, ring.UbrUnlinkLocalShm());
+    EXPECT_EQ(&mapped_byte, ring._trx->local_shm.addr);
+    EXPECT_EQ(UBRING_OK, UBRing::UbrTrxFreeShm(ring._trx));
+    EXPECT_EQ(1, unmaps);
+}
 
 class UBShmServerTest : public UBShmEndpointTest {
 protected:

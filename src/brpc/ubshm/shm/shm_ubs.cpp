@@ -33,6 +33,7 @@
 #include "ubs_mem.h"
 #endif
 #include "shm_ubs.h"
+#include "brpc/reloadable_flags.h"
 
 namespace brpc {
 namespace ubring {
@@ -46,6 +47,7 @@ DEFINE_bool(shm_wr_delay_comp, true, "Indicates whether to enable the write rela
 DEFINE_int32(ub_flying_io_timeout_s, 5,
              "Time in seconds to wait for stopping data sending and receiving "
              "when the link is disconnected.");
+BRPC_VALIDATE_GFLAG(ub_flying_io_timeout_s, brpc::PositiveInteger);
 char g_region_name[MAX_REGION_NAME_DESC_LENGTH] = {0};
 int g_shm_timer_fd = 0;
 ShmList *g_shm_list = nullptr;

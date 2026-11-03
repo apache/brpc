@@ -64,6 +64,7 @@ public:
 
     static RETURN_CODE AcquireUbrTrxFromMgr(UbrTrx **trx);
 
+    // Drop a reference and return the slot after the last owner releases it.
     static RETURN_CODE ReleaseUbrTrxFromMgr(UbrTrx *trx);
 
     static void LinkInfoInit(void);

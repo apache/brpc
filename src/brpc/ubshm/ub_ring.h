@@ -57,7 +57,7 @@ public:
 
     static void *UbrTrxHBCallback(void *args);
 
-    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE type);
+    static RETURN_CODE UbrPassiveClearTrx(UbrTrx* trx);
 
     static RETURN_CODE UbrAddAsynClearTimer(UbrTrx *trx);
 
@@ -244,8 +244,9 @@ private:
     void InitializeClientRemoteLegacyFormat();
     void InitializeClientLegacyFormat();
     void ActivateClientFormat();
-    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type);
-    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type, int op=0);
+    static RETURN_CODE UbrClearResourceCheck(UbrTrx* trx, UbrCloseType close_type);
+    static RETURN_CODE ClearTrxResource(UbrTrx* trx, UbrCloseType close_type);
+    RETURN_CODE ReleaseTrx();
 
     UbrTrx* _trx{nullptr};
 };
