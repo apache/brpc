@@ -1284,6 +1284,48 @@ TEST_F(UBShmServerTest, tcp_server_fallback_completes_with_short_rpc_timeout) {
     socket->SetFailed();
 }
 
+TEST_F(UBShmServerTest, unavailable_endpoint_serves_rpc_after_health_check_revival) {
+    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_TCP));
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    options.timeout_ms = 1000;
+    options.max_retry = 0;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
+    const brpc::SocketId id = channel._server_id;
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+    auto* adapter = brpc::AdapterTransport::Get(socket.get());
+    // Reproduce endpoint allocation failure before selecting AppConnect.
+    adapter->high_speed_transport()->Release();
+    socket->_app_connect = adapter->Connect();
+    const auto app_connect = socket->_app_connect;
+
+    test::EchoService_Stub stub(&channel);
+    auto echo = [&] {
+        brpc::Controller cntl;
+        test::EchoRequest request;
+        test::EchoResponse response;
+        request.set_message("TCP fallback across health-check revival");
+        stub.Echo(&cntl, &request, &response, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        EXPECT_EQ(request.message(), response.message());
+        EXPECT_EQ(id, cntl._single_server_id);
+    };
+    ASSERT_NO_FATAL_FAILURE(echo());
+    ASSERT_GE(socket->fd(), 0);
+    ASSERT_EQ(0, socket->SetFailed());
+    socket.reset();  // The health check waits for outstanding pins to drain.
+    ASSERT_TRUE(WaitForUBCondition([&] {
+        return brpc::Socket::Address(id, &socket) == 0;
+    }));
+    EXPECT_EQ(-1, socket->fd());
+    EXPECT_EQ(app_connect.get(), socket->_app_connect.get());
+    ASSERT_NO_FATAL_FAILURE(echo());
+    EXPECT_GE(socket->fd(), 0);
+    socket->SetFailed();
+}
+
 TEST_F(UBShmServerTest, failed_server_allocation_cleans_resources_and_serves_tcp) {
     ASSERT_NO_FATAL_FAILURE(StartServer());
     ASSERT_NO_FATAL_FAILURE(ConnectPeer());

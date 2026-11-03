@@ -1180,34 +1180,47 @@ TEST(TransportHandshakeTest, inherited_adapter_connect_is_not_wrapped_twice) {
     EXPECT_EQ(wrapped.get(), AdapterTransport::Get(second.socket.get())->Connect().get());
 }
 
-TEST(TransportHandshakeTest,
-     unavailable_client_upgrade_publishes_tcp_fallback) {
-    const std::shared_ptr<AppConnect> original =
-        std::make_shared<TestAppConnect>();
+#endif
 
-    SocketOptions options;
-    options.user =
-        static_cast<SocketUser*>(get_or_new_client_side_messenger());
-    options.need_on_edge_trigger = true;
-    options.socket_mode = SOCKET_MODE_RDMA;
-    options.app_connect = original;
-
-    HandshakeSocketPair pair;
-    ASSERT_NO_FATAL_FAILURE(pair.Init(options));
-    auto& socket = pair.socket;
-
-    AdapterTransport* adapter = AdapterTransport::Get(socket.get());
-    RdmaTransport* rdma_transport =
-        static_cast<RdmaTransport*>(adapter->high_speed_transport());
-    ASSERT_NE(nullptr, rdma_transport);
-    rdma_transport->Release();
-
-    const std::shared_ptr<AppConnect> connect = adapter->Connect();
-    EXPECT_EQ(original.get(), connect.get());
-    EXPECT_EQ(FALLBACK_TCP, adapter->handshake_phase());
-
-    socket->SetFailed();
+#if BRPC_WITH_RDMA || BRPC_WITH_UBRING
+TEST(TransportHandshakeTest, unavailable_upgrade_keeps_tcp_read_callback_after_reset) {
+    const SocketMode modes[] = {
+#if BRPC_WITH_RDMA
+        SOCKET_MODE_RDMA,
+#endif
+#if BRPC_WITH_UBRING
+        SOCKET_MODE_UBRING,
+#endif
+    };
+    auto custom_read = [](Socket*) {};
+    for (SocketMode mode : modes) {
+        for (bool custom : {false, true}) {
+            SCOPED_TRACE(::testing::Message() << mode << "/" << custom);
+            auto original = std::make_shared<TestAppConnect>();
+            SocketOptions options;
+            options.user = get_or_new_client_side_messenger();
+            options.need_on_edge_trigger = true;
+            options.socket_mode = mode;
+            options.app_connect = original;
+            if (custom) {
+                options.on_edge_triggered_events = +custom_read;
+            }
+            HandshakeSocketPair pair;
+            ASSERT_NO_FATAL_FAILURE(pair.Init(options));
+            auto* adapter = AdapterTransport::Get(pair.socket.get());
+            adapter->high_speed_transport()->Release();
+            EXPECT_EQ(original.get(), adapter->Connect().get());
+            EXPECT_EQ(FALLBACK_TCP, adapter->handshake_phase());
+            auto expected = custom ? +custom_read : InputMessenger::OnNewMessages;
+            ASSERT_NE(nullptr, adapter->_on_edge_trigger.target<void (*)(Socket*)>());
+            EXPECT_EQ(expected, *adapter->_on_edge_trigger.target<void (*)(Socket*)>());
+            ASSERT_EQ(0, adapter->Reset(2));
+            ASSERT_NE(nullptr, adapter->_on_edge_trigger.target<void (*)(Socket*)>());
+            EXPECT_EQ(expected, *adapter->_on_edge_trigger.target<void (*)(Socket*)>());
+        }
+    }
 }
+
 #endif
 
 }  // namespace handshake
