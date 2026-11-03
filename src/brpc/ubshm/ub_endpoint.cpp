@@ -60,9 +60,9 @@ UBShmEndpoint::~UBShmEndpoint() {
     Reset();
 }
 
-void UBShmEndpoint::Reset() {
+void UBShmEndpoint::Reset(bool abort_upgrade) {
     _receive_events_started.store(false, butil::memory_order_release);
-    DeallocateResources();
+    DeallocateResources(abort_upgrade);
 
     delete _ub_ring;
     _ub_ring = nullptr;
@@ -222,12 +222,16 @@ void UBShmEndpoint::StartReceiveEvents() {
     }
 }
 
-void UBShmEndpoint::DeallocateResources() {
+void UBShmEndpoint::DeallocateResources(bool abort_upgrade) {
     if (!_ub_ring) {
         return;
     }
     PollerRegisterEvent(PollerSidOp::REMOVE);
-    _ub_ring->UbrTrxClose();
+    if (abort_upgrade) {
+        _ub_ring->UbrTrxAbort();
+    } else {
+        _ub_ring->UbrTrxClose();
+    }
     if (INVALID_SOCKET_ID != _poller_sid) {
         SocketUniquePtr s;
         if (Socket::Address(_poller_sid, &s) == 0) {

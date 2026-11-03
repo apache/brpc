@@ -1694,6 +1694,158 @@ TEST(UBRingRecvChunkHeaderTest, crafted_chunk_is_rejected) {
         chunk.header[UBR_MSG_LEN_INDEX], chunk.header[UBR_MSG_CUR_INDEX]));
 }
 
+TEST_F(UBShmEndpointTest, negative_ack_after_server_allocation_serves_tcp_without_delay) {
+    UBFallbackEchoService service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions options;
+    options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    options.enabled_protocols = "baidu_std";
+    options.internal_port = -1;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+
+    brpc::SocketUniquePtr server_socket;
+    brpc::SocketUniquePtr client_socket;
+    butil::fd_guard peer(::socket(AF_INET, SOCK_STREAM, 0));
+    ASSERT_GE(peer, 0);
+    timeval timeout = {1, 0};
+    ASSERT_EQ(0, setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO,
+                           &timeout, sizeof(timeout)));
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(server.listen_address().port);
+    ASSERT_EQ(0, connect(peer, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
+    ASSERT_TRUE(WaitForUBCondition([&] {
+        std::vector<brpc::SocketId> ids;
+        server._am->ListConnections(&ids);
+        return !ids.empty() && brpc::Socket::Address(ids[0], &server_socket) == 0;
+    }));
+
+    brpc::SocketOptions client_options;
+    client_options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    brpc::SocketId client_id;
+    ASSERT_EQ(0, brpc::Socket::Create(client_options, &client_id));
+    ASSERT_EQ(0, brpc::Socket::Address(client_id, &client_socket));
+    BRPC_SCOPE_EXIT { client_socket->SetFailed(); };
+    auto* client_transport = brpc::UBShmTransport::Get(client_socket.get());
+    brpc::ubring::SHM local{};
+    local.len = 4 * 1024 * 1024;
+    local.fd = peer;
+    const std::string name = "negative_ack_" + std::to_string(getpid());
+    ASSERT_EQ(0, client_transport->PrepareUpgradeResources(&local, name.c_str()));
+    brpc::ubring::UBShmHandshakeAdapter protocol(
+        brpc::ubring::PreferredDataFormatForShmType(brpc::ubring::GetShmType()));
+    protocol.ConfigureClientHello(local);
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildHello(true, &payload));
+    std::string hello;
+    ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
+        protocol.HelloFrameSpec(), payload, &hello));
+    ASSERT_TRUE(TransferUBTestBytes(peer, &hello[0], hello.size(), true));
+    char reply[64];
+    ASSERT_TRUE(TransferUBTestBytes(peer, reply, sizeof(reply), false));
+    brpc::ubring::HelloMessage server_hello{};
+    server_hello.Deserialize(reply + 2);
+    ASSERT_GT(server_hello.len, 0u);
+    std::string extension_payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              protocol.BuildExtension(true, &extension_payload));
+    std::string extension;
+    ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
+        protocol.ExtensionFrameSpec(), extension_payload, &extension));
+    ASSERT_TRUE(TransferUBTestBytes(peer, &extension[0], extension.size(), true));
+    char extension_reply[brpc::ubring::HelloFormatExtension::WIRE_SIZE];
+    ASSERT_TRUE(TransferUBTestBytes(peer, extension_reply,
+                                   sizeof(extension_reply), false));
+    auto* adapter = brpc::AdapterTransport::Get(server_socket.get());
+    ASSERT_TRUE(WaitForUBCondition([&] {
+        return adapter->handshake_phase() == brpc::handshake::ACK_WAIT;
+    }));
+
+    ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, true, 301));
+    EXPECT_EQ(brpc::handshake::FALLBACK_TCP, adapter->handshake_phase());
+    auto* ep = brpc::UBShmTransport::Get(server_socket.get())->GetUBShmEp();
+    EXPECT_EQ(nullptr, ep->_ub_ring);
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, ep->_poller_sid);
+    ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, false, 302));
+    client_transport->DeactivateUpgrade();
+    peer.reset(-1);
+    server_socket.reset();
+    server.Stop(0);
+    server.Join();
+}
+
+#if defined(OS_LINUX)
+TEST_F(UBShmEndpointTest, cancel_waits_for_callback_before_releasing_descriptor) {
+    using namespace brpc::ubring;
+    struct Context {
+        bthread::CountdownEvent entered;
+        bthread::CountdownEvent release;
+    } context;
+    itimerspec spec{};
+    spec.it_value.tv_nsec = 1;
+    const int fd = TimerStart(&spec, [](void* arg) -> void* {
+        auto* ctx = static_cast<Context*>(arg);
+        ctx->entered.signal();
+        ctx->release.wait();
+        return nullptr;
+    }, &context);
+    ASSERT_GE(fd, 0);
+    bool released = false;
+    BRPC_SCOPE_EXIT {
+        if (!released) { context.release.signal(); }
+        DeleteTimerSafe(fd);
+    };
+    ASSERT_EQ(0, context.entered.timed_wait(butil::milliseconds_from_now(1000)));
+    bthread::CountdownEvent cancel_started;
+    bthread::CountdownEvent canceled;
+    std::thread cancel([&] {
+        cancel_started.signal();
+        DeleteTimerSafe(fd);
+        canceled.signal();
+    });
+    cancel_started.wait();
+    const int wait_result = canceled.timed_wait(butil::milliseconds_from_now(100));
+    spec.it_value.tv_nsec = 0;
+    spec.it_value.tv_sec = 10;
+    const int replacement = TimerStart(&spec, [](void*) -> void* {
+        return nullptr;
+    }, nullptr);
+    context.release.signal();
+    released = true;
+    cancel.join();
+    EXPECT_EQ(ETIMEDOUT, wait_result);
+    EXPECT_NE(fd, replacement);
+    EXPECT_GE(fcntl(replacement, F_GETFD), 0);
+    DeleteTimerSafe(replacement);
+}
+
+TEST_F(UBShmEndpointTest, callback_can_cancel_its_own_periodic_timer) {
+    using namespace brpc::ubring;
+    struct Context {
+        bthread::CountdownEvent ready;
+        bthread::CountdownEvent done;
+        int fd;
+    } context;
+    itimerspec spec{};
+    spec.it_value.tv_nsec = 1;
+    spec.it_interval.tv_sec = 10;
+    context.fd = TimerStart(&spec, [](void* arg) -> void* {
+        auto* ctx = static_cast<Context*>(arg);
+        ctx->ready.wait();
+        DeleteTimerSafe(ctx->fd);
+        ctx->done.signal();
+        return nullptr;
+    }, &context);
+    ASSERT_GE(context.fd, 0);
+    context.ready.signal();
+    EXPECT_EQ(0, context.done.timed_wait(butil::milliseconds_from_now(1000)));
+    DeleteTimerSafe(context.fd);
+    EXPECT_EQ(-1, fcntl(context.fd, F_GETFD));
+}
+#endif
+
 #else
 
 TEST(UbringDisabledTest, skip) {

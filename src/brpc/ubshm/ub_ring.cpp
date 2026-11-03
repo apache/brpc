@@ -61,6 +61,37 @@ RETURN_CODE UBRing::UbrTrxMapShm(SHM *local_shm, SHM *remote_shm)
     return UBRING_OK;
 }
 
+RETURN_CODE UBRing::UbrTrxAbort() {
+    if (_trx == nullptr) {
+        return UBRING_OK;
+    }
+    const RETURN_CODE close_rc = UbrTrxCloseCheck(_trx);
+    if (close_rc == UBRING_REENTRY) {
+        // An existing close operation owns the transaction's cleanup.
+        _trx = nullptr;
+        return UBRING_OK;
+    }
+    if (close_rc != UBRING_OK) {
+        return close_rc;
+    }
+    int expected = UBR_CLOSE_FIRST;
+    if (!ATOMIC_COMPARE_EXCHANGE_STRONG(
+            _trx->close_state, expected, UBR_CLOSE_SECOND)) {
+        _trx = nullptr;
+        return UBRING_OK;
+    }
+    // Drain timer callbacks before unmapping the queues they access.
+    DeleteTimerSafe(_trx->timer_fd);
+    DeleteTimerSafe(_trx->hb_timer_fd);
+    DeleteTimerSafe(_trx->clear_timer_fd);
+    RETURN_CODE rc = UbrTrxFreeShm(_trx);
+    if (rc == UBRING_OK) {
+        rc = UBRingManager::ReleaseUbrTrxFromMgr(_trx);
+        _trx = nullptr;
+    }
+    return rc;
+}
+
 RETURN_CODE UBRing::UbrTrxClose() {
     RETURN_CODE close_check_rc = UbrTrxCloseCheck(_trx);
     if (UNLIKELY(close_check_rc != UBRING_OK)) {
@@ -164,6 +195,7 @@ RETURN_CODE UBRing::UbrAddTimer() {
 
     if (UNLIKELY(UbrAddHBTimer() != UBRING_OK)) {
         DeleteTimerSafe((uint32_t)_trx->timer_fd);
+        _trx->timer_fd = 0;
         LOG(ERROR) << "Ubr " << _trx->local_shm.name << " add heartbeat timer failed.";
         return UBRING_ERR;
     }
@@ -1248,6 +1280,8 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
         LOG(ERROR) << "Local shm " << local_trx_shm->name << " wait for connect remote map timeout.";
         DeleteTimerSafe((uint32_t)_trx->hb_timer_fd);
         DeleteTimerSafe((uint32_t)_trx->timer_fd);
+        _trx->hb_timer_fd = 0;
+        _trx->timer_fd = 0;
         ShmRemoteFree(&_trx->remote_shm);
         return UBRING_ERR_TIMEOUT;
     }

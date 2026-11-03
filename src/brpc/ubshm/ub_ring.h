@@ -44,6 +44,8 @@ public:
     RETURN_CODE UbrTrxMapShm(SHM *local_shm, SHM *remote_shm);
 
     RETURN_CODE UbrTrxClose();
+    // Release an upgrade that has not reached the established state.
+    RETURN_CODE UbrTrxAbort();
 
     RETURN_CODE UbrAddCloseTimer();
 
