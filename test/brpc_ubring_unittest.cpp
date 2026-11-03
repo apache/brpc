@@ -952,6 +952,29 @@ TEST_F(UBShmEndpointTest, construct_initial_state) {
               _ep->negotiated_data_format());
 }
 
+TEST_F(UBShmEndpointTest, queued_poll_does_not_retain_a_destroyed_endpoint) {
+    using namespace brpc::ubring;
+    brpc::SocketOptions options;
+    options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr owner;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &owner));
+    auto* ep = brpc::UBShmTransport::Get(owner.get())->GetUBShmEp();
+    SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_EQ(0, ep->AllocateClientResources(&local, "queued_poll"));
+    brpc::SocketUniquePtr poller;
+    ASSERT_EQ(0, brpc::Socket::Address(ep->_poller_sid, &poller));
+    const UBShmEndpoint::PollerSidOp op = {
+        ep->_poller_sid, id, EPOLLIN | EPOLLOUT,
+        UBShmEndpoint::PollerSidOp::ADD};
+    owner->SetFailed();
+    owner.reset();
+    EXPECT_EQ(nullptr, poller->user());
+    UBShmEndpoint::Poll(op);
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
+}
+
 TEST_F(UBShmEndpointTest, reset_clears_negotiated_data_format) {
     _ep->SetNegotiatedDataFormat(brpc::ubring::UBR_DATA_FORMAT_LEGACY_64);
 
