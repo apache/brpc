@@ -630,140 +630,66 @@ protected:
     std::string buffer;
 };
 
-TEST(HelloFormatExtensionTest, serialize_deserialize_roundtrip) {
-    brpc::ubring::HelloFormatExtension extension = {
-        brpc::ubring::HelloFormatExtension::WIRE_SIZE,
-        brpc::ubring::UBR_DATA_FORMAT_LEGACY_64};
-    char buffer[brpc::ubring::HelloFormatExtension::WIRE_SIZE] = {};
-
-    extension.Serialize(buffer);
-
-    brpc::ubring::HelloFormatExtension decoded = {};
-    decoded.Deserialize(buffer);
-    EXPECT_EQ(extension.extension_len, decoded.extension_len);
-    EXPECT_EQ(extension.format_id, decoded.format_id);
-
-    extension.format_id = brpc::ubring::UBR_DATA_FORMAT_IPC_V2;
-    extension.Serialize(buffer);
-    decoded.Deserialize(buffer);
-    EXPECT_EQ(extension.extension_len, decoded.extension_len);
-    EXPECT_EQ(extension.format_id, decoded.format_id);
-}
-
-TEST(HelloFormatExtensionTest, serialize_uses_network_byte_order) {
-    brpc::ubring::HelloFormatExtension extension = {0x0102, 0x0304};
-    char buffer[brpc::ubring::HelloFormatExtension::WIRE_SIZE] = {};
-    const unsigned char expected[] = {0x01, 0x02, 0x03, 0x04};
-
-    extension.Serialize(buffer);
-
-    EXPECT_EQ(0, memcmp(expected, buffer, sizeof(expected)));
-}
-
-TEST(HelloFormatExtensionTest, deserialize_none_format) {
-    const unsigned char buffer[] = {0x00, 0x04, 0x00, 0x00};
-    brpc::ubring::HelloFormatExtension extension = {};
-
-    extension.Deserialize(buffer);
-
-    EXPECT_EQ(4, extension.extension_len);
-    EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE, extension.format_id);
-}
-
-TEST(HelloFormatExtensionTest, deserialize_unknown_format) {
-    const unsigned char buffer[] = {0x00, 0x04, 0x12, 0x34};
-    brpc::ubring::HelloFormatExtension extension = {};
-
-    extension.Deserialize(buffer);
-
-    EXPECT_EQ(4, extension.extension_len);
-    EXPECT_EQ(0x1234, extension.format_id);
-}
-
-TEST(HelloFormatExtensionTest, selects_format_for_local_backend) {
+TEST(HelloFormatExtensionTest, wire_encoding_and_format_selection) {
     using namespace brpc::ubring;
-    EXPECT_EQ(UBR_DATA_FORMAT_IPC_V2,
-              PreferredDataFormatForShmType(SHM_TYPE_IPC));
-    EXPECT_EQ(UBR_DATA_FORMAT_LEGACY_64,
-              PreferredDataFormatForShmType(SHM_TYPE_UBS));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              PreferredDataFormatForShmType(SHM_TYPE_UB));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              PreferredDataFormatForShmType(SHM_TYPE_UNSUPPORT));
+    const struct { uint16_t length; uint16_t format; } cases[] = {
+        {4, UBR_DATA_FORMAT_LEGACY_64}, {4, UBR_DATA_FORMAT_IPC_V2},
+        {4, UBR_DATA_FORMAT_NONE}, {4, 0x1234}, {0x0102, 0x0304},
+    };
+    for (const auto& c : cases) {
+        SCOPED_TRACE(c.format);
+        HelloFormatExtension extension = {c.length, c.format};
+        char wire[4];
+        extension.Serialize(wire);
+        const unsigned char expected[] = {
+            static_cast<unsigned char>(c.length >> 8),
+            static_cast<unsigned char>(c.length),
+            static_cast<unsigned char>(c.format >> 8),
+            static_cast<unsigned char>(c.format)};
+        EXPECT_EQ(0, memcmp(expected, wire, sizeof(wire)));
+        HelloFormatExtension decoded{};
+        decoded.Deserialize(expected);
+        EXPECT_EQ(c.length, decoded.extension_len);
+        EXPECT_EQ(c.format, decoded.format_id);
+    }
+    EXPECT_EQ(UBR_DATA_FORMAT_IPC_V2, PreferredDataFormatForShmType(SHM_TYPE_IPC));
+    EXPECT_EQ(UBR_DATA_FORMAT_LEGACY_64, PreferredDataFormatForShmType(SHM_TYPE_UBS));
+    EXPECT_EQ(UBR_DATA_FORMAT_NONE, PreferredDataFormatForShmType(SHM_TYPE_UB));
+    EXPECT_EQ(UBR_DATA_FORMAT_NONE, PreferredDataFormatForShmType(SHM_TYPE_UNSUPPORT));
+    for (uint16_t local : {0, 1, 2, 0x1234}) {
+        for (uint16_t remote : {0, 1, 2, 0x1234}) {
+            SCOPED_TRACE(::testing::Message() << local << "/" << remote);
+            const auto expected = local == remote && (local == 1 || local == 2)
+                ? static_cast<UbrDataFormat>(local) : UBR_DATA_FORMAT_NONE;
+            EXPECT_EQ(expected, SelectDataFormat(
+                static_cast<UbrDataFormat>(local), remote));
+        }
+    }
 }
 
-TEST(HelloFormatExtensionTest, selects_only_matching_supported_format) {
+TEST(UBShmHandshakeAdapterTest, extension_negotiation) {
     using namespace brpc::ubring;
-    EXPECT_EQ(UBR_DATA_FORMAT_IPC_V2,
-              SelectDataFormat(UBR_DATA_FORMAT_IPC_V2,
-                               UBR_DATA_FORMAT_IPC_V2));
-    EXPECT_EQ(UBR_DATA_FORMAT_LEGACY_64,
-              SelectDataFormat(UBR_DATA_FORMAT_LEGACY_64,
-                               UBR_DATA_FORMAT_LEGACY_64));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(UBR_DATA_FORMAT_IPC_V2,
-                               UBR_DATA_FORMAT_LEGACY_64));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(UBR_DATA_FORMAT_LEGACY_64,
-                               UBR_DATA_FORMAT_IPC_V2));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(UBR_DATA_FORMAT_IPC_V2, 0x1234));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(UBR_DATA_FORMAT_NONE,
-                               UBR_DATA_FORMAT_NONE));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(static_cast<UbrDataFormat>(0x1234), 0x1234));
-}
-
-TEST(UBShmHandshakeAdapterTest, rejects_unsupported_format_extension) {
-    brpc::ubring::UBShmHandshakeAdapter adapter;
-    std::string payload;
-    ASSERT_EQ(brpc::handshake::STEP_OK,
-              adapter.BuildExtension(true, &payload));
-    EXPECT_EQ(std::string("\0\4\0\1", 4), payload);
-    EXPECT_EQ(brpc::handshake::STEP_OK,
-              adapter.ParseExtension(payload));
-
-    payload[3] = 2;
-    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              adapter.ParseExtension(payload));
-    payload[3] = 0;
-    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              adapter.ParseExtension(payload));
-    payload[1] = 3;
-    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              adapter.ParseExtension(payload));
-}
-
-TEST(UBShmHandshakeAdapterTest, ipc_v2_extension_matches_backend_format) {
-    using namespace brpc::ubring;
-    UBShmHandshakeAdapter protocol(UBR_DATA_FORMAT_IPC_V2);
-    std::string payload;
-    ASSERT_EQ(brpc::handshake::STEP_OK,
-              protocol.BuildExtension(true, &payload));
-    EXPECT_EQ(std::string("\0\4\0\2", 4), payload);
-    EXPECT_EQ(brpc::handshake::STEP_OK, protocol.ParseExtension(payload));
-
-    payload[3] = 1;
-    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              protocol.ParseExtension(payload));
-    payload[3] = 0;
-    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              protocol.ParseExtension(payload));
-    ASSERT_EQ(brpc::handshake::STEP_OK,
-              protocol.BuildExtension(false, &payload));
-    EXPECT_EQ(std::string("\0\4\0\0", 4), payload);
-}
-
-TEST(UBShmHandshakeAdapterTest, ipc_v2_extension_rejects_malformed_frame) {
-    using namespace brpc::ubring;
-    UBShmHandshakeAdapter protocol(UBR_DATA_FORMAT_IPC_V2);
-    EXPECT_EQ(brpc::handshake::STEP_ERROR,
-              protocol.ParseExtension(std::string(3, '\0')));
-    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              protocol.ParseExtension(std::string("\0\3\0\2", 4)));
-    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
-              protocol.ParseExtension(std::string("\0\4\x12\x34", 4)));
+    for (auto format : {UBR_DATA_FORMAT_LEGACY_64, UBR_DATA_FORMAT_IPC_V2}) {
+        SCOPED_TRACE(format);
+        UBShmHandshakeAdapter protocol(format);
+        std::string payload;
+        ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildExtension(true, &payload));
+        const char wire[] = {0, 4, 0, static_cast<char>(format)};
+        EXPECT_EQ(std::string(wire, sizeof(wire)), payload);
+        EXPECT_EQ(brpc::handshake::STEP_OK, protocol.ParseExtension(payload));
+        for (char peer : {char(0), char(3 - format)}) {
+            payload[3] = peer;
+            EXPECT_EQ(brpc::handshake::STEP_FALLBACK, protocol.ParseExtension(payload));
+        }
+        EXPECT_EQ(brpc::handshake::STEP_ERROR,
+                  protocol.ParseExtension(std::string(3, '\0')));
+        EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
+                  protocol.ParseExtension(std::string("\0\3\0\2", 4)));
+        EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
+                  protocol.ParseExtension(std::string("\0\4\x12\x34", 4)));
+        ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildExtension(false, &payload));
+        EXPECT_EQ(std::string("\0\4\0\0", 4), payload);
+    }
 }
 
 TEST_F(HelloMessageTest, serialize_deserialize_roundtrip) {
@@ -1330,13 +1256,51 @@ void SendAndCheckUBFallbackRPC(int fd, bool include_ack, uint64_t id) {
 }
 }  // namespace
 
-TEST_F(UBShmEndpointTest, tcp_server_fallback_completes_with_short_rpc_timeout) {
+class UBShmServerTest : public UBShmEndpointTest {
+protected:
+    void StartServer(brpc::SocketMode mode = brpc::SOCKET_MODE_UBRING) {
+        ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+        brpc::ServerOptions options;
+        options.socket_mode = mode;
+        options.enabled_protocols = "baidu_std";
+        options.internal_port = -1;
+        ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+    }
+
+    void ConnectPeer(int timeout_s = 5) {
+        peer.reset(::socket(AF_INET, SOCK_STREAM, 0));
+        ASSERT_GE(peer, 0);
+        timeval timeout = {timeout_s, 0};
+        ASSERT_EQ(0, setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO,
+                               &timeout, sizeof(timeout)));
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(server.listen_address().port);
+        ASSERT_EQ(0, connect(peer, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
+        ASSERT_TRUE(WaitForUBCondition([&] {
+            std::vector<brpc::SocketId> ids;
+            server._am->ListConnections(&ids);
+            return !ids.empty() && brpc::Socket::Address(ids[0], &server_socket) == 0;
+        }));
+    }
+
+    void TearDown() override {
+        peer.reset(-1);
+        server_socket.reset();
+        server.Stop(0);
+        server.Join();
+        UBShmEndpointTest::TearDown();
+    }
+
     UBFallbackEchoService service;
     brpc::Server server;
-    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    brpc::ServerOptions options;
-    options.internal_port = -1;
-    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+    brpc::SocketUniquePtr server_socket;
+    butil::fd_guard peer;
+};
+
+TEST_F(UBShmServerTest, tcp_server_fallback_completes_with_short_rpc_timeout) {
+    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_TCP));
 
     const uint32_t allocated = brpc::ubring::UBRingManager::g_ubr_mgr.trx_num;
     brpc::Channel channel;
@@ -1364,33 +1328,9 @@ TEST_F(UBShmEndpointTest, tcp_server_fallback_completes_with_short_rpc_timeout) 
     socket->SetFailed();
 }
 
-TEST_F(UBShmEndpointTest, failed_server_allocation_cleans_resources_and_serves_tcp) {
-    UBFallbackEchoService service;
-    brpc::Server server;
-    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    brpc::ServerOptions options;
-    options.socket_mode = brpc::SOCKET_MODE_UBRING;
-    options.enabled_protocols = "baidu_std";
-    options.internal_port = -1;
-    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
-
-    // The pin is destroyed before Server on any assertion failure.
-    brpc::SocketUniquePtr socket;
-    butil::fd_guard peer(::socket(AF_INET, SOCK_STREAM, 0));
-    ASSERT_GE(peer, 0);
-    timeval timeout = {5, 0};
-    ASSERT_EQ(0, setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO,
-                           &timeout, sizeof(timeout)));
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = htons(server.listen_address().port);
-    ASSERT_EQ(0, connect(peer, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
-    ASSERT_TRUE(WaitForUBCondition([&] {
-        std::vector<brpc::SocketId> ids;
-        server._am->ListConnections(&ids);
-        return !ids.empty() && brpc::Socket::Address(ids[0], &socket) == 0;
-    }));
+TEST_F(UBShmServerTest, failed_server_allocation_cleans_resources_and_serves_tcp) {
+    ASSERT_NO_FATAL_FAILURE(StartServer());
+    ASSERT_NO_FATAL_FAILURE(ConnectPeer());
 
     // A valid Hello references absent remote SHM. Allocation creates a ring
     // and poller socket before mapping fails, exercising partial cleanup.
@@ -1413,11 +1353,11 @@ TEST_F(UBShmEndpointTest, failed_server_allocation_cleans_resources_and_serves_t
     ASSERT_EQ(0u, disabled.len);
 
     ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, true, 101));
-    auto* adapter = brpc::AdapterTransport::Get(socket.get());
+    auto* adapter = brpc::AdapterTransport::Get(server_socket.get());
     ASSERT_TRUE(WaitForUBCondition([&] {
         return adapter->handshake_phase() == brpc::handshake::FALLBACK_TCP;
     }));
-    auto* transport = brpc::UBShmTransport::Get(socket.get());
+    auto* transport = brpc::UBShmTransport::Get(server_socket.get());
     EXPECT_FALSE(transport->UpgradeActive());
     EXPECT_EQ(nullptr, transport->GetUBShmEp()->_ub_ring);
     EXPECT_EQ(brpc::INVALID_SOCKET_ID, transport->GetUBShmEp()->_poller_sid);
@@ -1425,11 +1365,7 @@ TEST_F(UBShmEndpointTest, failed_server_allocation_cleans_resources_and_serves_t
               transport->GetUBShmEp()->negotiated_data_format());
     ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, false, 102));
     EXPECT_EQ(brpc::handshake::FALLBACK_TCP, adapter->handshake_phase());
-    EXPECT_FALSE(socket->Failed());
-    peer.reset(-1);
-    socket.reset();
-    server.Stop(0);
-    server.Join();
+    EXPECT_FALSE(server_socket->Failed());
 }
 
 TEST_F(UBShmEndpointTest, malformed_hello_releases_allocated_ring_and_poller) {
@@ -1475,31 +1411,11 @@ TEST_F(UBShmEndpointTest, malformed_hello_releases_allocated_ring_and_poller) {
     EXPECT_EQ(ENOENT, errno);
 }
 
-class UBShmHandshakeTest : public UBShmEndpointTest {
+class UBShmHandshakeTest : public UBShmServerTest {
 protected:
     void PrepareUntilAck(const char* prefix, int timeout_s) {
-        ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-        brpc::ServerOptions options;
-        options.socket_mode = brpc::SOCKET_MODE_UBRING;
-        options.enabled_protocols = "baidu_std";
-        options.internal_port = -1;
-        ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
-
-        peer.reset(::socket(AF_INET, SOCK_STREAM, 0));
-        ASSERT_GE(peer, 0);
-        timeval timeout = {timeout_s, 0};
-        ASSERT_EQ(0, setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO,
-                               &timeout, sizeof(timeout)));
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = htons(server.listen_address().port);
-        ASSERT_EQ(0, connect(peer, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
-        ASSERT_TRUE(WaitForUBCondition([&] {
-            std::vector<brpc::SocketId> ids;
-            server._am->ListConnections(&ids);
-            return !ids.empty() && brpc::Socket::Address(ids[0], &server_socket) == 0;
-        }));
+        ASSERT_NO_FATAL_FAILURE(StartServer());
+        ASSERT_NO_FATAL_FAILURE(ConnectPeer(timeout_s));
 
         brpc::SocketOptions client_options;
         client_options.socket_mode = brpc::SOCKET_MODE_UBRING;
@@ -1545,19 +1461,11 @@ protected:
         if (client_socket) {
             client_socket->SetFailed();
         }
-        peer.reset(-1);
         client_socket.reset();
-        server_socket.reset();
-        server.Stop(0);
-        server.Join();
-        UBShmEndpointTest::TearDown();
+        UBShmServerTest::TearDown();
     }
 
-    UBFallbackEchoService service;
-    brpc::Server server;
-    brpc::SocketUniquePtr server_socket;
     brpc::SocketUniquePtr client_socket;
-    butil::fd_guard peer;
     brpc::ubring::SHM local{};
     brpc::ubring::HelloMessage server_hello{};
     std::string name;
@@ -1634,15 +1542,8 @@ TEST_F(UBShmHandshakeTest, shared_memory_rpc_waits_for_final_tcp_ack) {
     client_transport->DeactivateUpgrade();
 }
 
-TEST_F(UBShmEndpointTest, upgraded_client_receives_shared_memory_rpc_responses) {
-    UBFallbackEchoService service;
-    brpc::Server server;
-    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    brpc::ServerOptions server_options;
-    server_options.socket_mode = brpc::SOCKET_MODE_UBRING;
-    server_options.enabled_protocols = "baidu_std";
-    server_options.internal_port = -1;
-    ASSERT_EQ(0, server.Start("127.0.0.1:0", &server_options));
+TEST_F(UBShmServerTest, upgraded_client_receives_shared_memory_rpc_responses) {
+    ASSERT_NO_FATAL_FAILURE(StartServer());
     {
         brpc::Channel channel;
         brpc::ChannelOptions options;

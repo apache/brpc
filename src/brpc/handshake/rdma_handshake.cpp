@@ -456,7 +456,6 @@ HandshakeSession* RdmaServerHandshakeAdapter::GetSession(
 
 StepResult RdmaServerHandshakeAdapter::RunFallbackServerHandshake(
     butil::IOBuf* source, Socket* socket) {
-    IOBufHandshakeInput input(source);
     RdmaFallbackProtocol v2(2);
     RdmaFallbackProtocol v3(3);
     std::vector<HandshakeProtocol*> protocols;
@@ -464,7 +463,7 @@ StepResult RdmaServerHandshakeAdapter::RunFallbackServerHandshake(
     protocols.push_back(&v3);
     FallbackHandshakeTransport transport;
     return GetSession(socket)->RunServer(
-        protocols, &input, &transport, false);
+        protocols, source, &transport, false);
 }
 
 #if BRPC_WITH_RDMA
@@ -528,10 +527,9 @@ StepResult RdmaServerHandshakeAdapter::RunRdmaServerHandshake(
     for (size_t i = 0; i < protocols.size(); ++i) {
         protocol_ptrs.push_back(protocols[i].get());
     }
-    IOBufHandshakeInput input(source);
     RdmaServerHandshakeTransport participant(transport, socket, source);
     return GetSession(socket)->RunServer(
-        protocol_ptrs, &input, &participant, false);
+        protocol_ptrs, source, &participant, false);
 }
 #endif
 

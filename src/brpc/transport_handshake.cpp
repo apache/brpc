@@ -116,7 +116,7 @@ StepResult HandshakeSession::SendHello(HandshakeProtocol* protocol,
 }
 
 StepResult HandshakeSession::ReceiveHello(HandshakeProtocol* protocol,
-                                          HandshakeInput* input,
+                                          butil::IOBuf* input,
                                           bool push_back_on_not_mine,
                                           bool* magic_matched) {
     std::string payload;
@@ -146,7 +146,7 @@ StepResult HandshakeSession::SendAck(HandshakeProtocol* protocol,
 }
 
 StepResult HandshakeSession::ReceiveAck(HandshakeProtocol* protocol,
-                                        HandshakeInput* input,
+                                        butil::IOBuf* input,
                                         bool* enabled) {
     std::string payload;
     const FrameResult frame_result = input != nullptr
@@ -174,7 +174,7 @@ StepResult HandshakeSession::SendExtension(HandshakeProtocol* protocol,
 }
 
 StepResult HandshakeSession::ReceiveExtension(HandshakeProtocol* protocol,
-                                             HandshakeInput* input) {
+                                             butil::IOBuf* input) {
     std::string payload;
     const FrameResult frame_result = input != nullptr
         ? FrameCodec::ParseBufferedFrame(
@@ -186,7 +186,7 @@ StepResult HandshakeSession::ReceiveExtension(HandshakeProtocol* protocol,
 }
 
 StepResult HandshakeSession::SelectAndReceiveHello(
-    const std::vector<HandshakeProtocol*>& protocols, HandshakeInput* input,
+    const std::vector<HandshakeProtocol*>& protocols, butil::IOBuf* input,
     bool push_back_on_not_mine, HandshakeProtocol** selected) {
     CHECK(!protocols.empty());
     CHECK(selected != nullptr);
@@ -292,7 +292,7 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
 }
 
 StepResult HandshakeSession::RunServer(
-    const std::vector<HandshakeProtocol*>& protocols, HandshakeInput* input,
+    const std::vector<HandshakeProtocol*>& protocols, butil::IOBuf* input,
     HandshakeTransport* transport, bool fallback_on_not_mine) {
     CHECK(!protocols.empty());
     CHECK(transport != nullptr);

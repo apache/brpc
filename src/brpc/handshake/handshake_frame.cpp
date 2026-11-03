@@ -161,7 +161,7 @@ FrameResult FrameCodec::ReadFrame(HandshakeIO* io, const FrameSpec& spec,
     return FRAME_OK;
 }
 
-FrameResult FrameCodec::ParseBufferedFrame(HandshakeInput* input,
+FrameResult FrameCodec::ParseBufferedFrame(butil::IOBuf* input,
                                            const FrameSpec& spec,
                                            std::string* payload,
                                            bool* magic_matched) {
@@ -173,13 +173,12 @@ FrameResult FrameCodec::ParseBufferedFrame(HandshakeInput* input,
         return FRAME_PROTOCOL_ERROR;
     }
     const size_t header_len = spec.magic_len + LengthFieldSize(spec);
-    if (input->Size() < spec.magic_len) {
+    if (input->size() < spec.magic_len) {
         return FRAME_NEED_MORE;
     }
     std::string header(header_len, '\0');
-    if (spec.magic_len != 0 &&
-        !input->CopyTo(&header[0], spec.magic_len)) {
-        return FRAME_NEED_MORE;
+    if (spec.magic_len != 0) {
+        input->copy_to(&header[0], spec.magic_len);
     }
     if (spec.magic_len != 0 &&
         memcmp(header.data(), spec.magic, spec.magic_len) != 0) {
@@ -188,26 +187,23 @@ FrameResult FrameCodec::ParseBufferedFrame(HandshakeInput* input,
     if (magic_matched != nullptr) {
         *magic_matched = true;
     }
-    if (input->Size() < header_len ||
-        (header_len != 0 && !input->CopyTo(&header[0], header_len))) {
+    if (input->size() < header_len) {
         return FRAME_NEED_MORE;
+    }
+    if (header_len != 0) {
+        input->copy_to(&header[0], header_len);
     }
     size_t frame_len = 0;
     FrameResult result = DecodeLength(spec, header.data(), &frame_len);
     if (result != FRAME_OK) {
         return result;
     }
-    if (input->Size() < frame_len) {
+    if (input->size() < frame_len) {
         return FRAME_NEED_MORE;
     }
 
     std::string frame(frame_len, '\0');
-    if (!input->CopyTo(&frame[0], frame_len)) {
-        return FRAME_NEED_MORE;
-    }
-    if (!input->Consume(frame_len)) {
-        return FRAME_PROTOCOL_ERROR;
-    }
+    input->cutn(&frame[0], frame_len);
     payload->assign(frame.data() + header_len, frame_len - header_len);
     return FRAME_OK;
 }

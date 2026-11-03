@@ -197,25 +197,25 @@ public:
     StepResult RunClient(HandshakeProtocol* protocol,
                          HandshakeTransport* transport);
     StepResult RunServer(const std::vector<HandshakeProtocol*>& protocols,
-                         HandshakeInput* input,
+                         butil::IOBuf* input,
                          HandshakeTransport* transport,
                          bool fallback_on_not_mine);
 
 private:
     StepResult SendHello(HandshakeProtocol* protocol, bool enabled);
     StepResult ReceiveHello(HandshakeProtocol* protocol,
-                            HandshakeInput* input,
+                            butil::IOBuf* input,
                             bool push_back_on_not_mine,
                             bool* magic_matched = nullptr);
     StepResult SendAck(HandshakeProtocol* protocol, bool enabled);
     StepResult ReceiveAck(HandshakeProtocol* protocol,
-                          HandshakeInput* input, bool* enabled);
+                          butil::IOBuf* input, bool* enabled);
     StepResult SendExtension(HandshakeProtocol* protocol, bool enabled);
     StepResult ReceiveExtension(HandshakeProtocol* protocol,
-                                HandshakeInput* input);
+                                butil::IOBuf* input);
     StepResult SelectAndReceiveHello(
         const std::vector<HandshakeProtocol*>& protocols,
-        HandshakeInput* input, bool push_back_on_not_mine,
+        butil::IOBuf* input, bool push_back_on_not_mine,
         HandshakeProtocol** selected);
 
     SocketHandshakeIO _socket_io;

@@ -29,18 +29,6 @@
 namespace brpc {
 namespace handshake {
 
-size_t IOBufHandshakeInput::Size() const {
-    return _source != nullptr ? _source->size() : 0;
-}
-
-bool IOBufHandshakeInput::CopyTo(void* data, size_t len) const {
-    return _source != nullptr && _source->copy_to(data, len) == len;
-}
-
-bool IOBufHandshakeInput::Consume(size_t len) {
-    return _source != nullptr && _source->pop_front(len) == len;
-}
-
 static const int WAIT_TIMEOUT_MS = 50;
 
 SocketHandshakeIO::SocketHandshakeIO(Socket* socket)

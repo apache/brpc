@@ -51,11 +51,10 @@ namespace handshake {
 
 class HandshakeSocketPair {
 public:
-    void Init() {
+    void Init(SocketOptions options = SocketOptions()) {
         int fds[2];
         ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
         peer_fd.reset(fds[1]);
-        SocketOptions options;
         options.fd = fds[0];
         SocketId id;
         ASSERT_EQ(0, Socket::Create(options, &id));
@@ -318,10 +317,9 @@ public:
 
 protected:
     StepResult RunServerStep(butil::IOBuf* source, Socket*) override {
-        IOBufHandshakeInput input(source);
         std::vector<HandshakeProtocol*> protocols(1, &protocol);
         transport.source = source;
-        return session.RunServer(protocols, &input, &transport, false);
+        return session.RunServer(protocols, source, &transport, false);
     }
     HandshakeSession* GetSession(Socket*) const override {
         return &session;
@@ -729,15 +727,14 @@ TEST(HandshakeFrameTest, buffered_partial_frame_is_not_consumed) {
     ASSERT_EQ(FRAME_OK, FrameCodec::Encode(spec, "payload", &frame));
     butil::IOBuf source;
     source.append(frame.data(), frame.size() - 1);
-    IOBufHandshakeInput input(&source);
     std::string payload;
     ASSERT_EQ(FRAME_NEED_MORE,
-              FrameCodec::ParseBufferedFrame(&input, spec, &payload));
+              FrameCodec::ParseBufferedFrame(&source, spec, &payload));
     ASSERT_EQ(frame.size() - 1, source.size());
 
     source.append(frame.data() + frame.size() - 1, 1);
     ASSERT_EQ(FRAME_OK,
-              FrameCodec::ParseBufferedFrame(&input, spec, &payload));
+              FrameCodec::ParseBufferedFrame(&source, spec, &payload));
     ASSERT_EQ("payload", payload);
     ASSERT_TRUE(source.empty());
 }
@@ -746,10 +743,9 @@ TEST(HandshakeFrameTest, buffered_magic_mismatch_is_not_consumed) {
     const FrameSpec spec = FixedSpec("UB", 2, 6);
     butil::IOBuf source;
     source.append("XXdata", 6);
-    IOBufHandshakeInput input(&source);
     std::string payload;
     ASSERT_EQ(FRAME_NOT_MINE,
-              FrameCodec::ParseBufferedFrame(&input, spec, &payload));
+              FrameCodec::ParseBufferedFrame(&source, spec, &payload));
     ASSERT_EQ(6UL, source.size());
 }
 
@@ -770,10 +766,9 @@ TEST(HandshakeFrameTest, rejects_lengths_outside_bounds) {
     header.append(reinterpret_cast<const char*>(&total_be), sizeof(total_be));
     butil::IOBuf source;
     source.append(header);
-    IOBufHandshakeInput input(&source);
     std::string payload;
     ASSERT_EQ(FRAME_PROTOCOL_ERROR,
-              FrameCodec::ParseBufferedFrame(&input, spec, &payload));
+              FrameCodec::ParseBufferedFrame(&source, spec, &payload));
     ASSERT_EQ(header.size(), source.size());
 }
 
@@ -830,14 +825,21 @@ TEST(TransportHandshakeTest, failed_handshake_preserves_io_error_after_cleanup) 
     EXPECT_EQ(FAILED, session.phase(butil::memory_order_acquire));
 }
 
-TEST(TransportHandshakeTest, client_runs_codec_and_resource_sequence) {
-    MemoryHandshakeIO io("HSOK");
+class HandshakeSessionTest : public ::testing::Test {
+protected:
+    HandshakeSessionTest() : io("HSOK"), protocol(&calls), transport(&calls) {
+        session.SetIOForTest(&io);
+    }
+    MemoryHandshakeIO io;
     HandshakeSession session;
-    session.SetIOForTest(&io);
     std::string calls;
+    TestHandshakeProtocol protocol;
+    TestHandshakeTransport transport;
+    butil::IOBuf source;
+    std::vector<HandshakeProtocol*> protocols{&protocol};
+};
 
-    TestHandshakeProtocol protocol(&calls);
-    TestHandshakeTransport transport(&calls);
+TEST_F(HandshakeSessionTest, client_runs_codec_and_resource_sequence) {
 
     ASSERT_EQ(STEP_OK, session.RunClient(&protocol, &transport));
     ASSERT_EQ("prepare build parse negotiate ack1 activate", calls);
@@ -846,53 +848,36 @@ TEST(TransportHandshakeTest, client_runs_codec_and_resource_sequence) {
     ASSERT_EQ(7, session.protocol_version());
 }
 
-TEST(TransportHandshakeTest, client_exchanges_extension_before_ack) {
-    MemoryHandshakeIO io("HSOKE");
-    HandshakeSession session;
-    session.SetIOForTest(&io);
-    TestHandshakeProtocol protocol;
+TEST_F(HandshakeSessionTest, client_exchanges_extension_before_ack) {
+    io = MemoryHandshakeIO("HSOKE");
     protocol.EnableExtension(1);
-    TestHandshakeTransport transport;
 
     ASSERT_EQ(STEP_OK, session.RunClient(&protocol, &transport));
     EXPECT_EQ("HSLOE1", io.output());
     EXPECT_EQ(ESTABLISHED, session.phase(butil::memory_order_acquire));
 }
 
-TEST(TransportHandshakeTest, server_resumes_fragmented_extension_then_ack) {
-    MemoryHandshakeIO io;
-    HandshakeSession session;
-    session.SetIOForTest(&io);
-    butil::IOBuf source;
+TEST_F(HandshakeSessionTest, server_resumes_fragmented_extension_then_ack) {
     source.append("HSOK", 4);
-    IOBufHandshakeInput input(&source);
-    TestHandshakeProtocol protocol;
     protocol.EnableExtension(2);
-    std::vector<HandshakeProtocol*> protocols(1, &protocol);
-    TestHandshakeTransport transport;
 
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(protocols, &source, &transport, false));
     EXPECT_EQ(EXTENSION_WAIT, session.phase(butil::memory_order_acquire));
     EXPECT_EQ("HSLO", io.output());
     source.append("E", 1);
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(protocols, &source, &transport, false));
     EXPECT_EQ(EXTENSION_WAIT, session.phase(butil::memory_order_acquire));
     source.append("11", 2);  // Remainder of extension, then ACK.
     ASSERT_EQ(STEP_OK,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(protocols, &source, &transport, false));
     EXPECT_EQ("HSLOE1", io.output());
     EXPECT_TRUE(source.empty());
     EXPECT_EQ(ESTABLISHED, session.phase(butil::memory_order_acquire));
 }
 
-TEST(TransportHandshakeTest, client_resource_failure_falls_back_before_io) {
-    MemoryHandshakeIO io;
-    HandshakeSession session;
-    session.SetIOForTest(&io);
-    TestHandshakeProtocol protocol;
-    TestHandshakeTransport transport;
+TEST_F(HandshakeSessionTest, client_resource_failure_falls_back_before_io) {
     transport.prepare_result = STEP_FALLBACK;
     transport.negotiate_result = STEP_ERROR;
 
@@ -902,98 +887,64 @@ TEST(TransportHandshakeTest, client_resource_failure_falls_back_before_io) {
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
 }
 
-TEST(TransportHandshakeTest, server_resumes_at_buffered_ack) {
-    MemoryHandshakeIO io;
-    HandshakeSession session;
-    session.SetIOForTest(&io);
-    butil::IOBuf source;
+TEST_F(HandshakeSessionTest, server_resumes_at_buffered_ack) {
     source.append("HSOK", 4);
-    IOBufHandshakeInput input(&source);
-    std::string calls;
 
-    TestHandshakeProtocol protocol(&calls);
-    std::vector<HandshakeProtocol*> protocols(1, &protocol);
-    TestHandshakeTransport transport(&calls);
 
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(protocols, &source, &transport, false));
     ASSERT_EQ(ACK_WAIT, session.phase(butil::memory_order_acquire));
     ASSERT_EQ("HSLO", io.output());
     ASSERT_TRUE(source.empty());
 
     source.append("1", 1);
     ASSERT_EQ(STEP_OK,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(protocols, &source, &transport, false));
     ASSERT_EQ("parse prepare negotiate build parse_ack validate activate",
               calls);
     ASSERT_EQ(ESTABLISHED, session.phase(butil::memory_order_acquire));
 }
 
-TEST(TransportHandshakeTest, server_resource_failure_falls_back_after_ack) {
-    MemoryHandshakeIO io;
-    HandshakeSession session;
-    session.SetIOForTest(&io);
-    butil::IOBuf source;
+TEST_F(HandshakeSessionTest, server_resource_failure_falls_back_after_ack) {
     source.append("HSOK0", 5);
-    IOBufHandshakeInput input(&source);
-    TestHandshakeProtocol protocol;
-    std::vector<HandshakeProtocol*> protocols(1, &protocol);
-    TestHandshakeTransport transport;
     transport.prepare_result = STEP_FALLBACK;
     transport.negotiate_result = STEP_ERROR;
 
     ASSERT_EQ(STEP_FALLBACK,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(protocols, &source, &transport, false));
     ASSERT_EQ("HSNO", io.output());
     ASSERT_TRUE(source.empty());
     ASSERT_TRUE(transport.tcp_active);
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
 }
 
-TEST(TransportHandshakeTest, server_falls_back_without_consuming_other_magic) {
-    MemoryHandshakeIO io;
-    HandshakeSession session;
-    session.SetIOForTest(&io);
-    butil::IOBuf source;
+TEST_F(HandshakeSessionTest, server_falls_back_without_consuming_other_magic) {
     source.append("XXok", 4);
-    IOBufHandshakeInput input(&source);
-    TestHandshakeProtocol protocol;
-    std::vector<HandshakeProtocol*> protocols(1, &protocol);
-    TestHandshakeTransport transport;
     transport.prepare_result = STEP_ERROR;
     transport.negotiate_result = STEP_ERROR;
 
     ASSERT_EQ(STEP_FALLBACK,
-              session.RunServer(protocols, &input, &transport, true));
+              session.RunServer(protocols, &source, &transport, true));
     ASSERT_TRUE(transport.tcp_active);
     ASSERT_EQ(4UL, source.size());
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
 
     ASSERT_EQ(STEP_NOT_MINE,
-              session.RunServer(protocols, &input, &transport, true));
+              session.RunServer(protocols, &source, &transport, true));
     ASSERT_EQ(4UL, source.size());
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
 }
 
-TEST(TransportHandshakeTest, server_enters_hello_phase_after_magic_matches) {
-    MemoryHandshakeIO io;
-    HandshakeSession session;
-    session.SetIOForTest(&io);
-    butil::IOBuf source;
-    IOBufHandshakeInput input(&source);
-
-    TestHandshakeProtocol protocol;
-    std::vector<HandshakeProtocol*> protocols(1, &protocol);
-    TestHandshakeTransport transport;
+TEST_F(HandshakeSessionTest, server_enters_hello_phase_after_magic_matches) {
 
     source.append("H", 1);
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(protocols, &source, &transport, false));
     ASSERT_EQ(UNINITIALIZED, session.phase(butil::memory_order_acquire));
 
     source.append("S", 1);
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(protocols, &source, &transport, false));
     ASSERT_EQ(HELLO_WAIT, session.phase(butil::memory_order_acquire));
     ASSERT_EQ(7, session.protocol_version());
     ASSERT_EQ(2UL, source.size());
@@ -1210,75 +1161,40 @@ TEST(TransportHandshakeTest, shared_app_connect_receives_each_socket_stop) {
 #endif
 
 #if BRPC_WITH_RDMA
-TEST(TransportHandshakeTest,
-     inherited_adapter_connect_is_not_wrapped_twice) {
-    int first_fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, first_fds));
-    butil::fd_guard first_peer(first_fds[1]);
-
-    const std::shared_ptr<AppConnect> original =
-        std::make_shared<TestAppConnect>();
-
-    SocketOptions first_options;
-    first_options.fd = first_fds[0];
-    first_options.user =
-        static_cast<SocketUser*>(get_or_new_client_side_messenger());
-    first_options.need_on_edge_trigger = true;
-    first_options.socket_mode = SOCKET_MODE_RDMA;
-    first_options.app_connect = original;
-
-    SocketId first_id;
-    ASSERT_EQ(0, Socket::Create(first_options, &first_id));
-    SocketUniquePtr first_socket;
-    ASSERT_EQ(0, Socket::Address(first_id, &first_socket));
-
-    const std::shared_ptr<AppConnect> wrapped =
-        AdapterTransport::Get(first_socket.get())->Connect();
+TEST(TransportHandshakeTest, inherited_adapter_connect_is_not_wrapped_twice) {
+    auto original = std::make_shared<TestAppConnect>();
+    SocketOptions options;
+    options.user = get_or_new_client_side_messenger();
+    options.need_on_edge_trigger = true;
+    options.socket_mode = SOCKET_MODE_RDMA;
+    options.app_connect = original;
+    HandshakeSocketPair first;
+    ASSERT_NO_FATAL_FAILURE(first.Init(options));
+    const auto wrapped = AdapterTransport::Get(first.socket.get())->Connect();
     ASSERT_NE(nullptr, wrapped);
     EXPECT_NE(original.get(), wrapped.get());
 
-    int second_fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, second_fds));
-    butil::fd_guard second_peer(second_fds[1]);
-
-    SocketOptions second_options = first_options;
-    second_options.fd = second_fds[0];
-    second_options.app_connect = wrapped;
-
-    SocketId second_id;
-    ASSERT_EQ(0, Socket::Create(second_options, &second_id));
-    SocketUniquePtr second_socket;
-    ASSERT_EQ(0, Socket::Address(second_id, &second_socket));
-
-    const std::shared_ptr<AppConnect> inherited =
-        AdapterTransport::Get(second_socket.get())->Connect();
-    EXPECT_EQ(wrapped.get(), inherited.get());
-
-    first_socket->SetFailed();
-    second_socket->SetFailed();
+    options.app_connect = wrapped;
+    HandshakeSocketPair second;
+    ASSERT_NO_FATAL_FAILURE(second.Init(options));
+    EXPECT_EQ(wrapped.get(), AdapterTransport::Get(second.socket.get())->Connect().get());
 }
 
 TEST(TransportHandshakeTest,
      unavailable_client_upgrade_publishes_tcp_fallback) {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    butil::fd_guard peer_fd(fds[1]);
-
     const std::shared_ptr<AppConnect> original =
         std::make_shared<TestAppConnect>();
 
     SocketOptions options;
-    options.fd = fds[0];
     options.user =
         static_cast<SocketUser*>(get_or_new_client_side_messenger());
     options.need_on_edge_trigger = true;
     options.socket_mode = SOCKET_MODE_RDMA;
     options.app_connect = original;
 
-    SocketId id;
-    ASSERT_EQ(0, Socket::Create(options, &id));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(id, &socket));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init(options));
+    auto& socket = pair.socket;
 
     AdapterTransport* adapter = AdapterTransport::Get(socket.get());
     RdmaTransport* rdma_transport =

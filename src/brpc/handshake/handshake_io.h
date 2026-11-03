@@ -42,29 +42,6 @@ public:
     virtual int PushBack(const void* data, size_t len) = 0;
 };
 
-// Non-blocking input used by the standard InputMessenger parser path.
-// Consume is called only after a complete frame has been validated.
-class HandshakeInput {
-public:
-    virtual ~HandshakeInput() = default;
-
-    virtual size_t Size() const = 0;
-    virtual bool CopyTo(void* data, size_t len) const = 0;
-    virtual bool Consume(size_t len) = 0;
-};
-
-class IOBufHandshakeInput : public HandshakeInput {
-public:
-    explicit IOBufHandshakeInput(butil::IOBuf* source) : _source(source) {}
-
-    size_t Size() const override;
-    bool CopyTo(void* data, size_t len) const override;
-    bool Consume(size_t len) override;
-
-private:
-    butil::IOBuf* _source;
-};
-
 class SocketHandshakeIO : public HandshakeIO {
 public:
     explicit SocketHandshakeIO(Socket* socket = nullptr);

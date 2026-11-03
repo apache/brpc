@@ -353,12 +353,11 @@ HandshakeSession* UBShmServerHandshakeAdapter::GetSession(
 
 StepResult UBShmServerHandshakeAdapter::RunFallbackServerHandshake(
     butil::IOBuf* source, Socket* socket) {
-    IOBufHandshakeInput input(source);
     UBShmFallbackProtocol protocol;
     std::vector<HandshakeProtocol*> protocols(1, &protocol);
     FallbackHandshakeTransport transport;
     return GetSession(socket)->RunServer(
-        protocols, &input, &transport, false);
+        protocols, source, &transport, false);
 }
 
 #if BRPC_WITH_UBRING
@@ -451,12 +450,11 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     const uint64_t local_shm_len =
         static_cast<uint64_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
     wire.ConfigureServerReply(local_shm_len);
-    IOBufHandshakeInput input(source);
     std::vector<HandshakeProtocol*> protocols(1, &wire);
     UBShmServerHandshakeTransport participant(
         transport, &wire, socket, source);
     const StepResult result = GetSession(socket)->RunServer(
-        protocols, &input, &participant, false);
+        protocols, source, &participant, false);
     if (result == STEP_OK) {
         transport->FinishUpgrade();
         LOG_IF(INFO, ubring::FLAGS_ub_trace_verbose)
