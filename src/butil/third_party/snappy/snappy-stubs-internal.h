@@ -32,9 +32,9 @@
 #define BUTIL_THIRD_PARTY_SNAPPY_OPENSOURCE_SNAPPY_STUBS_INTERNAL_H_
 
 #include <string>
+#include <cstring>
 #include <assert.h>
 #include <stdlib.h>
-#include <string.h>
 #include "butil/compiler_specific.h"
 #include "butil/basictypes.h"
 #include "butil/sys_byteorder.h"
@@ -69,100 +69,47 @@
 namespace butil {
 namespace snappy {
 
-// x86 and PowerPC can simply do these loads and stores native.
-
-#if defined(__i386__) || defined(__x86_64__) || defined(__powerpc__)
-
-#define UNALIGNED_LOAD16(_p) (*reinterpret_cast<const uint16_t *>(_p))
-#define UNALIGNED_LOAD32(_p) (*reinterpret_cast<const uint32_t *>(_p))
-#define UNALIGNED_LOAD64(_p) (*reinterpret_cast<const uint64_t *>(_p))
-
-#define UNALIGNED_STORE16(_p, _val) (*reinterpret_cast<uint16_t *>(_p) = (_val))
-#define UNALIGNED_STORE32(_p, _val) (*reinterpret_cast<uint32_t *>(_p) = (_val))
-#define UNALIGNED_STORE64(_p, _val) (*reinterpret_cast<uint64_t *>(_p) = (_val))
-
-// ARMv7 and newer support native unaligned accesses, but only of 16-bit
-// and 32-bit values (not 64-bit); older versions either raise a fatal signal,
-// do an unaligned read and rotate the words around a bit, or do the reads very
-// slowly (trip through kernel mode). There's no simple #define that says just
-// “ARMv7 or higher”, so we have to filter away all ARMv5 and ARMv6
-// sub-architectures.
-//
-// This is a mess, but there's not much we can do about it.
-
-#elif defined(__arm__) &&                       \
-    !defined(__ARM_ARCH_4__) &&                 \
-    !defined(__ARM_ARCH_4T__) &&                \
-    !defined(__ARM_ARCH_5__) &&                 \
-    !defined(__ARM_ARCH_5T__) &&                \
-    !defined(__ARM_ARCH_5TE__) &&               \
-    !defined(__ARM_ARCH_5TEJ__) &&              \
-    !defined(__ARM_ARCH_6__) &&                 \
-    !defined(__ARM_ARCH_6J__) &&                \
-    !defined(__ARM_ARCH_6K__) &&                \
-    !defined(__ARM_ARCH_6Z__) &&                \
-    !defined(__ARM_ARCH_6ZK__) &&               \
-    !defined(__ARM_ARCH_6T2__)
-
-#define UNALIGNED_LOAD16(_p) (*reinterpret_cast<const uint16_t *>(_p))
-#define UNALIGNED_LOAD32(_p) (*reinterpret_cast<const uint32_t *>(_p))
-
-#define UNALIGNED_STORE16(_p, _val) (*reinterpret_cast<uint16_t *>(_p) = (_val))
-#define UNALIGNED_STORE32(_p, _val) (*reinterpret_cast<uint32_t *>(_p) = (_val))
-
-// TODO(user): NEON supports unaligned 64-bit loads and stores.
-// See if that would be more efficient on platforms supporting it,
-// at least for copies.
-
-inline uint64_t UNALIGNED_LOAD64(const void *p) {
-    uint64_t t;
-    memcpy(&t, p, sizeof t);
-    return t;
-}
-
-inline void UNALIGNED_STORE64(void *p, uint64_t v) {
-    memcpy(p, &v, sizeof v);
-}
-
-#else
-
-// These functions are provided for architectures that don't support
-// unaligned loads and stores.
+// Potentially unaligned loads and stores.
+// Backported from google/snappy commit 041c608.
 
 inline uint16_t UNALIGNED_LOAD16(const void *p) {
-    uint16_t t;
-    memcpy(&t, p, sizeof t);
-    return t;
+    // Compiles to a single movzx/ldrh on clang/gcc/msvc.
+    uint16_t v;
+    std::memcpy(&v, p, sizeof(v));
+    return v;
 }
 
 inline uint32_t UNALIGNED_LOAD32(const void *p) {
-    uint32_t t;
-    memcpy(&t, p, sizeof t);
-    return t;
+    // Compiles to a single mov/ldr on clang/gcc/msvc.
+    uint32_t v;
+    std::memcpy(&v, p, sizeof(v));
+    return v;
 }
 
 inline uint64_t UNALIGNED_LOAD64(const void *p) {
-    uint64_t t;
-    memcpy(&t, p, sizeof t);
-    return t;
+    // Compiles to a single mov/ldr on clang/gcc/msvc.
+    uint64_t v;
+    std::memcpy(&v, p, sizeof(v));
+    return v;
 }
 
 inline void UNALIGNED_STORE16(void *p, uint16_t v) {
-    memcpy(p, &v, sizeof v);
+    // Compiles to a single mov/strh on clang/gcc/msvc.
+    std::memcpy(p, &v, sizeof(v));
 }
 
 inline void UNALIGNED_STORE32(void *p, uint32_t v) {
-    memcpy(p, &v, sizeof v);
+    // Compiles to a single mov/str on clang/gcc/msvc.
+    std::memcpy(p, &v, sizeof(v));
 }
 
 inline void UNALIGNED_STORE64(void *p, uint64_t v) {
-    memcpy(p, &v, sizeof v);
+    // Compiles to a single mov/str on clang/gcc/msvc.
+    std::memcpy(p, &v, sizeof(v));
 }
 
-#endif
-
-// This can be more efficient than UNALIGNED_LOAD64 + UNALIGNED_STORE64
-// on some platforms, in particular ARM.
+// Support overlapping source and destination buffers.
+// Backported from google/snappy commit 3c706d2.
 inline void UnalignedCopy64(const void *src, void *dst) {
 #if defined(__riscv) && __riscv_xlen == 64
     // RISC-V optimized: single ld/sd pair for 8-byte copy (aligned only)
@@ -174,21 +121,12 @@ inline void UnalignedCopy64(const void *src, void *dst) {
             : "=&r"(tmp)
             : "m"(*(const uint64_t*)src), "m"(*(uint64_t*)dst)
             : "memory");
-    } else {
-        // Unaligned: fall back to memcpy-based approach
-        memcpy(dst, src, 8);
-    }
-#else
-    if (sizeof(void *) == 8) {
-        UNALIGNED_STORE64(dst, UNALIGNED_LOAD64(src));
-    } else {
-        const char *src_char = reinterpret_cast<const char *>(src);
-        char *dst_char = reinterpret_cast<char *>(dst);
-
-        UNALIGNED_STORE32(dst_char, UNALIGNED_LOAD32(src_char));
-        UNALIGNED_STORE32(dst_char + 4, UNALIGNED_LOAD32(src_char + 4));
+        return;
     }
 #endif
+    char tmp[8];
+    std::memcpy(tmp, src, 8);
+    std::memcpy(dst, tmp, 8);
 }
 
 // Convert to little-endian storage, opposite of network format.
