@@ -310,6 +310,23 @@ void UBShmEndpoint::PollOut(UBShmEndpoint* ep, uint32_t ep_event) {
     }
 }
 
+void UBShmEndpoint::Poll(const PollerSidOp& op) {
+    SocketUniquePtr owner;
+    if (Socket::Address(op.owner_sid, &owner) < 0) {
+        return;
+    }
+    UBShmEndpoint* ep = UBShmTransport::Get(owner.get())->_ub_ep;
+    if (ep == nullptr || ep->_poller_sid != op.sid) {
+        return;
+    }
+    if (op.event & EPOLLIN) {
+        PollIn(ep, op.event);
+    }
+    if (op.event & EPOLLOUT) {
+        PollOut(ep, op.event);
+    }
+}
+
 int UBShmEndpoint::GlobalInitialize() {
     g_ubring_resource_mutex = new butil::Mutex;
     _poller_groups = std::vector<PollerGroup>(FLAGS_task_group_ntags);
@@ -362,22 +379,7 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
                 }
             }
             for (auto cq : cq_sids) {
-                SocketUniquePtr s;
-                if (Socket::Address(cq.sid, &s) < 0) {
-                    continue;
-                }
-                UBShmEndpoint* ep = static_cast<UBShmEndpoint*>(s->user());
-                if (!ep) {
-                    continue;
-                }
-
-                if (cq.event & EPOLLIN) {
-                    PollIn(ep, cq.event);
-                }
-
-                if (cq.event & EPOLLOUT) {
-                    PollOut(ep, cq.event);
-                }
+                Poll(cq);
             }
             if (poller->callback) {
                 poller->callback();
@@ -427,7 +429,8 @@ void UBShmEndpoint::PollerRegisterEvent(PollerSidOp::OpType op, uint32_t events)
     auto& pollers = group.pollers;
     auto& poller = pollers[index];
     if (INVALID_SOCKET_ID != _poller_sid) {
-        poller.op_queue.Enqueue(PollerSidOp{_poller_sid, events, op});
+        poller.op_queue.Enqueue(
+            PollerSidOp{_poller_sid, _socket_id, events, op});
     }
 }
 

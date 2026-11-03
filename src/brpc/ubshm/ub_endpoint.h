@@ -136,9 +136,12 @@ private:
     struct PollerSidOp {
         enum OpType { ADD, REMOVE, MOD };
         SocketId sid;
+        SocketId owner_sid;
         uint32_t event;
         OpType type;
     };
+
+    static void Poll(const PollerSidOp& op);
 
     struct PollerSidOpHash {
         std::size_t operator()(const PollerSidOp& op) const { return op.sid; }
