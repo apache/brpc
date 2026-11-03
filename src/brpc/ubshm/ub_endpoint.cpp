@@ -45,11 +45,7 @@ DEFINE_bool(ub_poller_yield, false, "Yield thread in UBRing polling mode.");
 DEFINE_bool(ub_edisp_unsched, false, "Disable event dispatcher schedule");
 DEFINE_bool(ub_disable_bthread, false, "Disable bthread in UBRing polling mode.");
 
-static const size_t MIN_ONCE_READ = 4096;
-static const size_t MAX_ONCE_READ = 524288;
 static const size_t IOBUF_IOV_MAX = 256;
-
-static butil::Mutex *g_ubring_resource_mutex = NULL;
 
 UBShmEndpoint::UBShmEndpoint(Socket *s)
     : _socket(s), _socket_id(s ? s->id() : INVALID_SOCKET_ID),
@@ -315,7 +311,6 @@ void UBShmEndpoint::PollOut(UBShmEndpoint* ep, uint32_t ep_event) {
 }
 
 int UBShmEndpoint::GlobalInitialize() {
-    g_ubring_resource_mutex = new butil::Mutex;
     _poller_groups = std::vector<PollerGroup>(FLAGS_task_group_ntags);
     return 0;
 }

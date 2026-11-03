@@ -226,10 +226,5 @@ FrameResult FrameCodec::WriteFrame(HandshakeIO* io, const FrameSpec& spec,
         ? FRAME_OK : FRAME_IO_ERROR;
 }
 
-FrameResult FrameCodec::DrainFrame(HandshakeIO* io, const FrameSpec& spec) {
-    std::string ignored;
-    return ReadFrame(io, spec, false, &ignored);
-}
-
 }  // namespace handshake
 }  // namespace brpc

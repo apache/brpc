@@ -77,7 +77,6 @@ public:
                                           bool* magic_matched = nullptr);
     static FrameResult WriteFrame(HandshakeIO* io, const FrameSpec& spec,
                                   const std::string& payload);
-    static FrameResult DrainFrame(HandshakeIO* io, const FrameSpec& spec);
 
 private:
     static size_t LengthFieldSize(const FrameSpec& spec);

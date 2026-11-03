@@ -62,10 +62,11 @@ void SocketHandshakeIO::NotifyReadable() {
     bthread::butex_wake(_read_butex);
 }
 
-template <typename ReadOnce>
-static int ReadExactLoop(butil::atomic<int>* read_butex,
-                         SocketId socket_id,
-                         size_t len, ReadOnce read_once) {
+int SocketHandshakeIO::ReadExact(void* data, size_t len) {
+    CHECK(data != nullptr);
+    CHECK(_socket != nullptr);
+    const int fd = _socket->fd();
+    const SocketId socket_id = _socket->id();
     size_t received = 0;
     while (received < len) {
         SocketUniquePtr alive;
@@ -73,9 +74,10 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
             errno = EFAILEDSOCKET;
             return -1;
         }
-        const int expected = read_butex->load(butil::memory_order_acquire);
+        const int expected = _read_butex->load(butil::memory_order_acquire);
         const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
-        const ssize_t nr = read_once(received, len - received);
+        const ssize_t nr = read(
+            fd, static_cast<uint8_t*>(data) + received, len - received);
         if (nr < 0) {
             if (errno == EINTR) {
                 continue;
@@ -83,7 +85,7 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
             if (errno != EAGAIN) {
                 return -1;
             }
-            if (bthread::butex_wait(read_butex, expected, &duetime) < 0 &&
+            if (bthread::butex_wait(_read_butex, expected, &duetime) < 0 &&
                 errno != EWOULDBLOCK && errno != ETIMEDOUT) {
                 return -1;
             }
@@ -97,19 +99,11 @@ static int ReadExactLoop(butil::atomic<int>* read_butex,
     return 0;
 }
 
-int SocketHandshakeIO::ReadExact(void* data, size_t len) {
+int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
     CHECK(data != nullptr);
     CHECK(_socket != nullptr);
     const int fd = _socket->fd();
-    return ReadExactLoop(_read_butex, _socket->id(), len,
-        [data, fd](size_t offset, size_t remaining) {
-            return read(fd, static_cast<uint8_t*>(data) + offset, remaining);
-        });
-}
-
-template <typename WriteOnce, typename WaitWritable>
-static int WriteAllLoop(SocketId socket_id, size_t len, WriteOnce write_once,
-                        WaitWritable wait_writable) {
+    const SocketId socket_id = _socket->id();
     size_t written = 0;
     while (written < len) {
         SocketUniquePtr alive;
@@ -118,7 +112,8 @@ static int WriteAllLoop(SocketId socket_id, size_t len, WriteOnce write_once,
             return -1;
         }
         const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
-        const ssize_t nw = write_once(written, len - written);
+        const ssize_t nw = write(
+            fd, static_cast<const uint8_t*>(data) + written, len - written);
         if (nw > 0) {
             written += nw;
             continue;
@@ -133,7 +128,7 @@ static int WriteAllLoop(SocketId socket_id, size_t len, WriteOnce write_once,
         if (errno != EAGAIN) {
             return -1;
         }
-        if (wait_writable(&duetime) < 0 &&
+        if (_socket->WaitEpollOut(_socket->fd(), true, &duetime) < 0 &&
             errno != ETIMEDOUT) {
             if (alive->Failed()) {
                 errno = EFAILEDSOCKET;
@@ -142,21 +137,6 @@ static int WriteAllLoop(SocketId socket_id, size_t len, WriteOnce write_once,
         }
     }
     return 0;
-}
-
-int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
-    CHECK(data != nullptr);
-    CHECK(_socket != nullptr);
-    const int fd = _socket->fd();
-    return WriteAllLoop(_socket->id(), len,
-        [data, fd](size_t offset, size_t remaining) {
-            return write(fd, static_cast<const uint8_t*>(data) + offset,
-                         remaining);
-        },
-        [this](const timespec* duetime) {
-            return _socket->WaitEpollOut(
-                _socket->fd(), true, duetime);
-        });
 }
 
 int SocketHandshakeIO::PushBack(const void* data, size_t len) {

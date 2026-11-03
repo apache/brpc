@@ -55,7 +55,6 @@ public:
     int handshake_phase() const {
         return _handshake.phase(butil::memory_order_acquire);
     }
-    int handshake_version() const { return _handshake.protocol_version(); }
     handshake::HandshakeSession* handshake_session() { return &_handshake; }
     Transport* high_speed_transport() const {
         return _high_speed_transport.get();
