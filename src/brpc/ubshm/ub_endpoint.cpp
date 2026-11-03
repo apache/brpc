@@ -45,11 +45,7 @@ DEFINE_bool(ub_poller_yield, false, "Yield thread in UBRing polling mode.");
 DEFINE_bool(ub_edisp_unsched, false, "Disable event dispatcher schedule");
 DEFINE_bool(ub_disable_bthread, false, "Disable bthread in UBRing polling mode.");
 
-static const size_t MIN_ONCE_READ = 4096;
-static const size_t MAX_ONCE_READ = 524288;
 static const size_t IOBUF_IOV_MAX = 256;
-
-static butil::Mutex *g_ubring_resource_mutex = NULL;
 
 UBShmEndpoint::UBShmEndpoint(Socket *s)
     : _socket(s), _socket_id(s ? s->id() : INVALID_SOCKET_ID),
@@ -60,9 +56,9 @@ UBShmEndpoint::~UBShmEndpoint() {
     Reset();
 }
 
-void UBShmEndpoint::Reset() {
+void UBShmEndpoint::Reset(bool abort_upgrade) {
     _receive_events_started.store(false, butil::memory_order_release);
-    DeallocateResources();
+    DeallocateResources(abort_upgrade);
 
     delete _ub_ring;
     _ub_ring = nullptr;
@@ -222,12 +218,16 @@ void UBShmEndpoint::StartReceiveEvents() {
     }
 }
 
-void UBShmEndpoint::DeallocateResources() {
+void UBShmEndpoint::DeallocateResources(bool abort_upgrade) {
     if (!_ub_ring) {
         return;
     }
     PollerRegisterEvent(PollerSidOp::REMOVE);
-    _ub_ring->UbrTrxClose();
+    if (abort_upgrade) {
+        _ub_ring->UbrTrxAbort();
+    } else {
+        _ub_ring->UbrTrxClose();
+    }
     if (INVALID_SOCKET_ID != _poller_sid) {
         SocketUniquePtr s;
         if (Socket::Address(_poller_sid, &s) == 0) {
@@ -328,7 +328,6 @@ void UBShmEndpoint::Poll(const PollerSidOp& op) {
 }
 
 int UBShmEndpoint::GlobalInitialize() {
-    g_ubring_resource_mutex = new butil::Mutex;
     _poller_groups = std::vector<PollerGroup>(FLAGS_task_group_ntags);
     return 0;
 }

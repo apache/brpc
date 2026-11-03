@@ -61,7 +61,7 @@ public:
     static void GlobalRelease();
 
     // Reset the endpoint (for next use)
-    void Reset();
+    void Reset(bool abort_upgrade = false);
     void SetNegotiatedDataFormat(UbrDataFormat format) {
         _negotiated_data_format = format;
     }
@@ -114,7 +114,7 @@ private:
                                 UbrDataFormat format);
 
     // Release resources
-    void DeallocateResources();
+    void DeallocateResources(bool abort_upgrade = false);
 
     // Poll CQ and get the work completion
     static void PollIn(UBShmEndpoint* ep, uint32_t ep_event);

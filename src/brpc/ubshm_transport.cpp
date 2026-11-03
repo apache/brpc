@@ -104,9 +104,10 @@ void UBShmTransport::ActivateUpgrade() {
 }
 
 void UBShmTransport::DeactivateUpgrade() {
+    const bool abort_upgrade = !UpgradeActive();
     SetHighSpeedAvailable(false);
     if (_ub_ep != nullptr) {
-        _ub_ep->Reset();
+        _ub_ep->Reset(abort_upgrade);
     }
 }
 

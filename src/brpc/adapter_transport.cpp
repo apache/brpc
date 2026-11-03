@@ -609,6 +609,9 @@ std::shared_ptr<AppConnect> AdapterTransport::Connect() {
         static_cast<SocketUser*>(get_client_side_messenger());
     if (client_messenger != nullptr &&
         _socket->user() == client_messenger) {
+        // This socket keeps the unwrapped AppConnect across health-check
+        // resets, so its read path must not depend on another handshake.
+        _on_edge_trigger = _tcp_transport->GetOnEdgeTrigger();
         FallbackToTcp();
         return AdapterConnect::Unwrap(_tcp_transport->Connect());
     }
