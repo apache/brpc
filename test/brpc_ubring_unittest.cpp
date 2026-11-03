@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
@@ -1076,6 +1077,71 @@ TEST_F(UBShmEndpointTest, concurrent_close_schedules_one_cleanup_timer) {
     EXPECT_EQ(expected[0], results[0]);
     EXPECT_EQ(expected[1], results[1]);
     EXPECT_GE(fcntl(trx.clear_timer_fd, F_GETFD), 0);
+}
+
+TEST_F(UBShmEndpointTest, failed_cleanup_timer_releases_transaction_after_io_wait) {
+    using namespace brpc::ubring;
+    const int saved_timeout = FLAGS_ub_flying_io_timeout_s;
+    FLAGS_ub_flying_io_timeout_s = 1;
+    BRPC_SCOPE_EXIT { FLAGS_ub_flying_io_timeout_s = saved_timeout; };
+    struct rlimit limit;
+    ASSERT_EQ(0, getrlimit(RLIMIT_NOFILE, &limit));
+    for (UbrCloseType type : {UBR_SEND_CLOSE, UBR_CALL_BACK_CLOSE}) {
+        const uint32_t allocated = UBRingManager::g_ubr_mgr.trx_num;
+        UBRing ring;
+        SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+        const std::string name = "timer_failure_" + std::to_string(getpid());
+        ASSERT_EQ(UBRING_OK, ring.UbrAllocateLocalShm(&local, name.c_str()));
+        UbrTrx* trx = ring._trx;
+        BRPC_SCOPE_EXIT {
+            if (UBRingManager::g_ubr_mgr.trx_num != allocated) {
+                DeleteTimerSafe(trx->timer_fd);
+                DeleteTimerSafe(trx->hb_timer_fd);
+                UBRing::UbrTrxFreeShm(trx);
+                UBRingManager::ReleaseUbrTrxFromMgr(trx);
+            }
+        };
+        SHM remote = local;
+        ASSERT_EQ(UBRING_OK, ShmRemoteMalloc(&remote));
+        ASSERT_EQ(UBRING_OK, ring.UbrTrxMapRemoteShm(&remote));
+        auto* tx = reinterpret_cast<UbrEventQMsg*>(
+            trx->ubr_tx.local_tx_event_q.addr);
+        auto* rx = reinterpret_cast<UbrEventQMsg*>(
+            trx->ubr_rx.local_rx_event_q.addr);
+        tx->flag = UBR_STATE_CONNECTED;
+        rx->flag = UBR_STATE_CLOSED;
+        itimerspec spec{};
+        spec.it_value.tv_sec = 10;
+        auto noop = [](void*) -> void* { return nullptr; };
+        trx->timer_fd = TimerStart(&spec, noop, nullptr);
+        trx->hb_timer_fd = TimerStart(&spec, noop, nullptr);
+        ASSERT_GE(trx->timer_fd, 0);
+        ASSERT_GE(trx->hb_timer_fd, 0);
+
+        // Closing existing descriptors still works, but timerfd_create fails.
+        struct rlimit exhausted = limit;
+        exhausted.rlim_cur = 0;
+        ASSERT_EQ(0, setrlimit(RLIMIT_NOFILE, &exhausted));
+        BRPC_SCOPE_EXIT { setrlimit(RLIMIT_NOFILE, &limit); };
+        const int64_t start = butil::gettimeofday_us();
+        const RETURN_CODE result = type == UBR_SEND_CLOSE
+            ? ring.UbrTrxClose()
+            : UBRing::ClearTrxResource(trx, 0, type);
+        const int64_t elapsed = butil::gettimeofday_us() - start;
+        ASSERT_EQ(0, setrlimit(RLIMIT_NOFILE, &limit));
+        EXPECT_EQ(UBRING_OK, result);
+        EXPECT_GE(elapsed, 1000000);
+        EXPECT_EQ(allocated, UBRingManager::g_ubr_mgr.trx_num);
+        EXPECT_EQ(nullptr, trx->local_shm.addr);
+        EXPECT_EQ(nullptr, trx->remote_shm.addr);
+        if (type == UBR_SEND_CLOSE) {
+            EXPECT_EQ(nullptr, ring._trx);
+            EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+        }
+        butil::fd_guard removed(shm_open(local.name, O_RDONLY, 0));
+        EXPECT_LT(removed, 0);
+        EXPECT_EQ(ENOENT, errno);
+    }
 }
 #endif
 

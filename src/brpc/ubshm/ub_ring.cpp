@@ -93,6 +93,9 @@ RETURN_CODE UBRing::UbrTrxAbort() {
 }
 
 RETURN_CODE UBRing::UbrTrxClose() {
+    if (_trx == nullptr) {
+        return UBRING_OK;
+    }
     RETURN_CODE close_check_rc = UbrTrxCloseCheck(_trx);
     if (UNLIKELY(close_check_rc != UBRING_OK)) {
         if (close_check_rc == UBRING_REENTRY) {
@@ -148,22 +151,10 @@ RETURN_CODE UBRing::UbrTrxClose() {
         bthread_usleep(1000);  // 1ms, yield to other bthreads
     }
     _trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
-    RETURN_CODE rc;
-    if (UNLIKELY((rc = ClearTrxResource(_trx, start_time, UBR_SEND_CLOSE)) != UBRING_OK)) {
-        if (rc == UBRING_REENTRY) {
-            LOG(INFO) << "Trx close, peer is closing, trx local name=" << _trx->local_shm.name;
-            return UBRING_OK;
-        }
-        LOG(ERROR) << "Trx close, clear trx resource failed, trx local name=" << _trx->local_shm.name;
-        return UBRING_ERR;
-    }
-    // Unlink local shm name immediately so process exit does not leave visible leftovers.
-    RETURN_CODE unlink_rc = ShmFree(&_trx->local_shm);
-    if (unlink_rc != UBRING_OK && unlink_rc != SHM_ERR_NOT_FOUND && unlink_rc != SHM_ERR_RESOURCE_ATTACHED) {
-        LOG(WARNING) << "Trx close, unlink local shm failed, trx local name=" << _trx->local_shm.name
-                     << ", rc=" << unlink_rc;
-    }
-    return UBRING_OK;
+    const RETURN_CODE rc = ClearTrxResource(_trx, start_time, UBR_SEND_CLOSE);
+    // Cleanup owns the transaction and may already have returned it to the pool.
+    _trx = nullptr;
+    return rc == UBRING_REENTRY ? UBRING_OK : rc;
 }
 
 RETURN_CODE UBRing::UbrAddCloseTimer() {
@@ -352,7 +343,8 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
 
     int timer_fd = TimerStart(&time_spec, UbrAsynClearCallback, (void*)trx);
     if (UNLIKELY(timer_fd == -1)) {
-        LOG(ERROR) << "Start ubr close timer failed, trx name=%s.", trx->local_shm.name;
+        LOG(ERROR) << "Start ubr close timer failed, trx name="
+                   << trx->local_shm.name;
         return UBRING_ERR;
     }
     trx->clear_timer_fd = timer_fd;
@@ -1389,6 +1381,8 @@ RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrC
         DeleteTimer((uint32_t)trx->timer_fd);
     }
     DeleteTimerSafe((uint32_t)trx->hb_timer_fd);
+    trx->timer_fd = 0;
+    trx->hb_timer_fd = 0;
 
     if (local_tx_event_q->flag == UBR_STATE_CLOSING) {
         local_tx_event_q->flag = UBR_STATE_CLOSED;
@@ -1405,10 +1399,22 @@ RETURN_CODE UBRing::ClearTrxResource(UbrTrx *trx, uint64_t start_time, UbrCloseT
         return rc;
     }
 
+    if (close_type == UBR_SEND_CLOSE) {
+        // Unlink before scheduling cleanup. Keep its mapping address intact.
+        SHM local_shm = trx->local_shm;
+        const RETURN_CODE unlink_rc = ShmFree(&local_shm);
+        if (unlink_rc != UBRING_OK && unlink_rc != SHM_ERR_NOT_FOUND &&
+            unlink_rc != SHM_ERR_RESOURCE_ATTACHED) {
+            LOG(WARNING) << "Trx close, unlink local shm " << local_shm.name
+                         << " failed, rc=" << unlink_rc;
+        }
+    }
     rc = UbrAddAsynClearTimer(trx);
     if (rc != UBRING_OK) {
-        LOG(ERROR) << "Trx close, add " << trx->local_shm.name << " close clear timer failed.";
-        return UBRING_ERR;
+        LOG(WARNING) << "Trx close, clean up " << trx->local_shm.name
+                     << " synchronously after timer creation failed.";
+        bthread_usleep(FLAGS_ub_flying_io_timeout_s * 1000000LL);
+        UbrAsynClearCallback(trx);
     }
 
     return UBRING_OK;
