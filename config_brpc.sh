@@ -395,6 +395,10 @@ else
     CXXFLAGS="-std=c++14"
     print_success "Found protobuf version $PROTOBUF_VERSION"
 fi
+if [ $WITH_FLATBUFFERS != 0 ]; then
+    # FlatBuffers support requires C++17 (aligned new for over-aligned objects).
+    CXXFLAGS="-std=c++17"
+fi
 
 CPPFLAGS=
 

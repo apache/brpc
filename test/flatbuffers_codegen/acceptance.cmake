@@ -16,7 +16,7 @@
 # under the License.
 
 if(NOT DEFINED CXX_STANDARD)
-    set(CXX_STANDARD 14)
+    set(CXX_STANDARD 17)
 endif()
 separate_arguments(compiler_flags NATIVE_COMMAND "${CXX_FLAGS}")
 message(STATUS "Codegen compiler: ${CXX}; flags: ${CXX_FLAGS}; C++${CXX_STANDARD}")
@@ -600,6 +600,23 @@ if("${cxx20_result}" STREQUAL "0")
 else()
     message(STATUS "Skipping C++20 compile smoke test: compiler lacks -std=c++20")
 endif()
+# Translation units below C++17 must be rejected rather than mixing allocation
+# rules with the C++17 library.
+set(cxx14_includes)
+foreach(include_dir IN LISTS INCLUDE_DIRS)
+    list(APPEND cxx14_includes "-I${include_dir}")
+endforeach()
+foreach(cxx14_header message service)
+    file(WRITE "${WORK}/cxx14_${cxx14_header}.cpp"
+        "#include \"brpc/flatbuffers/${cxx14_header}.h\"\n")
+    execute_process(COMMAND "${CXX}" ${compiler_flags} -std=c++14 ${cxx14_includes}
+        -fsyntax-only "${WORK}/cxx14_${cxx14_header}.cpp"
+        RESULT_VARIABLE cxx14_result ERROR_VARIABLE cxx14_error)
+    if("${cxx14_result}" STREQUAL "0" OR
+       NOT cxx14_error MATCHES "requires C\\+\\+17 or later")
+        message(FATAL_ERROR "${cxx14_header}.h accepted C++14: ${cxx14_error}")
+    endif()
+endforeach()
 set(cross_namespace_schema
     "namespace codegen.common;\ntable Request {}\ntable Response {}\nnamespace codegen.first;\nrpc_service Echo { Call(codegen.common.Request):codegen.common.Response (id: 1); }\nnamespace codegen.second;\nrpc_service Echo_Stub { Call(codegen.common.Request):codegen.common.Response (id: 2); }\n")
 expect_compiles(cross_namespace_names "${cross_namespace_schema}")
