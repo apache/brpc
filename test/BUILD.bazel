@@ -152,6 +152,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "urma_legacy_handshake",
+    hdrs = ["brpc_urma_legacy_handshake.h"],
+    copts = COPTS,
+    deps = ["//:brpc"],
+)
+
 # tcmalloc and AddressSanitizer both intercept malloc/free, so linking
 # both produces undefined behaviour at runtime (typically a hard hang
 # at process start, or random allocator errors). When `brpc_with_asan`
@@ -273,6 +280,7 @@ generate_unittests(
     ),
     deps = [
         ":gperftools_helper",
+        ":urma_legacy_handshake",
         "//:brpc",
         ":cc_test_proto",
         "@com_google_googletest//:gtest",

@@ -60,7 +60,8 @@ typedef enum {
 
 typedef enum {
     UBR_SEND_CLOSE,
-    UBR_CALL_BACK_CLOSE
+    UBR_CALL_BACK_CLOSE,
+    UBR_PASSIVE_CLOSE
 } UbrCloseType;
 
 typedef enum {
@@ -141,6 +142,9 @@ typedef struct TagUbrTrx {
     int timer_fd;
     int hb_timer_fd;
     int clear_timer_fd;
+    // The ring, cleanup callback and device-event callback hold references.
+    AtomicInt ref_count;
+    bool passive_close;
     AtomicInt close_cnt;
     AtomicInt close_state;
 } UbrTrx;
@@ -154,11 +158,6 @@ typedef struct TagUbrLinkLock {
     int file_lock_num;
     FileLock* file_lock;
 } UbrLinkLock;
-
-typedef enum {
-    UBR_UB_EVENT,
-    UBR_HEARTBEAT,
-}PASSIVE_DISC_TYPE;
 
 }
 }

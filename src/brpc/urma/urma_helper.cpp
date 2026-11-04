@@ -675,6 +675,9 @@ const urma_eid_t* GetUrmaLocalEid() {
     return g_has_local_eid ? &g_local_eid : nullptr;
 }
 bool IsUrmaBondingDevice() { return g_is_bonding_device; }
+bool NeedsUrmaBondingJettyExtension(bool bonding_device, int bonding_mode) {
+    return bonding_device && (bonding_mode == 1 || bonding_mode == 2);
+}
 int FindUrmaPriorityForTpType(const urma_device_attr_t& attr,
                               urma_tp_type_t tp_type) {
     const union urma_tp_type_en expected = TpTypeCapability(tp_type);
