@@ -21,6 +21,12 @@ if(WITH_GLOG)
     set(BRPC_WITH_GLOG 1)
 endif()
 
+# Recorded in config.h so installed brpc/flatbuffers headers see the choice.
+set(WITH_FLATBUFFERS_VAL "0")
+if(WITH_FLATBUFFERS)
+    set(WITH_FLATBUFFERS_VAL "1")
+endif()
+
 set(WITH_CPU_FREQUENCY_VAL "0")
 if(WITH_CPU_FREQUENCY)
     set(WITH_CPU_FREQUENCY_VAL "1")
@@ -46,7 +52,9 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in
 get_filename_component(butil_generated_include_dir
     "${CMAKE_CURRENT_BINARY_DIR}/.." ABSOLUTE)
 
-set(BUTIL_INCLUDE_DIRS ${GFLAGS_INCLUDE_PATH} ${PROTOBUF_INCLUDE_DIRS})
+# Keep generic dependency prefixes after the selected Protobuf installation.
+# Otherwise a shared prefix can supply incompatible google/protobuf headers.
+set(BUTIL_INCLUDE_DIRS ${GFLAGS_INCLUDE_PATH})
 if(WITH_GLOG)
     find_path(GLOG_INCLUDE_PATH NAMES glog/logging.h)
     find_library(GLOG_LIB NAMES glog)
@@ -85,7 +93,8 @@ add_library(butil_build_config INTERFACE)
 target_link_libraries(butil_build_config INTERFACE brpc_common_config)
 target_compile_definitions(butil_build_config INTERFACE ${BUTIL_DEFINITIONS})
 target_include_directories(butil_build_config BEFORE INTERFACE
-    ${butil_generated_include_dir})
+    ${butil_generated_include_dir}
+    ${Protobuf_INCLUDE_DIRS})
 target_include_directories(butil_build_config INTERFACE ${BUTIL_INCLUDE_DIRS})
 
 set(butil_crc32c_options)

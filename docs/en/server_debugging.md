@@ -12,7 +12,7 @@ There are 2.36 worker threads being used in the following figure. Apparently the
 
 ![img](../images/normal_worker_usage.png)
 
-These two figures can be seen directly by putting /vars/bthread_worker_count;bthread_worker_usage?expand after service url, just like [this](http://brpc.baidu.com:8765/vars/bthread_worker_count;bthread_worker_usage?expand).
+These two figures can be seen directly by putting /vars/bthread_worker_count;bthread_worker_usage?expand after service url, just like [this](http://localhost:8765/vars/bthread_worker_count;bthread_worker_usage?expand).
 
 # 2. Check CPU usage
 
@@ -42,14 +42,14 @@ The possible reason may be the poor performance of single server or uneven distr
 
 ### exclude the suspect of uneven distribution to upstreams
 
-Enter qps at [vars]((http://brpc.baidu.com:8765/vars) page of different services to check whether qps is as expected, just like this:
+Enter qps at [vars]((http://localhost:8765/vars) page of different services to check whether qps is as expected, just like this:
 
 ![img](../images/bthread_creation_qps.png)
 
 Or directly visit using curl in command line, like this:
 
 ```shell
-$ curl brpc.baidu.com:8765/vars/*qps*
+$ curl localhost:8765/vars/*qps*
 bthread_creation_qps : 95
 rpc_server_8765_example_echo_service_echo_qps : 57
 ```

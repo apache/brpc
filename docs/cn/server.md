@@ -267,7 +267,7 @@ Join()完成后可以修改其中的Service，并重新Start。
 
 ```shell
 # -H 'Content-Type: application/json' is optional
-$ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
+$ curl -d '{"message":"hello"}' http://localhost:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
@@ -372,7 +372,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 如果一个连接在ServerOptions.idle_timeout_sec对应的时间内没有读取或写出数据，则被视为”闲置”而被server主动关闭。默认值为-1，代表不开启。
 
-打开[-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close)后关闭前会打印一条日志。
+打开[-log_idle_connection_close](http://localhost:8765/flags/log_idle_connection_close)后关闭前会打印一条日志。
 
 | Name                      | Value | Description                              | Defined At          |
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
@@ -396,13 +396,13 @@ Acceptor会在创建brpc Socket前预留连接名额，因此空闲连接和尚�
 
 此功能只对[butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h)中的日志宏有效。
 
-打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
+打开[-log_hostname](http://localhost:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
 
 ## 打印FATAL日志后退出程序
 
 此功能只对[butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h)中的日志宏有效，glog默认在FATAL日志时crash。
 
-打开[-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log)后如果程序使用LOG(FATAL)打印了异常日志或违反了CHECK宏中的断言，那么程序会在打印日志后abort，这一般也会产生coredump文件，默认不打开。这个开关可在对程序的压力测试中打开，以确认程序没有进入过严重错误的分支。
+打开[-crash_on_fatal_log](http://localhost:8765/flags/crash_on_fatal_log)后如果程序使用LOG(FATAL)打印了异常日志或违反了CHECK宏中的断言，那么程序会在打印日志后abort，这一般也会产生coredump文件，默认不打开。这个开关可在对程序的压力测试中打开，以确认程序没有进入过严重错误的分支。
 
 > 一般的惯例是，ERROR表示可容忍的错误，FATAL代表不可逆转的错误。
 
@@ -420,7 +420,7 @@ Acceptor会在创建brpc Socket前预留连接名额，因此空闲连接和尚�
 
 ## 打印发送给client的错误
 
-server的框架部分一般不针对个别client打印错误日志，因为当大量client出现错误时，可能导致server高频打印日志而严重影响性能。但有时为了调试问题，或就是需要让server打印错误，打开参数[-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text)即可。
+server的框架部分一般不针对个别client打印错误日志，因为当大量client出现错误时，可能导致server高频打印日志而严重影响性能。但有时为了调试问题，或就是需要让server打印错误，打开参数[-log_error_text](http://localhost:8765/flags/log_error_text)即可。
 
 ## 定制延时的分位值
 
@@ -450,7 +450,7 @@ brpc的Server是运行在bthread之上，默认栈大小为1MB，而pthread默�
 
 ## 限制最大消息
 
-为了保护server和client，当server收到的request或client收到的response过大时，server或client会拒收并关闭连接。此最大尺寸由[-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size)控制，单位为字节。
+为了保护server和client，当server收到的request或client收到的response过大时，server或client会拒收并关闭连接。此最大尺寸由[-max_body_size](http://localhost:8765/flags/max_body_size)控制，单位为字节。
 
 超过最大消息时会打印如下错误日志：
 
@@ -593,7 +593,20 @@ server的验证是基于连接的。当server收到连接上的第一个请求�
 
 注意: ServerOptions.num_threads仅仅是个**提示**。
 
-你不能认为Server就用了这么多线程，因为进程内的所有Server和Channel会共享线程资源，线程总数是所有ServerOptions.num_threads和-bthread_concurrency中的最大值。比如一个程序内有两个Server，num_threads分别为24和36，bthread_concurrency为16。那么worker线程数为max(24, 36, 16) = 36。这不同于其他RPC实现中往往是加起来。
+你不能认为Server就用了这么多线程，因为进程内的所有Server和Channel会共享线程资源，配置的普通并发数是所有ServerOptions.num_threads和-bthread_concurrency中的最大值。比如一个程序内有两个Server，num_threads分别为24和36，bthread_concurrency为16。那么配置的普通并发数为max(24, 36, 16) = 36。这不同于其他RPC实现中往往是加起来。
+
+注意: event dispatcher（-event_dispatcher_num个，每个tag一组）和bthread内部的epoll线程跑的是不会退出的事件循环：空闲时等在epoll_wait/kevent上，有事件时就地处理。由于bthread不可抢占，这两种状态下承载它们的worker pthread都轮不到别的bthread，相当于被独占了。所以它们各自**额外**预留一个worker，不占用上述的最大值。这里区分三个概念：
+
+- **普通并发数**：用于普通bthread的worker数，由`num_threads`/`-bthread_concurrency`配置。
+- **预留并发数**：为event dispatcher、内部epoll等阻塞循环额外增加的worker数。
+- **总并发数**：普通并发数与预留并发数之和；当前运行的worker总数可从bvar `bthread_worker_count`看到。
+
+默认立即创建worker时，总并发数为`max(所有num_threads, -bthread_concurrency) + 预留并发数`。启用`-bthread_min_concurrency`后，普通worker按需增长，当前普通并发数可以低于配置值；预留worker仍立即创建。
+
+普通并发数的配置下限为`BTHREAD_MIN_CONCURRENCY`（4）。内部epoll线程使用独立的预留额度，不计入这个下限。
+
+每个tag的普通worker上限为`BTHREAD_MAX_CONCURRENCY`（1024），预留worker使用独立的`BTHREAD_MAX_RESERVED_CONCURRENCY`（512）累计额度，总容量为1536。普通并发数设为1024后仍可为event dispatcher和内部epoll线程预留worker，初始化顺序不会改变这两类额度。
+
 
 Channel没有相应的选项，但可以通过选项-bthread_concurrency调整。
 

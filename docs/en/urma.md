@@ -221,6 +221,10 @@ failure; access errors have a separate counter, and exhausted windows return EAG
 The recovery policy maintains process-level modes, epochs and peer cooldowns.
 Mode changes filter reports from older connections.
 
+A client reports a transport failure when an established URMA connection's
+control TCP socket closes or fails to read, cooling the peer in AUTO mode.
+Server-side EOF from a normal short-connection client simply closes the socket.
+
 `GetUrmaRecoveryStatus()` and `/vars/urma_recovery_status` expose failure reasons,
 cooldown state and negotiation counts. `/vars/urma_recovery_tcp_fallback_admissions`
 counts TCP admissions per connection.
@@ -263,6 +267,11 @@ reconnecting and reusing TCP. The runner supports `--attachment-size` for echo
 validation and `--polling` for polling mode.
 Build `urma_send_failure_injector_test` and run CTest in the example build
 directory for the tool self-tests.
+
+The main library's `brpc_urma_remote_recovery_*` CTest cases inject one server
+SEND failure across CTP/RTP, v2/v3 and event/polling modes. They check client
+peer cooldown, TCP admission, URMA recovery and 64 KiB attachment echoes,
+including normal short-connection closes before the injection.
 
 ### Comparing send access failures
 

@@ -564,7 +564,7 @@ Controller的特点：
 
 ## 线程数
 
-和大部分的RPC框架不同，brpc中并没有独立的Client线程池。所有Channel和Server通过[bthread](bthread.md)共享相同的线程池. 如果你的程序同样使用了brpc的server, 仅仅需要设置Server的线程数。 或者可以通过[gflags](flags.md)设置[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency)来设置全局的线程数.
+和大部分的RPC框架不同，brpc中并没有独立的Client线程池。所有Channel和Server通过[bthread](bthread.md)共享相同的线程池. 如果你的程序同样使用了brpc的server, 仅仅需要设置Server的线程数。 或者可以通过[gflags](flags.md)设置[-bthread_concurrency](http://localhost:8765/flags/bthread_concurrency)来设置全局的线程数.
 
 ## 超时
 
@@ -720,6 +720,8 @@ options.retry_policy = &g_my_retry_policy;
 ### backup request
 
 工作机制如下：如果response没有在backup_request_ms内返回，则发送另外一个请求，哪个先回来就取哪个。新请求会被尽量送到不同的server。注意如果backup_request_ms大于超时，则backup request总不会被发送。backup request会消耗一次重试次数。backup request不意味着server端cancel。
+
+如果没有剩余的重试次数，则跳过backup request，继续等待当前请求完成或整体RPC超时。
 
 ChannelOptions.backup_request_ms影响该Channel上所有RPC，单位毫秒，默认值-1（表示不开启）。Controller.set_backup_request_ms()可修改某次RPC的值。
 

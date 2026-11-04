@@ -2,7 +2,7 @@
 
 # Builtin Services
 
-Builtin services expose internal status of servers in different pespectives, making development and debugging over brpc more efficient. brpc serves builting services via HTTP, which can be easily accessed through curl and web browsers. Servers respond plain text or html according to `User-Agent` in the request header, or you may append `?console=1` to the uri to force the server to respond in plain text. Check the [example](http://brpc.baidu.com:8765/) running on our dev machine(only accessible from Baidu internal) for more details. If the port is forbidden from where you run curl or web browser (e.g. not all ports are accessible from a web browser inside Baidu), you can use [rpc_view](rpc_view.md) for proxying.
+Builtin services expose internal status of servers in different pespectives, making development and debugging over brpc more efficient. brpc serves builting services via HTTP, which can be easily accessed through curl and web browsers. Servers respond plain text or html according to `User-Agent` in the request header, or you may append `?console=1` to the uri to force the server to respond in plain text. The [example/echo_c++](https://github.com/apache/brpc/blob/master/example/echo_c%2B%2B/server.cpp) server serves builtin services as well: start it with -port=8765 and open http://localhost:8765 in a browser for more details. If the port is forbidden from where you run curl or web browser (e.g. not all ports are accessible from a web browser inside Baidu), you can use [rpc_view](rpc_view.md) for proxying.
 
 Following 2 screenshots show accesses to builtin services from a web browser and a terminal respectively.  Note that the logo is the codename inside Baidu, and being modified to brpc in opensourced version.
 
@@ -38,19 +38,19 @@ To avoid potential attacks and information leaks, builtin services **must** be h
 
 # Other services
 
-[/version](http://brpc.baidu.com:8765/version) shows version of the server. Call Server::set_version() to specify version of the server, or brpc would generate a default version like `brpc_server_<service-name1>_<service-name2> ...`
+[/version](http://localhost:8765/version) shows version of the server. Call Server::set_version() to specify version of the server, or brpc would generate a default version like `brpc_server_<service-name1>_<service-name2> ...`
 
 ![img](../images/version_service.png)
 
-[/health](http://brpc.baidu.com:8765/health) shows whether this server is alive or not.
+[/health](http://localhost:8765/health) shows whether this server is alive or not.
 
 ![img](../images/health_service.png)
 
-[/protobufs](http://brpc.baidu.com:8765/protobufs) shows scheme of all protobuf messages inside the server.
+[/protobufs](http://localhost:8765/protobufs) shows scheme of all protobuf messages inside the server.
 
 ![img](../images/protobufs_service.png)
 
-[/vlog](http://brpc.baidu.com:8765/vlog) shows all the [VLOG](streaming_log.md#VLOG) that can be enabled(not working with glog).
+[/vlog](http://localhost:8765/vlog) shows all the [VLOG](streaming_log.md#VLOG) that can be enabled(not working with glog).
 
 ![img](../images/vlog_service.png)
 

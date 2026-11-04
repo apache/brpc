@@ -322,10 +322,15 @@ private:
 };
 
 KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
-    if (pool != nullptr && (pool->list || pool->free_keytables)) {
+    if (pool != nullptr) {
         KeyTable* p;
+        bool has_free_keytables;
         {
             pthread_rwlock_rdlock(&pool->rwlock);
+            if (pool->destroyed) {
+                pthread_rwlock_unlock(&pool->rwlock);
+                return nullptr;
+            }
             auto list = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
             if (list) {
                 p = list->get()->remove_front();
@@ -334,9 +339,10 @@ KeyTable* borrow_keytable(bthread_keytable_pool_t* pool) {
                     return p;
                 }
             }
+            has_free_keytables = pool->free_keytables != nullptr;
             pthread_rwlock_unlock(&pool->rwlock);
         }
-        if (pool->free_keytables) {
+        if (has_free_keytables) {
             pthread_rwlock_wrlock(&pool->rwlock);
             if (pool->destroyed) {
                 pthread_rwlock_unlock(&pool->rwlock);

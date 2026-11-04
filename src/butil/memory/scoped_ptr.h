@@ -237,7 +237,7 @@ class scoped_ptr_impl {
     //
     // During the transition period, set the stored pointer to nullptr while
     // deleting the object. Eventually, this safety check will be removed to
-    // prevent the scenario initially described from occuring and
+    // prevent the scenario initially described from occurring and
     // http://crbug.com/176091 can be closed.
     T* old = data_.ptr;
     data_.ptr = nullptr;

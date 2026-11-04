@@ -23,6 +23,7 @@
 #include <deque>                               // std::deque
 #include <set>                                 // std::set
 #include "butil/atomicops.h"                    // butil::atomic
+#include "butil/containers/optional.h"          // butil::optional
 #include "bthread/types.h"                      // bthread_id_t
 #include "butil/iobuf.h"                        // butil::IOBuf, IOPortal
 #include "butil/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
@@ -317,7 +318,7 @@ struct SocketOptions {
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
+    butil::optional<SocketKeepaliveOptions> keepalive_options;
     // https://github.com/apache/brpc/issues/1154
     // https://github.com/grpc/grpc/pull/16419/files
     // Only linux supports TCP_USER_TIMEOUT.
@@ -492,6 +493,13 @@ public:
 
     // `user' parameter passed to Create().
     SocketUser* user() const { return _user; }
+
+    // Attach the SocketUser after creation. Only safe before the SocketId
+    // is published to other threads (e.g. right after a successful
+    // Create+Address). Callers creating a socket with a null user and
+    // attaching it here get a single cleanup rule: creation failures never
+    // run SocketUser::BeforeRecycle, so the call site disposes the user.
+    void set_user(SocketUser* user) { _user = user; }
 
     // `conn' parameter passed to Create()
     void set_conn(SocketConnection* conn) { _conn = conn; }
@@ -705,7 +713,7 @@ public:
     }
 
     // Returns true if the remote side is overcrowded.
-    bool is_overcrowded() const { return _overcrowded; }
+    bool is_overcrowded() const;
 
     bthread_keytable_pool_t* keytable_pool() const { return _keytable_pool; }
 
@@ -735,6 +743,9 @@ private:
     // Hold the health-checking-related
     // reference on created.
     void HoldHCRelatedRef();
+
+    // Copy connection configuration for pooled and short sockets.
+    SocketOptions GetSubSocketOptions() const;
 
     static int Status(SocketId, int32_t* nref = nullptr);  // for unit-test.
 
@@ -950,6 +961,13 @@ private:
 
     // Saved context for parsing, reset before trying other protocols.
     butil::atomic<Destroyable*> _parsing_context;
+    // DebugSocket() describes _parsing_context outside the bthread parsing
+    // messages, which may reset or release the context at the same time.
+    // Both hold this mutex, so that the context is not destroyed while
+    // being described. Describe() runs under the mutex and must not reset
+    // the parsing context of the socket. initialize_parsing_context() does
+    // not need it: it never destroys a context set in the socket.
+    butil::Mutex _parsing_context_mutex;
 
     // The stream whose data the handlers are currently cutting.
     butil::atomic<InputMessengerProcessor::StreamType> _parsing_stream_type;
@@ -1005,9 +1023,6 @@ private:
     ConnectionType _connection_type_for_progressive_read;
     butil::atomic<bool> _controller_released_socket;
 
-    // True if the socket is too full to write.
-    volatile bool _overcrowded;
-
     bool _fail_me_at_server_stop;
 
     // Set by SetLogOff
@@ -1049,8 +1064,8 @@ private:
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    // non-nullptr means that keepalive is on.
-    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+    // An engaged value means that keepalive is on.
+    butil::optional<SocketKeepaliveOptions> _keepalive_options;
 
     // Only linux supports TCP_USER_TIMEOUT.
     // When the value is greater than 0, it specifies the maximum

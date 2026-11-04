@@ -26,6 +26,7 @@
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
 #include "bthread/bthread.h"
+#include "bthread/countdown_event.h"
 #include "bthread/unstable.h"
 using namespace bthread;
 namespace bthread {
@@ -564,6 +565,80 @@ TEST(KeyTest, borrow_and_return_keytable_when_using_pool) {
     table_list.clear();
 
     ASSERT_EQ(0, bthread_keytable_pool_destroy(&test_pool));
+}
+
+struct ConcurrentPoolData {
+    bthread_keytable_pool_t pool;
+    CountdownEvent ready;
+    CountdownEvent start;
+    CountdownEvent destroyed;
+    Counters counters;
+
+    explicit ConcurrentPoolData(int nworkers) : ready(nworkers) {}
+};
+
+static void* create_concurrent_pool_data(const void* arg) {
+    Counters* counters = const_cast<Counters*>(static_cast<const Counters*>(arg));
+    counters->ncreate.fetch_add(1, butil::memory_order_relaxed);
+    return counters;
+}
+
+static void destroy_concurrent_pool_data(void* arg) {
+    static_cast<Counters*>(arg)->ndestroy.fetch_add(1, butil::memory_order_relaxed);
+}
+
+static void* borrow_and_return_during_pool_destruction(void* arg) {
+    ConcurrentPoolData* data = static_cast<ConcurrentPoolData*>(arg);
+    // Keep a borrowed table across destruction as well as racing new borrows
+    // with destruction. The pool and key remain valid until all workers exit.
+    KeyTable* held = borrow_keytable(&data->pool);
+    EXPECT_NE(nullptr, held);
+    data->ready.signal();
+    data->start.wait();
+    for (int i = 0; i < 4096; ++i) {
+        KeyTable* kt = borrow_keytable(&data->pool);
+        return_keytable(&data->pool, kt);
+    }
+    data->destroyed.wait();
+    return_keytable(&data->pool, held);
+    return nullptr;
+}
+
+TEST(KeyTest, borrow_and_return_keytable_during_pool_destruction) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    bthread::FLAGS_borrow_from_globle_size = 20;
+    const size_t NWORKERS = 8;
+    const size_t NTABLES = NWORKERS * bthread::FLAGS_borrow_from_globle_size;
+    ConcurrentPoolData data(NWORKERS);
+    ASSERT_EQ(0, bthread_keytable_pool_init(&data.pool));
+    bthread_key_t key;
+    ASSERT_EQ(0, bthread_key_create(&key, destroy_concurrent_pool_data));
+    bthread_keytable_pool_reserve(&data.pool, NTABLES, key,
+                                 create_concurrent_pool_data, &data.counters);
+    ASSERT_EQ(NTABLES, data.counters.ncreate.load(butil::memory_order_relaxed));
+
+    pthread_t workers[NWORKERS];
+    size_t nstarted = 0;
+    for (; nstarted < NWORKERS; ++nstarted) {
+        int rc = pthread_create(&workers[nstarted], nullptr,
+                               borrow_and_return_during_pool_destruction, &data);
+        EXPECT_EQ(0, rc);
+        if (rc != 0) {
+            data.ready.signal(NWORKERS - nstarted);
+            break;
+        }
+    }
+    data.ready.wait();
+    data.start.signal();
+    EXPECT_EQ(0, bthread_keytable_pool_destroy(&data.pool));
+    data.destroyed.signal();
+    for (size_t i = 0; i < nstarted; ++i) {
+        EXPECT_EQ(0, pthread_join(workers[i], nullptr));
+    }
+    EXPECT_EQ(nullptr, borrow_keytable(&data.pool));
+    EXPECT_EQ(NTABLES, data.counters.ndestroy.load(butil::memory_order_relaxed));
+    EXPECT_EQ(0, bthread_key_delete(key));
+    EXPECT_EQ(0, pthread_rwlock_destroy(&data.pool.rwlock));
 }
 
 // NOTE: lid is short for 'lock in dtor'.

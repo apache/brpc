@@ -567,7 +567,7 @@ Properties of Controller:
 
 ## Number of worker pthreads
 
-There's **no** independent thread pool for client in brpc. All Channels and Servers share the same backing threads via [bthread](bthread.md).  Setting number of worker pthreads in Server works for Client as well if Server is in used. Or just specify the [gflag](flags.md) [-bthread_concurrency](brpc.baidu.com:8765/flags/bthread_concurrency) to set the global number of worker pthreads.
+There's **no** independent thread pool for client in brpc. All Channels and Servers share the same backing threads via [bthread](bthread.md).  Setting number of worker pthreads in Server works for Client as well if Server is in used. Or just specify the [gflag](flags.md) [-bthread_concurrency](localhost:8765/flags/bthread_concurrency) to set the global number of worker pthreads.
 
 ## Timeout
 
@@ -600,6 +600,8 @@ Conditions for retrying (AND relations):
 If the server does not respond and connection is good, retry is not triggered. If you need to send another request after some timeout, use backup request.
 
 How it works: If response does not return within the timeout specified by backup_request_ms, send another request, take whatever the first returned. New request will be sent to a different server that never tried before by best efforts. NOTE: If backup_request_ms is greater than timeout_ms, backup request will never be sent. backup request consumes one retry. backup request does not imply a server-side cancellation.
+
+If no retry budget remains, the backup request is skipped. The in-flight request continues until it completes or the overall RPC timeout expires.
 
 ChannelOptions.backup_request_ms affects all RPC via the Channel, unit is milliseconds, Default value is -1(disabled), Controller.set_backup_request_ms() overrides value for one RPC.
 

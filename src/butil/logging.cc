@@ -521,6 +521,10 @@ friend struct DefaultSingletonTraits<AsyncLogger>;
         }
     }
 
+    template <typename T>
+    void LogInternal(T&& log_info);
+    void EnqueueLog(LogRequest* log_req, const LogInfo& log_info);
+    void EnqueueLog(LogRequest* log_req, LogInfo&& log_info);
     void LogImpl(LogRequest* log_req);
 
     void Run() override;
@@ -580,6 +584,15 @@ std::string LogInfo2LogStr(const LogInfo& log_info) {
 }
 
 void AsyncLogger::Log(const LogInfo& log_info) {
+    LogInternal(log_info);
+}
+
+void AsyncLogger::Log(LogInfo&& log_info) {
+    LogInternal(std::move(log_info));
+}
+
+template <typename T>
+void AsyncLogger::LogInternal(T&& log_info) {
     if (log_info.content.empty()) {
         return;
     }
@@ -599,30 +612,15 @@ void AsyncLogger::Log(const LogInfo& log_info) {
         DoLog(log_info);
         return;
     }
+    EnqueueLog(log_req, std::forward<T>(log_info));
+}
+
+void AsyncLogger::EnqueueLog(LogRequest* log_req, const LogInfo& log_info) {
     log_req->log_info = log_info;
     LogImpl(log_req);
 }
 
-void AsyncLogger::Log(LogInfo&& log_info) {
-    if (log_info.content.empty()) {
-        return;
-    }
-
-    bool is_full = FLAGS_max_async_log_queue_size > 0 &&
-        _log_request_count.fetch_add(1, butil::memory_order_relaxed) >
-        FLAGS_max_async_log_queue_size;
-    if (is_full || _stop.load(butil::memory_order_relaxed)) {
-        // Async logger is full or stopped, fallback to sync log.
-        DoLog(log_info);
-        return;
-    }
-
-    auto log_req = butil::get_object<LogRequest>();
-    if (!log_req) {
-        // Async log failed, fallback to sync log.
-        DoLog(log_info);
-        return;
-    }
+void AsyncLogger::EnqueueLog(LogRequest* log_req, LogInfo&& log_info) {
     ANNOTATE_SCOPED_MEMORY_LEAK;
     log_req->log_info = std::move(log_info);
     LogImpl(log_req);
