@@ -145,6 +145,8 @@ typedef struct TagUbrTrx {
     // The ring, cleanup callback and device-event callback hold references.
     AtomicInt ref_count;
     bool passive_close;
+    bool local_shm_released;
+    bool remote_shm_released;
     AtomicInt close_cnt;
     AtomicInt close_state;
 } UbrTrx;

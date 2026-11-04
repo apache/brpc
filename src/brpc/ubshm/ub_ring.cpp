@@ -81,11 +81,17 @@ RETURN_CODE UBRing::UbrTrxAbort() {
     DeleteTimerSafe(_trx->timer_fd);
     DeleteTimerSafe(_trx->hb_timer_fd);
     DeleteTimerSafe(_trx->clear_timer_fd);
-    RETURN_CODE rc = UbrTrxFreeShm(_trx);
-    if (rc == UBRING_OK) {
-        rc = ReleaseTrx();
+    if (UbrTrxFreeShm(_trx) == UBRING_OK) {
+        return ReleaseTrx();
     }
-    return rc;
+    // Transfer the ring reference when retry storage could not be acquired.
+    UbrTrx* trx = _trx;
+    _trx = nullptr;
+    trx->clear_timer_fd = 0;
+    if (UbrAddAsynClearTimer(trx) != UBRING_OK) {
+        UbrAsynClearCallback(trx);
+    }
+    return UBRING_OK;
 }
 
 RETURN_CODE UBRing::UbrTrxClose() {
@@ -296,8 +302,15 @@ void *UBRing::UbrAsynClearCallback(void *args)
         return nullptr;
     }
 
-    if (UNLIKELY(UbrTrxFreeShm(trx) != UBRING_OK)) {
-        LOG(ERROR) << "Trx close, wait for local shm " << trx->local_shm.name << " free fail.";
+    while (UbrTrxFreeShm(trx) != UBRING_OK) {
+        LOG_EVERY_SECOND(ERROR) << "Trx close, retry cleanup for "
+                               << trx->local_shm.name;
+        trx->clear_timer_fd = 0;
+        if (UbrAddAsynClearTimer(trx) == UBRING_OK) {
+            return nullptr;
+        }
+        bthread_usleep(static_cast<uint64_t>(FLAGS_ub_flying_io_timeout_s) *
+                       SEC_TO_NSEC / USEC_TO_NSEC);
     }
 
     if (UNLIKELY(UBRingManager::ReleaseUbrTrxFromMgr(trx) != UBRING_OK)) {
@@ -818,32 +831,23 @@ RETURN_CODE UBRing::UbrTrxFreeShm(UbrTrx *trx)
         return UBRING_ERR;
     }
 
-    RETURN_CODE rc = UBRING_OK;
-    rc = ShmMunmap(&trx->local_shm);
-    if (UNLIKELY(rc != UBRING_OK)) {
-        LOG(ERROR) << "Trx close, local unmap " << trx->local_shm.name << " shm fail.";
-        return UBRING_ERR;
+    if (!trx->local_shm_released) {
+        const RETURN_CODE rc = trx->local_shm.name[0] != '\0'
+            ? ShmLocalFree(&trx->local_shm) : UBRING_OK;
+        trx->local_shm_released = rc == UBRING_OK ||
+            rc == SHM_ERR_NOT_FOUND || rc == SHM_ERR_RESOURCE_ATTACHED;
     }
-
-    rc = ShmFree(&trx->local_shm);
-    if (UNLIKELY(rc != UBRING_OK)) {
-        if (rc != SHM_ERR_RESOURCE_ATTACHED && rc != SHM_ERR_NOT_FOUND) {
-            LOG(ERROR) << "Wait for " << trx->local_shm.name << " local shm free fail.";
-            return UBRING_ERR;
+    if (!trx->remote_shm_released) {
+        RETURN_CODE rc = UBRING_OK;
+        if (trx->remote_shm.name[0] != '\0') {
+            rc = trx->passive_close
+                ? ShmLocalFree(&trx->remote_shm) : ShmRemoteFree(&trx->remote_shm);
         }
-        LOG(INFO) << "Local shm " << trx->local_shm.name << " already freed, continue to free remote shm.";
+        trx->remote_shm_released = rc == UBRING_OK ||
+            rc == SHM_ERR_NOT_FOUND || rc == SHM_ERR_RESOURCE_ATTACHED;
     }
-
-    RETURN_CODE remote_rc = UBRING_OK;
-    if (trx->remote_shm.addr != nullptr) {
-        remote_rc = trx->passive_close
-            ? ShmLocalFree(&trx->remote_shm) : ShmRemoteFree(&trx->remote_shm);
-    }
-    if (remote_rc != UBRING_OK) {
-        LOG(WARNING) << "Free remote shm " << trx->remote_shm.name << " failed, rc=" << remote_rc;
-    }
-
-    return UBRING_OK;
+    return trx->local_shm_released && trx->remote_shm_released
+        ? UBRING_OK : UBRING_ERR;
 }
 
 RETURN_CODE UBRing::UbrUnlinkLocalShm()

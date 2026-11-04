@@ -56,6 +56,8 @@
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/shm/shm_mgr.h"
+#include "brpc/ubshm/shm/shm_ubs.h"
+#include "brpc/ubshm/ubs_mem/ubs_mem_def.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/ub_helper.h"
@@ -71,6 +73,9 @@ DECLARE_int32(ub_hb_timer_interval_s);
 DECLARE_int32(ub_event_queue_timer_interval_us);
 DECLARE_int32(ub_flying_io_timeout_s);
 
+extern ShmList* g_shm_list;
+extern int g_shm_timer_fd;
+extern int (*ubsmem_finalize)();
 extern bool g_skip_ub_init;
 extern int (*ubsmem_shmem_deallocate)(const char*);
 extern int (*ubsmem_shmem_unmap)(void*, size_t);
@@ -1963,6 +1968,285 @@ TEST_F(UBShmEndpointTest, callback_can_cancel_its_own_periodic_timer) {
     EXPECT_EQ(-1, fcntl(context.fd, F_GETFD));
 }
 #endif
+
+
+namespace {
+struct UbsCleanupState {
+    uint8_t local = 0;
+    uint8_t remote = 0;
+    std::atomic<int> unmap_error{UBSM_ERR_NET};
+    std::atomic<int> deallocate_error{0};
+    std::atomic<int> unmaps{0};
+    std::atomic<int> remote_unmaps{0};
+    std::atomic<int> deallocates{0};
+    std::atomic<int> finalizes{0};
+    std::atomic<bool> block_unmap{false};
+    std::atomic<bool> in_unmap{false};
+    std::atomic<bool> finalized_during_unmap{false};
+    bthread::CountdownEvent entered;
+    bthread::CountdownEvent resume;
+};
+UbsCleanupState* ubs_cleanup = nullptr;
+}
+
+class UbsCleanupTest : public UBShmEndpointTest {
+protected:
+    void SetUp() override {
+        using namespace brpc::ubring;
+        UBShmEndpointTest::SetUp();
+        saved_type = GetShmType();
+        saved_list = g_shm_list;
+        saved_fd = g_shm_timer_fd;
+        saved_unmap = ubsmem_shmem_unmap;
+        saved_deallocate = ubsmem_shmem_deallocate;
+        saved_finalize = ubsmem_finalize;
+        saved_delay = FLAGS_ub_flying_io_timeout_s;
+        list = static_cast<ShmList*>(calloc(1, sizeof(ShmList)));
+        ASSERT_NE(nullptr, list);
+        ASSERT_EQ(0, pthread_mutex_init(&list->shm_lock, nullptr));
+        g_shm_list = list;
+        g_shm_timer_fd = 0;
+        FLAGS_ub_flying_io_timeout_s = 1;
+        ubs_cleanup = &state;
+        SetShmType(SHM_TYPE_UBS);
+        ubsmem_shmem_unmap = [](void* address, size_t) {
+            auto& state = *ubs_cleanup;
+            ++state.unmaps;
+            if (address == &state.remote) {
+                ++state.remote_unmaps;
+            }
+            if (state.block_unmap.load()) {
+                state.in_unmap.store(true);
+                state.entered.signal();
+                state.resume.wait();
+                state.in_unmap.store(false);
+            }
+            return state.unmap_error.load();
+        };
+        ubsmem_shmem_deallocate = [](const char*) {
+            ++ubs_cleanup->deallocates;
+            return ubs_cleanup->deallocate_error.load();
+        };
+        ubsmem_finalize = []() {
+            ++ubs_cleanup->finalizes;
+            ubs_cleanup->finalized_during_unmap.store(
+                ubs_cleanup->in_unmap.load());
+            return 0;
+        };
+    }
+    void TearDown() override {
+        using namespace brpc::ubring;
+        if (g_shm_list != nullptr) {
+            DestroyShmTimer(g_shm_list);
+        }
+        g_shm_list = saved_list;
+        g_shm_timer_fd = saved_fd;
+        FLAGS_ub_flying_io_timeout_s = saved_delay;
+        ubsmem_shmem_unmap = saved_unmap;
+        ubsmem_shmem_deallocate = saved_deallocate;
+        ubsmem_finalize = saved_finalize;
+        SetShmType(saved_type);
+        ubs_cleanup = nullptr;
+        UBShmEndpointTest::TearDown();
+    }
+    brpc::ubring::SHM Mapping(bool remote = false) {
+        brpc::ubring::SHM shm{};
+        shm.addr = remote ? &state.remote : &state.local;
+        shm.len = 4 * 1024 * 1024;
+        strcpy(shm.name, remote ? "ubs_remote" : "ubs_local");
+        return shm;
+    }
+    UbsCleanupState state;
+    brpc::ubring::ShmList* list = nullptr;
+    brpc::ubring::ShmList* saved_list = nullptr;
+    int saved_fd = 0;
+    int saved_delay = 0;
+    brpc::ubring::SHM_TYPE saved_type;
+    decltype(brpc::ubring::ubsmem_shmem_unmap) saved_unmap;
+    decltype(brpc::ubring::ubsmem_shmem_deallocate) saved_deallocate;
+    decltype(brpc::ubring::ubsmem_finalize) saved_finalize;
+};
+
+TEST_F(UbsCleanupTest, abort_hands_off_resources_before_reusing_transaction_slot) {
+    using namespace brpc::ubring;
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    UbrTrx* old_trx = ring._trx;
+    BRPC_SCOPE_EXIT {
+        if (ring._trx != nullptr) {
+            ring.ReleaseTrx();
+        }
+    };
+    old_trx->local_shm = Mapping();
+    UbrEventQMsg event{};
+    event.flag = UBR_STATE_CONNECTED;
+    old_trx->ubr_tx.local_tx_event_q.addr = reinterpret_cast<uint8_t*>(&event);
+    ASSERT_EQ(UBRING_OK, ring.UbrTrxAbort());
+    EXPECT_EQ(nullptr, ring._trx);
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
+    ASSERT_EQ(1u, list->size);
+
+    UBRing replacement;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&replacement._trx));
+    BRPC_SCOPE_EXIT { replacement.ReleaseTrx(); };
+    EXPECT_EQ(old_trx, replacement._trx);
+    state.unmap_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(1, state.deallocates.load());
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_EQ(1, ATOMIC_LOAD(replacement._trx->ref_count));
+}
+
+TEST_F(UbsCleanupTest, passive_cleanup_retries_both_mappings_independently) {
+    using namespace brpc::ubring;
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    ring._trx->local_shm = Mapping();
+    ring._trx->remote_shm = Mapping(true);
+    ring._trx->passive_close = true;
+    ring._trx->close_state = UBR_CLOSE_SECOND;
+    ring._trx->ref_count = 2;
+    UBRing::UbrAsynClearCallback(ring._trx);
+    ASSERT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_EQ(1, state.remote_unmaps.load());
+    ASSERT_EQ(2u, list->size);
+    // A completed remote task is removed even while the local task still fails.
+    state.unmap_error.store(0);
+    state.deallocate_error.store(UBSM_ERR_NET);
+    ubsmem_shmem_deallocate = [](const char* name) {
+        ++ubs_cleanup->deallocates;
+        return strcmp(name, "ubs_local") == 0
+            ? ubs_cleanup->deallocate_error.load() : 0;
+    };
+    UbsShmCallback(list);
+    EXPECT_EQ(1u, list->size);
+    state.deallocate_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(4, state.unmaps.load());
+    EXPECT_EQ(3, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, retry_resumes_at_deallocate_and_accepts_already_deleted_names) {
+    using namespace brpc::ubring;
+    state.unmap_error.store(0);
+    state.deallocate_error.store(UBSM_ERR_IN_USING);
+    SHM shm = Mapping();
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&shm));
+    EXPECT_EQ(nullptr, shm.addr);
+    UbsShmCallback(list);
+    EXPECT_EQ(1u, list->size);
+    state.deallocate_error.store(UBSM_ERR_NOT_FOUND);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(1, state.unmaps.load());
+    EXPECT_EQ(3, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, remote_retry_keeps_distinct_mappings_and_never_deallocates) {
+    using namespace brpc::ubring;
+    SHM first = Mapping();
+    SHM second = Mapping(true);
+    strcpy(second.name, first.name);
+    ASSERT_EQ(UBRING_OK, UbsShmRemoteFree(&first));
+    ASSERT_EQ(UBRING_OK, UbsShmRemoteFree(&second));
+    ASSERT_EQ(2u, list->size);
+    state.unmap_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(4, state.unmaps.load());
+    EXPECT_EQ(0, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, duplicate_handoff_preserves_completed_operations) {
+    using namespace brpc::ubring;
+    SHM remote = Mapping();
+    SHM local = remote;
+    ASSERT_EQ(UBRING_OK, UbsShmRemoteFree(&remote));
+    state.unmap_error.store(0);
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&local));
+    EXPECT_EQ(1u, list->size);
+    EXPECT_EQ(1, state.unmaps.load());
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(2, state.unmaps.load());
+    EXPECT_EQ(1, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, rejected_handoff_keeps_a_cleanup_reference_and_retries) {
+    using namespace brpc::ubring;
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    ring._trx->local_shm = Mapping();
+    UbrEventQMsg event{};
+    event.flag = UBR_STATE_CONNECTED;
+    ring._trx->ubr_tx.local_tx_event_q.addr = reinterpret_cast<uint8_t*>(&event);
+    g_shm_list = nullptr;
+    const RETURN_CODE rc = ring.UbrTrxAbort();
+    EXPECT_TRUE(WaitForUBCondition([&] { return state.unmaps.load() >= 2; }));
+    g_shm_list = list;
+    state.unmap_error.store(0);
+    EXPECT_EQ(UBRING_OK, rc);
+    EXPECT_EQ(nullptr, ring._trx);
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_TRUE(WaitForUBCondition([&] {
+        return UBRingManager::g_ubr_mgr.trx_num == 0;
+    }));
+    EXPECT_EQ(1, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, finalize_retains_failed_tasks_until_sdk_recovery) {
+    using namespace brpc::ubring;
+    SHM shm = Mapping();
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&shm));
+    EXPECT_EQ(UBRING_ERR, UbsShmFini());
+    EXPECT_EQ(0, state.finalizes.load());
+    EXPECT_NE(nullptr, g_shm_list);
+    DeleteTimerSafe(g_shm_timer_fd);
+    g_shm_timer_fd = 0;
+    state.unmap_error.store(0);
+    EXPECT_EQ(UBRING_OK, UbsShmFini());
+    EXPECT_EQ(nullptr, g_shm_list);
+    EXPECT_EQ(1, state.finalizes.load());
+    EXPECT_EQ(1, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, finalize_waits_for_an_active_retry_callback) {
+    using namespace brpc::ubring;
+    SHM shm = Mapping();
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&shm));
+    state.unmap_error.store(0);
+    state.block_unmap.store(true);
+    itimerspec spec{};
+    spec.it_interval.tv_sec = 10;
+    spec.it_value.tv_nsec = 1;
+    g_shm_timer_fd = TimerStart(&spec, UbsShmCallback, list);
+    ASSERT_GE(g_shm_timer_fd, 0);
+    const int entered = state.entered.timed_wait(butil::milliseconds_from_now(1000));
+    if (entered != 0) {
+        state.resume.signal();
+        FAIL() << "Retry callback did not start";
+    }
+    bthread::CountdownEvent started;
+    bthread::CountdownEvent finished;
+    RETURN_CODE rc = UBRING_ERR;
+    std::thread close([&] {
+        started.signal();
+        rc = UbsShmFini();
+        finished.signal();
+    });
+    started.wait();
+    EXPECT_NE(0, finished.timed_wait(butil::milliseconds_from_now(30)));
+    EXPECT_EQ(0, state.finalizes.load());
+    state.resume.signal();
+    close.join();
+    EXPECT_EQ(UBRING_OK, rc);
+    EXPECT_FALSE(state.finalized_during_unmap.load());
+    EXPECT_EQ(1, state.finalizes.load());
+    EXPECT_EQ(nullptr, g_shm_list);
+}
 
 #else
 
