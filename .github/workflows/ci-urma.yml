@@ -54,7 +54,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libssl-dev libgflags-dev \
             libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev \
-            libgtest-dev libgmock-dev
+            libgtest-dev libgmock-dev libgoogle-perftools-dev
       - name: Configure
         run: |
           cmake -S . -B build/urma-ci -G Ninja \
