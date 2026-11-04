@@ -340,6 +340,15 @@ friend class GlobalValue<self_type>;
         call_op_returning_void(_op, _global_result, prev);
     }
 
+    AgentId agent_id() const { return _id; }
+
+    // The caller must keep the combiner owning id alive. An allocated TLS
+    // slot may still be unbound, or belong to an expired combiner after reuse.
+    inline static Agent* get_bound_tls_agent(AgentId id) {
+        Agent* agent = AgentGroup::get_tls_agent(id);
+        return agent && !agent->combiner.expired() ? agent : nullptr;
+    }
+
     // We need this function to be as fast as possible.
     Agent* get_or_create_tls_agent() {
         Agent* agent = AgentGroup::get_tls_agent(_id);
