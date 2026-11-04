@@ -68,9 +68,11 @@ RETURN_CODE UBRing::UbrTrxAbort() {
     if (ATOMIC_LOAD(_trx->close_state) != UBR_CLOSE_FIRST) {
         return ReleaseTrx();
     }
-    const RETURN_CODE close_rc = UbrTrxCloseCheck(_trx);
-    if (close_rc != UBRING_OK) {
-        return close_rc;
+    if (_trx->ubr_tx.local_tx_event_q.addr != nullptr) {
+        const RETURN_CODE close_rc = UbrTrxCloseCheck(_trx);
+        if (close_rc != UBRING_OK) {
+            return close_rc;
+        }
     }
     int expected = UBR_CLOSE_FIRST;
     if (!ATOMIC_COMPARE_EXCHANGE_STRONG(
@@ -1056,32 +1058,26 @@ int UBRing::UbrPrepareIpcV2Format()
 
 int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm,
                                  UbrDataFormat format) {
-    UbrSetSleepTask(UBR_TASK_ACCEPT_MAP_FRONT);
-    if (UNLIKELY((ShmRemoteMalloc(remote_trx_shm)) != UBRING_OK)) {
-        LOG(ERROR) << "Trx apply remote shared memory failed.";
-        return -1;
-    }
-
-    if (UNLIKELY((ShmLocalCalloc(local_trx_shm)) != UBRING_OK)) {
-        LOG(ERROR) << "Trx apply local shared memory failed.";
-        ShmRemoteFree(remote_trx_shm);
-        return -1;
-    }
-
-    UbrTrx **ubr_trx_ptr = &_trx;
-    if (UNLIKELY((UBRingManager::AcquireUbrTrxFromMgr(ubr_trx_ptr)) != UBRING_OK)) {
-        LOG(ERROR) << "Acquire ubrtrx failed.";
-        ShmRemoteFree(remote_trx_shm);
-        ShmLocalFree(local_trx_shm);
+    if (UBRingManager::AcquireUbrTrxFromMgr(&_trx) != UBRING_OK) {
         return -1;
     }
     _trx->type = TCP_TRX;
-    if (UNLIKELY((UbrServerTrxInit(
-            local_trx_shm, remote_trx_shm, format)) != UBRING_OK)) {
+    UbrSetSleepTask(UBR_TASK_ACCEPT_MAP_FRONT);
+    if (ShmRemoteMalloc(remote_trx_shm) != UBRING_OK) {
+        LOG(ERROR) << "Trx apply remote shared memory failed.";
+        UbrTrxAbort();
+        return -1;
+    }
+    _trx->remote_shm = *remote_trx_shm;
+    if (ShmLocalCalloc(local_trx_shm) != UBRING_OK) {
+        LOG(ERROR) << "Trx apply local shared memory failed.";
+        UbrTrxAbort();
+        return -1;
+    }
+    _trx->local_shm = *local_trx_shm;
+    if (UbrServerTrxInit(local_trx_shm, remote_trx_shm, format) != UBRING_OK) {
         LOG(ERROR) << "Server trx init failed.";
-        UbrTrxFreeShm(_trx);
-        UBRingManager::ReleaseUbrTrxFromMgr(_trx);
-        _trx = nullptr;
+        UbrTrxAbort();
         return -1;
     }
     return 0;
@@ -1098,7 +1094,7 @@ int UBRing::UbrAllocateLocalShm(SHM *local_trx_shm, const char *shm_name)
     RETURN_CODE rc = ApplyAndMapLocalShm(local_trx_shm, shm_name);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx apply or map local shared memory failed, local_name=" << shm_name;
-        _trx = nullptr;
+        UbrTrxAbort();
         return -1;
     }
     return 0;
@@ -1204,7 +1200,6 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
 
     if (UNLIKELY(UbrAddTimer() != UBRING_OK)) {
         LOG(ERROR) << "Ubr add timer failed, local_name=" << local_name;
-        ShmRemoteFree(&_trx->remote_shm);
         return UBRING_ERR;
     }
 
@@ -1217,7 +1212,6 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
         DeleteTimerSafe((uint32_t)_trx->timer_fd);
         _trx->hb_timer_fd = 0;
         _trx->timer_fd = 0;
-        ShmRemoteFree(&_trx->remote_shm);
         return UBRING_ERR_TIMEOUT;
     }
 
@@ -1249,14 +1243,12 @@ RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_na
         if (rc == SHM_ERR_EXIST || rc == SHM_ERR_NOT_FOUND) {
             rc = UBR_ERR_ADDR_IN_USE;
         }
-        UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return rc;
     }
+    _trx->local_shm = *local_trx_shm;
     rc = UbrTrxMapLocalShm(local_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx map local shared memory failed, local shm name=" << local_trx_shm->name;
-        ShmLocalFree(local_trx_shm);
-        UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return rc;
     }
     ((UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr)->timeout =
@@ -1271,10 +1263,10 @@ RETURN_CODE UBRing::ApplyAndMapRemoteShm(SHM *remote_trx_shm)
         LOG(ERROR) << "Trx apply remote shared memory failed.";
         return rc;
     }
+    _trx->remote_shm = *remote_trx_shm;
     rc = UbrTrxMapRemoteShm(remote_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx map shared memory failed.";
-        ShmRemoteFree(remote_trx_shm);
         return rc;
     }
     return UBRING_OK;

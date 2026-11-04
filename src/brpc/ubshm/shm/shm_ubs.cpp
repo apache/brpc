@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <dlfcn.h>
 #include <time.h>
+#include <memory>
 #include <gflags/gflags.h>
 #include "brpc/ubshm/timer/timer_mgr.h"
 #include "brpc/ubshm/common/thread_lock.h"
@@ -135,45 +136,6 @@ static uint64_t AquireFlagIfWrDelayComp(const uint64_t flag)
     return flag | UBSM_FLAG_WR_DELAY_COMP;
 }
 
-RETURN_CODE UbsShmLocalMalloc(SHM *shm)
-{
-    int ret = ubsmem_shmem_allocate(g_region_name, shm->name, shm->len, SHM_RIGHT_MODE,
-        AquireFlagIfWrDelayComp(UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS));
-do {
-    if (ret == UBSM_ERR_ALREADY_EXIST) {
-        if (ubsmem_shmem_deallocate(shm->name) != UBSM_OK) {
-            LOG(ERROR) << "Ubs create shm name=" << shm->name << " failed, shm exists, ret=" << ret;
-            return SHM_ERR_EXIST;
-        }
-        LOG(INFO) << "Ubs delete shm name=" << shm->name << " success, try to recreate.";
-        ret = ubsmem_shmem_allocate(g_region_name, shm->name, shm->len, SHM_RIGHT_MODE,
-            AquireFlagIfWrDelayComp(UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS));
-        if (ret != UBSM_OK) {
-            LOG(ERROR) << "Ubs recreate shm name=" << shm->name << " failed, ret=" << ret;
-            return SHM_ERR;
-        }
-    } else if (ret != UBSM_OK) {
-        LOG(ERROR) << "Ubs create shm name=" << shm->name << " failed, ret=" << ret;
-        return SHM_ERR;
-    }
-} while (0);
-
-    ret = ubsmem_shmem_map(nullptr, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, shm->name, 0, (void**)&(shm->addr));
-    if (ret != UBSM_OK) {
-        LOG(ERROR) << "Ubs map shm=" << shm->name << " failed, ret=" << ret;
-        if (ret == UBSM_ERR_NOT_FOUND) {
-            return SHM_ERR_NOT_FOUND;
-        }
-        ubsmem_shmem_deallocate(shm->name);
-        return SHM_ERR;
-    }
-
-    // Obtain memid via MXE
-    shm->memid = 1; // temporarily stubbed
-    LOG(INFO) << "Ubs malloc local shm=" << shm->name << " length=" << shm->len << " memid=" << shm->memid << " success.";
-    return UBRING_OK;
-}
-
 // Each task owns a copy of the mapping and its remaining operations.
 static bool TryUbsCleanup(ShmListNode* task) {
     if (task->unmap) {
@@ -250,6 +212,50 @@ static RETURN_CODE ReleaseUbsShm(SHM* shm, bool deallocate) {
         return ReleaseUbsShmLocked(list, shm, task);
     }
     return ReleaseUbsShmLocked(nullptr, shm, task);
+}
+
+RETURN_CODE UbsShmLocalMalloc(SHM* shm) {
+    ShmList* list = g_shm_list;
+    if (list == nullptr) {
+        return UBRING_ERR;
+    }
+    LOCK_GUARD(list->shm_lock);
+    for (ShmListNode* task = list->head; task != nullptr; task = task->next) {
+        if (strcmp(task->shm.name, shm->name) == 0) {
+            return SHM_ERR_EXIST;
+        }
+    }
+    // Reserve rollback storage before creating a named SDK resource.
+    std::unique_ptr<ShmListNode, decltype(&free)> rollback(
+        static_cast<ShmListNode*>(malloc(sizeof(ShmListNode))), &free);
+    if (!rollback) {
+        return UBRING_ERR;
+    }
+    const uint64_t flags = AquireFlagIfWrDelayComp(
+        UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS);
+    int ret = ubsmem_shmem_allocate(
+        g_region_name, shm->name, shm->len, SHM_RIGHT_MODE, flags);
+    if (ret == UBSM_ERR_ALREADY_EXIST) {
+        return SHM_ERR_EXIST;
+    }
+    if (ret != UBSM_OK) {
+        LOG(ERROR) << "Ubs allocate shm=" << shm->name << " failed, ret=" << ret;
+        return SHM_ERR;
+    }
+    shm->addr = nullptr;
+    ret = ubsmem_shmem_map(nullptr, shm->len, PROT_READ | PROT_WRITE,
+                          MAP_SHARED, shm->name, 0,
+                          reinterpret_cast<void**>(&shm->addr));
+    if (ret != UBSM_OK) {
+        LOG(ERROR) << "Ubs map shm=" << shm->name << " failed, ret=" << ret;
+        rollback->shm = *shm;
+        rollback->unmap = false;
+        rollback->deallocate = true;
+        ReleaseUbsShmLocked(list, shm, rollback.release());
+        return ret == UBSM_ERR_NOT_FOUND ? SHM_ERR_NOT_FOUND : SHM_ERR;
+    }
+    shm->memid = 1;
+    return UBRING_OK;
 }
 
 RETURN_CODE UbsShmMunmap(SHM *shm) {
