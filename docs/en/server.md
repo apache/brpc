@@ -264,7 +264,7 @@ Services using protobuf can be accessed via http/h2+json generally. The json str
 
 ```shell
 # -H 'Content-Type: application/json' is optional
-$ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
+$ curl -d '{"message":"hello"}' http://localhost:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
@@ -369,7 +369,7 @@ Server.set_version(…) sets name+version for the server, accessible from the bu
 
 If a connection does not read or write within the seconds specified by ServerOptions.idle_timeout_sec, it's treated as "idle" and will be closed by server soon. Default value is -1 which disables the feature.
 
-If [-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close) is turned on, a log will be printed before closing. 
+If [-log_idle_connection_close](http://localhost:8765/flags/log_idle_connection_close) is turned on, a log will be printed before closing. 
 
 | Name                      | Value | Description                              | Defined At          |
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
@@ -393,13 +393,13 @@ If this field is non-empty, Server creates a file named so at start-up, with pid
 
 This feature only affects logging macros in [butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h).
 
-If [-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname) is turned on, each line of log contains the hostname so that users know machines at where each line is generated from aggregated logs.
+If [-log_hostname](http://localhost:8765/flags/log_hostname) is turned on, each line of log contains the hostname so that users know machines at where each line is generated from aggregated logs.
 
 ## Crash after printing FATAL log
 
 This feature only affects logging macros in [butil/logging.h](https://github.com/apache/brpc/blob/master/src/butil/logging.h), glog crashes for FATAL log by default.
 
-If [-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) is turned on, program crashes after printing LOG(FATAL) or failed assertions by CHECK*(), and generates coredump (with proper environmental settings). Default value is false. This flag can be turned on in tests to make sure the program never hit critical errors.
+If [-crash_on_fatal_log](http://localhost:8765/flags/crash_on_fatal_log) is turned on, program crashes after printing LOG(FATAL) or failed assertions by CHECK*(), and generates coredump (with proper environmental settings). Default value is false. This flag can be turned on in tests to make sure the program never hit critical errors.
 
 > A common convention: use ERROR for tolerable errors, FATAL for unacceptable and permanent errors.
 
@@ -417,7 +417,7 @@ Set gflag -free_memory_to_system_interval to make the program try to return free
 
 ## Log error to clients
 
-Framework does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text).
+Framework does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://localhost:8765/flags/log_error_text).
 
 ## Customize percentiles of latency
 
@@ -446,7 +446,7 @@ NOTE: It does mean that coredump of programs is likely to be caused by "stack ov
 
 ## Limit sizes of messages
 
-To protect servers and clients, when a request received by a server or a response received by a client is too large, the server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size), in bytes.
+To protect servers and clients, when a request received by a server or a response received by a client is too large, the server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://localhost:8765/flags/max_body_size), in bytes.
 
 An error log is printed when a message is too large and rejected:
 
@@ -589,7 +589,19 @@ Controlled by `ServerOptions.num_threads` , number of cpu cores by default(inclu
 
 NOTE: ServerOptions.num_threads is just a **hint**.
 
-Don't think that Server uses exactly so many workers because all servers and channels in one process share worker pthreads. Total number of threads is the maximum of all ServerOptions.num_threads and bthread_concurrency.  For example, a program has 2 servers with num_threads=24 and 36 respectively, and bthread_concurrency is 16. Then the number of worker pthreads is max (24, 36, 16) = 36, which is different from other RPC implementations which do summations generally.
+Don't think that Server uses exactly so many workers because all servers and channels in one process share worker pthreads. The configured normal concurrency is the maximum of all ServerOptions.num_threads and bthread_concurrency.  For example, a program has 2 servers with num_threads=24 and 36 respectively, and bthread_concurrency is 16. Then the configured normal concurrency is max (24, 36, 16) = 36, which is different from other RPC implementations which do summations generally.
+
+NOTE: the event dispatchers (-event_dispatcher_num of them per tag) and bthread's internal epoll thread run an event loop that never returns: they wait in epoll_wait/kevent when idle and dispatch the events in place otherwise. As bthreads are not preemptible, in neither state does the worker pthread carrying them get to run another bthread, so it is effectively dedicated to them. Each of them therefore reserves one **extra** worker which is not part of the maximum above. There are three concurrency counts:
+
+- **Normal concurrency**: workers available to normal bthreads, configured by `num_threads` / `-bthread_concurrency`.
+- **Reserved concurrency**: extra workers created for blocking loops such as event dispatchers and internal epoll threads.
+- **Total concurrency**: normal concurrency plus reserved concurrency. The bvar `bthread_worker_count` reports the total number of running workers.
+
+With the default eager worker creation, total concurrency is `max(all num_threads, -bthread_concurrency) + reserved concurrency`. When `-bthread_min_concurrency` enables lazy growth, the current normal concurrency may be lower than its configured value. Reserved workers are still created eagerly.
+
+The minimum configurable normal concurrency is `BTHREAD_MIN_CONCURRENCY` (4). The internal epoll thread uses the separate reserved budget and is excluded from this minimum.
+
+Each tag has separate limits of `BTHREAD_MAX_CONCURRENCY` (1024) normal workers and `BTHREAD_MAX_RESERVED_CONCURRENCY` (512) reserved workers, for a total capacity of 1536. Reservations accumulate across calls. Setting normal concurrency to 1024 still leaves room to reserve workers for event dispatchers and the internal epoll thread, regardless of initialization order.
 
 Channel does not have a corresponding option, but user can change number of worker pthreads at client-side by setting gflag -bthread_concurrency.
 

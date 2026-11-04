@@ -23,6 +23,7 @@
 #define BUTIL_OBJECT_POOL_H
 
 #include <cstddef>                       // size_t
+#include <cstdint>
 #include "butil/type_traits.h"
 
 // ObjectPool is a derivative class of ResourcePool to allocate and
@@ -107,6 +108,23 @@ template <typename T> inline void clear_objects() {
 // Don't use it frequently like a "getter" function.
 template <typename T> ObjectPoolInfo describe_objects() {
     return ObjectPool<T>::singleton()->describe_objects();
+}
+
+// Process objects cached globally for at least idle_us (monotonic time).
+// Exclusively borrow whole chunks until at least max_items objects are selected
+// or no eligible chunks remain, then invoke fn outside the pool lock. The count
+// may exceed max_items by at most ObjectPool<T>::FREE_CHUNK_NITEM - 1 objects.
+// Use SIZE_MAX to process all eligible global chunks in one call.
+// fn must be noexcept, preserve each object's lifetime/address,
+// and leave it reusable. Borrowers restore any resources released by fn.
+// Processed chunks become cold and are reused only after the regular global
+// free list is empty. They are not processed again until borrowed and returned
+// to the global free list.
+// Return the number of objects passed to fn, regardless of its effects.
+// TLS caches are untouched. Finish all calls before clearing a pool in tests.
+template <typename T, typename Fn>
+inline size_t process_idle_objects(int64_t idle_us, size_t max_items, Fn& fn) {
+    return ObjectPool<T>::singleton()->process_idle_objects(idle_us, max_items, fn);
 }
 
 }  // namespace butil

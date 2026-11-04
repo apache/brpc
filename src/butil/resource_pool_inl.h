@@ -116,7 +116,10 @@ public:
     // To support cache-aligned objects, align Block.items by cacheline.
     struct BAIDU_CACHELINE_ALIGNMENT Block {
         BlockItem items[BLOCK_NITEM];
-        size_t nitem;
+        // Written by the owning LocalPool and read by address_resource() from
+        // other threads. Publishing the increment after construction keeps the
+        // bounds check data-race-free.
+        butil::atomic<size_t> nitem;
 
         Block() : nitem(0) {}
     };
@@ -184,28 +187,32 @@ public:
         }                                                                   \
         T* p = nullptr;                                                        \
         /* Fetch memory from local block */                                 \
-        if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {                \
-            id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
-            auto item = _cur_block->items + _cur_block->nitem;              \
-            p = new (item->void_data()) T CTOR_ARGS;                        \
-            if (!ResourcePoolValidator<T>::validate(p)) {                   \
-                p->~T();                                                    \
-                return nullptr;                                                \
+        if (_cur_block) {                                                    \
+            const size_t nitem = _cur_block->nitem.load(butil::memory_order_relaxed); \
+            if (nitem < BLOCK_NITEM) {                                      \
+                id->value = _cur_block_index * BLOCK_NITEM + nitem;         \
+                auto item = _cur_block->items + nitem;                      \
+                p = new (item->void_data()) T CTOR_ARGS;                    \
+                if (!ResourcePoolValidator<T>::validate(p)) {               \
+                    p->~T();                                                \
+                    return nullptr;                                         \
+                }                                                           \
+                _cur_block->nitem.store(nitem + 1, butil::memory_order_release); \
+                return p;                                                   \
             }                                                               \
-            ++_cur_block->nitem;                                            \
-            return p;                                                       \
         }                                                                   \
         /* Fetch a Block from global */                                     \
         _cur_block = add_block(&_cur_block_index);                          \
         if (_cur_block != nullptr) {                                           \
-            id->value = _cur_block_index * BLOCK_NITEM + _cur_block->nitem; \
-            auto item = _cur_block->items + _cur_block->nitem;              \
+            const size_t nitem = _cur_block->nitem.load(butil::memory_order_relaxed); \
+            id->value = _cur_block_index * BLOCK_NITEM + nitem;             \
+            auto item = _cur_block->items + nitem;                          \
             p = new (item->void_data()) T CTOR_ARGS;                        \
             if (!ResourcePoolValidator<T>::validate(p)) {                   \
                 p->~T();                                                    \
                 return nullptr;                                                \
             }                                                               \
-            ++_cur_block->nitem;                                            \
+            _cur_block->nitem.store(nitem + 1, butil::memory_order_release); \
             return p;                                                       \
         }                                                                   \
         return nullptr;                                                        \
@@ -267,7 +274,8 @@ public:
                            .load(butil::memory_order_consume);
                 if (__builtin_expect(b != nullptr, 1)) {
                     const size_t offset = id.value - block_index * BLOCK_NITEM;
-                    if (__builtin_expect(offset < b->nitem, 1)) {
+                    if (__builtin_expect(
+                            offset < b->nitem.load(butil::memory_order_acquire), 1)) {
                         return (T*)b->items + offset;
                     }
                 }
@@ -380,6 +388,7 @@ public:
 private:
     ResourcePool() {
         _free_chunks.reserve(RP_INITIAL_FREE_LIST_SIZE);
+        _nfree_chunks.store(0, butil::memory_order_relaxed);
         pthread_mutex_init(&_free_chunks_mutex, nullptr);
     }
 
@@ -511,9 +520,10 @@ private:
 
 private:
     bool pop_free_chunk(FreeChunk& c) {
-        // Critical for the case that most return_object are called in
-        // different threads of get_object.
-        if (_free_chunks.empty()) {
+        // This relaxed load is only a hint that avoids contending on the
+        // mutex when the shared free list is empty. The list itself remains
+        // protected by _free_chunks_mutex below.
+        if (_nfree_chunks.load(butil::memory_order_relaxed) == 0) {
             return false;
         }
         pthread_mutex_lock(&_free_chunks_mutex);
@@ -523,6 +533,7 @@ private:
         }
         DynamicFreeChunk* p = _free_chunks.back();
         _free_chunks.pop_back();
+        _nfree_chunks.fetch_sub(1, butil::memory_order_relaxed);
         pthread_mutex_unlock(&_free_chunks_mutex);
         c.nfree = p->nfree;
         memcpy(c.ids, p->ids, sizeof(*p->ids) * p->nfree);
@@ -540,6 +551,7 @@ private:
         memcpy(p->ids, c.ids, sizeof(*c.ids) * c.nfree);
         pthread_mutex_lock(&_free_chunks_mutex);
         _free_chunks.push_back(p);
+        _nfree_chunks.fetch_add(1, butil::memory_order_relaxed);
         pthread_mutex_unlock(&_free_chunks_mutex);
         return true;
     }
@@ -555,6 +567,7 @@ private:
 
     std::vector<DynamicFreeChunk*> _free_chunks;
     pthread_mutex_t _free_chunks_mutex;
+    butil::static_atomic<size_t> _nfree_chunks;
 
 #ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     static butil::static_atomic<size_t> _global_nfree;

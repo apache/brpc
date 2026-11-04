@@ -23,7 +23,9 @@ find_package(Gperftools)
 
 add_library(brpc_test_config INTERFACE)
 target_link_libraries(brpc_test_config INTERFACE brpc_build_config)
-target_include_directories(brpc_test_config INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(brpc_test_config BEFORE INTERFACE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS})
 target_compile_definitions(brpc_test_config INTERFACE
     UNIT_TEST
     BVAR_NOT_LINK_DEFAULT_VARIABLES
@@ -59,20 +61,24 @@ set(BRPC_SYSTEM_GTEST_SOURCE_DIR "" CACHE PATH "System googletest source directo
 
 if(DOWNLOAD_GTEST)
     include(SetupGtest)
-    set(BRPC_DOWNLOADED_GTEST_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/downloaded-googletest-include)
-    file(REMOVE_RECURSE ${BRPC_DOWNLOADED_GTEST_INCLUDE_DIR})
-    file(MAKE_DIRECTORY ${BRPC_DOWNLOADED_GTEST_INCLUDE_DIR})
-    file(COPY
-        ${PROJECT_BINARY_DIR}/googletest-src/googletest/include/
-        ${PROJECT_BINARY_DIR}/googletest-src/googlemock/include/
-        DESTINATION ${BRPC_DOWNLOADED_GTEST_INCLUDE_DIR})
-    target_include_directories(brpc_test_config BEFORE INTERFACE
-        ${BRPC_DOWNLOADED_GTEST_INCLUDE_DIR})
+    set(BRPC_GTEST_SOURCE_DIR "${PROJECT_BINARY_DIR}/googletest-src")
 elseif(BRPC_SYSTEM_GTEST_SOURCE_DIR)
     add_subdirectory("${BRPC_SYSTEM_GTEST_SOURCE_DIR}" "${PROJECT_BINARY_DIR}/system-googletest-build")
+    set(BRPC_GTEST_SOURCE_DIR "${BRPC_SYSTEM_GTEST_SOURCE_DIR}")
 else()
     message(FATAL_ERROR "Googletest is not available")
 endif()
+
+# Keep the selected headers ahead of unrelated -I paths. The original GTest
+# include directories can be marked SYSTEM by its own targets.
+set(BRPC_GTEST_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/selected-googletest-include")
+file(REMOVE_RECURSE "${BRPC_GTEST_INCLUDE_DIR}")
+file(MAKE_DIRECTORY "${BRPC_GTEST_INCLUDE_DIR}")
+file(COPY
+    "${BRPC_GTEST_SOURCE_DIR}/googletest/include/"
+    "${BRPC_GTEST_SOURCE_DIR}/googlemock/include/"
+    DESTINATION "${BRPC_GTEST_INCLUDE_DIR}")
+target_include_directories(brpc_test_config BEFORE INTERFACE "${BRPC_GTEST_INCLUDE_DIR}")
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cert1.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/cert2.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -128,6 +134,7 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/non_thread_safe_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/nullable_string16_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/object_pool_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/resource_pool_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/observer_list_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/optional_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/platform_thread_unittest.cc
@@ -284,8 +291,48 @@ foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     add_test(NAME ${BTHREAD_UT_WE} COMMAND ${BTHREAD_UT_WE})
 endforeach()
 
+# FlatBuffers tests use the release library, independently of the debug suite.
+if(WITH_FLATBUFFERS)
+    find_program(FLATBUFFERS_FLATC_EXECUTABLE NAMES flatc)
+    if(NOT FLATBUFFERS_FLATC_EXECUTABLE)
+        message(FATAL_ERROR
+            "FlatBuffers tests require an installed flatc; set FLATBUFFERS_FLATC_EXECUTABLE.")
+    endif()
+    set(FLATBUFFERS_TEST_HEADER
+        "${CMAKE_CURRENT_BINARY_DIR}/flatbuffers_message_generated.h")
+    add_custom_command(
+        OUTPUT "${FLATBUFFERS_TEST_HEADER}"
+        COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" --cpp
+                -o "${CMAKE_CURRENT_BINARY_DIR}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/flatbuffers_message.fbs"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/flatbuffers_message.fbs"
+                "${FLATBUFFERS_FLATC_EXECUTABLE}"
+        COMMENT "Generating FlatBuffers test messages"
+        VERBATIM)
+    add_executable(brpc_flatbuffers_unittest
+        brpc_flatbuffers_unittest.cpp "${FLATBUFFERS_TEST_HEADER}")
+    target_include_directories(brpc_flatbuffers_unittest BEFORE PRIVATE
+        "${BRPC_GTEST_INCLUDE_DIR}")
+    target_link_libraries(brpc_flatbuffers_unittest PRIVATE
+        brpc-static brpc_test_config gtest_main ${DYNAMIC_LIB})
+    add_test(NAME brpc_flatbuffers_unittest COMMAND brpc_flatbuffers_unittest)
+endif()
+
 # brpc tests
+if(WITH_URMA AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_library(brpc_urma_send_failure_injector MODULE
+                ../example/urma_performance/send_failure_injector.c)
+    set_target_properties(brpc_urma_send_failure_injector PROPERTIES
+                          C_STANDARD 11 C_STANDARD_REQUIRED ON)
+    target_include_directories(brpc_urma_send_failure_injector PRIVATE
+        $<TARGET_PROPERTY:brpc_build_config,INTERFACE_INCLUDE_DIRECTORIES>)
+    target_link_libraries(brpc_urma_send_failure_injector PRIVATE
+                          ${CMAKE_DL_LIBS} Threads::Threads)
+endif()
+
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
+list(REMOVE_ITEM BRPC_UNITTESTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
@@ -294,7 +341,25 @@ foreach(BRPC_UT ${BRPC_UNITTESTS})
         gtest_main
         brpc_test_config
         ${GPERFTOOLS_LIBRARIES})
-    add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
+    if(BRPC_UT_WE STREQUAL "brpc_urma_remote_recovery_unittest" AND
+       TARGET brpc_urma_send_failure_injector)
+        add_dependencies(${BRPC_UT_WE} brpc_urma_send_failure_injector)
+        foreach(version 2 3)
+            foreach(path ctp rtp)
+                foreach(polling false true)
+                    set(remote_test "brpc_urma_remote_recovery_${path}_v${version}_${polling}_unittest")
+                    add_test(NAME ${remote_test} COMMAND ${BRPC_UT_WE}
+                             --urma_tp_type=${path}
+                             --urma_client_handshake_version=${version}
+                             --urma_use_polling=${polling})
+                    set_tests_properties(${remote_test} PROPERTIES
+                        ENVIRONMENT "LD_PRELOAD=$<TARGET_FILE:brpc_urma_send_failure_injector>")
+                endforeach()
+            endforeach()
+        endforeach()
+    else()
+        add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
+    endif()
     if(WITH_URMA AND BRPC_UT_WE STREQUAL "brpc_urma_qos_unittest")
         add_test(NAME brpc_urma_qos_rtp_unittest
                  COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp)
@@ -329,7 +394,8 @@ if(BUILD_FUZZ_TESTS)
     set(FUZZ_TARGETS fuzz_butil fuzz_esp fuzz_hpack fuzz_http
         fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri
         fuzz_baidu_rpc fuzz_mongo fuzz_memcache
-        fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf)
+        fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf
+        fuzz_rtmp)
 
 
     foreach(target ${FUZZ_TARGETS})

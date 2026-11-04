@@ -43,6 +43,14 @@ set(BRPC_DEFINITIONS
     BRPC_WITH_URMA=${WITH_URMA_VAL}
     BRPC_WITH_UBRING=${WITH_UBRING_VAL})
 set(BRPC_INCLUDE_DIRS)
+if(WITH_FLATBUFFERS)
+    find_path(FLATBUFFERS_INCLUDE_DIR NAMES flatbuffers/flatbuffers.h)
+    if(NOT FLATBUFFERS_INCLUDE_DIR)
+        message(FATAL_ERROR
+            "WITH_FLATBUFFERS requires FlatBuffers headers; set FLATBUFFERS_INCLUDE_DIR.")
+    endif()
+    list(APPEND BRPC_INCLUDE_DIRS ${FLATBUFFERS_INCLUDE_DIR})
+endif()
 if(WITH_THRIFT)
     list(APPEND BRPC_DEFINITIONS ENABLE_THRIFT_FRAMED_PROTOCOL)
     find_library(THRIFT_LIB NAMES thrift)
@@ -208,7 +216,8 @@ if(WITH_URMA AND URMA_USE_MOCK_ENABLED)
     target_compile_features(brpc_build_config INTERFACE cxx_std_17)
 endif()
 target_include_directories(brpc_build_config BEFORE INTERFACE
-    ${CMAKE_CURRENT_BINARY_DIR})
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS})
 target_compile_definitions(brpc_build_config INTERFACE ${BRPC_DEFINITIONS})
 target_include_directories(brpc_build_config INTERFACE ${BRPC_INCLUDE_DIRS})
 
@@ -241,6 +250,9 @@ endif()
 
 file(GLOB_RECURSE BRPC_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 file(GLOB_RECURSE THRIFT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/thrift*.cpp")
+if(NOT WITH_FLATBUFFERS)
+    list(FILTER BRPC_SOURCES EXCLUDE REGEX "/brpc/flatbuffers/.*\\.cpp$")
+endif()
 file(GLOB_RECURSE EXCLUDE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/event_dispatcher_*.cpp")
 
 # When building with the real liburma, exclude the link-time mock so its urma_*

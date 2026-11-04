@@ -84,7 +84,7 @@ def run(args):
     injector = Path(args.injector).resolve()
     if not client.is_file() or not injector.is_file():
         raise RuntimeError("Build urma_recovery_client and urma_send_failure_injector first")
-    output = Path(tempfile.mkdtemp(prefix="pr92-injection-", dir=".")).resolve()
+    output = Path(tempfile.mkdtemp(prefix="urma-injection-", dir=".")).resolve()
     marker = output / "inject.once"
     csv_path = output / "client.csv"
     log_path = output / "client.log"

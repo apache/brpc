@@ -207,6 +207,9 @@ brpc::urma::SetUrmaRecoveryMode(brpc::urma::UrmaRecoveryMode::AUTO);
 同一连接记录首个运行期故障；访问错误单独计数，窗口耗尽保持 EAGAIN。
 恢复策略维护进程级模式、epoch 和对端冷却缓存，模式切换过滤旧连接上报。
 
+已建立 URMA 连接的客户端收到控制 TCP 连接关闭或读取错误时，上报传输故障，
+AUTO 下冷却该对端。服务端收到正常短连接的 EOF 时直接关闭连接。
+
 `GetUrmaRecoveryStatus()` 和 `/vars/urma_recovery_status` 提供故障原因、冷却状态及协商数；
 `/vars/urma_recovery_tcp_fallback_admissions` 按连接累计 TCP 准入。
 
@@ -243,6 +246,10 @@ python3 example/urma_performance/run_recovery_injection.py \
 `pooled` 检查重连后 RPC 持续成功，复用已建立的 TCP 连接。
 运行器支持 `--attachment-size` 回显校验和 `--polling` 轮询模式。
 构建 `urma_send_failure_injector_test` 后，通过示例目录的 CTest 执行工具自测。
+
+主库 CTest 的 `brpc_urma_remote_recovery_*` 用例在服务端注入一次 SEND 失败，
+覆盖 CTP/RTP、v2/v3、event/polling，检查客户端对端冷却、TCP 准入、
+URMA 恢复及 64 KiB 附件回显。正常短连接关闭也在同一测试中验证。
 
 ### 发送访问错误对照
 

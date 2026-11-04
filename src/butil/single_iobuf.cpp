@@ -271,7 +271,7 @@ int SingleIOBuf::assign_user_data(void* data, size_t size, std::function<void(vo
         deleter = ::free;
     }
     reset();
-    IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, deleter);
+    IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, std::move(deleter));
     _cur_ref.offset = 0;
     _cur_ref.length = b->cap;
     _cur_ref.block = b;

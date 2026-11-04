@@ -205,17 +205,30 @@ friend class GlobalValue<self_type>;
         // 
         // NOTE: Only available to non-atomic types.
         template <typename Op>
-        void merge_global(const Op &op, self_shared_type& c) {
-            const self_shared_type& c_ref = nullptr != c ? c : combiner.lock();
-            if (nullptr != c_ref) {
-                GlobalValue<self_type> g(this, c_ref.get());
-                element.merge_global(op, g);
+        void merge_global(const Op &op, const self_shared_type& c) {
+            // The caller keeps c alive during the merge. A conditional
+            // expression mixing c and combiner.lock() would copy c into a
+            // temporary shared_ptr, even when c is non-null.
+            if (c != nullptr) {
+                merge_global_impl(op, c.get());
+                return;
+            }
+            self_shared_type hold = combiner.lock();
+            if (hold != nullptr) {
+                merge_global_impl(op, hold.get());
             }
         }
 
         ElementContainer<ElementTp> element;
     private:
     friend class AgentCombiner<ResultTp, ElementTp, BinaryOp>;
+
+        template <typename Op>
+        void merge_global_impl(const Op& op, self_type* c) {
+            GlobalValue<self_type> g(this, c);
+            element.merge_global(op, g);
+        }
+
         self_weak_type combiner;
     };
 

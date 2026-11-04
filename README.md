@@ -11,20 +11,20 @@
 ### "bRPC" means "better RPC". 
 
 You can use it to:
-* Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
+* Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services:
   * restful http/https, [h2](https://httpwg.org/specs/rfc9113.html)/[gRPC](https://grpc.io). using http/h2 in bRPC is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
   * [redis](docs/en/redis_client.md) and [memcached](docs/en/memcache_client.md), thread-safe, more friendly and performant than the official clients.
   * [rtmp](https://github.com/apache/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
-  * hadoop_rpc (may be opensourced)
-  * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support
+  * hadoop_rpc (may be opensourced).
+  * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support.
   * [thrift](docs/en/thrift.md) support,  thread-safe, more friendly and performant than the official clients.
   * all sorts of protocols used in Baidu: [baidu_std](docs/en/baidu_std.md), [streaming_rpc](docs/en/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc and nshead-based ones.
-  * Build [HA](https://en.wikipedia.org/wiki/High_availability) distributed services using an industrial-grade implementation of [RAFT consensus algorithm](https://raft.github.io) which is opensourced at [braft](https://github.com/brpc/braft)
+  * Build [HA](https://en.wikipedia.org/wiki/High_availability) distributed services using an industrial-grade implementation of [RAFT consensus algorithm](https://raft.github.io) which is opensourced at [braft](https://github.com/brpc/braft).
 * Servers can handle requests [synchronously](docs/en/server.md) or [asynchronously](docs/en/server.md#asynchronous-service).
 * Clients can access servers [synchronously](docs/en/client.md#synchronus-call), [asynchronously](docs/en/client.md#asynchronous-call), [semi-synchronously](docs/en/client.md#semi-synchronous-call), or use [combo channels](docs/en/combo_channel.md) to simplify sharded or parallel accesses declaratively.
 * Debug services [via http](docs/en/builtin_service.md), and run  [cpu](docs/en/cpu_profiler.md), [heap](docs/en/heap_profiler.md) and [contention](docs/en/contention_profiler.md) profilers.
 * Get [better latency and throughput](docs/en/overview.md#better-latency-and-throughput).
-* [Extend bRPC](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/en/load_balancing.md) (dns, zk, etcd), [load balancers](docs/en/load_balancing.md) (rr, random, consistent hashing)
+* [Extend bRPC](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/en/load_balancing.md) (dns, zk, etcd), [load balancers](docs/en/load_balancing.md) (rr, random, consistent hashing).
 
 # Try it!
 
@@ -111,8 +111,8 @@ You can use it to:
 Please refer to [here](CONTRIBUTING.md).
 
 # Feedback and Getting involved
-* Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/apache/brpc/issues)
-* Subscribe to the mailing list(dev-subscribe@brpc.apache.org) to get updated with the project
+* Report bugs, ask questions or give suggestions by [Github Issues](https://github.com/apache/brpc/issues).
+* Subscribe to the mailing list(dev-subscribe@brpc.apache.org) to get updated with the project.
 
 # Code of Conduct
-We follow the code of conduct from Apache Software Foundation, please refer it here [Link](https://www.apache.org/foundation/policies/conduct)
+We follow the code of conduct from Apache Software Foundation, please refer it here [Link](https://www.apache.org/foundation/policies/conduct).

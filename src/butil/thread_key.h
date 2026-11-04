@@ -87,6 +87,13 @@ struct ThreadKeyTLS {
     void* data; // User data.
 };
 
+namespace detail {
+
+void DestroyThreadKeyData(const std::vector<ThreadKeyInfo>& keys,
+                          std::vector<ThreadKeyTLS>* tls_data);
+
+}  // namespace detail
+
 // pthread_key_xxx implication without num limit of key.
 int thread_key_create(ThreadKey& thread_key, DtorFunction dtor);
 int thread_key_delete(ThreadKey& thread_key);

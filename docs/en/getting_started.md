@@ -454,6 +454,10 @@ It is recommended to use the latest possible version of libunwind.
 
 no known issues.
 
+## flatbuffers: 25.2.10
+
+Optional and disabled by default. bRPC uses FlatBuffers builder internals, so only this version is accepted; see [FlatBuffers messages](flatbuffers.md) for using another version.
+
 # Track instances
 
 We provide a program to help you to track and monitor all brpc instances. Just run [trackme_server](https://github.com/apache/brpc/tree/master/tools/trackme_server/) somewhere and launch need-to-be-tracked instances with -trackme_server=SERVER. The trackme_server will receive pings from instances periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.

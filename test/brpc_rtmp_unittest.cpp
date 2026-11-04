@@ -30,6 +30,8 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_guard.h"
+#include "butil/file_util.h"
+#include "butil/posix/eintr_wrapper.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
@@ -899,47 +901,82 @@ TEST(RtmpTest, amf_rejects_oversized_strict_array_count) {
     EXPECT_EQ(0u, arr.size());
 }
 
-TEST(RtmpTest, amf_rejects_stray_object_end_marker) {
-    // A stray object-end marker (0x09) in a value position used to hit
-    // CHECK(false): the process aborted with -crash_on_fatal_log, and the
-    // object/array readers then continued as if the input were valid.
-    {
-        // As the value of a field in a generic object.
-        std::string req_buf;
-        AppendAMFObjectHeader(&req_buf);
-        AppendAMFShortStringBody(&req_buf, "a");
-        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
-        AppendAMFObjectEnd(&req_buf);
+TEST(RtmpTest, amf_rejects_invalid_value) {
+    // A value position must reject a stray object-end marker (0x09), any
+    // marker that AMF0 does not define (0x12 and up), and a typed object
+    // whose class name is longer than the limit.
+    ScopedAMFLimit scoped_limit(&brpc::FLAGS_amf_max_string_size, 4);
+    std::string typed_object(1, (char)brpc::AMF_MARKER_TYPED_OBJECT);
+    AppendAMFShortStringBody(&typed_object, "hello");
+    AppendAMFObjectEnd(&typed_object);
+    const std::string values[] = {
+        std::string(1, (char)brpc::AMF_MARKER_OBJECT_END),
+        std::string(1, (char)0x12),
+        std::string(1, (char)0xff),
+        typed_object,
+    };
+    for (size_t i = 0; i < arraysize(values); ++i) {
+        {
+            // As the value of a field in a generic object.
+            std::string req_buf;
+            AppendAMFObjectHeader(&req_buf);
+            AppendAMFShortStringBody(&req_buf, "a");
+            req_buf.append(values[i]);
+            AppendAMFObjectEnd(&req_buf);
 
-        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
-        brpc::AMFInputStream istream(&zc_stream);
-        brpc::AMFObject obj;
-        EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
-    }
-    {
-        // As an item of a strict array.
-        std::string req_buf;
-        AppendAMFStrictArrayHeader(&req_buf, 1);
-        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+            google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+            brpc::AMFInputStream istream(&zc_stream);
+            brpc::AMFObject obj;
+            EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream)) << "i=" << i;
+        }
+        {
+            // As an item of a strict array.
+            std::string req_buf;
+            AppendAMFStrictArrayHeader(&req_buf, 1);
+            req_buf.append(values[i]);
 
-        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
-        brpc::AMFInputStream istream(&zc_stream);
-        brpc::AMFArray arr;
-        EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
-    }
-    {
-        // As the value of a field mapped to a protobuf message.
-        std::string req_buf;
-        AppendAMFObjectHeader(&req_buf);
-        AppendAMFShortStringBody(&req_buf, "code");
-        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
-        AppendAMFObjectEnd(&req_buf);
+            google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+            brpc::AMFInputStream istream(&zc_stream);
+            brpc::AMFArray arr;
+            EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream)) << "i=" << i;
+        }
+        {
+            // As the value of a field mapped to a protobuf message.
+            std::string req_buf;
+            AppendAMFObjectHeader(&req_buf);
+            AppendAMFShortStringBody(&req_buf, "code");
+            req_buf.append(values[i]);
+            AppendAMFObjectEnd(&req_buf);
 
-        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
-        brpc::AMFInputStream istream(&zc_stream);
-        brpc::RtmpInfo info;
-        EXPECT_FALSE(brpc::ReadAMFObject(&info, &istream));
+            google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+            brpc::AMFInputStream istream(&zc_stream);
+            brpc::RtmpInfo info;
+            EXPECT_FALSE(brpc::ReadAMFObject(&info, &istream)) << "i=" << i;
+        }
     }
+}
+
+TEST(RtmpTest, amf_skips_object_value_of_non_message_field) {
+    // {code: {level: "inner"}, description: "outer"}: code is a string.
+    std::string req_buf;
+    AppendAMFObjectHeader(&req_buf);
+    AppendAMFShortStringBody(&req_buf, "code");
+    AppendAMFObjectHeader(&req_buf);
+    AppendAMFShortStringBody(&req_buf, "level");
+    req_buf.push_back((char)brpc::AMF_MARKER_STRING);
+    AppendAMFShortStringBody(&req_buf, "inner");
+    AppendAMFObjectEnd(&req_buf);
+    AppendAMFShortStringBody(&req_buf, "description");
+    req_buf.push_back((char)brpc::AMF_MARKER_STRING);
+    AppendAMFShortStringBody(&req_buf, "outer");
+    AppendAMFObjectEnd(&req_buf);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::RtmpInfo info;
+    ASSERT_TRUE(brpc::ReadAMFObject(&info, &istream));
+    EXPECT_FALSE(info.has_level());
+    EXPECT_EQ("outer", info.description());
 }
 
 TEST(RtmpTest, amf_rejects_deep_nested_arrays) {
@@ -1281,6 +1318,88 @@ TEST(RtmpTest, reject_unauthenticated_connection) {
         &buf, socket.get(), false, &server);
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
     ASSERT_EQ(nullptr, socket->parsing_context());
+
+    server.Stop(0);
+    server.Join();
+}
+
+class RejectAllAuthenticator : public brpc::Authenticator {
+public:
+    int GenerateCredential(std::string*) const override { return 0; }
+    int VerifyCredential(const std::string&, const butil::EndPoint&,
+                         brpc::AuthContext*) const override { return -1; }
+};
+
+// Returns a port nothing is listening on, or -1.
+static int PickUnusedPort() {
+    butil::fd_guard sockfd(butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
+    if (sockfd < 0) {
+        return -1;
+    }
+    butil::EndPoint point;
+    if (butil::get_local_side(sockfd, &point) != 0) {
+        return -1;
+    }
+    return point.port;
+}
+
+TEST(RtmpTest, not_served_on_internal_port) {
+    PlayingDummyService rtmp_service;
+    RejectAllAuthenticator auth;
+    brpc::Server server;
+    brpc::ServerOptions server_opt;
+    server_opt.rtmp_service = &rtmp_service;
+    server_opt.auth = &auth;
+    bool started = false;
+    for (int i = 0; i < 10 && !started; ++i) {
+        server_opt.internal_port = PickUnusedPort();
+        started = (server_opt.internal_port >= 0 &&
+                   0 == server.Start("127.0.0.1:0", &server_opt));
+    }
+    ASSERT_TRUE(started);
+
+    butil::EndPoint internal_point;
+    ASSERT_EQ(0, butil::str2endpoint(
+        "127.0.0.1", server_opt.internal_port, &internal_point));
+    butil::fd_guard fd(butil::tcp_connect(internal_point, nullptr));
+    ASSERT_GE(fd, 0);
+    timeval tv = { 2, 0 };
+    ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)));
+
+    // Builtin services on internal_port pass authentication without any
+    // credential, which latches the connection as authenticated.
+    const std::string http_req =
+        "GET /version HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+    ASSERT_EQ((int)http_req.size(), butil::WriteFileDescriptor(
+        fd, http_req.data(), http_req.size()));
+    // The reply may arrive in several segments, read until the status
+    // line prefix is complete.
+    const char status_prefix[] = "HTTP/1.1 200";
+    const size_t prefix_len = sizeof(status_prefix) - 1;
+    char resp[1024];
+    size_t nread = 0;
+    while (nread < prefix_len) {
+        const ssize_t n =
+            HANDLE_EINTR(read(fd, resp + nread, sizeof(resp) - nread));
+        ASSERT_GT(n, 0);
+        nread += n;
+    }
+    ASSERT_EQ(0, memcmp(resp, status_prefix, prefix_len));
+
+    // internal_port serves builtin and Tabbed services only, an RTMP
+    // handshake on the same connection must not reach rtmp_service. No
+    // protocol accepts the bytes there, so the server closes the connection
+    // and read() sees EOF. S0 (1 byte) means rtmp_service answered and -1
+    // is the receive timeout, i.e. the connection was left open; both fail.
+    char c0c1[1 + 1536];
+    memset(c0c1, 0, sizeof(c0c1));
+    c0c1[0] = 0x03;
+    ASSERT_EQ((int)sizeof(c0c1),
+              butil::WriteFileDescriptor(fd, c0c1, sizeof(c0c1)));
+    char s0 = 0;
+    const ssize_t n = HANDLE_EINTR(read(fd, &s0, 1));
+    const int saved_errno = errno;
+    ASSERT_EQ(0, n) << "n=" << n << " errno=" << saved_errno;
 
     server.Stop(0);
     server.Join();

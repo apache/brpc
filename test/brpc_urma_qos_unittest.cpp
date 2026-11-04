@@ -23,6 +23,8 @@
 
 #if BRPC_WITH_URMA
 #include "butil/logging.h"
+#include "butil/memory/scope_guard.h"
+#include "brpc/global.h"
 #include "brpc/acceptor.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
@@ -506,6 +508,42 @@ TEST_F(UrmaQosTest,
     EXPECT_EQ(main->id(), selected->id());
     EXPECT_EQ(0, pooled->ReturnToPool());
     short_socket->SetFailed();
+}
+
+TEST_F(UrmaQosTest, sub_socket_qos_preserves_common_connection_options) {
+    brpc::GlobalInitializeOrDie();
+    SocketOptions options;
+    options.socket_mode = SOCKET_MODE_URMA;
+    options.urma_qos.priority = 10;
+    options.urma_qos.service_level = 4;
+    options.keepalive_options.emplace();
+    options.keepalive_options->keepalive_idle_s = 11;
+    options.keepalive_options->keepalive_interval_s = 12;
+    options.keepalive_options->keepalive_count = 13;
+    options.tcp_user_timeout_ms = 1400;
+    options.bthread_tag = bthread_self_tag() + 1;
+    SocketId id;
+    ASSERT_EQ(0, Socket::Create(options, &id));
+    BRPC_SCOPE_EXIT { Socket::SetFailed(id); };
+    SocketUniquePtr parent;
+    ASSERT_EQ(0, Socket::Address(id, &parent));
+    options.keepalive_options->keepalive_idle_s = 99;
+    for (int pooled = 0; pooled < 2; ++pooled) {
+        SCOPED_TRACE(pooled);
+        SocketUniquePtr child;
+        ASSERT_EQ(0, pooled ? parent->GetPooledSocket(&child)
+                            : parent->GetShortSocket(&child));
+        BRPC_SCOPE_EXIT { child->SetFailed(); };
+        EXPECT_EQ(SOCKET_MODE_URMA, child->socket_mode());
+        EXPECT_EQ(10, child->urma_qos().priority);
+        EXPECT_EQ(4, child->urma_qos().service_level);
+        ASSERT_TRUE(child->_keepalive_options.has_value());
+        EXPECT_EQ(11, child->_keepalive_options->keepalive_idle_s);
+        EXPECT_EQ(12, child->_keepalive_options->keepalive_interval_s);
+        EXPECT_EQ(13, child->_keepalive_options->keepalive_count);
+        EXPECT_EQ(1400, child->_tcp_user_timeout_ms);
+        EXPECT_EQ(options.bthread_tag, child->_io_event.bthread_tag());
+    }
 }
 
 TEST_F(UrmaQosTest, service_level_isolates_and_inherits_connections) {

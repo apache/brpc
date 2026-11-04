@@ -1397,8 +1397,14 @@ void UrmaEndpoint::DrainEstablishedTcp() {
         uint8_t byte = 0;
         const ssize_t nr = read(socket->fd(), &byte, 1);
         if (nr < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             if (errno != EAGAIN) {
                 const int saved_errno = errno;
+                if (socket->CreatedByConnect()) {
+                    ReportFailure(UrmaFailureReason::TRANSPORT_ERROR);
+                }
                 socket->SetFailed(saved_errno, "Fail to read URMA TCP fd: %s",
                                   berror(saved_errno));
                 return;
@@ -1407,6 +1413,12 @@ void UrmaEndpoint::DrainEstablishedTcp() {
                 return;
             }
         } else if (nr == 0) {
+            // A failed server SEND closes the control socket without a local
+            // completion error at the client. Cool that peer before reconnecting.
+            // Server-side EOF is normal when a short-connection client closes.
+            if (socket->CreatedByConnect()) {
+                ReportFailure(UrmaFailureReason::TRANSPORT_ERROR);
+            }
             socket->SetEOF();
             return;
         } else {
