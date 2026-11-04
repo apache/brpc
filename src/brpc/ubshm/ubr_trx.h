@@ -130,6 +130,12 @@ typedef struct TagUbrRx {
     volatile EventQState trx_state;
 } UbrRx;
 
+enum UbrShmNameState {
+    UBR_SHM_NAME_OWNED,
+    UBR_SHM_NAME_RELEASING,
+    UBR_SHM_NAME_RELEASED  // Unlinked or owned by the SHM retry queue.
+};
+
 typedef struct TagUbrTrx {
     UbrTx ubr_tx;
     UbrRx ubr_rx;
@@ -144,7 +150,10 @@ typedef struct TagUbrTrx {
     int clear_timer_fd;
     // The ring, cleanup callback and device-event callback hold references.
     AtomicInt ref_count;
-    bool passive_close;
+    // SDK events defer cleanup until queue initialization has completed.
+    AtomicBool initializing;
+    AtomicBool device_fault;
+    AtomicInt local_name_state;
     bool local_shm_released;
     bool remote_shm_released;
     AtomicInt close_cnt;

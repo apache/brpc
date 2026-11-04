@@ -130,6 +130,7 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
             (*trx)->trx_mgr_index = i;
             (*trx)->ubr_id = g_ubr_trx_num;
             (*trx)->ref_count = 1;
+            (*trx)->initializing = true;
             (*trx)->close_state = UBR_CLOSE_FIRST;
             (*trx)->close_cnt = MAX_CLOSE_COUNT;
             ++g_ubr_mgr.trx_num;
@@ -267,6 +268,10 @@ int32_t UBRingManager::UbEventCallback(const char *shm_name)
             UbrTrx* candidate = &g_ubr_mgr.trx_mgr[i];
             if (strcmp(candidate->local_shm.name, shm_name) == 0 ||
                 strcmp(candidate->remote_shm.name, shm_name) == 0) {
+                ATOMIC_STORE(candidate->device_fault, true);
+                if (ATOMIC_LOAD(candidate->initializing)) {
+                    return UBRING_OK;
+                }
                 trx = candidate;
                 ATOMIC_ADD(trx->ref_count, 1);
                 ++g_ub_event_cnt;
