@@ -82,8 +82,7 @@ class ScopedGeneric {
       : data_(value, traits) {
   }
 
-  ScopedGeneric(const ScopedGeneric&) = delete;
-  ScopedGeneric& operator=(const ScopedGeneric&) = delete;
+  DISALLOW_COPY_AND_ASSIGN(ScopedGeneric);
 
   ScopedGeneric(ScopedGeneric&& other)
       : data_(other.release(), other.get_traits()) {

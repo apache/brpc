@@ -35,8 +35,7 @@ class ScopedVector {
 
   ScopedVector() {}
   ~ScopedVector() { clear(); }
-  ScopedVector(const ScopedVector&) = delete;
-  ScopedVector& operator=(const ScopedVector&) = delete;
+  DISALLOW_COPY_AND_ASSIGN(ScopedVector);
   ScopedVector(ScopedVector&& other) noexcept { swap(other); }
   ScopedVector(std::initializer_list<value_type> il) : v_(il) {}
 

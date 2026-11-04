@@ -164,8 +164,7 @@ class BUTIL_EXPORT File {
   // Creates an object with a specific error_details code.
   explicit File(Error error_details);
 
-  File(const File&) = delete;
-  File& operator=(const File&) = delete;
+  DISALLOW_COPY_AND_ASSIGN(File);
 
   File(File&& other) noexcept;
 

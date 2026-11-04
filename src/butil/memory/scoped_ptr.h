@@ -299,8 +299,7 @@ class scoped_ptr {
   // Constructor.  Allows initialization of a stateful deleter.
   scoped_ptr(element_type* p, const D& d) : impl_(p, d) { }
 
-  scoped_ptr(const scoped_ptr&) = delete;
-  scoped_ptr& operator=(const scoped_ptr&) = delete;
+  DISALLOW_COPY_AND_ASSIGN(scoped_ptr);
 
   // Move operations copy the deleter to preserve existing behavior. Move-only
   // deleters are intentionally unsupported.
@@ -430,8 +429,7 @@ class scoped_ptr<T[], D> {
   //   NOT use implicit_cast<Base*>() to upcast the static type of the array.
   explicit scoped_ptr(element_type* array) : impl_(array) { }
 
-  scoped_ptr(const scoped_ptr&) = delete;
-  scoped_ptr& operator=(const scoped_ptr&) = delete;
+  DISALLOW_COPY_AND_ASSIGN(scoped_ptr);
 
   scoped_ptr(scoped_ptr&& other) : impl_(&other.impl_) { }
 
