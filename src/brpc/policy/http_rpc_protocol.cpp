@@ -1309,8 +1309,13 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             // already received some or all of the message body for the
             // corresponding request, or if the framing indicates that there is
             // no message body.
+            //
+            // This branch is reached again for every read that leaves the
+            // body incomplete, so answer the expectation on the first one only.
             if (http_imsg->parser().type == HTTP_REQUEST &&
-                !http_imsg->header().before_http_1_1()) {
+                !http_imsg->header().before_http_1_1() &&
+                !http_imsg->expect_handled()) {
+                http_imsg->set_expect_handled();
                 const std::string* expect = http_imsg->header().GetHeader(common->EXPECT);
                 if (expect && *expect ==  common->CONTINUE_100) {
                     // Send 100-continue response back.
