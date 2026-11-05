@@ -60,6 +60,19 @@ protected:
     };
 };
 
+TEST_F(MessengerTest, non_protocol_handlers_respect_capacity) {
+    brpc::InputMessenger messenger(1);
+    const brpc::InputMessageHandler handler = {
+        brpc::policy::ParseHuluMessage,
+        EmptyProcessHuluRequest,
+        nullptr,
+        nullptr,
+        "dummy_hulu"
+    };
+    ASSERT_EQ(0, messenger.AddNonProtocolHandler(handler));
+    ASSERT_EQ(-1, messenger.AddNonProtocolHandler(handler));
+}
+
 #define USE_UNIX_DOMAIN_SOCKET 1
 
 const size_t NEPOLL = 1;
