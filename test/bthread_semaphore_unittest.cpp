@@ -15,8 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
+#include <sched.h>
 #include <gtest/gtest.h>
 #include <bthread/bthread.h>
+#include <bthread/butex.h>
+#include <bthread/countdown_event.h>
+#include <butil/atomicops.h>
+#include <butil/time.h>
 
 namespace {
 
@@ -127,6 +133,188 @@ TEST(SemaphoreTest, trywait) {
     ASSERT_EQ(0, bthread_join(th, nullptr));
 
     ASSERT_EQ(0, bthread_sem_destroy(&sem));
+}
+
+typedef int (*SemWaitOp)(bthread_sem_t*);
+
+int sem_timedwait_fast(bthread_sem_t* sem) {
+    // An available permit must be consumed even with an expired deadline.
+    const timespec deadline = { -2, 0 };
+    return bthread_sem_timedwait(sem, &deadline);
+}
+
+struct SemPublicationArgs {
+    bthread_sem_t* sem;
+    SemWaitOp wait;
+    const int* payload;
+    int observed[16];
+    int rc;
+};
+
+void* sem_publication_waiter(void* arg) {
+    auto args = static_cast<SemPublicationArgs*>(arg);
+    auto value = reinterpret_cast<butil::atomic<unsigned>*>(args->sem->butex);
+    const int64_t deadline = butil::gettimeofday_us() + 10 * 1000 * 1000;
+    // Observe available permits without acquiring the payload. Each thread
+    // consumes only once, and the post supplies enough permits for all of them.
+    // This keeps consumers off the blocking path and its additional locks.
+    while (value->load(butil::memory_order_relaxed) == 0) {
+        if (butil::gettimeofday_us() >= deadline) {
+            args->rc = ETIMEDOUT;
+            return nullptr;
+        }
+        sched_yield();
+    }
+    args->rc = args->wait(args->sem);
+    if (args->rc == 0) {
+        // Snapshot non-atomic data before join or any assertion can introduce
+        // synchronization. Only the successful semaphore wait may acquire it.
+        std::copy(args->payload, args->payload + ARRAY_SIZE(args->observed),
+                  args->observed);
+    }
+    return nullptr;
+}
+
+void check_post_publication(bool batch) {
+    const SemWaitOp wait_ops[] = {
+        bthread_sem_wait, sem_timedwait_fast, bthread_sem_trywait
+    };
+    const size_t nwaiters = batch ? ARRAY_SIZE(wait_ops) : 1;
+    for (int round = 0; round < 1000; ++round) {
+        SCOPED_TRACE(round);
+        bthread_sem_t sem;
+        ASSERT_EQ(0, bthread_sem_init(&sem, 0));
+        int payload[16] = {};
+        SemPublicationArgs args[ARRAY_SIZE(wait_ops)] = {};
+        pthread_t threads[ARRAY_SIZE(wait_ops)];
+        size_t started = 0;
+        int create_rc = 0;
+        // Start every consumer before writing the payload, so pthread_create
+        // cannot publish it. Use pthreads to avoid bthread scheduler handoffs.
+        for (; started < nwaiters; ++started) {
+            args[started].sem = &sem;
+            args[started].wait = wait_ops[(round + started) % ARRAY_SIZE(wait_ops)];
+            args[started].payload = payload;
+            create_rc = pthread_create(&threads[started], nullptr,
+                                       sem_publication_waiter, &args[started]);
+            if (create_rc != 0) {
+                break;
+            }
+        }
+        for (size_t i = 0; i < ARRAY_SIZE(payload); ++i) {
+            payload[i] = round + 1 + static_cast<int>(i);
+        }
+        // For a batch, later consumers must acquire the original publication
+        // through the release sequence extended by earlier consumers' CASes.
+        const int post_rc = batch ? bthread_sem_post_n(&sem, nwaiters)
+                                  : bthread_sem_post(&sem);
+        for (size_t i = 0; i < started; ++i) {
+            EXPECT_EQ(0, pthread_join(threads[i], nullptr));
+        }
+        EXPECT_EQ(0, bthread_sem_destroy(&sem));
+        ASSERT_EQ(0, create_rc);
+        ASSERT_EQ(0, post_rc);
+        for (size_t i = 0; i < nwaiters; ++i) {
+            ASSERT_EQ(0, args[i].rc) << "waiter=" << i;
+            for (size_t j = 0; j < ARRAY_SIZE(payload); ++j) {
+                ASSERT_EQ(payload[j], args[i].observed[j])
+                    << "waiter=" << i << " index=" << j;
+            }
+        }
+    }
+}
+
+TEST(SemaphoreTest, post_publishes_data_to_fast_waiters) {
+    check_post_publication(false);
+}
+
+TEST(SemaphoreTest, post_n_publishes_data_to_fast_waiters) {
+    check_post_publication(true);
+}
+
+struct SemButexWaitArgs {
+    bthread_sem_t* sem;
+    int expected_value;
+    bthread::CountdownEvent* ready;
+    butil::atomic<int> nwoken{0};
+};
+
+void* sem_butex_waiter(void* arg) {
+    auto args = static_cast<SemButexWaitArgs*>(arg);
+    args->ready->signal();
+    const timespec deadline = butil::seconds_from_now(10);
+    // Wait only once so that excess wakeups cannot be hidden by sem_wait's
+    // retry loop. Do not consume the posted permits.
+    const int rc = bthread::butex_wait(args->sem->butex, args->expected_value,
+                                      &deadline);
+    if (rc == 0) {
+        args->nwoken.fetch_add(1, butil::memory_order_relaxed);
+    } else {
+        // The post may race with a waiter that has not yet been queued.
+        EXPECT_EQ(EWOULDBLOCK, errno);
+    }
+    return nullptr;
+}
+
+void check_post_wakeup_count(unsigned initial_value, size_t num, bool batch) {
+    SCOPED_TRACE(initial_value);
+    const int N = 16;
+    // Retry if too few waiters were queued before posting. This avoids relying
+    // on a fixed sleep to establish that the waiters have entered butex_wait.
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        bthread_sem_t sem;
+        ASSERT_EQ(0, bthread_sem_init(&sem, initial_value));
+        bthread::CountdownEvent ready(N);
+        SemButexWaitArgs args{&sem, static_cast<int>(initial_value), &ready};
+        // A queued pthread woken before entering futex_wait can still return
+        // EWOULDBLOCK, which is indistinguishable from a late arrival. Use only
+        // bthreads so successful waits account for every counted wakeup.
+        bthread_t bthreads[N];
+        for (int i = 0; i < N; ++i) {
+            ASSERT_EQ(0, bthread_start_background(
+                &bthreads[i], nullptr, sem_butex_waiter, &args));
+        }
+        EXPECT_EQ(0, ready.timed_wait(butil::seconds_from_now(10)));
+
+        EXPECT_EQ(0, batch ? bthread_sem_post_n(&sem, num)
+                           : bthread_sem_post(&sem));
+        auto value = reinterpret_cast<butil::atomic<unsigned>*>(sem.butex);
+        EXPECT_EQ(initial_value + num, value->load(butil::memory_order_relaxed));
+        // Also change the value for post_n(0), so late arrivals cannot enqueue
+        // after cleanup and block forever.
+        value->fetch_add(1, butil::memory_order_relaxed);
+        const int remaining = bthread::butex_wake_all(sem.butex);
+        for (int i = 0; i < N; ++i) {
+            EXPECT_EQ(0, bthread_join(bthreads[i], nullptr));
+        }
+        const int queued = args.nwoken.load(butil::memory_order_relaxed);
+        // Successful waits include both post and cleanup wakeups; late
+        // arrivals that returned EWOULDBLOCK are excluded.
+        EXPECT_EQ(std::min(num, static_cast<size_t>(queued)),
+                  static_cast<size_t>(queued - remaining));
+        ASSERT_EQ(0, bthread_sem_destroy(&sem));
+        // More waiters than permits are needed to detect excessive wakeups.
+        if (static_cast<size_t>(queued) > num) {
+            return;
+        }
+    }
+    FAIL() << "Too few waiters were queued to check the wakeup limit";
+}
+
+TEST(SemaphoreTest, post_wakes_one_waiter) {
+    check_post_wakeup_count(0, 1, false);
+    check_post_wakeup_count(4, 1, false);
+}
+
+TEST(SemaphoreTest, post_n_wakes_requested_waiters) {
+    check_post_wakeup_count(0, 3, true);
+    check_post_wakeup_count(1, 3, true);
+    check_post_wakeup_count(8, 3, true);
+}
+
+TEST(SemaphoreTest, post_n_zero_does_not_wake_waiters) {
+    check_post_wakeup_count(0, 0, true);
+    check_post_wakeup_count(5, 0, true);
 }
 
 bool g_stopped = false;

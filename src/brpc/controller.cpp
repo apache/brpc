@@ -869,12 +869,14 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         return;
     }
 
+    const bool retry_limit_reached = _current_call.nretry >= _max_retry;
     if ((!_error_code && _retry_policy == nullptr) ||
-        _current_call.nretry >= _max_retry) {
+        (_error_code != EBACKUPREQUEST && retry_limit_reached)) {
         goto END_OF_RPC;
     }
     if (_error_code == EBACKUPREQUEST) {
-        if (nullptr != _backup_request_policy && !_backup_request_policy->DoBackup(this)) {
+        if (!retry_limit_reached && nullptr != _backup_request_policy &&
+            !_backup_request_policy->DoBackup(this)) {
             // No need to do backup request.
             _error_code = saved_error;
             CHECK_EQ(0, bthread_id_unlock(info.id));
@@ -892,6 +894,13 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         if (rc != 0) {
             SetFailed(rc, "Fail to add timer");
             goto END_OF_RPC;
+        }
+        if (retry_limit_reached) {
+            // The backup timer is not an RPC failure. Keep the in-flight call
+            // and its original deadline even when no retry budget remains.
+            _error_code = saved_error;
+            CHECK_EQ(0, bthread_id_unlock(info.id));
+            return;
         }
         if (!SingleServer()) {
             if (_accessed == nullptr) {
