@@ -66,7 +66,8 @@ jobs:
         run: |
           targets=(brpc-static brpc_urma_unittest brpc_urma_recovery_unittest
             brpc_urma_runtime_unittest brpc_urma_copy_unittest
-            brpc_urma_transport_unittest brpc_urma_remote_recovery_unittest)
+            brpc_urma_transport_unittest brpc_urma_remote_recovery_unittest
+            brpc_urma_mock_completion_unittest)
           if test -f test/brpc_urma_qos_unittest.cpp; then
             targets+=(brpc_urma_qos_unittest brpc_urma_qos_churn_unittest)
           fi
