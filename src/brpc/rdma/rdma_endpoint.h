@@ -31,6 +31,7 @@
 #include "butil/containers/mpsc_queue.h"
 #include "butil/containers/optional.h"
 #include "brpc/socket.h"
+#include "bthread/mutex.h"
 
 
 namespace brpc {
@@ -183,6 +184,12 @@ private:
     // Request completion notification on a send/recv CQ.
     int ReqNotifyCq(bool send_cq, bool fatal_on_error);
 
+    struct CqSocketUser : SocketUser {
+        explicit CqSocketUser(SocketId id) : socket_id(id) {}
+        void BeforeRecycle(Socket*) override { delete this; }
+        const SocketId socket_id;
+    };
+
     // Poll CQ and get the work completion
     static void PollCq(Socket* m);
 
@@ -273,6 +280,7 @@ private:
     // Poller group
     struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {
         PollerGroup() : pollers(FLAGS_rdma_poller_num), running(false) {}
+        bthread::Mutex mutex;
         std::vector<Poller> pollers;
         std::atomic<bool> running;
     };

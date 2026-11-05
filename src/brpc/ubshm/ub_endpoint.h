@@ -22,6 +22,7 @@
 
 #include "brpc/handshake/ubshm_handshake.h"
 #include "brpc/socket.h"
+#include "bthread/mutex.h"
 #include "brpc/ubshm/ubr_data_format.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/ub_helper.h"
@@ -166,6 +167,7 @@ private:
     // Poller group
     struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {
         PollerGroup() : pollers(FLAGS_ub_poller_num), running(false) {}
+        bthread::Mutex mutex;
         std::vector<Poller> pollers;
         std::atomic<bool> running;
     };

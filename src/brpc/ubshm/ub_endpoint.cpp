@@ -31,6 +31,7 @@
 #include "brpc/ubshm/ubr_trx.h"
 #include "brpc/ubshm_transport.h"
 #include "bthread/bthread.h"
+#include "butil/scoped_lock.h"
 #include "butil/logging.h" // CHECK, LOG
 #include <gflags/gflags.h>
 
@@ -343,6 +344,9 @@ void UBShmEndpoint::GlobalRelease() {
 
 std::vector<UBShmEndpoint::PollerGroup> UBShmEndpoint::_poller_groups;
 
+// Thread creation is replaceable in startup failure tests.
+decltype(&bthread_start_background) StartPollingThread = bthread_start_background;
+
 int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
                                         std::function<void()> callback,
                                         std::function<void()> init_fn,
@@ -350,10 +354,11 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
     auto& group = _poller_groups[tag];
     auto& pollers = group.pollers;
     auto& running = group.running;
-    bool expected = false;
-    if (!running.compare_exchange_strong(expected, true)) {
+    std::unique_lock<bthread::Mutex> lock(group.mutex);
+    if (running.load(std::memory_order_relaxed)) {
         return 0;
     }
+    running.store(true, std::memory_order_relaxed);
     struct FnArgs {
         Poller* poller;
         std::atomic<bool>* running;
@@ -397,7 +402,7 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
 
         return nullptr;
     };
-    for (int i = 0; i < FLAGS_ub_poller_num; ++i) {
+    for (size_t i = 0; i < pollers.size(); ++i) {
         auto args = new FnArgs{&pollers[i], &running};
         auto attr =
             FLAGS_ub_disable_bthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
@@ -406,9 +411,16 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
         pollers[i].callback = callback;
         pollers[i].init_fn = init_fn; 
         pollers[i].release_fn = release_fn;
-        auto rc = bthread_start_background(&pollers[i].tid, &attr, fn, args);
+        auto rc = StartPollingThread(&pollers[i].tid, &attr, fn, args);
         if (rc != 0) {
-            LOG(ERROR) << "Fail to start ubring polling bthread";
+            delete args;
+            running.store(false, std::memory_order_relaxed);
+            for (size_t j = 0; j < i; ++j) {
+                bthread_join(pollers[j].tid, nullptr);
+                pollers[j].tid = INVALID_BTHREAD;
+            }
+            LOG(ERROR) << "Fail to start ubring polling bthread: "
+                       << berror(rc);
             return -1;
         }
     }
@@ -417,11 +429,13 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
 
 void UBShmEndpoint::PollingModeRelease(bthread_tag_t tag) {
     auto& group = _poller_groups[tag];
+    std::unique_lock<bthread::Mutex> lock(group.mutex);
     auto& pollers = group.pollers;
     auto& running = group.running;
     running.store(false, std::memory_order_relaxed);
     for (auto& poller : pollers) {
         bthread_join(poller.tid, nullptr);
+        poller.tid = INVALID_BTHREAD;
     }
 }
 

@@ -28,6 +28,7 @@
 #include "brpc/socket.h"
 #include "bthread/bthread.h"
 #include "butil/fd_utility.h"
+#include "butil/scoped_lock.h"
 #include "butil/logging.h"       // CHECK, LOG
 #include "butil/sys_byteorder.h" // HostToNet,NetToHost
 #include <gflags/gflags.h>
@@ -839,18 +840,21 @@ int RdmaEndpoint::StartCqEvents() {
     }
 
     SocketOptions options;
-    options.user = this;
     options.keytable_pool = _socket->_keytable_pool;
     if (!FLAGS_rdma_use_polling) {
-        options.fd = _resource->comp_channel->fd;
         options.on_edge_triggered_events = PollCq;
     }
     if (Socket::Create(options, &_cq_sid) < 0) {
         PLOG(WARNING) << "Fail to create socket for cq";
         return -1;
     }
+    SocketUniquePtr cq_socket;
+    CHECK_EQ(0, Socket::Address(_cq_sid, &cq_socket));
+    cq_socket->_user = new CqSocketUser(_socket->id());
     if (FLAGS_rdma_use_polling) {
         PollerAddCqSid();
+    } else if (cq_socket->ResetFileDescriptor(_resource->comp_channel->fd) != 0) {
+        return -1;
     }
     return 0;
 }
@@ -1053,7 +1057,6 @@ _reclaim:
             if (remove_consumer) {
                 s->_io_event.RemoveConsumer(s->_fd);
             }
-            s->_user = nullptr;  // Do not release user (this RdmaEndpoint).
             s->_fd = -1;  // Already remove fd from epoll fd.
             s->SetFailed();
         }
@@ -1156,23 +1159,19 @@ int RdmaEndpoint::ReqNotifyCq(bool send_cq, bool fatal_on_error) {
 }
 
 void RdmaEndpoint::PollCq(Socket* m) {
-    RdmaEndpoint* ep = static_cast<RdmaEndpoint*>(m->user());
-    if (!ep) {
-        return;
-    }
-
+    const auto* user = static_cast<CqSocketUser*>(m->user());
     SocketUniquePtr s;
-    if (Socket::Address(ep->_socket->id(), &s) < 0) {
+    if (Socket::Address(user->socket_id, &s) < 0) {
         return;
     }
+    // The main socket pin keeps the endpoint and its resources alive.
+    RdmaTransport* rdma_transport = RdmaTransport::Get(s.get());
+    RdmaEndpoint* ep = rdma_transport->_rdma_ep;
     // A queued callback may outlive Reset() and see the main Socket after
     // it has been revived with another CQ.
     if (m->id() != ep->_cq_sid) {
         return;
     }
-    RdmaTransport *rdma_transport = RdmaTransport::Get(s.get());
-    CHECK(ep == rdma_transport->_rdma_ep);
-
     bool send = false;
     ibv_cq* cq = ep->_resource->recv_cq;
 
@@ -1362,6 +1361,9 @@ void RdmaEndpoint::GlobalRelease() {
 
 std::vector<RdmaEndpoint::PollerGroup> RdmaEndpoint::_poller_groups;
 
+// Thread creation is replaceable in startup failure tests.
+decltype(&bthread_start_background) StartPollingThread = bthread_start_background;
+
 int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
                                         std::function<void()> callback,
                                         std::function<void()> init_fn,
@@ -1372,10 +1374,11 @@ int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
     auto& group = _poller_groups[tag];
     auto& pollers = group.pollers;
     auto& running = group.running;
-    bool expected = false;
-    if (!running.compare_exchange_strong(expected, true)) {
+    std::unique_lock<bthread::Mutex> lock(group.mutex);
+    if (running.load(std::memory_order_relaxed)) {
         return 0;
     }
+    running.store(true, std::memory_order_relaxed);
     struct FnArgs {
         Poller* poller;
         std::atomic<bool>* running;
@@ -1420,7 +1423,7 @@ int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
 
         return nullptr;
     };
-    for (int i = 0; i < FLAGS_rdma_poller_num; ++i) {
+    for (size_t i = 0; i < pollers.size(); ++i) {
         auto args = new FnArgs{&pollers[i], &running};
         auto attr =
             FLAGS_rdma_disable_bthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
@@ -1429,9 +1432,16 @@ int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
         pollers[i].callback = callback;
         pollers[i].init_fn = init_fn;
         pollers[i].release_fn = release_fn;
-        auto rc = bthread_start_background(&pollers[i].tid, &attr, fn, args);
+        auto rc = StartPollingThread(&pollers[i].tid, &attr, fn, args);
         if (rc != 0) {
-            LOG(ERROR) << "Fail to start rdma polling bthread";
+            delete args;
+            running.store(false, std::memory_order_relaxed);
+            for (size_t j = 0; j < i; ++j) {
+                bthread_join(pollers[j].tid, nullptr);
+                pollers[j].tid = INVALID_BTHREAD;
+            }
+            LOG(ERROR) << "Fail to start rdma polling bthread: "
+                       << berror(rc);
             return -1;
         }
     }
@@ -1443,11 +1453,13 @@ void RdmaEndpoint::PollingModeRelease(bthread_tag_t tag) {
         return;
     }
     auto& group = _poller_groups[tag];
+    std::unique_lock<bthread::Mutex> lock(group.mutex);
     auto& pollers = group.pollers;
     auto& running = group.running;
     running.store(false, std::memory_order_relaxed);
-    for (int i = 0; i < FLAGS_rdma_poller_num; ++i) {
-        bthread_join(pollers[i].tid, nullptr);
+    for (auto& poller : pollers) {
+        bthread_join(poller.tid, nullptr);
+        poller.tid = INVALID_BTHREAD;
     }
 }
 

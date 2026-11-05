@@ -65,6 +65,7 @@ namespace rdma {
 
 DECLARE_bool(rdma_trace_verbose);
 DECLARE_int32(rdma_memory_pool_max_regions);
+DECLARE_int32(rdma_prepared_qp_cnt);
 DECLARE_int32(rdma_client_handshake_version);
 DECLARE_bool(rdma_ece);
 
@@ -352,7 +353,6 @@ TEST_F(RdmaTest, stale_cq_callback_does_not_poll_new_generation) {
     ASSERT_NE(nullptr, ep);
 
     SocketOptions cq_options;
-    cq_options.user = ep;
     SocketId stale_cq_sid;
     SocketId current_cq_sid;
     ASSERT_EQ(0, Socket::Create(cq_options, &stale_cq_sid));
@@ -362,15 +362,43 @@ TEST_F(RdmaTest, stale_cq_callback_does_not_poll_new_generation) {
     SocketUniquePtr current_cq_socket;
     ASSERT_EQ(0, Socket::Address(stale_cq_sid, &stale_cq_socket));
     ASSERT_EQ(0, Socket::Address(current_cq_sid, &current_cq_socket));
+    stale_cq_socket->_user = new rdma::RdmaEndpoint::CqSocketUser(main_sid);
+    current_cq_socket->_user = new rdma::RdmaEndpoint::CqSocketUser(main_sid);
     ep->_cq_sid = current_cq_sid;
 
     rdma::RdmaEndpoint::PollCq(stale_cq_socket.get());
 
-    stale_cq_socket->_user = NULL;
-    current_cq_socket->_user = NULL;
     stale_cq_socket->SetFailed();
     current_cq_socket->SetFailed();
     main_socket->SetFailed();
+}
+
+TEST_F(RdmaTest, cq_callback_outlives_main_socket) {
+    SocketOptions options;
+    options.socket_mode = SOCKET_MODE_RDMA;
+    SocketId main_sid;
+    ASSERT_EQ(0, Socket::Create(options, &main_sid));
+    SocketUniquePtr main_socket;
+    ASSERT_EQ(0, Socket::Address(main_sid, &main_socket));
+    auto* ep = RdmaTransportOf(main_socket.get())->_rdma_ep;
+
+    SocketId cq_sid;
+    ASSERT_EQ(0, Socket::Create(SocketOptions(), &cq_sid));
+    SocketUniquePtr cq_socket;
+    ASSERT_EQ(0, Socket::Address(cq_sid, &cq_socket));
+    cq_socket->_user = new rdma::RdmaEndpoint::CqSocketUser(main_sid);
+    ep->_cq_sid = cq_sid;
+    ep->_resource = new rdma::RdmaResource;
+    const int saved = rdma::FLAGS_rdma_prepared_qp_cnt;
+    rdma::FLAGS_rdma_prepared_qp_cnt = 0;
+    main_socket->SetFailed();
+    main_socket.reset();
+    rdma::FLAGS_rdma_prepared_qp_cnt = saved;
+
+    // A dispatched callback holds the CQ socket after main connection teardown.
+    EXPECT_NE(nullptr, cq_socket->user());
+    EXPECT_NE(0, Socket::Address(main_sid, &main_socket));
+    rdma::RdmaEndpoint::PollCq(cq_socket.get());
 }
 
 TEST_F(RdmaTest, client_close_before_hello_send) {

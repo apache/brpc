@@ -25,6 +25,8 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
+#include <atomic>
 
 #include "bthread/bthread.h"
 #include "bthread/butex.h"
@@ -42,12 +44,108 @@
 #include "brpc/protocol.h"
 #if BRPC_WITH_RDMA
 #include "brpc/rdma_transport.h"
+#include "brpc/rdma/rdma_endpoint.h"
+#endif
+#if BRPC_WITH_UBRING
+#include "brpc/ubshm/ub_endpoint.h"
 #endif
 #include "brpc/socket.h"
 #include "brpc/transport_handshake.h"
 
 namespace brpc {
+#if BRPC_WITH_RDMA
+namespace rdma {
+extern decltype(&bthread_start_background) StartPollingThread;
+}
+#endif
+#if BRPC_WITH_UBRING
+namespace ubring {
+extern decltype(&bthread_start_background) StartPollingThread;
+}
+#endif
 namespace handshake {
+
+#if BRPC_WITH_RDMA || BRPC_WITH_UBRING
+struct PollerStartFailure {
+    int attempts = 0;
+    int fail_on = 0;
+    bthread::CountdownEvent failed;
+    bthread::CountdownEvent resume;
+};
+static PollerStartFailure* g_poller_start_failure;
+
+static int StartPollerWithFailure(bthread_t* tid, const bthread_attr_t* attr,
+                                  void* (*fn)(void*), void* arg) {
+    auto* failure = g_poller_start_failure;
+    if (failure->attempts++ == failure->fail_on) {
+        failure->failed.signal();
+        failure->resume.wait();
+        return EAGAIN;
+    }
+    return bthread_start_background(tid, attr, fn, arg);
+}
+
+template <typename Endpoint>
+static void CheckPollerStartup(decltype(&bthread_start_background)& start) {
+    auto saved_groups = std::move(Endpoint::_poller_groups);
+    Endpoint::_poller_groups = std::vector<typename Endpoint::PollerGroup>(1);
+    auto& group = Endpoint::_poller_groups[0];
+    group.pollers = std::vector<typename Endpoint::Poller>(2);
+    auto saved_start = start;
+    start = StartPollerWithFailure;
+    for (int fail_on : {0, 1}) {
+        PollerStartFailure failure;
+        failure.fail_on = fail_on;
+        g_poller_start_failure = &failure;
+        std::atomic<int> initialized{0};
+        std::atomic<int> released{0};
+        auto initialize = [&] {
+            return Endpoint::PollingModeInitialize(
+                0, nullptr, [&] { ++initialized; }, [&] { ++released; });
+        };
+        int first_rc = 0;
+        std::thread first([&] { first_rc = initialize(); });
+        failure.failed.wait();
+        // Another caller must wait until startup or rollback completes.
+        const bool unlocked = group.mutex.try_lock();
+        EXPECT_FALSE(unlocked);
+        if (unlocked) {
+            group.mutex.unlock();
+        }
+        failure.resume.signal();
+        first.join();
+        EXPECT_EQ(-1, first_rc);
+        EXPECT_FALSE(group.running.load());
+        EXPECT_EQ(fail_on, released.load());
+        for (const auto& poller : group.pollers) {
+            EXPECT_EQ(INVALID_BTHREAD, poller.tid);
+        }
+        EXPECT_EQ(0, initialize());
+        EXPECT_EQ(fail_on + 3, failure.attempts);
+        Endpoint::PollingModeRelease(0);
+        EXPECT_EQ(fail_on + 2, initialized.load());
+        EXPECT_EQ(initialized.load(), released.load());
+    }
+    start = saved_start;
+    Endpoint::_poller_groups = std::move(saved_groups);
+    g_poller_start_failure = nullptr;
+}
+#endif
+
+#if BRPC_WITH_RDMA
+TEST(PollerStartupTest, rdma_rolls_back_and_retries) {
+    const bool saved = rdma::FLAGS_rdma_use_polling;
+    rdma::FLAGS_rdma_use_polling = true;
+    CheckPollerStartup<rdma::RdmaEndpoint>(rdma::StartPollingThread);
+    rdma::FLAGS_rdma_use_polling = saved;
+}
+#endif
+
+#if BRPC_WITH_UBRING
+TEST(PollerStartupTest, ubshm_rolls_back_and_retries) {
+    CheckPollerStartup<ubring::UBShmEndpoint>(ubring::StartPollingThread);
+}
+#endif
 
 class HandshakeSocketPair {
 public:
