@@ -23,7 +23,9 @@ find_package(Gperftools)
 
 add_library(brpc_test_config INTERFACE)
 target_link_libraries(brpc_test_config INTERFACE brpc_build_config)
-target_include_directories(brpc_test_config INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(brpc_test_config BEFORE INTERFACE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS})
 target_compile_definitions(brpc_test_config INTERFACE
     UNIT_TEST
     BVAR_NOT_LINK_DEFAULT_VARIABLES
@@ -132,6 +134,7 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/non_thread_safe_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/nullable_string16_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/object_pool_unittest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/resource_pool_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/observer_list_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/optional_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/platform_thread_unittest.cc
@@ -343,7 +346,8 @@ if(BUILD_FUZZ_TESTS)
     set(FUZZ_TARGETS fuzz_butil fuzz_esp fuzz_hpack fuzz_http
         fuzz_hulu fuzz_json fuzz_redis fuzz_shead fuzz_sofa fuzz_uri
         fuzz_baidu_rpc fuzz_mongo fuzz_memcache
-        fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf)
+        fuzz_couchbase fuzz_streaming fuzz_http_parser fuzz_amf
+        fuzz_rtmp)
 
 
     foreach(target ${FUZZ_TARGETS})

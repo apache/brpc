@@ -24,6 +24,7 @@
 #include "butil/logging.h"
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "bthread/id.h"
 #include "brpc/socket.h"
 #include "brpc/server.h"
 #include "brpc/channel.h"
@@ -42,9 +43,11 @@ void MyCancelCallback(bool* cancel_flag) {
     *cancel_flag = true;
 }
 
-bool WaitForSpanToExpire(const std::weak_ptr<brpc::Span>& span) {
-    const int64_t deadline_us = butil::gettimeofday_us() + 5000000L;
-    while (!span.expired() && butil::gettimeofday_us() < deadline_us) {
+static bool WaitForSpanToExpire(const std::weak_ptr<brpc::Span>& span) {
+    // The collector keeps the span alive until dump_to_db() returns (or the
+    // sample is dropped). Wait for it to release this test's submission.
+    const int64_t deadline_ms = butil::monotonic_time_ms() + 10000;
+    while (!span.expired() && butil::monotonic_time_ms() < deadline_ms) {
         usleep(1000);
     }
     return span.expired();
@@ -62,8 +65,8 @@ TEST_F(ControllerTest, notify_on_failed) {
     cntl.NotifyOnCancel(brpc::NewCallback(&MyCancelCallback, &cancel));
     // Trigger callback
     brpc::Socket::SetFailed(id);
-    usleep(20000); // sleep a while to wait for the canceling which will be
-                   // happening in another thread.
+    // The callback destroys this id after writing cancel.
+    ASSERT_EQ(0, bthread_id_join(cntl._oncancel_id));
     ASSERT_TRUE(cancel);
     ASSERT_TRUE(cntl.IsCanceled());
 }

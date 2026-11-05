@@ -145,6 +145,7 @@ TEST_BUTIL_SOURCES = \
     crc32c_unittest.cc \
     iobuf_unittest.cpp \
     object_pool_unittest.cpp \
+    resource_pool_unittest.cpp \
     recordio_unittest.cpp \
     test_switches.cc \
     scoped_locale.cc \

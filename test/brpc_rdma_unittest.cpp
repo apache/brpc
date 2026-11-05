@@ -34,6 +34,7 @@
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_endpoint.h"
+#include <algorithm>
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma_handshake.pb.h"
 #include "brpc/rdma_transport.h"
@@ -2258,6 +2259,175 @@ TEST_F(RdmaTest, server_alloc_resource_fail_fallback_tcp) {
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
+}
+
+// Build a valid v3 hello that also carries an MTU value.
+rdma::RdmaHello MakeValidV3HelloWithMtu(uint32_t mtu) {
+    rdma::RdmaHello msg = MakeValidV3Hello();
+    msg.set_mtu(mtu);
+    return msg;
+}
+
+// A client hello carrying MTU must not break the server handshake:
+// the server parses the hello and advances to ACK_WAIT.
+TEST_F(RdmaTest, v3_server_accepts_client_hello_with_mtu) {
+    StartServer();
+
+    butil::fd_guard sockfd;
+    ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
+    Socket* s = WaitForServerSocket();
+    ASSERT_NE(nullptr, s);
+
+    rdma::RdmaHello msg = MakeValidV3HelloWithMtu(IBV_MTU_4096);
+    std::string packet = MakeV3Packet(msg);
+    ASSERT_TRUE(WriteAll(sockfd, packet.data(), packet.size()));
+
+    ASSERT_HANDSHAKE_PHASE(handshake::ACK_WAIT, s);
+
+    rdma::RdmaHello reply;
+    ReadServerV3Reply(sockfd, &reply);
+
+    // ACK flags=0 -> clean FALLBACK_TCP so the test ends without hardware.
+    uint32_t flags = butil::HostToNet32(0);
+    ASSERT_TRUE(WriteAll(sockfd, &flags, sizeof(flags)));
+    ASSERT_HANDSHAKE_PHASE(handshake::FALLBACK_TCP, s);
+
+    sockfd.reset(-1);
+    ASSERT_TRUE(WaitForServerSocketGone());
+    StopServer();
+}
+
+// The server reply must carry a negotiated MTU when the client advertised one.
+// The server computes min(local, client) at the start of BringUpQp (before the
+// g_skip_rdma_init early-return), so _outgoing_mtu is set even in UT mode;
+// FillLocalRdmaHello then includes it in the reply.
+TEST_F(RdmaTest, v3_server_reply_has_negotiated_mtu) {
+    StartServer();
+
+    butil::fd_guard sockfd;
+    ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
+    Socket* s = WaitForServerSocket();
+    ASSERT_NE(nullptr, s);
+
+    // Advertise a non-default MTU so we can verify negotiation.
+    rdma::RdmaHello msg = MakeValidV3HelloWithMtu(IBV_MTU_4096);
+    std::string packet = MakeV3Packet(msg);
+    ASSERT_TRUE(WriteAll(sockfd, packet.data(), packet.size()));
+
+    rdma::RdmaHello reply;
+    ReadServerV3Reply(sockfd, &reply);
+
+    // The server should advertise a negotiated MTU in its reply.
+    EXPECT_TRUE(reply.has_mtu());
+    // Negotiated MTU = min(local_active_mtu, client_mtu). In UT mode
+    // (g_skip_rdma_init=true) GetRdmaActiveMtu() returns the default
+    // IBV_MTU_1024, so negotiated = min(1024, 4096) = 1024. With real
+    // hardware (FLAGS_rdma_test_enable=true) the local active MTU may be
+    // larger (e.g. 4096), so compare against min(local, advertised)
+    // instead of a hard-coded value.
+    uint32_t expected_mtu = std::min(rdma::GetRdmaActiveMtu(),
+                                     static_cast<uint32_t>(IBV_MTU_4096));
+    EXPECT_EQ(expected_mtu, reply.mtu());
+
+    uint32_t flags = butil::HostToNet32(0);
+    ASSERT_TRUE(WriteAll(sockfd, &flags, sizeof(flags)));
+
+    sockfd.reset(-1);
+    ASSERT_TRUE(WaitForServerSocketGone());
+    StopServer();
+}
+
+// When the client does NOT advertise an MTU (e.g., v2 peer or older v3 peer),
+// the server must NOT include an MTU in its reply (backward-compatible
+// degradation to legacy IBV_MTU_1024 default).
+TEST_F(RdmaTest, v3_server_reply_has_no_mtu_without_client_mtu) {
+    StartServer();
+
+    butil::fd_guard sockfd;
+    ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
+    Socket* s = WaitForServerSocket();
+    ASSERT_NE(nullptr, s);
+
+    // Client hello without MTU field.
+    rdma::RdmaHello msg = MakeValidV3Hello();
+    std::string packet = MakeV3Packet(msg);
+    ASSERT_TRUE(WriteAll(sockfd, packet.data(), packet.size()));
+
+    rdma::RdmaHello reply;
+    ReadServerV3Reply(sockfd, &reply);
+
+    // Server must not advertise MTU when client didn't.
+    EXPECT_FALSE(reply.has_mtu());
+
+    uint32_t flags = butil::HostToNet32(0);
+    ASSERT_TRUE(WriteAll(sockfd, &flags, sizeof(flags)));
+
+    sockfd.reset(-1);
+    ASSERT_TRUE(WaitForServerSocketGone());
+    StopServer();
+}
+
+TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
+    StartServer();
+    for (uint32_t mtu : {0u, 6u}) {
+        butil::fd_guard sockfd;
+        ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
+        Socket* s = WaitForServerSocket();
+        ASSERT_NE(nullptr, s);
+        const std::string packet = MakeV3Packet(MakeValidV3HelloWithMtu(mtu));
+        ASSERT_TRUE(WriteAll(sockfd, packet.data(), packet.size()));
+        rdma::RdmaHello reply;
+        ASSERT_NO_FATAL_FAILURE(ReadServerV3Reply(sockfd, &reply));
+        EXPECT_FALSE(reply.has_mtu());
+        ASSERT_HANDSHAKE_PHASE(handshake::ACK_WAIT, s);
+        EXPECT_EQ(RdmaTransport::RDMA_OFF, RdmaTransportOf(s)->_rdma_state);
+        EXPECT_FALSE(s->Failed());
+        const uint32_t flags = butil::HostToNet32(0);
+        ASSERT_TRUE(WriteAll(sockfd, &flags, sizeof(flags)));
+        ASSERT_HANDSHAKE_PHASE(handshake::FALLBACK_TCP, s);
+        sockfd.reset(-1);
+        ASSERT_TRUE(WaitForServerSocketGone());
+    }
+    StopServer();
+}
+
+// Verify the client includes its local MTU in the v3 hello.
+TEST_F(RdmaTest, v3_client_hello_includes_mtu) {
+    HandshakeVersionFlag _hsv(3);
+
+    butil::fd_guard sockfd(butil::tcp_listen(g_ep));
+    EXPECT_TRUE(sockfd >= 0);
+
+    Channel channel;
+    ChannelOptions chan_options;
+    chan_options.socket_mode = SOCKET_MODE_RDMA;
+    chan_options.connect_timeout_ms = 500;
+    chan_options.timeout_ms = 500;
+    chan_options.max_retry = 0;
+    ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
+
+    Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(__FUNCTION__);
+    google::protobuf::Closure* done = DoNothing();
+    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
+
+    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
+    ASSERT_TRUE(acc_fd >= 0);
+
+    rdma::RdmaHello hello;
+    ASSERT_NO_FATAL_FAILURE(ReadServerV3Reply(acc_fd, &hello));
+
+    // The client hello must carry the locally queried active MTU.
+    // In UT mode (g_skip_rdma_init=true), OpenDevice is never called so
+    // GetRdmaActiveMtu() returns the default IBV_MTU_1024; with real
+    // hardware (FLAGS_rdma_test_enable=true) it returns the port's actual
+    // active MTU, so compare against it instead of a hard-coded value.
+    EXPECT_TRUE(hello.has_mtu());
+    EXPECT_EQ(rdma::GetRdmaActiveMtu(), hello.mtu());
+
+    bthread_id_join(cntl.call_id());
 }
 
 TEST_F(RdmaTest, try_global_disable_rdma) {

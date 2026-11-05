@@ -53,6 +53,8 @@ struct RdmaConnectionInfo {
     ibv_gid gid;
     uint32_t qp_num;
     butil::optional<ibv_ece> ece;
+    // Active MTU in a client hello, negotiated MTU in a server hello (v3).
+    butil::optional<uint32_t> path_mtu;
 };
 
 struct RdmaResource {
@@ -206,6 +208,9 @@ private:
 
     // ECE payload prepared by resource setup and consumed by the RDMA adapter.
     butil::optional<ibv_ece> _outgoing_ece;
+
+    // Negotiated MTU returned by server-side resource setup.
+    butil::optional<uint32_t> _outgoing_mtu;
 
     // rdma resource
     RdmaResource* _resource;

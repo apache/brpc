@@ -208,7 +208,7 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
 
     // Check connection_type
     if (_options.connection_type == CONNECTION_TYPE_UNKNOWN) {
-        // Save has_error which will be overriden in later assignments to
+        // Save has_error which will be overridden in later assignments to
         // connection_type.
         const bool has_error = _options.connection_type.has_error();
         

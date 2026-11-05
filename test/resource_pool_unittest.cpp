@@ -25,6 +25,7 @@
 
 namespace {
 struct MyObject {};
+struct FreeChunkCountObject {};
 
 int nfoo_dtor = 0;
 struct Foo {
@@ -49,6 +50,10 @@ template <> struct ResourcePoolBlockMaxItem<MyObject> {
 
 template <> struct ResourcePoolFreeChunkMaxItem<MyObject> {
     static size_t value() { return 5; }
+};
+
+template <> struct ResourcePoolFreeChunkMaxItem<FreeChunkCountObject> {
+    static size_t value() { return 1; }
 };
 
 template <> struct ResourcePoolValidator<Foo> {
@@ -275,6 +280,43 @@ TEST_F(ResourcePoolTest, get_perf) {
     }
 
     std::cout << describe_resources<SilentObj>() << std::endl;
+}
+
+struct FreeChunkCountArgs {
+    ResourceId<FreeChunkCountObject> first;
+    ResourceId<FreeChunkCountObject> second;
+};
+
+void* add_two_free_chunks(void* arg) {
+    FreeChunkCountArgs* args = static_cast<FreeChunkCountArgs*>(arg);
+    get_resource(&args->first);
+    get_resource(&args->second);
+    return_resource(args->first);
+    return_resource(args->second);
+    return nullptr;
+}
+
+TEST_F(ResourcePoolTest, free_chunk_count_tracks_push_and_pop) {
+    // Keep the main LocalPool alive so worker teardown does not clear chunks.
+    ResourceId<FreeChunkCountObject> guard = { 0 };
+    ASSERT_NE(nullptr, get_resource(&guard));
+    FreeChunkCountArgs args = { { 0 }, { 0 } };
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr, add_two_free_chunks, &args));
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+
+    ResourceId<FreeChunkCountObject> first = { 0 };
+    ResourceId<FreeChunkCountObject> second = { 0 };
+    ASSERT_NE(nullptr, get_resource(&first));
+    ASSERT_NE(nullptr, get_resource(&second));
+    ASSERT_TRUE(first == args.first || first == args.second);
+    ASSERT_TRUE(second == args.first || second == args.second);
+    ASSERT_NE(first, second);
+
+    return_resource(first);
+    return_resource(second);
+    return_resource(guard);
+    clear_resources<FreeChunkCountObject>();
 }
 
 struct D { int val[1]; };

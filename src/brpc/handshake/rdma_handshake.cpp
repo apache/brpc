@@ -36,6 +36,7 @@
 #include <gflags/gflags.h>
 
 #include "brpc/rdma_transport.h"
+#include "brpc/rdma/rdma_helper.h"
 
 namespace brpc {
 namespace rdma {
@@ -206,6 +207,10 @@ static bool ValidRdmaHello(const RdmaHello& msg) {
         msg.rq_size() < MIN_QP_SIZE) {
         return false;
     }
+    if (msg.has_mtu() &&
+        (msg.mtu() < IBV_MTU_256 || msg.mtu() > IBV_MTU_4096)) {
+        return false;
+    }
     return msg.qp_num() != 0 || g_skip_rdma_init;
 }
 
@@ -217,6 +222,9 @@ static void FillLocalRdmaHello(const ParsedHello& local, RdmaHello* msg) {
     msg->set_gid(reinterpret_cast<const char*>(local.gid.raw),
                  sizeof(local.gid.raw));
     msg->set_qp_num(local.qp_num);
+    if (local.path_mtu.has_value()) {
+        msg->set_mtu(*local.path_mtu);
+    }
     if (FLAGS_rdma_ece && local.ece.has_value()) {
         RdmaEce* ece = msg->mutable_ece();
         ece->set_vendor_id(local.ece->vendor_id);
@@ -232,6 +240,9 @@ static void TranslateHello(const RdmaHello& msg, ParsedHello* out) {
     out->lid = static_cast<uint16_t>(msg.lid());
     fast_memcpy(out->gid.raw, msg.gid().data(), sizeof(out->gid.raw));
     out->qp_num = msg.qp_num();
+    if (msg.has_mtu()) {
+        out->path_mtu = msg.mtu();
+    }
     if (FLAGS_rdma_ece && msg.has_ece()) {
         ibv_ece ece;
         ece.vendor_id = msg.ece().vendor_id();
@@ -282,6 +293,7 @@ handshake::StepResult RdmaClientHandshakeAdapterV3::BuildHello(
     PrepareClientEce();
     ParsedHello local{};
     FillLocalHello(&local);
+    local.path_mtu = GetRdmaActiveMtu();
     RdmaHello msg;
     v3_wire::FillLocalRdmaHello(local, &msg);
     return v3_wire::SerializePayload(msg, payload);

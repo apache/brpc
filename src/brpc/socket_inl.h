@@ -80,14 +80,20 @@ inline void Socket::SetEOF() {
 }
 
 inline void Socket::reset_parsing_context(Destroyable* new_context) {
-    Destroyable* old_ctx = _parsing_context.exchange(
-        new_context, butil::memory_order_acq_rel);
+    Destroyable* old_ctx = nullptr;
+    {
+        // Wait for DebugSocket() which may be describing the old context.
+        BAIDU_SCOPED_LOCK(_parsing_context_mutex);
+        old_ctx = _parsing_context.exchange(
+            new_context, butil::memory_order_acq_rel);
+    }
     if (old_ctx) {
         old_ctx->Destroy();
     }
 }
 
 inline Destroyable* Socket::release_parsing_context() {
+    BAIDU_SCOPED_LOCK(_parsing_context_mutex);
     return _parsing_context.exchange(nullptr, butil::memory_order_acquire);
 }
 
