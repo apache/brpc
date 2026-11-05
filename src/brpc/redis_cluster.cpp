@@ -476,7 +476,7 @@ bool RedisClusterChannel::ExecuteMGet(const ParsedCommand& cmd,
         if (!ExecuteSingleCommand(sub_args, nullptr, &sub_result, cntl)) {
             return false;
         }
-        values.push_back(sub_result.encoded_reply.movable());
+        values.emplace_back(sub_result.encoded_reply.movable());
     }
 
     AppendArrayHeader(encoded_reply, values.size());
