@@ -19,6 +19,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <limits>
 #include <gflags/gflags.h>
 #include <string>
@@ -39,10 +40,13 @@
 #include <vector>
 #include "bthread/bthread.h"
 #include "bthread/countdown_event.h"
+#include "bthread/unstable.h"
 #include "brpc/acceptor.h"
 #include "brpc/adapter_transport.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
+#include "brpc/input_message_base.h"
+#include "brpc/input_messenger.h"
 #include "brpc/policy/baidu_rpc_meta.pb.h"
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/server.h"
@@ -954,10 +958,57 @@ protected:
 
 using brpc::ubring::UBShmEndpointTest;
 
+TEST(UBShmExitDeathTest, stops_pollers_before_static_storage_is_destroyed) {
+    const std::string saved = ::testing::FLAGS_gtest_death_test_style;
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    BRPC_SCOPE_EXIT { ::testing::FLAGS_gtest_death_test_style = saved; };
+    EXPECT_EXIT({
+        static std::atomic<bool> stopped{false};
+        std::atexit([] { if (!stopped.load()) { _exit(1); } });
+        brpc::ubring::g_skip_ub_init = false;
+        brpc::ubring::GlobalUBInitializeOrDie();
+        if (!brpc::ubring::InitPollingModeWithTag(
+                0, nullptr, nullptr, [] { stopped.store(true); })) {
+            _exit(2);
+        }
+        std::exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
 TEST_F(UBShmEndpointTest, construct_initial_state) {
     ASSERT_NE(nullptr, _ep);
     EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE,
               _ep->negotiated_data_format());
+}
+
+TEST_F(UBShmEndpointTest, last_message_is_dispatched_outside_the_poller) {
+    struct Message : brpc::InputMessageBase {
+        void DestroyImpl() override {}
+        ~Message() override = default;
+        bthread::CountdownEvent done;
+        bthread_t worker = 0;
+    } message;
+    message._process = [](brpc::InputMessageBase* base) {
+        auto* msg = static_cast<Message*>(base);
+        msg->worker = bthread_self();
+        msg->done.signal();
+    };
+    brpc::UBShmTransport transport;
+    brpc::SocketOptions options;
+    transport.Init(_socket, options);
+    BRPC_SCOPE_EXIT { transport.Release(); };
+    brpc::InputMessageClosure input;
+    input.reset(&message);
+    int queued = 0;
+    transport.QueueMessage(input, &queued, true);
+    auto* remaining = input.release();
+    EXPECT_EQ(nullptr, remaining);
+    if (remaining != nullptr) {
+        return;
+    }
+    bthread_flush();
+    message.done.wait();
+    EXPECT_NE(bthread_self(), message.worker);
 }
 
 TEST_F(UBShmEndpointTest, queued_poll_does_not_retain_a_destroyed_endpoint) {

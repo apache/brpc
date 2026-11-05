@@ -18,6 +18,7 @@
 #if BRPC_WITH_UBRING
 
 #include <errno.h>
+#include <cstdlib>
 
 #include "brpc/errno.pb.h"
 #include "brpc/event_dispatcher.h"
@@ -329,11 +330,13 @@ void UBShmEndpoint::Poll(const PollerSidOp& op) {
 
 int UBShmEndpoint::GlobalInitialize() {
     _poller_groups = std::vector<PollerGroup>(FLAGS_task_group_ntags);
-    return 0;
+    // Stop polling before the static poller storage is destroyed.
+    static const int registered = std::atexit(GlobalRelease);
+    return registered == 0 ? 0 : -1;
 }
 
 void UBShmEndpoint::GlobalRelease() {
-    for (int i = 0; i < FLAGS_task_group_ntags; ++i) {
+    for (size_t i = 0; i < _poller_groups.size(); ++i) {
         PollingModeRelease(i);
     }
 }
@@ -417,8 +420,8 @@ void UBShmEndpoint::PollingModeRelease(bthread_tag_t tag) {
     auto& pollers = group.pollers;
     auto& running = group.running;
     running.store(false, std::memory_order_relaxed);
-    for (int i = 0; i < FLAGS_ub_poller_num; ++i) {
-        bthread_join(pollers[i].tid, nullptr);
+    for (auto& poller : pollers) {
+        bthread_join(poller.tid, nullptr);
     }
 }
 
