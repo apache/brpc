@@ -1864,7 +1864,22 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
 
     _sctx->Init(ctx, id);
-    H2StreamContext* const sctx = _sctx.get();
+    // Insert the stream before encoding the headers and do not fail after
+    // encoding: HPACK encoding adds the headers to the dynamic table of the
+    // connection, and if the request were refused afterwards, the caller
+    // would drop the HEADERS while the table kept the entries, so the
+    // server would decode later requests on this connection with wrong
+    // headers. The DATA that the windows allow now follows the HEADERS.
+    const butil::IOBuf& request_data = _cntl->request_attachment();
+    butil::IOBuf data_frames;
+    const butil::Status insert_status = ctx->TryToInsertClientStream(
+        id, _sctx.get(), request_data, &data_frames);
+    if (!insert_status.ok()) {
+        return insert_status;
+    }
+    _stream_id = id;
+    // TryToInsertClientStream transfers ownership of _sctx to ctx on success.
+    _sctx.release();
 
     HPacker& hpacker = ctx->hpacker();
     butil::IOBufAppender appender;
@@ -1889,17 +1904,9 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
     butil::IOBuf frag;
     appender.move_to(frag);
-    const butil::IOBuf& request_data = _cntl->request_attachment();
     PackH2Headers(out, frag, id, remote_settings.max_frame_size,
                   request_data.empty());
-    const butil::Status insert_status =
-        ctx->TryToInsertClientStream(id, sctx, request_data, out);
-    if (!insert_status.ok()) {
-        return insert_status;
-    }
-    _stream_id = id;
-    // TryToInsertClientStream transfers ownership of _sctx to ctx on success.
-    _sctx.release();
+    out->append(butil::IOBuf::Movable(data_frames));
     const int64_t conn_wu = ctx->ReleaseDeferredWindowUpdate();
     if (conn_wu > 0) {
         char winbuf[FRAME_HEAD_SIZE + 4];
