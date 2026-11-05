@@ -959,9 +959,9 @@ protected:
 using brpc::ubring::UBShmEndpointTest;
 
 TEST(UBShmExitDeathTest, stops_pollers_before_static_storage_is_destroyed) {
-    const std::string saved = ::testing::FLAGS_gtest_death_test_style;
-    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
-    BRPC_SCOPE_EXIT { ::testing::FLAGS_gtest_death_test_style = saved; };
+    const std::string saved = GTEST_FLAG_GET(death_test_style);
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    BRPC_SCOPE_EXIT { GTEST_FLAG_SET(death_test_style, saved); };
     EXPECT_EXIT({
         static std::atomic<bool> stopped{false};
         std::atexit([] { if (!stopped.load()) { _exit(1); } });
