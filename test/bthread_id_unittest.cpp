@@ -161,6 +161,66 @@ TEST(BthreadIdTest, join_races_with_destroy) {
     bthread::g_bthread_id_join_before_wait_arg_for_test = nullptr;
 }
 
+struct JoinTsanRaceArgs {
+    bthread_id_t id;
+    std::atomic<bool> waiter_ready;
+    std::atomic<bool> start;
+};
+
+void race_join_with_destroy(void* arg) {
+    JoinTsanRaceArgs* args = static_cast<JoinTsanRaceArgs*>(arg);
+    args->waiter_ready.store(true, std::memory_order_relaxed);
+    while (!args->start.load(std::memory_order_relaxed)) {
+        std::this_thread::yield();
+    }
+}
+
+void* join_tsan_race_waiter(void* arg) {
+    JoinTsanRaceArgs* args = static_cast<JoinTsanRaceArgs*>(arg);
+    EXPECT_EQ(0, bthread_id_join(args->id));
+    return nullptr;
+}
+
+class JoinBeforeWaitHookGuard {
+public:
+    JoinBeforeWaitHookGuard(void (*hook)(void*), void* arg) {
+        bthread::g_bthread_id_join_before_wait_arg_for_test = arg;
+        bthread::g_bthread_id_join_before_wait_for_test = hook;
+    }
+
+    ~JoinBeforeWaitHookGuard() {
+        bthread::g_bthread_id_join_before_wait_for_test = nullptr;
+        bthread::g_bthread_id_join_before_wait_arg_for_test = nullptr;
+    }
+
+private:
+    DISALLOW_COPY_AND_ASSIGN(JoinBeforeWaitHookGuard);
+};
+
+TEST(BthreadIdTest, join_destroy_state_access_is_tsan_safe) {
+    bthread_id_t id;
+    ASSERT_EQ(0, bthread_id_create(&id, nullptr, nullptr));
+    JoinTsanRaceArgs args;
+    args.id = id;
+    args.waiter_ready.store(false, std::memory_order_relaxed);
+    args.start.store(false, std::memory_order_relaxed);
+    JoinBeforeWaitHookGuard hook_guard(race_join_with_destroy, &args);
+
+    pthread_t waiter;
+    ASSERT_EQ(0, pthread_create(&waiter, nullptr,
+                                join_tsan_race_waiter, &args));
+    while (!args.waiter_ready.load(std::memory_order_relaxed)) {
+        std::this_thread::yield();
+    }
+    void* data = nullptr;
+    ASSERT_EQ(0, bthread_id_trylock(id, &data));
+    // Do not establish happens-before between destroy's store and the state
+    // load in butex_wait(). TSAN detects a race here if join_butex is plain.
+    args.start.store(true, std::memory_order_relaxed);
+    ASSERT_EQ(0, bthread_id_unlock_and_destroy(id));
+    ASSERT_EQ(0, pthread_join(waiter, nullptr));
+}
+
 struct OnResetArg {
     bthread_id_t id;
     int error_code;
