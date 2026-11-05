@@ -119,6 +119,7 @@ TEST_BUTIL_SOURCES = [
     "flat_map_unittest.cpp",
     "crc32c_unittest.cc",
     "iobuf_unittest.cpp",
+    "doubly_buffered_data_unittest.cpp",
     "object_pool_unittest.cpp",
     "resource_pool_unittest.cpp",
     "test_switches.cc",

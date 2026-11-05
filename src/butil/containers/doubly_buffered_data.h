@@ -96,13 +96,20 @@ public:
     public:
         ScopedPtr() : _data(nullptr), _index(0), _w(nullptr) {}
         ~ScopedPtr() {
+            reset();
+        }
+        // Ends the current read, if any.
+        void reset() {
             if (_w) {
                 if (AllowBthreadSuspended) {
                     _w->EndRead(_index);
                 } else {
                     _w->EndRead();
                 }
+                _w.reset();
             }
+            _data = nullptr;
+            _index = 0;
         }
         const T* get() const { return _data; }
         const T& operator*() const { return *_data; }
@@ -477,6 +484,8 @@ int DoublyBufferedData<T, TLS, AllowBthreadSuspended>::Read(
     if (BAIDU_UNLIKELY(w == nullptr)) {
         return -1;
     }
+
+    ptr->reset();
 
     if (AllowBthreadSuspended) {
         // Use reference count instead of mutex to indicate read of

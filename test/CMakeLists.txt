@@ -108,6 +108,7 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/crash_logging_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/crc32c_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/dir_reader_posix_unittest.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/doubly_buffered_data_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/endpoint_unittest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/environment_unittest.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/errno_unittest.cpp
