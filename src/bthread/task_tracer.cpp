@@ -59,7 +59,7 @@ BUTIL_VALIDATE_GFLAG(signal_trace_timeout_ms, butil::PositiveInteger<uint32_t>);
 DEFINE_int32(signal_number_for_trace, SIGURG,
              "signal number used for stack trace, default to SIGURG");
 
-extern BAIDU_THREAD_LOCAL TaskMeta* pthread_fake_meta;
+TaskMeta*& pthread_fake_meta();
 
 TaskTracer::SignalSync::~SignalSync() {
     if (pipe_fds[0] >= 0) {
@@ -226,7 +226,7 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
     };
 
     if (tid == bthread_self() ||
-        (nullptr != pthread_fake_meta && tid == pthread_fake_meta->tid)) {
+        (nullptr != pthread_fake_meta() && tid == pthread_fake_meta()->tid)) {
         return Result::MakeErrorResult("Forbid to trace self=%d", tid);
     }
 

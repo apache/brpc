@@ -30,7 +30,7 @@
 #include "butil/atomicops.h"              // butil::atomic
 #include "butil/macros.h"                 // BAIDU_CACHELINE_ALIGNMENT
 #include "butil/scoped_lock.h"            // BAIDU_SCOPED_LOCK
-#include "butil/thread_local.h"           // BAIDU_THREAD_LOCAL
+#include "butil/thread_local.h"           // BUTIL_THREAD_LOCAL
 #include "butil/time.h"                   // monotonic_time_us
 #include "butil/memory/aligned_memory.h"  // butil::AlignedMemory
 #include "butil/debug/address_annotations.h"
@@ -299,9 +299,9 @@ public:
     }
 
     void clear_objects() {
-        LocalPool* lp = _local_pool;
+        LocalPool* lp = _local_pool();
         if (lp) {
-            _local_pool = nullptr;
+            _local_pool() = nullptr;
             butil::thread_atexit_cancel(LocalPool::delete_local_pool, lp);
             delete lp;
         }
@@ -509,13 +509,13 @@ private:
     }
 
     inline LocalPool* get_or_new_local_pool() {
-	    LocalPool* lp = BAIDU_GET_VOLATILE_THREAD_LOCAL(_local_pool);
+        LocalPool* lp = _local_pool();
         if (BAIDU_LIKELY(lp != nullptr)) {
             return lp;
         }
         lp = new LocalPool(this);
         BAIDU_SCOPED_LOCK(_change_thread_mutex); //avoid race with clear()
-	    BAIDU_SET_VOLATILE_THREAD_LOCAL(_local_pool, lp);
+        _local_pool() = lp;
         butil::thread_atexit(LocalPool::delete_local_pool, lp);
         _nlocal.fetch_add(1, butil::memory_order_relaxed);
         return lp;
@@ -523,7 +523,7 @@ private:
 
     void clear_from_destructor_of_local_pool() {
         // Remove tls
-        _local_pool = nullptr;
+        _local_pool() = nullptr;
 
         // Do nothing if there're active threads.
         if (_nlocal.fetch_sub(1, butil::memory_order_relaxed) != 1) {
@@ -629,7 +629,7 @@ private:
     
     static butil::static_atomic<ObjectPool*> _singleton;
     static pthread_mutex_t _singleton_mutex;
-    STATIC_MEMBER_BAIDU_VOLATILE_THREAD_LOCAL(LocalPool*, _local_pool);
+    static BUTIL_THREAD_LOCAL(LocalPool*, _local_pool, nullptr);
     static butil::static_atomic<long> _nlocal;
     static butil::static_atomic<size_t> _ngroup;
     static pthread_mutex_t _block_group_mutex;
@@ -651,10 +651,6 @@ private:
 
 template <typename T>
 const size_t ObjectPool<T>::FREE_CHUNK_NITEM;
-
-template <typename T>
-BAIDU_THREAD_LOCAL typename ObjectPool<T>::LocalPool*
-ObjectPool<T>::_local_pool = nullptr;
 
 template <typename T>
 butil::static_atomic<ObjectPool<T>*> ObjectPool<T>::_singleton = BUTIL_STATIC_ATOMIC_INIT(nullptr);
