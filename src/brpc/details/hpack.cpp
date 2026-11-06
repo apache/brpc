@@ -168,7 +168,7 @@ public:
 
         const int id = _add_times++;
         if (_need_indexes) {
-            // Overwrite existance value.
+            // Overwrite existing value.
             if (!h.value.empty()) {
                 _header_index[h] = id;
             }
