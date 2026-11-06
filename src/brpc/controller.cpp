@@ -50,10 +50,6 @@
 #include "brpc/selective_channel.h"
 #include "bthread/task_group.h"
 
-namespace bthread {
-EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
-}
-
 // This is the only place that both client/server must link, so we put
 // registrations of errno here.
 BAIDU_REGISTER_ERRNO(brpc::ENOSERVICE, "No such service");
@@ -948,7 +944,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
             response_attachment().clear();
 
             // Retry backoff.
-            bthread::TaskGroup* g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+            bthread::TaskGroup* g = bthread::tls_task_group();
             int64_t backoff_time_us = retry_policy->GetBackoffTimeMs(this) * 1000L;
             if (backoff_time_us > 0 &&
                 backoff_time_us < _deadline_us - butil::gettimeofday_us()) {

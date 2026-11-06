@@ -23,6 +23,7 @@
 #include "butil/macros.h"
 #include "butil/time.h"     // gettimeofday_us()
 #include "butil/fast_rand.h"
+#include "butil/thread_local.h"
 #include "butil/numerics/safe_conversions.h" // safe_abs
 
 namespace butil {
@@ -78,7 +79,7 @@ inline uint64_t fast_rand_impl(uint64_t range, FastRandSeed* seed) {
 }
 
 // Seeds for different threads are stored separately in thread-local storage.
-static __thread FastRandSeed _tls_seed = { { 0, 0 } };
+static BUTIL_THREAD_LOCAL(FastRandSeed, tls_seed, { { 0, 0 } });
 
 // True if the seed is (probably) uninitialized. There's definitely false
 // positive, but it's OK for us.
@@ -87,10 +88,11 @@ inline bool need_init(const FastRandSeed& seed) {
 }
 
 uint64_t fast_rand() {
-    if (need_init(_tls_seed)) {
-        init_fast_rand_seed(&_tls_seed);
+    FastRandSeed& seed = tls_seed();
+    if (need_init(seed)) {
+        init_fast_rand_seed(&seed);
     }
-    return xorshift128_next(&_tls_seed);
+    return xorshift128_next(&seed);
 }
 
 uint64_t fast_rand(FastRandSeed* seed) {
@@ -101,15 +103,17 @@ uint64_t fast_rand_less_than(uint64_t range) {
     if (range == 0) {
         return 0;
     }
-    if (need_init(_tls_seed)) {
-        init_fast_rand_seed(&_tls_seed);
+    FastRandSeed& seed = tls_seed();
+    if (need_init(seed)) {
+        init_fast_rand_seed(&seed);
     }
-    return fast_rand_impl(range, &_tls_seed);
+    return fast_rand_impl(range, &seed);
 }
 
 int64_t fast_rand_in_64(int64_t min, int64_t max) {
-    if (need_init(_tls_seed)) {
-        init_fast_rand_seed(&_tls_seed);
+    FastRandSeed& seed = tls_seed();
+    if (need_init(seed)) {
+        init_fast_rand_seed(&seed);
     }
     if (BAIDU_UNLIKELY(min >= max)) {
         if (min == max) {
@@ -121,7 +125,7 @@ int64_t fast_rand_in_64(int64_t min, int64_t max) {
     if (min >= 0) {
         // Always safe to do subtraction.
         range = (uint64_t)(max - min) + 1;
-        return min + (int64_t)fast_rand_impl(range, &_tls_seed);
+        return min + (int64_t)fast_rand_impl(range, &seed);
     }
 
     uint64_t abs_min = safe_abs(min);
@@ -132,15 +136,16 @@ int64_t fast_rand_in_64(int64_t min, int64_t max) {
     }
     if (range == 0) {
         // max = INT64_MAX, min = INT64_MIN
-        return (int64_t)xorshift128_next(&_tls_seed);
+        return (int64_t)xorshift128_next(&seed);
     }
-    uint64_t r = fast_rand_impl(range, &_tls_seed);
+    uint64_t r = fast_rand_impl(range, &seed);
     return r >= abs_min ? (int64_t)(r - abs_min) : -((int64_t)(abs_min - r));
 }
 
 uint64_t fast_rand_in_u64(uint64_t min, uint64_t max) {
-    if (need_init(_tls_seed)) {
-        init_fast_rand_seed(&_tls_seed);
+    FastRandSeed& seed = tls_seed();
+    if (need_init(seed)) {
+        init_fast_rand_seed(&seed);
     }
     if (min >= max) {
         if (min == max) {
@@ -153,9 +158,9 @@ uint64_t fast_rand_in_u64(uint64_t min, uint64_t max) {
     uint64_t range = max - min + 1;
     if (range == 0) {
         // max = UINT64_MAX, min = UINT64_MIN
-        return xorshift128_next(&_tls_seed);
+        return xorshift128_next(&seed);
     }
-    return min + fast_rand_impl(range, &_tls_seed);
+    return min + fast_rand_impl(range, &seed);
 }
 
 inline double fast_rand_double(FastRandSeed* seed) {
@@ -168,10 +173,11 @@ inline double fast_rand_double(FastRandSeed* seed) {
 }
 
 double fast_rand_double() {
-    if (need_init(_tls_seed)) {
-        init_fast_rand_seed(&_tls_seed);
+    FastRandSeed& seed = tls_seed();
+    if (need_init(seed)) {
+        init_fast_rand_seed(&seed);
     }
-    return fast_rand_double(&_tls_seed);
+    return fast_rand_double(&seed);
 }
 
 void fast_rand_bytes(void* output, size_t output_length) {
