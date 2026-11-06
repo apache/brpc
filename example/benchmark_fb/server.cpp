@@ -68,9 +68,9 @@ public:
             return;
         }
         auto* cntl = static_cast<brpc::Controller*>(controller);
-        // The generated dispatcher also verifies the schema. Keep this guard
-        // for callers invoking the typed service method directly.
-        if (!request || !response || !request->Verify<benchmark_fb::Request>()) {
+        // The generated dispatcher has already verified the request schema,
+        // so verifying it again here would only add cost to the fb_rpc side.
+        if (!request || !response) {
             cntl->SetFailed(brpc::EREQUEST, "Invalid FlatBuffers Request");
             return;
         }
@@ -164,6 +164,9 @@ int main(int argc, char* argv[]) {
                           std::chrono::seconds(FLAGS_duration_s);
     while (!brpc::IsAskedToQuit() && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    if (!brpc::IsAskedToQuit()) {
+        std::cerr << "--duration_s=" << FLAGS_duration_s << " elapsed, stopping\n";
     }
     const int stop_result = server.Stop(0);
     const int join_result = server.Join();

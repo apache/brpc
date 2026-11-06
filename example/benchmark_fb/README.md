@@ -82,7 +82,7 @@ schema rejection (error code -1); timeouts and connection errors are failures.
 | `attachment_size` | 0 | 0..1048576 bytes |
 | `timeout_ms` | 1500 | 1..5000 per RPC |
 | `deadline_ms` | 30000 | 1..120000 for the client run |
-| `connection_type` | `single` | `single`, `pooled`, `short` |
+| `connection_type` | `single` | `single`, `pooled`, `short` (`short` only in count mode) |
 | `omit_message` | false | Preserve absent rather than empty string |
 | `corrupt_request` | false | Require schema rejection (`fb_rpc`, count mode only) |
 | `duration_s` | 0 | 0 for count mode, 1..3600 for timed mode |
@@ -92,7 +92,10 @@ schema rejection (error code -1); timeouts and connection errors are failures.
 | `fail_worker_start_at` | -1 | Tests only: fail to start caller N (0-based), -1 disables |
 
 The server defaults to `127.0.0.1:0`, `duration_s=60` (1..86400) and
-`max_concurrency=32` (1..4096), and stops earlier on SIGINT/SIGTERM.
+`max_concurrency=32` (1..4096), and stops earlier on SIGINT/SIGTERM. When
+`duration_s` runs out it prints a line to stderr and stops, so give it longer
+than `warmup_s + duration_s` of every client run. `max_concurrency` must be at
+least the total `thread_num` of the clients, or calls fail with ELIMIT.
 `--reply_delay_ms` (0..10000, default 0) delays every reply and is meant for
 tests only. Use
 `--allow_remote` with a non-loopback `listen_addr`. Builtin
@@ -107,7 +110,14 @@ throughput, latency percentiles and the client's CPU cores. Only calls that
 finish inside the window are counted, and the window closes when the timer
 expires, not when the last in-flight call returns. `started_threads` reports
 how many callers actually ran; if any caller fails to start, the client still
-prints the line but exits 1. Run each protocol
+prints the line but exits 1. Latency is the RPC alone, without building the
+request or checking the reply. Percentiles come from a fixed-size histogram and
+are at most 1/128 above the recorded value; `avg_us` and `max_us` are exact.
+`payload_mib_per_s` counts the request string and attachment once, although
+the server echoes both back. SIGINT or SIGTERM closes the window early, and
+the client prints the result but exits 1. Short connections are rejected in
+timed mode, because closed connections would exhaust local ports in
+TIME_WAIT. Run each protocol
 with identical sizes and concurrency against the same server:
 
 ```sh
@@ -134,13 +144,14 @@ an ephemeral loopback port and checks:
 2. two malformed-schema requests are rejected;
 3. normal requests still work on the same server afterwards;
 4. a timed run where one of two callers fails to start (pthread and bthread)
-   exits non-zero and reports `started_threads=1`;
+   exits non-zero and reports `started_threads=1`, and a timed run over short
+   connections is rejected;
 5. a timed run against a second server with `--reply_delay_ms=600` reports a
-   window of about `--duration_s`, although its last call ends after the
-   window closes;
+   window of about `--duration_s` and a median latency of at least 600 ms,
+   although its last call ends after the window closes;
 6. the servers it started are stopped and reaped.
 
-The orchestration deadline is 35 seconds and CTest's timeout is 50 seconds.
+The orchestration deadline is 40 seconds and CTest's timeout is 50 seconds.
 Needing the SIGKILL fallback fails the test. The smoke test can also run
 without CTest:
 

@@ -34,8 +34,12 @@
 #include <vector>
 #include "butil/config.h"
 #include "butil/endpoint.h"
+#include "butil/iobuf.h"
+#include "butil/memory/scope_guard.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
+#include "brpc/errno.pb.h"
+#include "brpc/server.h"
 #include "bthread/bthread.h"
 #include "echo.brpc.fb.h"
 #include "echo_pb.pb.h"
@@ -71,7 +75,8 @@ using Clock = std::chrono::steady_clock;
 
 // Result of one RPC: kSuccess, kRejected (expected schema rejection) or kFailed.
 enum CallResult { kSuccess, kRejected, kFailed };
-using CallFn = std::function<CallResult(uint64_t, int64_t, std::string*)>;
+// Arguments: request ID, timeout in ms, RPC latency in us (out), error (out).
+using CallFn = std::function<CallResult(uint64_t, int64_t, int64_t*, std::string*)>;
 
 std::string MakeBytes(size_t size, unsigned multiplier) {
     std::string bytes(size, '\0');
@@ -97,7 +102,7 @@ Message MakeRequest(uint64_t request_id, const std::string& text) {
 }
 
 bool CheckResponse(const Message& response, uint64_t request_id,
-                   const std::string& text, const std::string& attachment,
+                   const std::string& text, const butil::IOBuf& attachment,
                    const brpc::Controller& cntl) {
     if (!response.Verify<benchmark_fb::Response>()) {
         return false;
@@ -105,7 +110,7 @@ bool CheckResponse(const Message& response, uint64_t request_id,
     const auto* output = response.GetRoot<benchmark_fb::Response>();
     if (output->request_id() != request_id ||
         output->attachment_size() != attachment.size() ||
-        cntl.response_attachment().to_string() != attachment) {
+        !cntl.response_attachment().equals(attachment)) {
         return false;
     }
     if (FLAGS_omit_message) {
@@ -116,11 +121,11 @@ bool CheckResponse(const Message& response, uint64_t request_id,
 }
 
 bool CheckPbResponse(const benchmark_fb_pb::Response& response, uint64_t request_id,
-                     const std::string& text, const std::string& attachment,
+                     const std::string& text, const butil::IOBuf& attachment,
                      const brpc::Controller& cntl) {
     if (response.request_id() != request_id ||
         response.attachment_size() != attachment.size() ||
-        cntl.response_attachment().to_string() != attachment) {
+        !cntl.response_attachment().equals(attachment)) {
         return false;
     }
     if (FLAGS_omit_message) {
@@ -141,6 +146,8 @@ bool ValidFlags(butil::EndPoint* endpoint) {
         !(FLAGS_corrupt_request && (FLAGS_protocol != "fb_rpc" || timed)) &&
         (FLAGS_connection_type == "single" || FLAGS_connection_type == "pooled" ||
          FLAGS_connection_type == "short") &&
+        // Short connections in a timed run exhaust local ports in TIME_WAIT.
+        !(timed && FLAGS_connection_type == "short") &&
         FLAGS_request_count >= 1 && FLAGS_request_count <= 1000 &&
         FLAGS_duration_s >= 0 && FLAGS_duration_s <= 3600 &&
         FLAGS_warmup_s >= 0 && FLAGS_warmup_s <= 600 && (timed || FLAGS_warmup_s == 0) &&
@@ -164,13 +171,14 @@ struct Shared {
 };
 
 // Builds one synchronous RPC for the selected protocol. Both protocols carry
-// the same request string and attachment and verify every echoed byte.
+// the same request string and attachment and verify every echoed byte. Only
+// the RPC itself is timed, not building the request or checking the reply.
 CallFn MakeCall(brpc::Channel* channel, const std::string& text,
-                const std::string& attachment) {
+                const butil::IOBuf& attachment) {
     if (FLAGS_protocol == "baidu_std") {
         auto stub = std::make_shared<benchmark_fb_pb::BenchmarkService_Stub>(channel);
         return [stub, &text, &attachment](uint64_t request_id, int64_t timeout_ms,
-                                          std::string* error) {
+                                          int64_t* latency_us, std::string* error) {
             benchmark_fb_pb::Request request;
             request.set_request_id(request_id);
             if (!FLAGS_omit_message) {
@@ -180,7 +188,10 @@ CallFn MakeCall(brpc::Channel* channel, const std::string& text,
             brpc::Controller cntl;
             cntl.set_timeout_ms(timeout_ms);
             cntl.request_attachment().append(attachment);
+            const auto begin = Clock::now();
             stub->Echo(&cntl, &request, &response, nullptr);
+            *latency_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                Clock::now() - begin).count();
             if (cntl.Failed()) {
                 *error = "RPC failed: " + cntl.ErrorText();
                 return kFailed;
@@ -195,17 +206,23 @@ CallFn MakeCall(brpc::Channel* channel, const std::string& text,
     // Generated stub methods route through Channel::FBCallMethod.
     auto stub = std::make_shared<benchmark_fb::BenchmarkService::Stub>(channel);
     return [stub, &text, &attachment](uint64_t request_id, int64_t timeout_ms,
-                                      std::string* error) {
+                                      int64_t* latency_us, std::string* error) {
         const Message request = MakeRequest(request_id, text);
         Message response;
         brpc::Controller cntl;
         cntl.set_timeout_ms(timeout_ms);
         cntl.request_attachment().append(attachment);
+        const auto begin = Clock::now();
         stub->Echo(&cntl, &request, &response, nullptr);
+        *latency_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            Clock::now() - begin).count();
         if (FLAGS_corrupt_request) {
-            // The generated generic RpcController::SetFailed(string)
-            // maps to -1. Timeouts and connection errors do not count.
-            if (!cntl.Failed() || cntl.ErrorCode() != -1 ||
+            // The generated dispatcher rejects the schema through the generic
+            // RpcController::SetFailed(string), which is -1 on the wire today.
+            // Also accept EINTERNAL, what baidu_std maps -1 to. Timeouts and
+            // connection errors do not count.
+            if (!cntl.Failed() ||
+                (cntl.ErrorCode() != -1 && cntl.ErrorCode() != brpc::EINTERNAL) ||
                 response.size() != 0 || !cntl.response_attachment().empty()) {
                 *error = "Expected server schema rejection; error=" + cntl.ErrorText();
                 return kFailed;
@@ -309,8 +326,9 @@ int RunCount(const CallFn& call) {
                 break;
             }
             std::string error;
+            int64_t latency_us = 0;
             const CallResult result = call(static_cast<uint64_t>(index) + 1,
-                std::min<int64_t>(FLAGS_timeout_ms, remaining), &error);
+                std::min<int64_t>(FLAGS_timeout_ms, remaining), &latency_us, &error);
             if (result == kFailed) {
                 shared.Fail(error);
                 break;
@@ -336,41 +354,138 @@ double CpuSeconds() {
         (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1e6;
 }
 
+// Per-caller latency histogram in microseconds with fixed memory, however
+// long the run. Values below 128 are exact; larger ones fall into 128 buckets
+// per power of two, so a percentile is reported at most 1/128 above the
+// recorded value. Average and maximum are exact.
+class LatencyHistogram {
+public:
+    LatencyHistogram() : _counts(kBuckets, 0) {}
+
+    void Add(uint32_t us) {
+        ++_counts[IndexOf(us)];
+        ++_count;
+        _sum += us;
+        _max = std::max(_max, us);
+    }
+
+    void Merge(const LatencyHistogram& other) {
+        for (size_t i = 0; i < kBuckets; ++i) {
+            _counts[i] += other._counts[i];
+        }
+        _count += other._count;
+        _sum += other._sum;
+        _max = std::max(_max, other._max);
+    }
+
+    uint64_t count() const { return _count; }
+    double average() const { return _count ? _sum / _count : 0; }
+    uint32_t max() const { return _max; }
+
+    // Nearest-rank percentile, reported as the upper bound of its bucket.
+    uint32_t Percentile(double p) const {
+        if (_count == 0) {
+            return 0;
+        }
+        const uint64_t rank = static_cast<uint64_t>(p * (_count - 1) + 0.5);
+        uint64_t seen = 0;
+        for (size_t i = 0; i < kBuckets; ++i) {
+            seen += _counts[i];
+            if (seen > rank) {
+                return std::min(UpperBound(i), _max);
+            }
+        }
+        return _max;
+    }
+
+private:
+    static constexpr int kSubBits = 7;
+    static constexpr uint32_t kSub = 1u << kSubBits;
+    static constexpr size_t kBuckets = kSub + (32 - kSubBits) * kSub;
+
+    static size_t IndexOf(uint32_t us) {
+        if (us < kSub) {
+            return us;
+        }
+        const int shift = 31 - __builtin_clz(us) - kSubBits;
+        return kSub + shift * kSub + ((us >> shift) - kSub);
+    }
+
+    static uint32_t UpperBound(size_t index) {
+        if (index < kSub) {
+            return static_cast<uint32_t>(index);
+        }
+        const size_t shift = (index - kSub) / kSub;
+        const uint64_t mantissa = kSub + (index - kSub) % kSub;
+        return static_cast<uint32_t>(std::min<uint64_t>(
+            ((mantissa + 1) << shift) - 1, UINT32_MAX));
+    }
+
+    std::vector<uint64_t> _counts;
+    uint64_t _count = 0;
+    double _sum = 0;
+    uint32_t _max = 0;
+};
+
+// Sleeps for `seconds' unless SIGINT/SIGTERM arrives first. Returns false if
+// the user asked to quit.
+bool SleepUnlessAskedToQuit(int seconds) {
+    const auto until = Clock::now() + std::chrono::seconds(seconds);
+    while (!brpc::IsAskedToQuit()) {
+        const auto now = Clock::now();
+        if (now >= until) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::min<Clock::duration>(
+            until - now, std::chrono::milliseconds(100)));
+    }
+    return false;
+}
+
 // Closed-loop benchmark: every caller keeps one RPC in flight for
 // warmup_s + duration_s and records per-call latency in the measured window.
+// SIGINT/SIGTERM closes the window early and fails the run.
 int RunTimed(const CallFn& call) {
     Shared shared;
-    std::vector<std::vector<uint32_t>> latencies(FLAGS_thread_num);
+    std::vector<LatencyHistogram> latencies(FLAGS_thread_num);
     std::atomic<uint64_t> next_id{1};
     std::atomic<bool> measuring{false};
     std::atomic<bool> stop{false};
     std::atomic<int64_t> failures{0};
+    bool interrupted = false;
     // Sample time and CPU at the same boundaries that open and close the
     // counting window. Waiting for in-flight RPCs after `stop' is excluded.
     Clock::time_point measure_begin;
     Clock::time_point measure_end;
     double cpu_begin = 0;
     double cpu_end = 0;
+    // Install brpc's SIGINT/SIGTERM handlers before any call starts.
+    brpc::IsAskedToQuit();
     std::thread timer([&] {
-        std::this_thread::sleep_for(std::chrono::seconds(FLAGS_warmup_s));
+        bool completed = SleepUnlessAskedToQuit(FLAGS_warmup_s);
         measure_begin = Clock::now();
         cpu_begin = CpuSeconds();
         measuring = true;
-        std::this_thread::sleep_for(std::chrono::seconds(FLAGS_duration_s));
+        completed = completed && SleepUnlessAskedToQuit(FLAGS_duration_s);
         measure_end = Clock::now();
         stop = true;
         cpu_end = CpuSeconds();
+        interrupted = !completed;
     });
+    // Never leave `timer' joinable, which would terminate, if RunWorkers throws.
+    BRPC_SCOPE_EXIT {
+        if (timer.joinable()) {
+            timer.join();
+        }
+    };
     const int started_threads = RunWorkers(&shared, [&](int index) {
-        std::vector<uint32_t>& samples = latencies[index];
-        samples.reserve(1 << 16);
+        LatencyHistogram& histogram = latencies[index];
         while (!stop.load(std::memory_order_relaxed)) {
             const bool measured = measuring.load(std::memory_order_relaxed);
-            const auto begin = Clock::now();
+            int64_t latency_us = 0;
             std::string error;
             const CallResult result = call(next_id.fetch_add(1, std::memory_order_relaxed),
-                                           FLAGS_timeout_ms, &error);
-            const auto end = Clock::now();
+                                           FLAGS_timeout_ms, &latency_us, &error);
             if (result != kSuccess) {
                 if (failures.fetch_add(1) == 0) {
                     shared.Fail(error);
@@ -378,31 +493,21 @@ int RunTimed(const CallFn& call) {
                 continue;
             }
             if (measured && !stop.load(std::memory_order_relaxed)) {
-                samples.push_back(static_cast<uint32_t>(std::min<int64_t>(
-                    std::chrono::duration_cast<std::chrono::microseconds>(
-                        end - begin).count(), UINT32_MAX)));
+                histogram.Add(static_cast<uint32_t>(
+                    std::min<int64_t>(latency_us, UINT32_MAX)));
             }
         }
     });
     timer.join();
-    std::vector<uint32_t> all;
-    for (const auto& samples : latencies) {
-        all.insert(all.end(), samples.begin(), samples.end());
+    if (interrupted) {
+        shared.Fail("Interrupted; the measured window closed early");
     }
-    std::sort(all.begin(), all.end());
+    LatencyHistogram all;
+    for (const auto& histogram : latencies) {
+        all.Merge(histogram);
+    }
     const double seconds = std::chrono::duration<double>(measure_end - measure_begin).count();
-    auto percentile = [&all](double p) -> uint32_t {
-        if (all.empty()) {
-            return 0;
-        }
-        const size_t rank = static_cast<size_t>(p * (all.size() - 1) + 0.5);
-        return all[std::min(rank, all.size() - 1)];
-    };
-    double sum = 0;
-    for (uint32_t value : all) {
-        sum += value;
-    }
-    const double qps = seconds > 0 ? all.size() / seconds : 0;
+    const double qps = seconds > 0 ? all.count() / seconds : 0;
     const double payload = static_cast<double>(FLAGS_omit_message ? 0 : FLAGS_request_size) +
         FLAGS_attachment_size;
     std::cout << std::fixed << std::setprecision(1)
@@ -414,22 +519,22 @@ int RunTimed(const CallFn& call) {
               << ",\"request_size\":" << FLAGS_request_size
               << ",\"attachment_size\":" << FLAGS_attachment_size
               << ",\"seconds\":" << seconds
-              << ",\"requests\":" << all.size()
+              << ",\"requests\":" << all.count()
               << ",\"failures\":" << failures.load()
               << ",\"qps\":" << qps
               << ",\"payload_mib_per_s\":" << qps * payload / (1024.0 * 1024.0)
-              << ",\"avg_us\":" << (all.empty() ? 0 : sum / all.size())
-              << ",\"p50_us\":" << percentile(0.50)
-              << ",\"p90_us\":" << percentile(0.90)
-              << ",\"p99_us\":" << percentile(0.99)
-              << ",\"p999_us\":" << percentile(0.999)
-              << ",\"max_us\":" << (all.empty() ? 0 : all.back())
+              << ",\"avg_us\":" << all.average()
+              << ",\"p50_us\":" << all.Percentile(0.50)
+              << ",\"p90_us\":" << all.Percentile(0.90)
+              << ",\"p99_us\":" << all.Percentile(0.99)
+              << ",\"p999_us\":" << all.Percentile(0.999)
+              << ",\"max_us\":" << all.max()
               << ",\"client_cpu_cores\":" << std::setprecision(3)
               << (seconds > 0 ? (cpu_end - cpu_begin) / seconds : 0)
               << "}\n";
     // A run with fewer callers than requested is not a valid benchmark.
     return !shared.failed.load() && failures.load() == 0 &&
-           started_threads == FLAGS_thread_num && !all.empty() ? 0 : 1;
+           started_threads == FLAGS_thread_num && all.count() > 0 ? 0 : 1;
 }
 
 int RunClient(const butil::EndPoint& endpoint) {
@@ -445,7 +550,9 @@ int RunClient(const butil::EndPoint& endpoint) {
         return 1;
     }
     const std::string text = MakeBytes(FLAGS_omit_message ? 0 : FLAGS_request_size, 31);
-    const std::string attachment = MakeBytes(FLAGS_attachment_size, 17);
+    // Every call appends this IOBuf by reference instead of copying the bytes.
+    butil::IOBuf attachment;
+    attachment.append(MakeBytes(FLAGS_attachment_size, 17));
     const CallFn call = MakeCall(&channel, text, attachment);
     return FLAGS_duration_s > 0 ? RunTimed(call) : RunCount(call);
 }

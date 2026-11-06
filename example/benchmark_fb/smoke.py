@@ -113,6 +113,21 @@ def run_timed_boundary(binary, endpoint, deadline):
         raise RuntimeError("unexpected timed result: " + result.stdout)
     if not 1.9 <= report.get("seconds", 0) < 2.2:
         raise RuntimeError("timed window includes in-flight calls: " + result.stdout)
+    # Every reply takes at least 600 ms; the latency histogram reports
+    # percentiles at most 1/128 above the recorded value.
+    if not 600000 <= report.get("p50_us", 0) <= report.get("max_us", 0) < 700000:
+        raise RuntimeError("unexpected timed latency: " + result.stdout)
+
+
+def run_rejected_flags(binary, endpoint, deadline):
+    # A timed run over short connections would exhaust local ports.
+    command = [str(binary), "--server=" + endpoint, "--duration_s=1",
+               "--connection_type=short"]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, timeout=min(8.0, remaining(deadline)), check=False)
+    if result.returncode != 2 or result.stdout:
+        raise RuntimeError("timed short-connection run was not rejected ({}): {}".format(
+            result.returncode, result.stdout))
 
 
 def run_timed_start_failure(binary, endpoint, deadline, use_bthread):
@@ -184,6 +199,7 @@ def main():
             run_client(client, endpoint, deadline, count=3, size=33, attachment=9)
             for use_bthread in (False, True):
                 run_timed_start_failure(client, endpoint, deadline, use_bthread)
+            run_rejected_flags(client, endpoint, deadline)
             if process.poll() is not None:
                 raise RuntimeError("server exited during the smoke")
             slow = start_server(server, server_log, "--reply_delay_ms=600")
