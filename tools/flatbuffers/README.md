@@ -242,7 +242,7 @@ keywords, and service/stub names that collide with generated C++ types.
 Test-only fault injection covers staging, backup, publication, and rollback
 failures; concurrent publishers must also leave a consistent pair. The suite
 then compiles the generated service and self-contained header for C++17-or-newer
-compatibility (and checks that C++14 is rejected), sparse IDs, reordered methods, global/nested
+compatibility, sparse IDs, reordered methods, global/nested
 namespaces, zero/max IDs, and included table types. Test configuration headers
 and generated artifacts stay in the standalone build directory, not in the
 source tree. The name-shadowing cases are compile-only by default; pass
