@@ -19,7 +19,10 @@
 #ifndef BRPC_EVENT_DISPATCHER_H
 #define BRPC_EVENT_DISPATCHER_H
 
+#include <atomic>
+#include <functional>
 #include <gflags/gflags_declare.h>          // DECLARE_bool
+#include "butil/synchronization/lock.h"
 #include "butil/macros.h"                     // DISALLOW_COPY_AND_ASSIGN
 #include "bthread/types.h"                   // bthread_t, bthread_attr_t
 #include "brpc/versioned_ref_with_id.h"
@@ -28,6 +31,56 @@
 namespace brpc {
 
 DECLARE_bool(event_dispatcher_edisp_unsched);
+DECLARE_bool(event_dispatcher_use_polling);
+
+// Each dispatcher owns a separate context. A bthread may migrate between
+// worker pthreads: this context is dispatcher-local, not pthread-local.
+struct PollingContext {
+    bthread_tag_t tag = BTHREAD_TAG_INVALID;
+    int dispatcher_index = -1;
+    void* user_data = nullptr;
+};
+
+struct PollingCallbacks {
+    // Return 0 on success or a positive errno value on failure.
+    std::function<int(PollingContext&)> init_fn;
+    // Called inline after each event batch, including batches with no events.
+    std::function<void(PollingContext&)> poll_fn;
+    // Also called after failed initialization to clean up partial resources.
+    std::function<void(PollingContext&)> release_fn;
+};
+
+// An opaque token. Copies refer to the same registration; a stale token cannot
+// unregister a newer registration on the same tag.
+class PollingRegistration {
+public:
+    PollingRegistration() : _tag(BTHREAD_TAG_INVALID), _id(0) {}
+
+private:
+    friend int RegisterPollingCallbacksWithTag(
+        bthread_tag_t, const PollingCallbacks&, PollingRegistration*);
+    friend int UnregisterPollingCallbacks(PollingRegistration);
+    bthread_tag_t _tag;
+    uint64_t _id;
+};
+
+// Requires event_dispatcher_use_polling to be set before dispatchers start.
+// Register one callback set on all dispatchers of the tag, even if they have
+// already started. Returns only after all init_fn calls complete. Failure rolls
+// back all initialized contexts. Duplicate registration fails with EEXIST.
+// Callbacks are serial per dispatcher, but concurrent across dispatchers. They
+// must not block, throw, or synchronously register/unregister callbacks (EDEADLK).
+// poll_fn must be non-null. Returns 0 on success, -1 with errno on failure.
+int RegisterPollingCallbacksWithTag(bthread_tag_t tag,
+                                   const PollingCallbacks& callbacks,
+                                   PollingRegistration* registration);
+
+// On success, all callbacks have stopped and release_fn has completed. This
+// does not stop dispatchers or TCP traffic. Returns 0 or -1 with errno.
+int UnregisterPollingCallbacks(PollingRegistration registration);
+
+struct EventDispatcherPollingState;
+struct EventDispatcherPollingCommand;
 
 // Unique identifier of a IOEventData.
 // Users shall store EventDataId instead of EventData and call EventData::Address()
@@ -97,6 +150,9 @@ class EventDispatcher {
 friend class Socket;
 friend class rdma::RdmaEndpoint;
 template <typename T> friend class IOEvent;
+friend int RegisterPollingCallbacksWithTag(
+    bthread_tag_t, const PollingCallbacks&, PollingRegistration*);
+friend int UnregisterPollingCallbacks(PollingRegistration);
 public:
     EventDispatcher();
     
@@ -110,6 +166,12 @@ public:
 
     // True iff this dispatcher is running in a bthread
     bool Running() const;
+
+    // Waiting policy is captured by Start(), independently of the urgent /
+    // background input-processing policy controlled by EventDispatcherUnsched.
+    bool use_polling() const { return _use_polling; }
+
+    bool IsDispatcherThread() const;
 
     // Stop bthread of this dispatcher.
     void Stop();
@@ -148,6 +210,14 @@ private:
     // Thread entry.
     void Run();
 
+    // Registration is serialized outside the hot path. Only the dispatcher
+    // modifies its callbacks/context; commands synchronously acknowledge this.
+    int SetPollingCallbacks(EventDispatcherPollingState* state);
+    void ProcessPollingCommand();
+    void RunPollingCallback();
+    void ReleasePollingCallbacks();
+    void FinishPolling();
+
     // Remove the file descriptor `fd' from epoll.
     int RemoveConsumer(int fd);
 
@@ -179,11 +249,11 @@ private:
     // The epoll/kqueue fd to watch events.
     int _event_dispatcher_fd;
 
-    // false unless Stop() is called.
-    volatile bool _stop;
+    // false unless Stop() is called. Polling must not rely on syscall fences.
+    std::atomic<bool> _stop;
 
     // identifier of hosting bthread
-    bthread_t _tid;
+    std::atomic<bthread_t> _tid;
 
     // The attribute of bthreads calling user callbacks.
     bthread_attr_t _thread_attr;
@@ -192,13 +262,20 @@ private:
     int _wakeup_fds[2];
 
     int _priority_index{-1};
+
+    bool _use_polling{false};
+    butil::Mutex _polling_command_mutex;
+    bool _polling_finished{false};
+    std::atomic<EventDispatcherPollingCommand*> _polling_command{nullptr};
+    EventDispatcherPollingState* _polling_state{nullptr};
+    PollingContext _polling_context;
 };
 
 EventDispatcher& GetGlobalEventDispatcher(int fd, bthread_tag_t tag);
 
 // Unified unsched switch for transport layer.
 // false -> urgent start (foreground scheduling before caller continues),
-// true  -> background start (allowing schedule away).
+// true  -> background start (enqueue input processing without switching away).
 bool EventDispatcherUnsched();
 
 // IOEvent class manages the IO events of a file descriptor conveniently.
