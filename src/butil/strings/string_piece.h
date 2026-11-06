@@ -345,7 +345,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
     return internal::rfind(*this, c, pos);
   }
 
-  // find_first_of: Find the first occurence of one of a set of characters.
+  // find_first_of: Find the first occurrence of one of a set of characters.
   size_type find_first_of(const BasicStringPiece& s,
                           size_type pos = 0) const {
     return internal::find_first_of(*this, s, pos);
@@ -354,7 +354,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
     return find(c, pos);
   }
 
-  // find_first_not_of: Find the first occurence not of a set of characters.
+  // find_first_not_of: Find the first occurrence not of a set of characters.
   size_type find_first_not_of(const BasicStringPiece& s,
                               size_type pos = 0) const {
     return internal::find_first_not_of(*this, s, pos);
@@ -363,7 +363,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
     return internal::find_first_not_of(*this, c, pos);
   }
 
-  // find_last_of: Find the last occurence of one of a set of characters.
+  // find_last_of: Find the last occurrence of one of a set of characters.
   size_type find_last_of(const BasicStringPiece& s,
                          size_type pos = BasicStringPiece::npos) const {
     return internal::find_last_of(*this, s, pos);
@@ -373,7 +373,7 @@ template <typename STRING_TYPE> class BasicStringPiece {
     return rfind(c, pos);
   }
 
-  // find_last_not_of: Find the last occurence not of a set of characters.
+  // find_last_not_of: Find the last occurrence not of a set of characters.
   size_type find_last_not_of(const BasicStringPiece& s,
                              size_type pos = BasicStringPiece::npos) const {
     return internal::find_last_not_of(*this, s, pos);
