@@ -212,6 +212,7 @@ struct SeriesOptions {
 class Variable {
 public:
     using SharedExposedRef = detail::SharedExposedRef<Variable>;
+    using ScopedExposedRef = detail::ScopedExposedRef<Variable>;
 
     Variable() = default;
 
