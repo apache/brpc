@@ -62,13 +62,12 @@ protected:
 
 TEST_F(MessengerTest, non_protocol_handlers_respect_capacity) {
     brpc::InputMessenger messenger(1);
-    const brpc::InputMessageHandler handler = {
-        brpc::policy::ParseHuluMessage,
-        EmptyProcessHuluRequest,
-        nullptr,
-        nullptr,
-        "dummy_hulu"
-    };
+    brpc::InputMessageHandler handler;
+    handler.parse = brpc::policy::ParseHuluMessage;
+    handler.process = EmptyProcessHuluRequest;
+    handler.verify = nullptr;
+    handler.arg = nullptr;
+    handler.name = "dummy_hulu";
     ASSERT_EQ(0, messenger.AddNonProtocolHandler(handler));
     ASSERT_EQ(-1, messenger.AddNonProtocolHandler(handler));
 }

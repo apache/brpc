@@ -233,7 +233,8 @@ int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
     }
     const int index = _max_index.load(butil::memory_order_relaxed) + 1;
     if (static_cast<size_t>(index) >= _capacity) {
-        LOG(ERROR) << "Can't add more handlers than " << _capacity;
+        LOG(ERROR) << "Non-protocol handler capacity exhausted (index="
+                   << index << ", capacity=" << _capacity << ')';
         return -1;
     }
     _handlers[index] = handler;
