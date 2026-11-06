@@ -340,6 +340,21 @@ private:
     int _saved_handshake_version = 2;
 };
 
+TEST_F(RdmaTest, channels_share_connections_only_with_the_same_transport) {
+    for (const char* group : {"", "transport-signature"}) {
+        Channel channels[4];
+        for (int i = 0; i < 4; ++i) {
+            ChannelOptions options;
+            options.socket_mode = i < 2 ? SOCKET_MODE_TCP : SOCKET_MODE_RDMA;
+            options.connection_group = group;
+            ASSERT_EQ(0, channels[i].Init(g_ep, &options));
+        }
+        EXPECT_EQ(channels[0]._server_id, channels[1]._server_id);
+        EXPECT_EQ(channels[2]._server_id, channels[3]._server_id);
+        EXPECT_NE(channels[0]._server_id, channels[2]._server_id);
+    }
+}
+
 TEST_F(RdmaTest, stale_cq_callback_does_not_poll_new_generation) {
     SocketOptions main_options;
     main_options.socket_mode = SOCKET_MODE_RDMA;

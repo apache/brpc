@@ -32,7 +32,7 @@ class RdmaTransport;
 class UBShmTransport;
 
 // The top-level Transport installed in Socket. It starts on TcpTransport and
-// may switch to an independent RDMA/URMA/UBSHM Transport after a successful
+// may switch to a high-speed Transport after a successful
 // handshake. TCP remains usable before negotiation and after fallback.
 class AdapterTransport : public Transport {
 friend class TransportFactory;

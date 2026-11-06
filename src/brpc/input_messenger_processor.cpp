@@ -277,15 +277,8 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
             num_bthread_created = 0;
         }
     }
-    // In RDMA polling mode, all messages must be executed in a new bthread and
-    // not in the bthread where the polling bthread is located, because the
-    // method for processing messages may call synchronization primitives,
-    // causing the polling bthread to be scheduled out.
-    if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
-        _socket->_socket_mode == SOCKET_MODE_UBRING ||
-        _socket->_socket_mode == SOCKET_MODE_URMA) {
-        _socket->_transport->QueueMessage(last_msg, &num_bthread_created, true);
-    }
+    // The active transport decides whether to dispatch or retain the last message.
+    _socket->_transport->QueueMessage(last_msg, &num_bthread_created, true);
     if (num_bthread_created) {
         bthread_flush();
     }

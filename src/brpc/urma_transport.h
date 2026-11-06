@@ -60,6 +60,8 @@ public:
         return _urma_ep;
     }
 
+    static UrmaTransport* Get(const Socket* socket);
+
     static int ContextInitOrDie(bool server_or_not, const void* options);
 
 private:

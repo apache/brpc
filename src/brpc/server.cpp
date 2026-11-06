@@ -80,7 +80,6 @@
 #include "brpc/rtmp.h"
 #include "brpc/builtin/common.h"               // GetProgramName
 #include "brpc/details/tcmalloc_extension.h"
-#include "brpc/rdma/rdma_helper.h"
 #include "brpc/baidu_master_service.h"
 #include "brpc/transport_factory.h"
 
@@ -865,14 +864,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         return -1;
     }
 
-    // Validate the user-provided ServerOptions BEFORE
-    // copy_and_fill_server_options below. This is important:
-    // copy_and_fill_server_options unconditionally transfers ownership of
-    // user-provided pointers (nshead_service, thrift_service, ...) into
-    // _options. If we instead validated against _options after the copy,
-    // a failed Start() would leave fake/invalid pointers behind in
-    // _options, and the NEXT Start() would attempt to `delete` them via
-    // FREE_PTR_IF_NOT_REUSED, crashing (see RdmaTest.server_option_invalid).
+    // Validate options before copying owned service pointers into the server.
     const ServerOptions default_opt;
     const ServerOptions& real_opt = opt ? *opt : default_opt;
 

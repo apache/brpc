@@ -50,6 +50,7 @@
 #include "brpc/ubshm/ub_endpoint.h"
 #endif
 #include "brpc/socket.h"
+#include "brpc/tcp_transport.h"
 #include "brpc/transport_handshake.h"
 
 namespace brpc {
@@ -894,6 +895,20 @@ TEST(TransportHandshakeTest, upgrade_capability_is_mode_specific) {
     socket->SetFailed();
 }
 #endif
+
+TEST(TransportHandshakeTest, tcp_keeps_last_message_for_inline_processing) {
+    struct Message : InputMessageBase {
+        void DestroyImpl() override {}
+        ~Message() override = default;
+    } message;
+    TcpTransport transport;
+    InputMessageClosure input;
+    input.reset(&message);
+    int queued = 0;
+    transport.QueueMessage(input, &queued, true);
+    EXPECT_EQ(&message, input.release());
+    EXPECT_EQ(0, queued);
+}
 
 TEST(TransportHandshakeTest, publish_fallback_after_tcp_state) {
     HandshakeSession session;

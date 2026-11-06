@@ -1490,7 +1490,7 @@ void UrmaConnect::StartConnect(const Socket* socket,
     _done = done;
     _data = data;
     _error = 0;
-    auto* tp = static_cast<UrmaTransport*>(socket->_transport.get());
+    auto* tp = UrmaTransport::Get(socket);
     if (!tp) {
         Run();
         return;

@@ -61,11 +61,6 @@ class RdmaEndpoint;
 
 namespace urma {
 class UrmaEndpoint;
-class UrmaConnect;
-class UrmaHandshakeClientV2;
-class UrmaHandshakeServerV2;
-class UrmaHandshakeClientV3;
-class UrmaHandshakeServerV3;
 }
 
 namespace ubring {
@@ -343,11 +338,6 @@ friend class rdma::RdmaEndpoint;
 friend class ubring::UBShmEndpoint;
 friend class UBShmTransport;
 friend class urma::UrmaEndpoint;
-friend class urma::UrmaConnect;
-friend class urma::UrmaHandshakeClientV2;
-friend class urma::UrmaHandshakeServerV2;
-friend class urma::UrmaHandshakeClientV3;
-friend class urma::UrmaHandshakeServerV3;
 friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
@@ -1008,7 +998,7 @@ private:
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
-    // Requested provider: SOCKET_MODE_TCP, SOCKET_MODE_RDMA or another mode.
+    // Requested transport for this connection.
     SocketMode _socket_mode;
     // The top-level AdapterTransport, which selects TCP or the requested
     // accelerated Transport.
