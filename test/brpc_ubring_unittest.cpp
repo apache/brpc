@@ -15,6 +15,13 @@
 // limitations under the License.
 
 #include <gtest/gtest.h>
+
+// GoogleTest 1.11 and earlier expose flags without getter/setter macros.
+#ifndef GTEST_FLAG_GET
+#define GTEST_FLAG_GET(name) ::testing::GTEST_FLAG(name)
+#define GTEST_FLAG_SET(name, value) (::testing::GTEST_FLAG(name) = (value))
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
