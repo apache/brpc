@@ -115,6 +115,26 @@ def run_timed_boundary(binary, endpoint, deadline):
         raise RuntimeError("timed window includes in-flight calls: " + result.stdout)
 
 
+def run_timed_start_failure(binary, endpoint, deadline, use_bthread):
+    # One of two callers fails to start. The remaining caller still produces
+    # samples, but the run must exit non-zero and report the real caller count.
+    command = [
+        str(binary), "--server=" + endpoint, "--duration_s=1", "--warmup_s=0",
+        "--thread_num=2", "--fail_worker_start_at=1", "--request_size=16",
+        "--use_bthread=" + str(use_bthread).lower(),
+    ]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, timeout=min(8.0, remaining(deadline)), check=False)
+    if result.returncode == 0:
+        raise RuntimeError("timed client ignored a worker start failure: " + result.stdout)
+    try:
+        report = json.loads(result.stdout)
+    except (ValueError, TypeError) as error:
+        raise RuntimeError("invalid timed summary: " + result.stdout) from error
+    if report.get("thread_num") != 2 or report.get("started_threads") != 1:
+        raise RuntimeError("timed summary hides the start failure: " + result.stdout)
+
+
 def stop_owned_server(process):
     if process.poll() is None:
         process.terminate()
@@ -162,6 +182,8 @@ def main():
                        count=2, size=17, attachment=5, corrupt=True)
             # Keep the same server alive after the malformed requests.
             run_client(client, endpoint, deadline, count=3, size=33, attachment=9)
+            for use_bthread in (False, True):
+                run_timed_start_failure(client, endpoint, deadline, use_bthread)
             if process.poll() is not None:
                 raise RuntimeError("server exited during the smoke")
             slow = start_server(server, server_log, "--reply_delay_ms=600")

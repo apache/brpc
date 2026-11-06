@@ -89,6 +89,7 @@ schema rejection (error code -1); timeouts and connection errors are failures.
 | `warmup_s` | 0 | 0..600 unmeasured seconds before a timed run |
 | `allow_remote` | false | Accept a non-loopback `server` |
 | `use_bthread` | false | Run callers as bthreads, like `multi_threaded_echo_c++ --use_bthread` |
+| `fail_worker_start_at` | -1 | Tests only: fail to start caller N (0-based), -1 disables |
 
 The server defaults to `127.0.0.1:0`, `duration_s=60` (1..86400) and
 `max_concurrency=32` (1..4096), and stops earlier on SIGINT/SIGTERM.
@@ -104,7 +105,9 @@ With `--duration_s` the client keeps one synchronous RPC in flight per caller
 thread, verifies every reply, and prints one JSON line with QPS, payload
 throughput, latency percentiles and the client's CPU cores. Only calls that
 finish inside the window are counted, and the window closes when the timer
-expires, not when the last in-flight call returns. Run each protocol
+expires, not when the last in-flight call returns. `started_threads` reports
+how many callers actually ran; if any caller fails to start, the client still
+prints the line but exits 1. Run each protocol
 with identical sizes and concurrency against the same server:
 
 ```sh
@@ -130,10 +133,12 @@ an ephemeral loopback port and checks:
    single/pooled/short connections (13 verified replies);
 2. two malformed-schema requests are rejected;
 3. normal requests still work on the same server afterwards;
-4. a timed run against a second server with `--reply_delay_ms=600` reports a
+4. a timed run where one of two callers fails to start (pthread and bthread)
+   exits non-zero and reports `started_threads=1`;
+5. a timed run against a second server with `--reply_delay_ms=600` reports a
    window of about `--duration_s`, although its last call ends after the
    window closes;
-5. the servers it started are stopped and reaped.
+6. the servers it started are stopped and reaped.
 
 The orchestration deadline is 35 seconds and CTest's timeout is 50 seconds.
 Needing the SIGKILL fallback fails the test. The smoke test can also run

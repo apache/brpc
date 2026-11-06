@@ -29,6 +29,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 #include "butil/config.h"
@@ -60,6 +61,8 @@ DEFINE_bool(omit_message, false, "Omit the optional string rather than sending a
 DEFINE_bool(use_bthread, false, "Run callers as bthreads instead of pthreads");
 DEFINE_bool(corrupt_request, false, "fb_rpc only: send an invalid root offset and "
             "require schema rejection");
+DEFINE_int32(fail_worker_start_at, -1, "Testing only: fail to start the worker with "
+             "this 0-based index, -1 disables");
 
 namespace {
 using brpc::flatbuffers::Message;
@@ -142,6 +145,7 @@ bool ValidFlags(butil::EndPoint* endpoint) {
         FLAGS_duration_s >= 0 && FLAGS_duration_s <= 3600 &&
         FLAGS_warmup_s >= 0 && FLAGS_warmup_s <= 600 && (timed || FLAGS_warmup_s == 0) &&
         FLAGS_thread_num >= 1 && FLAGS_thread_num <= (timed ? 1024 : 16) &&
+        FLAGS_fail_worker_start_at >= -1 && FLAGS_fail_worker_start_at < FLAGS_thread_num &&
         FLAGS_request_size >= 0 && FLAGS_request_size <= 1024 * 1024 &&
         FLAGS_attachment_size >= 0 && FLAGS_attachment_size <= 1024 * 1024 &&
         FLAGS_timeout_ms >= 1 && FLAGS_timeout_ms <= 5000 &&
@@ -236,15 +240,21 @@ void* BthreadEntry(void* raw) {
     return nullptr;
 }
 
-void RunWorkers(Shared* shared, const std::function<void(int)>& body) {
+// Runs `body' on FLAGS_thread_num workers and returns how many started. A
+// worker that cannot start marks `shared' failed; the others still run.
+int RunWorkers(Shared* shared, const std::function<void(int)>& body) {
+    int started = 0;
     if (FLAGS_use_bthread) {
         std::vector<bthread_t> ids(FLAGS_thread_num, INVALID_BTHREAD);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             auto* arg = new BthreadArg{shared, &body, i};
-            if (bthread_start_background(&ids[i], nullptr, BthreadEntry, arg) != 0) {
+            if (i == FLAGS_fail_worker_start_at ||
+                bthread_start_background(&ids[i], nullptr, BthreadEntry, arg) != 0) {
                 delete arg;
                 ids[i] = INVALID_BTHREAD;
                 shared->Fail("Cannot start bthread worker");
+            } else {
+                ++started;
             }
         }
         for (bthread_t id : ids) {
@@ -252,12 +262,16 @@ void RunWorkers(Shared* shared, const std::function<void(int)>& body) {
                 bthread_join(id, nullptr);
             }
         }
-        return;
+        return started;
     }
     std::vector<std::thread> workers;
     workers.reserve(FLAGS_thread_num);
     try {
         for (int i = 0; i < FLAGS_thread_num; ++i) {
+            if (i == FLAGS_fail_worker_start_at) {
+                throw std::system_error(EAGAIN, std::generic_category(),
+                                        "simulated start failure");
+            }
             workers.emplace_back([shared, &body, i] {
                 try {
                     body(i);
@@ -272,6 +286,7 @@ void RunWorkers(Shared* shared, const std::function<void(int)>& body) {
     for (auto& thread : workers) {
         thread.join();
     }
+    return static_cast<int>(workers.size());
 }
 
 // Bounded functional mode used by smoke.py.
@@ -346,7 +361,7 @@ int RunTimed(const CallFn& call) {
         stop = true;
         cpu_end = CpuSeconds();
     });
-    RunWorkers(&shared, [&](int index) {
+    const int started_threads = RunWorkers(&shared, [&](int index) {
         std::vector<uint32_t>& samples = latencies[index];
         samples.reserve(1 << 16);
         while (!stop.load(std::memory_order_relaxed)) {
@@ -395,6 +410,7 @@ int RunTimed(const CallFn& call) {
               << "\",\"connection_type\":\"" << FLAGS_connection_type
               << "\",\"use_bthread\":" << (FLAGS_use_bthread ? "true" : "false")
               << ",\"thread_num\":" << FLAGS_thread_num
+              << ",\"started_threads\":" << started_threads
               << ",\"request_size\":" << FLAGS_request_size
               << ",\"attachment_size\":" << FLAGS_attachment_size
               << ",\"seconds\":" << seconds
@@ -411,7 +427,9 @@ int RunTimed(const CallFn& call) {
               << ",\"client_cpu_cores\":" << std::setprecision(3)
               << (seconds > 0 ? (cpu_end - cpu_begin) / seconds : 0)
               << "}\n";
-    return failures.load() == 0 && !all.empty() ? 0 : 1;
+    // A run with fewer callers than requested is not a valid benchmark.
+    return !shared.failed.load() && failures.load() == 0 &&
+           started_threads == FLAGS_thread_num && !all.empty() ? 0 : 1;
 }
 
 int RunClient(const butil::EndPoint& endpoint) {
