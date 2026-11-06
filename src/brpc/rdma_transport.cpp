@@ -36,19 +36,13 @@ RdmaTransport* RdmaTransport::Get(const Socket* socket) {
     return static_cast<RdmaTransport*>(transport);
 }
 
-void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
+void RdmaTransport::Init(Socket* socket, const SocketOptions& options) {
     CHECK(_rdma_ep == nullptr);
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = nullptr;
     _rdma_state = RDMA_UNKNOWN;
-    _rdma_ep = new (std::nothrow) rdma::RdmaEndpoint(socket);
-    if (!_rdma_ep) {
-        const int saved_errno = errno != 0 ? errno : ENOMEM;
-        errno = saved_errno;
-        PLOG(WARNING) << "Fail to create RdmaEndpoint, disable RDMA upgrade";
-        _rdma_state = RDMA_OFF;
-    }
+    _rdma_ep = new rdma::RdmaEndpoint(socket);
 }
 
 void RdmaTransport::Release() {

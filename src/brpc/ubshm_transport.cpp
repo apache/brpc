@@ -40,19 +40,13 @@ UBShmTransport *UBShmTransport::Get(const Socket *socket) {
     return static_cast<UBShmTransport *>(transport);
 }
 
-void UBShmTransport::Init(Socket *socket, const SocketOptions &options) {
+void UBShmTransport::Init(Socket* socket, const SocketOptions& options) {
     CHECK(_ub_ep == nullptr);
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = nullptr;
     _ub_state = UB_UNKNOWN;
-    _ub_ep = new (std::nothrow) ubring::UBShmEndpoint(socket);
-    if (!_ub_ep) {
-        const int saved_errno = errno != 0 ? errno : ENOMEM;
-        errno = saved_errno;
-        PLOG(WARNING) << "Fail to create UBShmEndpoint, disable UBSHM upgrade";
-        _ub_state = UB_OFF;
-    }
+    _ub_ep = new ubring::UBShmEndpoint(socket);
 }
 
 void UBShmTransport::Release() {

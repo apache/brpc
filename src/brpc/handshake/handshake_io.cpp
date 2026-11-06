@@ -54,11 +54,9 @@ int SocketHandshakeIO::ReadExact(void* data, size_t len) {
     CHECK(data != nullptr);
     CHECK(_socket != nullptr);
     const int fd = _socket->fd();
-    const SocketId socket_id = _socket->id();
     size_t received = 0;
     while (received < len) {
-        SocketUniquePtr alive;
-        if (Socket::Address(socket_id, &alive) != 0) {
+        if (_socket->Failed()) {
             errno = EFAILEDSOCKET;
             return -1;
         }
@@ -91,11 +89,9 @@ int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
     CHECK(data != nullptr);
     CHECK(_socket != nullptr);
     const int fd = _socket->fd();
-    const SocketId socket_id = _socket->id();
     size_t written = 0;
     while (written < len) {
-        SocketUniquePtr alive;
-        if (Socket::Address(socket_id, &alive) != 0) {
+        if (_socket->Failed()) {
             errno = EFAILEDSOCKET;
             return -1;
         }
@@ -118,7 +114,7 @@ int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
         }
         if (_socket->WaitEpollOut(_socket->fd(), true, &duetime) < 0 &&
             errno != ETIMEDOUT) {
-            if (alive->Failed()) {
+            if (_socket->Failed()) {
                 errno = EFAILEDSOCKET;
             }
             return -1;

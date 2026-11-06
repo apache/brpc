@@ -275,8 +275,7 @@ private:
                     lkey = (uint32_t)meta;
                 }
             }
-            if (BAIDU_UNLIKELY(lkey ==
-                               0)) { // only happens when meta is not specified
+            if (BAIDU_UNLIKELY(lkey == 0)) {  // only happens when meta is not specified
                 lkey = GetLKey((char*)start - r.offset);
             }
             if (lkey == 0) {
@@ -1345,7 +1344,7 @@ int RdmaEndpoint::GlobalInitialize() {
 
     g_rdma_resource_mutex = new butil::Mutex;
     for (int i = 0; i < FLAGS_rdma_prepared_qp_cnt; ++i) {
-        RdmaResource *res =
+        RdmaResource* res =
             AllocateQpCq(FLAGS_rdma_prepared_qp_size, FLAGS_rdma_prepared_qp_size);
         if (!res) {
             return -1;
@@ -1384,6 +1383,27 @@ std::vector<RdmaEndpoint::PollerGroup> RdmaEndpoint::_poller_groups;
 // Thread creation is replaceable in startup failure tests.
 decltype(&bthread_start_background) StartPollingThread = bthread_start_background;
 
+void RdmaEndpoint::PollerGroup::Stop(std::unique_lock<bthread::Mutex>& lock) {
+    if (stopping) {
+        stopped.wait(lock, [this] { return !stopping; });
+        return;
+    }
+    if (!running.exchange(false, std::memory_order_relaxed)) {
+        return;
+    }
+    stopping = true;
+    lock.unlock();
+    for (auto& poller : pollers) {
+        if (poller.tid != INVALID_BTHREAD) {
+            bthread_join(poller.tid, nullptr);
+            poller.tid = INVALID_BTHREAD;
+        }
+    }
+    lock.lock();
+    stopping = false;
+    stopped.notify_all();
+}
+
 int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
                                         std::function<void()> callback,
                                         std::function<void()> init_fn,
@@ -1395,6 +1415,10 @@ int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
     auto& pollers = group.pollers;
     auto& running = group.running;
     std::unique_lock<bthread::Mutex> lock(group.mutex);
+    if (group.stopping) {
+        errno = EBUSY;
+        return -1;
+    }
     if (running.load(std::memory_order_relaxed)) {
         return 0;
     }
@@ -1455,13 +1479,10 @@ int RdmaEndpoint::PollingModeInitialize(bthread_tag_t tag,
         auto rc = StartPollingThread(&pollers[i].tid, &attr, fn, args);
         if (rc != 0) {
             delete args;
-            running.store(false, std::memory_order_relaxed);
-            for (size_t j = 0; j < i; ++j) {
-                bthread_join(pollers[j].tid, nullptr);
-                pollers[j].tid = INVALID_BTHREAD;
-            }
+            group.Stop(lock);
             LOG(ERROR) << "Fail to start rdma polling bthread: "
                        << berror(rc);
+            errno = rc;
             return -1;
         }
     }
@@ -1474,13 +1495,7 @@ void RdmaEndpoint::PollingModeRelease(bthread_tag_t tag) {
     }
     auto& group = _poller_groups[tag];
     std::unique_lock<bthread::Mutex> lock(group.mutex);
-    auto& pollers = group.pollers;
-    auto& running = group.running;
-    running.store(false, std::memory_order_relaxed);
-    for (auto& poller : pollers) {
-        bthread_join(poller.tid, nullptr);
-        poller.tid = INVALID_BTHREAD;
-    }
+    group.Stop(lock);
 }
 
 void RdmaEndpoint::PollerAddCqSid() {

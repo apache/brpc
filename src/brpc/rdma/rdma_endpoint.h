@@ -32,6 +32,7 @@
 #include "butil/containers/optional.h"
 #include "brpc/socket.h"
 #include "bthread/mutex.h"
+#include "bthread/condition_variable.h"
 
 
 namespace brpc {
@@ -288,6 +289,9 @@ private:
         bthread::Mutex mutex;
         std::vector<Poller> pollers;
         std::atomic<bool> running;
+        bool stopping{false};
+        bthread::ConditionVariable stopped;
+        void Stop(std::unique_lock<bthread::Mutex>& lock);
     };
     static std::vector<PollerGroup> _poller_groups;
 };

@@ -153,7 +153,7 @@ public:
     void Reset(Socket* socket) {
         _socket_io.Reset(socket);
         _io = &_socket_io;
-        _protocol_version = 0;
+        _protocol_version.store(0, butil::memory_order_relaxed);
         _local_enabled = false;
         _phase.store(UNINITIALIZED, butil::memory_order_relaxed);
     }
@@ -166,8 +166,12 @@ public:
         _phase.store(phase, butil::memory_order_release);
     }
 
-    int protocol_version() const { return _protocol_version; }
-    void set_protocol_version(int version) { _protocol_version = version; }
+    int protocol_version() const {
+        return _protocol_version.load(butil::memory_order_relaxed);
+    }
+    void set_protocol_version(int version) {
+        _protocol_version.store(version, butil::memory_order_relaxed);
+    }
 
     void MarkEstablished() {
         _phase.store(ESTABLISHED, butil::memory_order_release);
@@ -220,7 +224,7 @@ private:
     SocketHandshakeIO _socket_io;
     HandshakeIO* _io;
     butil::atomic<int> _phase;
-    int _protocol_version;
+    butil::atomic<int> _protocol_version;
     bool _local_enabled;
 
     DISALLOW_COPY_AND_ASSIGN(HandshakeSession);

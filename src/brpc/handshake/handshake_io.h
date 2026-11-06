@@ -42,6 +42,7 @@ public:
     virtual int PushBack(const void* data, size_t len) = 0;
 };
 
+// The caller retains the Socket for the duration of each I/O operation.
 class SocketHandshakeIO : public HandshakeIO {
 public:
     explicit SocketHandshakeIO(Socket* socket = nullptr);

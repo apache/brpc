@@ -25,6 +25,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <atomic>
 
@@ -100,9 +101,23 @@ static void CheckPollerStartup(decltype(&bthread_start_background)& start) {
         g_poller_start_failure = &failure;
         std::atomic<int> initialized{0};
         std::atomic<int> released{0};
+        std::atomic<int> rejected_reentry{0};
+        std::atomic<bool> pause_release{false};
+        bthread::CountdownEvent release_entered(2), release_resume;
         auto initialize = [&] {
             return Endpoint::PollingModeInitialize(
-                0, nullptr, [&] { ++initialized; }, [&] { ++released; });
+                0, nullptr, [&] { ++initialized; }, [&] {
+                    if (pause_release.load()) {
+                        release_entered.signal();
+                        release_resume.wait();
+                    }
+                    if (Endpoint::PollingModeInitialize(
+                            0, nullptr, nullptr, nullptr) == -1 &&
+                        errno == EBUSY) {
+                        ++rejected_reentry;
+                    }
+                    ++released;
+                });
         };
         int first_rc = 0;
         std::thread first([&] { first_rc = initialize(); });
@@ -123,9 +138,18 @@ static void CheckPollerStartup(decltype(&bthread_start_background)& start) {
         }
         EXPECT_EQ(0, initialize());
         EXPECT_EQ(fail_on + 3, failure.attempts);
-        Endpoint::PollingModeRelease(0);
+        pause_release.store(true);
+        std::thread first_release([] { Endpoint::PollingModeRelease(0); });
+        release_entered.wait();
+        EXPECT_EQ(-1, initialize());
+        EXPECT_EQ(EBUSY, errno);
+        std::thread second_release([] { Endpoint::PollingModeRelease(0); });
+        release_resume.signal();
+        first_release.join();
+        second_release.join();
         EXPECT_EQ(fail_on + 2, initialized.load());
         EXPECT_EQ(initialized.load(), released.load());
+        EXPECT_EQ(released.load(), rejected_reentry.load());
     }
     start = saved_start;
     Endpoint::_poller_groups = std::move(saved_groups);
@@ -135,16 +159,28 @@ static void CheckPollerStartup(decltype(&bthread_start_background)& start) {
 
 #if BRPC_WITH_RDMA
 TEST(PollerStartupTest, rdma_rolls_back_and_retries) {
-    const bool saved = rdma::FLAGS_rdma_use_polling;
-    rdma::FLAGS_rdma_use_polling = true;
-    CheckPollerStartup<rdma::RdmaEndpoint>(rdma::StartPollingThread);
-    rdma::FLAGS_rdma_use_polling = saved;
+    const std::string saved = GTEST_FLAG_GET(death_test_style);
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    EXPECT_EXIT({
+        alarm(5);
+        rdma::FLAGS_rdma_use_polling = true;
+        CheckPollerStartup<rdma::RdmaEndpoint>(rdma::StartPollingThread);
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+    GTEST_FLAG_SET(death_test_style, saved);
 }
 #endif
 
 #if BRPC_WITH_UBRING
 TEST(PollerStartupTest, ubshm_rolls_back_and_retries) {
-    CheckPollerStartup<ubring::UBShmEndpoint>(ubring::StartPollingThread);
+    const std::string saved = GTEST_FLAG_GET(death_test_style);
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    EXPECT_EXIT({
+        alarm(5);
+        CheckPollerStartup<ubring::UBShmEndpoint>(ubring::StartPollingThread);
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+    GTEST_FLAG_SET(death_test_style, saved);
 }
 #endif
 
@@ -908,6 +944,31 @@ TEST(TransportHandshakeTest, tcp_keeps_last_message_for_inline_processing) {
     transport.QueueMessage(input, &queued, true);
     EXPECT_EQ(&message, input.release());
     EXPECT_EQ(0, queued);
+}
+
+TEST(TransportHandshakeTest, debug_reads_protocol_version_during_negotiation) {
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    auto* adapter = AdapterTransport::Get(pair.socket.get());
+    auto* session = adapter->handshake_session();
+    session->set_protocol_version(2);
+    session->SetPhase(HELLO_WAIT);
+    std::atomic<bool> stop{false};
+    std::thread writer([&] {
+        while (!stop.load(std::memory_order_relaxed)) {
+            session->set_protocol_version(2);
+            session->set_protocol_version(3);
+        }
+    });
+    for (int i = 0; i < 64; ++i) {
+        std::ostringstream output;
+        adapter->Debug(output);
+        const std::string snapshot = output.str();
+        EXPECT_TRUE(snapshot.find("handshake_version=2") != std::string::npos ||
+                    snapshot.find("handshake_version=3") != std::string::npos);
+    }
+    stop.store(true, std::memory_order_relaxed);
+    writer.join();
 }
 
 TEST(TransportHandshakeTest, publish_fallback_after_tcp_state) {

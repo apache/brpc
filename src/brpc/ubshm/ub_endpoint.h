@@ -23,6 +23,7 @@
 #include "brpc/handshake/ubshm_handshake.h"
 #include "brpc/socket.h"
 #include "bthread/mutex.h"
+#include "bthread/condition_variable.h"
 #include "brpc/ubshm/ubr_data_format.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/ub_helper.h"
@@ -170,6 +171,9 @@ private:
         bthread::Mutex mutex;
         std::vector<Poller> pollers;
         std::atomic<bool> running;
+        bool stopping{false};
+        bthread::ConditionVariable stopped;
+        void Stop(std::unique_lock<bthread::Mutex>& lock);
     };
     static std::vector<PollerGroup> _poller_groups;
 
