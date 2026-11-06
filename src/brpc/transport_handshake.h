@@ -49,8 +49,7 @@ private:
 };
 
 // Protocol adapters may use transport-specific intermediate values, but the
-// terminal values are shared so that AdapterTransport can make the same
-// acquire-side decision for RDMA, URMA and UBSHM.
+// terminal values let AdapterTransport read the handshake result uniformly.
 enum Phase {
     UNINITIALIZED = 0,
     PREPARING = 1,

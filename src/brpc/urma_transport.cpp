@@ -39,10 +39,6 @@ namespace brpc {
 DECLARE_bool(urma_use_polling);
 DECLARE_bool(urma_disable_bthread);
 
-UrmaTransport* UrmaTransport::Get(const Socket* socket) {
-    return static_cast<UrmaTransport*>(socket->_transport.get());
-}
-
 void UrmaTransport::Init(Socket* socket, const SocketOptions& options) {
     CHECK(_urma_ep == nullptr);
     if (options.socket_mode == SOCKET_MODE_URMA) {

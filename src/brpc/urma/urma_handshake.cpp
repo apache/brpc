@@ -278,7 +278,7 @@ int UrmaHandshakeServerV2::ReceiveAndParseRemoteHello(ParsedHello* out,
 int UrmaHandshakeServerV2::SendLocalHello() {
     v2_wire::HelloMessage m;
     _ep->FillLocalHelloV2(&m);
-    auto* tp = UrmaTransport::Get(_ep->_socket);
+    auto* tp = static_cast<UrmaTransport*>(_ep->_socket->_transport.get());
     if (tp->_urma_state.load(butil::memory_order_acquire) ==
         UrmaTransport::URMA_OFF) {
         // Tell the client we are not URMA-capable: zero the version fields so
