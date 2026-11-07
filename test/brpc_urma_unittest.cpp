@@ -21,9 +21,11 @@
 #include <gflags/gflags.h>
 
 #if BRPC_WITH_URMA
+#include <cerrno>
 #include "butil/atomicops.h"
 #include "butil/sys_byteorder.h"
 #include "urma_api.h"
+#include "brpc/urma/urma_endpoint.h"
 #include "brpc/urma/urma_handshake.h"
 #include "brpc/urma/urma_handshake.pb.h"
 #include "brpc/urma/urma_helper.h"
@@ -40,6 +42,92 @@ extern butil::atomic<bool> g_urma_available;
 
 }  // namespace urma
 }  // namespace brpc
+
+class UrmaSendCompletionTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        SocketOptions options;
+        SocketId id;
+        ASSERT_EQ(0, Socket::Create(options, &id));
+        ASSERT_EQ(0, Socket::Address(id, &_socket));
+    }
+
+    void TearDown() override {
+        if (_socket) {
+            _socket->SetFailed();
+        }
+    }
+
+    static urma_cr_t SendCompletion() {
+        urma_cr_t cr{};
+        cr.status = URMA_CR_SUCCESS;
+        cr.user_ctx = 1;
+        return cr;
+    }
+
+    SocketUniquePtr _socket;
+};
+
+TEST_F(UrmaSendCompletionTest, reclaim_buffer_before_publishing_credit) {
+    char payload = 'x';
+    bool released = false;
+    urma::UrmaEndpoint endpoint(_socket.get());
+    endpoint._sbuf.resize(endpoint._sq_size -
+                          urma::UrmaEndpoint::RESERVED_WR_NUM);
+    endpoint._local_window_capacity = endpoint._sbuf.size();
+    endpoint._sq_window_size.store(0, butil::memory_order_relaxed);
+    ASSERT_EQ(0, endpoint._sbuf[0].append_user_data(
+        &payload, sizeof(payload), [&](void*) {
+            released = true;
+            // Observe the credit at the exact point the old buffer is freed.
+            // Publishing first lets the writer reuse a slot still being cleared.
+            EXPECT_EQ(0, endpoint._sq_window_size.load(
+                             butil::memory_order_relaxed));
+        }));
+
+    ASSERT_EQ(0, endpoint.HandleCompletion(SendCompletion()));
+    EXPECT_TRUE(released);
+    EXPECT_TRUE(endpoint._sbuf[0].empty());
+    EXPECT_EQ(1, endpoint._sq_sent);
+    EXPECT_EQ(1, endpoint._sq_window_size.load(butil::memory_order_relaxed));
+}
+
+TEST_F(UrmaSendCompletionTest, reclaim_last_slot_and_wrap_cursor) {
+    urma::UrmaEndpoint endpoint(_socket.get());
+    endpoint._sbuf.resize(endpoint._sq_size -
+                          urma::UrmaEndpoint::RESERVED_WR_NUM);
+    endpoint._local_window_capacity = endpoint._sbuf.size();
+    endpoint._sq_sent = endpoint._sbuf.size() - 1;
+    const uint16_t old_credit = endpoint._local_window_capacity - 1;
+    endpoint._sq_window_size.store(old_credit, butil::memory_order_relaxed);
+    ASSERT_EQ(0, endpoint._sbuf[endpoint._sq_sent].append("last"));
+    ASSERT_EQ(0, endpoint._sbuf[0].append("next"));
+
+    ASSERT_EQ(0, endpoint.HandleCompletion(SendCompletion()));
+    EXPECT_EQ(0, endpoint._sq_sent);
+    EXPECT_TRUE(endpoint._sbuf.back().empty());
+    EXPECT_EQ("next", endpoint._sbuf[0].to_string());
+    EXPECT_EQ(endpoint._local_window_capacity,
+              endpoint._sq_window_size.load(butil::memory_order_relaxed));
+}
+
+TEST_F(UrmaSendCompletionTest, reject_full_window_before_reclaiming_buffer) {
+    urma::UrmaEndpoint endpoint(_socket.get());
+    endpoint._sbuf.resize(endpoint._sq_size -
+                          urma::UrmaEndpoint::RESERVED_WR_NUM);
+    endpoint._local_window_capacity = endpoint._sbuf.size();
+    endpoint._sq_window_size.store(endpoint._local_window_capacity,
+                                   butil::memory_order_relaxed);
+    ASSERT_EQ(0, endpoint._sbuf[0].append("keep"));
+
+    errno = 0;
+    EXPECT_EQ(-1, endpoint.HandleCompletion(SendCompletion()));
+    EXPECT_EQ(EPROTO, errno);
+    EXPECT_EQ("keep", endpoint._sbuf[0].to_string());
+    EXPECT_EQ(0, endpoint._sq_sent);
+    EXPECT_EQ(endpoint._local_window_capacity,
+              endpoint._sq_window_size.load(butil::memory_order_relaxed));
+}
 
 // ---------------------------------------------------------------------------
 // v2 binary HelloMessage: serialize + deserialize round-trips.
