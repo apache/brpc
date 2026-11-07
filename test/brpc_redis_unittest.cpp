@@ -139,6 +139,75 @@ protected:
     void TearDown() {}
 };
 
+TEST(RedisLineScanTest, fragmented_lines_preserve_input_until_complete) {
+    butil::Arena arena;
+    brpc::RedisCommandParser parser;
+    std::vector<butil::StringPiece> args;
+    butil::IOBuf command;
+    const std::string text = "GET payload\r\n";
+    for (size_t i = 0; i < text.size(); ++i) {
+        command.append(&text[i], 1);
+        if (i + 1 < text.size()) {
+            const std::string saved = command.to_string();
+            EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                      parser.Consume(command, &args, &arena));
+            EXPECT_EQ(saved, command.to_string());
+        } else {
+            ASSERT_EQ(brpc::PARSE_OK, parser.Consume(command, &args, &arena));
+        }
+    }
+    ASSERT_EQ(2u, args.size());
+    EXPECT_EQ("get", args[0]);
+    EXPECT_EQ("payload", args[1]);
+    EXPECT_TRUE(command.empty());
+    command.append("PING\r\n");
+    ASSERT_EQ(brpc::PARSE_OK, parser.Consume(command, &args, &arena));
+    ASSERT_EQ(1u, args.size());
+    EXPECT_EQ("ping", args[0]);
+
+    for (const std::string& line : {std::string("+payload\r\n"),
+                                    std::string("-error\r\n"),
+                                    std::string("*2\r\n+one\r\n-two\r\n")}) {
+        brpc::RedisReply reply(&arena);
+        butil::IOBuf buf;
+        for (size_t i = 0; i < line.size(); ++i) {
+            buf.append(&line[i], 1);
+            const brpc::ParseError result = reply.ConsumePartialIOBuf(buf);
+            EXPECT_EQ(i + 1 == line.size() ? brpc::PARSE_OK
+                                          : brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                      result);
+        }
+        EXPECT_TRUE(buf.empty());
+        if (line[0] == '*') {
+            ASSERT_EQ(2u, reply.size());
+            EXPECT_EQ("one", reply[0].data());
+            EXPECT_STREQ("two", reply[1].error_message());
+        } else if (line[0] == '-') {
+            EXPECT_EQ(line.substr(1, line.size() - 3), reply.error_message());
+        } else {
+            EXPECT_EQ(line.substr(1, line.size() - 3), reply.data());
+        }
+    }
+}
+
+TEST(RedisLineScanTest, block_boundaries_limits_and_resume) {
+    brpc::detail::RedisLineScanState scanner;
+    scanner.Reset();
+    butil::IOBuf buf;
+    buf.append("first\r");
+    EXPECT_EQ(static_cast<size_t>(-1), scanner.FindCRLF(buf, 100));
+    EXPECT_EQ(static_cast<size_t>(-1), scanner.FindCRLF(buf, 100));
+    char* tail = new char[2]{'\n', 'x'};
+    buf.append_user_data(tail, 2, [](void* p) { delete[] static_cast<char*>(p); });
+    EXPECT_EQ(5u, scanner.FindCRLF(buf, 100));
+    scanner.Reset();
+    EXPECT_EQ(static_cast<size_t>(-1), scanner.FindCRLF(buf, 6));
+    EXPECT_EQ(5u, scanner.FindCRLF(buf, 7));
+    scanner.Reset();
+    EXPECT_EQ(static_cast<size_t>(-1), scanner.FindCRLF(buf, 3));
+    EXPECT_EQ(5u, scanner.FindCRLF(buf, 7));
+}
+
 TEST(RedisCommandFormatTest, wide_numeric_conversion) {
     butil::IOBuf buf;
     ASSERT_TRUE(brpc::RedisCommandFormat(&buf, "SET key %100d tail %d", 7, 9).ok());
