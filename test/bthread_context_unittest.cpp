@@ -117,19 +117,14 @@ TEST(BthreadContextTest, preserves_xmm6_through_xmm15) {
 namespace {
 
 constexpr size_t kStackSize = 64 * 1024;
-// Non-volatile floating-point state of the ELFv2 ABI: f14-f31 and, when
-// AltiVec is enabled, v20-v31. The layout is what jump_with_fp_state loads
-// and stores.
+// Non-volatile floating-point state of the ELFv2 ABI: f14-f31 and v20-v31.
+// The layout is what jump_with_fp_state loads and stores.
 constexpr size_t kFprCount = 18;
-#ifdef __ALTIVEC__
 constexpr size_t kVrCount = 12;
-#endif
 
 struct alignas(16) FpState {
     double fprs[kFprCount];           // f14-f31 at offsets 0..143
-#ifdef __ALTIVEC__
     uint8_t vrs[kVrCount][16];        // v20-v31 at offsets 144..335
-#endif
 };
 
 bthread_fcontext_t g_main_context;
@@ -155,6 +150,8 @@ extern "C" intptr_t jump_with_fp_state(
 __asm__(
 ".text\n"
 ".align 2\n"
+".machine push\n"
+".machine altivec\n"
 ".type jump_with_fp_state, @function\n"
 "jump_with_fp_state:\n"
 "    addis  %r2, %r12, .TOC.-jump_with_fp_state@ha\n"
@@ -183,7 +180,6 @@ __asm__(
 "    stfd  %f29, 168(%r1)\n"
 "    stfd  %f30, 176(%r1)\n"
 "    stfd  %f31, 184(%r1)\n"
-#ifdef __ALTIVEC__
 "    li  %r11, 192\n"
 "    stvx  %v20, %r1, %r11\n"
 "    li  %r11, 208\n"
@@ -208,7 +204,6 @@ __asm__(
 "    stvx  %v30, %r1, %r11\n"
 "    li  %r11, 368\n"
 "    stvx  %v31, %r1, %r11\n"
-#endif
 "    mr  %r31, %r7\n"
 "    lfd  %f14, 0(%r6)\n"
 "    lfd  %f15, 8(%r6)\n"
@@ -228,7 +223,6 @@ __asm__(
 "    lfd  %f29, 120(%r6)\n"
 "    lfd  %f30, 128(%r6)\n"
 "    lfd  %f31, 136(%r6)\n"
-#ifdef __ALTIVEC__
 "    li  %r11, 144\n"
 "    lvx  %v20, %r6, %r11\n"
 "    li  %r11, 160\n"
@@ -253,7 +247,6 @@ __asm__(
 "    lvx  %v30, %r6, %r11\n"
 "    li  %r11, 320\n"
 "    lvx  %v31, %r6, %r11\n"
-#endif
 "    # preserve_fpu = false\n"
 "    li  %r6, 0\n"
 "    bl  bthread_jump_fcontext\n"
@@ -276,7 +269,6 @@ __asm__(
 "    stfd  %f29, 120(%r31)\n"
 "    stfd  %f30, 128(%r31)\n"
 "    stfd  %f31, 136(%r31)\n"
-#ifdef __ALTIVEC__
 "    li  %r11, 144\n"
 "    stvx  %v20, %r31, %r11\n"
 "    li  %r11, 160\n"
@@ -301,7 +293,6 @@ __asm__(
 "    stvx  %v30, %r31, %r11\n"
 "    li  %r11, 320\n"
 "    stvx  %v31, %r31, %r11\n"
-#endif
 "    lfd  %f14, 48(%r1)\n"
 "    lfd  %f15, 56(%r1)\n"
 "    lfd  %f16, 64(%r1)\n"
@@ -320,7 +311,6 @@ __asm__(
 "    lfd  %f29, 168(%r1)\n"
 "    lfd  %f30, 176(%r1)\n"
 "    lfd  %f31, 184(%r1)\n"
-#ifdef __ALTIVEC__
 "    li  %r11, 192\n"
 "    lvx  %v20, %r1, %r11\n"
 "    li  %r11, 208\n"
@@ -345,12 +335,12 @@ __asm__(
 "    lvx  %v30, %r1, %r11\n"
 "    li  %r11, 368\n"
 "    lvx  %v31, %r1, %r11\n"
-#endif
 "    ld  %r31, 32(%r1)\n"
 "    addi  %r1, %r1, 384\n"
 "    ld  %r0, 16(%r1)\n"
 "    mtlr  %r0\n"
 "    blr\n"
+".machine pop\n"
 ".size jump_with_fp_state, .-jump_with_fp_state\n");
 
 void clobber_fp_state_and_return(intptr_t) {
@@ -371,7 +361,6 @@ TEST(BthreadContextTest, preserves_nonvolatile_fprs_and_vrs) {
         expected.fprs[reg] = 1000.5 + reg;
         g_clobber_state.fprs[reg] = -2000.25 - reg;
     }
-#ifdef __ALTIVEC__
     for (size_t reg = 0; reg < kVrCount; ++reg) {
         for (size_t byte = 0; byte < 16; ++byte) {
             expected.vrs[reg][byte] = static_cast<uint8_t>(reg * 16 + byte);
@@ -379,7 +368,6 @@ TEST(BthreadContextTest, preserves_nonvolatile_fprs_and_vrs) {
                 static_cast<uint8_t>(0xff - reg * 16 - byte);
         }
     }
-#endif
 
     void* stack = std::malloc(kStackSize);
     ASSERT_NE(nullptr, stack);

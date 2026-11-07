@@ -1017,6 +1017,8 @@ __asm (
 __asm (
 ".text\n"
 ".align 2\n"
+".machine push\n"
+".machine altivec\n"
 ".globl bthread_jump_fcontext\n"
 ".type  bthread_jump_fcontext, @function\n"
 "bthread_jump_fcontext:\n"
@@ -1072,7 +1074,6 @@ __asm (
 "    stfd  %f31, 336(%r1)\n"
 "    mffs  %f0\n"
 "    stfd  %f0, 344(%r1)\n"
-#ifdef __ALTIVEC__
 "    mfspr  %r0, 256\n"
 "    std  %r0, 192(%r1)\n"
 "    li  %r11, 0\n"
@@ -1099,12 +1100,10 @@ __asm (
 "    stvx  %v30, %r1, %r11\n"
 "    li  %r11, 176\n"
 "    stvx  %v31, %r1, %r11\n"
-#endif
 "    # store RSP (pointing to context-data) in R3\n"
 "    std  %r1, 0(%r3)\n"
 "    # restore RSP (pointing to context-data) from R4\n"
 "    mr  %r1, %r4\n"
-#ifdef __ALTIVEC__
 "    li  %r11, 0\n"
 "    lvx  %v20, %r1, %r11\n"
 "    li  %r11, 16\n"
@@ -1131,7 +1130,6 @@ __asm (
 "    lvx  %v31, %r1, %r11\n"
 "    ld  %r0, 192(%r1)\n"
 "    mtspr  256, %r0\n"
-#endif
 "    lfd  %f0, 344(%r1)\n"
 "    mtfsf  0xff, %f0\n"
 "    lfd  %f14, 200(%r1)\n"
@@ -1186,6 +1184,7 @@ __asm (
 "    mr  %r3, %r5\n"
 "    # jump to context\n"
 "    bctr\n"
+".machine pop\n"
 ".size bthread_jump_fcontext, .-bthread_jump_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
 );
@@ -1196,6 +1195,8 @@ __asm (
 __asm (
 ".text\n"
 ".align 2\n"
+".machine push\n"
+".machine altivec\n"
 ".globl bthread_make_fcontext\n"
 ".type  bthread_make_fcontext, @function\n"
 "bthread_make_fcontext:\n"
@@ -1221,10 +1222,8 @@ __asm (
 "    std  %r0, 496(%r3)\n"
 "    mffs  %f0\n"
 "    stfd  %f0, 344(%r3)\n"
-#ifdef __ALTIVEC__
 "    mfspr  %r0, 256\n"
 "    std  %r0, 192(%r3)\n"
-#endif
 "    # load LR\n"
 "    mflr  %r0\n"
 "    # jump to label 1\n"
@@ -1257,6 +1256,7 @@ __asm (
 "    # exit application\n"
 "    bl  _exit\n"
 "    nop\n"
+".machine pop\n"
 ".size bthread_make_fcontext, .-bthread_make_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
 );
