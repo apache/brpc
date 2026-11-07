@@ -255,6 +255,8 @@ public:
     // just like what redis-server does.
     // `args' is the array of request command. For example, "set somekey somevalue"
     // corresponds to args[0]=="set", args[1]=="somekey" and args[2]=="somevalue".
+    // The argument strings remain valid until the current transaction completes.
+    // The args vector itself is only valid during Run().
     // `output', which should be filled by user, is the content that sent to client side.
     // Read brpc/src/redis_reply.h for more usage.
     // `flush_batched' indicates whether the user should flush all the results of

@@ -1699,6 +1699,82 @@ TEST_F(RedisTest, server_concurrency) {
     ASSERT_EQ(int_map["count"], 10 * 5000LL);
 }
 
+class RetainingTransactionHandler : public brpc::RedisCommandHandler {
+public:
+    brpc::RedisCommandHandlerResult Run(
+        const std::vector<butil::StringPiece>& args,
+        brpc::RedisReply* output, bool) override {
+        if (args[0] == "exec") {
+            output->SetArray(_values.size());
+            for (size_t i = 0; i < _values.size(); ++i) {
+                (*output)[i].SetString(_values[i]);
+            }
+            return brpc::REDIS_CMD_HANDLED;
+        }
+        _values.push_back(args[1]);
+        output->SetStatus("QUEUED");
+        return brpc::REDIS_CMD_CONTINUE;
+    }
+private:
+    std::vector<butil::StringPiece> _values;
+};
+
+class RetainingMultiHandler : public brpc::RedisCommandHandler {
+public:
+    brpc::RedisCommandHandlerResult Run(
+        const std::vector<butil::StringPiece>&,
+        brpc::RedisReply* output, bool) override {
+        output->SetStatus("OK");
+        return brpc::REDIS_CMD_CONTINUE;
+    }
+    RedisCommandHandler* NewTransactionHandler() override {
+        return new RetainingTransactionHandler;
+    }
+};
+
+TEST(RedisTransactionTest, argument_strings_survive_separate_reads) {
+    RetainingMultiHandler handler;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.redis_service = new brpc::RedisService;
+    ASSERT_TRUE(server_options.redis_service->AddCommandHandler("multi", &handler));
+    ASSERT_EQ(0, server.Start(0, &server_options));
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    options.connection_type = "single";
+    options.timeout_ms = 5000;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
+    auto call = [&](const std::vector<butil::StringPiece>& args,
+                    brpc::RedisResponse* response) {
+        brpc::RedisRequest request;
+        ASSERT_TRUE(request.AddCommandByComponents(args));
+        brpc::Controller cntl;
+        channel.CallMethod(nullptr, &cntl, &request, response, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    };
+    for (int iteration = 0; iteration < 2; ++iteration) {
+        brpc::RedisResponse start;
+        call({"multi"}, &start);
+        ASSERT_EQ(1, start.reply_size());
+        ASSERT_STREQ("OK", start.reply(0).c_str());
+        const std::string first(1024, 'A');
+        const std::string second(1024, 'B');
+        for (const std::string* value : {&first, &second}) {
+            brpc::RedisResponse queued;
+            call({"remember", *value}, &queued);
+            ASSERT_EQ(1, queued.reply_size());
+            ASSERT_STREQ("QUEUED", queued.reply(0).c_str());
+        }
+        brpc::RedisResponse result;
+        call({"exec"}, &result);
+        ASSERT_EQ(1, result.reply_size());
+        ASSERT_EQ(2u, result.reply(0).size());
+        EXPECT_EQ(first, result.reply(0)[0].data());
+        EXPECT_EQ(second, result.reply(0)[1].data());
+    }
+}
+
 class MultiCommandHandler : public brpc::RedisCommandHandler {
 public:
     MultiCommandHandler() {}

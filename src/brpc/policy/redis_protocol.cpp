@@ -177,7 +177,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         wopt.ignore_eovercrowded = true;
         LOG_IF(WARNING, socket->Write(&sendbuf, &wopt) != 0)
             << "Fail to send redis reply";
-        if(ctx->parser.ParsedArgsSize() == 0) {
+        if (ctx->parser.ParsedArgsSize() == 0 && !ctx->transaction_handler) {
             ctx->arena.clear();
         }
         return MakeParseError(err);
