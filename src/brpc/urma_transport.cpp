@@ -197,6 +197,12 @@ int UrmaTransport::ContextInitOrDie(bool server_or_not, const void* options) {
             return -1;
         }
         urma::GlobalUrmaInitializeOrDie();
+        uint8_t priority;
+        if (!urma::ResolveUrmaJettyPriority(
+                static_cast<const ServerOptions*>(options)->urma_qos,
+                &priority)) {
+            return -1;
+        }
         if (!urma::InitPollingModeWithTag(
                 static_cast<const ServerOptions*>(options)->bthread_tag)) {
             return -1;
@@ -207,6 +213,12 @@ int UrmaTransport::ContextInitOrDie(bool server_or_not, const void* options) {
             return -1;
         }
         urma::GlobalUrmaInitializeOrDie();
+        uint8_t priority;
+        if (!urma::ResolveUrmaJettyPriority(
+                static_cast<const ChannelOptions*>(options)->urma_qos,
+                &priority)) {
+            return -1;
+        }
         if (!urma::InitPollingModeWithTag(bthread_self_tag())) {
             return -1;
         }

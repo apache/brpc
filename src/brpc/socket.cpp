@@ -711,6 +711,10 @@ void SetSocketBufferOptions(int fd) {
 //   version: from version part of _versioned_nref, must be an EVEN number.
 //   slot: designated by ResourcePool.
 int Socket::Create(const SocketOptions& options, SocketId* id) {
+    if (options.socket_mode == SOCKET_MODE_URMA && !options.urma_qos.IsValid()) {
+        errno = EINVAL;
+        return -1;
+    }
     return VersionedRefWithId<Socket>::Create(id, options);
 }
 
@@ -726,6 +730,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     });
     // start build the transport
     _socket_mode = options.socket_mode;
+    _urma_qos = options.urma_qos;
     _transport = TransportFactory::CreateTransport(options.socket_mode);
     CHECK(nullptr != _transport);
     _transport->Init(this, options);
@@ -2814,6 +2819,7 @@ SocketOptions Socket::GetSubSocketOptions() const {
     opt.keytable_pool = _keytable_pool;
     opt.app_connect = _app_connect;
     opt.socket_mode = _socket_mode;
+    opt.urma_qos = _urma_qos;
     opt.keepalive_options = _keepalive_options;
     opt.tcp_user_timeout_ms = _tcp_user_timeout_ms;
     opt.bthread_tag = _io_event.bthread_tag();

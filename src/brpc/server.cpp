@@ -949,6 +949,13 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     const ServerOptions default_opt;
     const ServerOptions& real_opt = opt ? *opt : default_opt;
 
+    if (real_opt.socket_mode == SOCKET_MODE_URMA &&
+        !real_opt.urma_qos.IsValid()) {
+        LOG(ERROR) << "URMA priority must be -1 or in [0,15], "
+                      "and SL must be -1 or in [0,255]";
+        return -1;
+    }
+
     if (!real_opt.h2_settings.IsValid(true/*log_error*/)) {
         LOG(ERROR) << "Invalid h2_settings";
         return -1;
@@ -1244,6 +1251,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
             _am->_socket_mode = _options.socket_mode;
             _am->_bthread_tag = _options.bthread_tag;
         }
+        _am->_urma_qos = _options.urma_qos;
         // Set `_status' to RUNNING before accepting connections
         // to prevent requests being rejected as ELOGOFF
         _status = RUNNING;
