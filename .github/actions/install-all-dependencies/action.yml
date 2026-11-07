@@ -6,8 +6,17 @@ runs:
         extra-packages: >-
           ccache libunwind-dev libgoogle-glog-dev automake bison flex
           libboost-all-dev libevent-dev libtool pkg-config
-    - run: | 
-        wget https://archive.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz && tar -xf thrift-0.11.0.tar.gz && cd thrift-0.11.0/
+    - name: Install Apache Thrift 0.11.0
+      run: |
+        set -euo pipefail
+        readonly thrift_archive=thrift-0.11.0.tar.gz
+        readonly thrift_url=https://archive.apache.org/dist/thrift/0.11.0/${thrift_archive}
+        readonly thrift_sha256=c4ad38b6cb4a3498310d405a91fef37b9a8e79a50cd0968148ee2524d2fa60c2
+        curl --fail --location --retry 5 --retry-delay 2 --connect-timeout 30 \
+          --output "${thrift_archive}" "${thrift_url}"
+        printf '%s  %s\n' "${thrift_sha256}" "${thrift_archive}" | sha256sum --check -
+        tar -xzf "${thrift_archive}"
+        cd thrift-0.11.0
         ./configure --prefix=/usr --disable-tests --with-rs=no --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no --with-haskell=no --with-dotnetcore=no CXXFLAGS="-Wno-unused-variable"
         make -j ${{env.proc_num}} && sudo make install
       shell: bash
