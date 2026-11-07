@@ -128,6 +128,35 @@ TEST_F(CouchbaseUnitTest, CollectionResponseWithInconsistentBodyLength) {
   EXPECT_EQ(sizeof(header) + next_response.size(), res2.rawBuffer().size());
 }
 
+// total_body_length already counts the 12-byte extras (8-byte manifest id +
+// 4-byte collection id). popCollectionId must consume exactly one message on
+// success; popping total_body_length again after the extras would eat 12 bytes
+// of the next pipelined response and desync the connection.
+TEST_F(CouchbaseUnitTest, CollectionIdSuccessConsumesExactBody) {
+  const std::string next_response(64, 'A');
+
+  brpc::policy::CouchbaseResponseHeader header = {};
+  header.magic = brpc::policy::CB_MAGIC_RESPONSE;
+  header.command = brpc::policy::CB_COLLECTIONS_GET_CID;
+  header.status = 0;
+  header.extras_length = 12;
+  header.total_body_length = 12;  // 8-byte manifest id + 4-byte collection id
+
+  char extras[12] = {0};
+  extras[11] = 42;  // collection id in the low byte of the 4-byte field
+
+  brpc::CouchbaseOperations::CouchbaseResponse res;
+  res.rawBuffer().append(&header, sizeof(header));
+  res.rawBuffer().append(extras, sizeof(extras));
+  res.rawBuffer().append(next_response);
+
+  uint8_t collection_id = 0;
+  EXPECT_TRUE(res.popCollectionId(&collection_id));
+  EXPECT_EQ(42, collection_id);
+  // Exactly one message consumed; the following response is left intact.
+  EXPECT_EQ(next_response.size(), res.rawBuffer().size());
+}
+
 TEST_F(CouchbaseUnitTest, EdgeCases) {
   brpc::CouchbaseOperations::CouchbaseRequest req;
   req.addRequest("", "value", 0, 0, 0);
