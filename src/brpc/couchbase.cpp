@@ -33,6 +33,7 @@ static bool DBUG = false;  // Set to true to enable debug logs
 #include <cinttypes>
 #include <iostream>
 
+#include "brpc/details/json_util.h"
 #include "brpc/policy/couchbase_protocol.h"
 #include "brpc/proto_base.pb.h"
 #include "butil/logging.h"
@@ -50,6 +51,7 @@ constexpr uint32_t APPLE_VBUCKET_COUNT ALLOW_UNUSED = 64;
 constexpr uint32_t DEFAULT_VBUCKET_COUNT ALLOW_UNUSED = 1024;
 constexpr int CONNECTION_ID_SIZE = 33;
 constexpr size_t RANDOM_ID_HEX_SIZE = 67;  // 33 bytes * 2 + null terminator
+
 }  // namespace
 
 // Static member definitions
@@ -124,11 +126,8 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
     return false;
   }
 
-  // Parse JSON using RapidJSON
   BUTIL_RAPIDJSON_NAMESPACE::Document document;
-  document.Parse(json.c_str());
-
-  if (document.HasParseError()) {
+  if (!ParseJsonWithDepthLimit(json, &document)) {
     DEBUG_PRINT("Failed to parse JSON: " << document.GetParseError());
     return false;
   }
