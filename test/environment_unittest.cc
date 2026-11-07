@@ -129,7 +129,7 @@ TEST_F(EnvironmentTest, AlterEnvironment) {
   EnvironmentMap changes;
   scoped_ptr<char*[]> e;
 
-  e = AlterEnvironment(empty, changes).Pass();
+  e = AlterEnvironment(empty, changes);
   EXPECT_TRUE(e[0] == nullptr);
 
   changes["A"] = "1";

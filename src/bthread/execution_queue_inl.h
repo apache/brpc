@@ -293,7 +293,7 @@ public:
         Base::scoped_ptr_t ptr = Base::address(id.value);
         Base* b = ptr.release();
         scoped_ptr_t ret((self_type*)b);
-        return ret.Pass();
+        return ret;
     }
 
     int execute(typename butil::add_const_reference<T>::type task) {
