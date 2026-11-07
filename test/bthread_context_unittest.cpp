@@ -112,7 +112,7 @@ TEST(BthreadContextTest, preserves_xmm6_through_xmm15) {
 
 #endif  // BTHREAD_CONTEXT_PLATFORM_linux_x86_64
 
-#if defined(BTHREAD_CONTEXT_PLATFORM_linux_ppc64)
+#if defined(BTHREAD_CONTEXT_PLATFORM_ppc64_elfv2)
 
 namespace {
 
@@ -470,4 +470,4 @@ TEST(BthreadContextTest, stack_walk_of_new_context_terminates) {
 
 }  // namespace
 
-#endif  // BTHREAD_CONTEXT_PLATFORM_linux_ppc64
+#endif  // BTHREAD_CONTEXT_PLATFORM_ppc64_elfv2

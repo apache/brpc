@@ -1013,7 +1013,7 @@ __asm (
 );
 #endif
 
-#if defined(BTHREAD_CONTEXT_PLATFORM_linux_ppc64) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
+#if defined(BTHREAD_CONTEXT_PLATFORM_ppc64_elfv2) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
 __asm (
 ".text\n"
 ".align 2\n"
@@ -1192,7 +1192,7 @@ __asm (
 
 #endif
 
-#if defined(BTHREAD_CONTEXT_PLATFORM_linux_ppc64) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
+#if defined(BTHREAD_CONTEXT_PLATFORM_ppc64_elfv2) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
 __asm (
 ".text\n"
 ".align 2\n"
