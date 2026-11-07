@@ -1187,6 +1187,7 @@ __asm (
 ".machine pop\n"
 ".size bthread_jump_fcontext, .-bthread_jump_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
@@ -1259,6 +1260,7 @@ __asm (
 ".machine pop\n"
 ".size bthread_make_fcontext, .-bthread_make_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
+".previous\n"
 );
 
 #endif
