@@ -914,7 +914,7 @@ H2ParseResult H2Context::OnData(
         DeferWindowUpdate(tmp_sctx.ReleaseDeferredWindowUpdate());
 
         if (is_server_side()) {
-            LOG(ERROR) << "Fail to find stream_id=" << frame_head.stream_id;
+            RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_STREAM_CLOSED_ERROR, frame_head.stream_id);
         } else {
             RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
@@ -1835,6 +1835,7 @@ bool H2Context::FlushPendingData(int stream_id) {
     }
     const bool rc = out.empty() || WriteAck(_socket, &out) == 0;
     for (size_t i = 0; i < finished_streams.size(); ++i) {
+        DeferWindowUpdate(finished_streams[i]->ReleaseDeferredWindowUpdate());
         finished_streams[i]->RemoveOneRefForStage2();
     }
     return rc;
@@ -2317,15 +2318,16 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         get_h2_bvars()->h2_stream_reset_count << 1;
         return butil::Status::OK();
     }
+    if (finished_sctx != nullptr) {
+        ctx->DeferWindowUpdate(finished_sctx->ReleaseDeferredWindowUpdate());
+        finished_sctx->RemoveOneRefForStage2();
+    }
     const int64_t conn_wu = ctx->ReleaseDeferredWindowUpdate();
     if (conn_wu > 0) {
         char winbuf[FRAME_HEAD_SIZE + 4];
         SerializeFrameHead(winbuf, 4, H2_FRAME_WINDOW_UPDATE, 0, 0);
         SaveUint32(winbuf + FRAME_HEAD_SIZE, conn_wu);
         out->append(winbuf, sizeof(winbuf));
-    }
-    if (finished_sctx != nullptr) {
-        finished_sctx->RemoveOneRefForStage2();
     }
     return butil::Status::OK();
 }

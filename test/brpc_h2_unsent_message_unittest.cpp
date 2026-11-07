@@ -276,7 +276,9 @@ TEST(H2UnsentMessage, invalid_window_update_does_not_change_window) {
         EXPECT_EQ(max_window_size,
                   sctx->_remote_window_left.load(butil::memory_order_relaxed));
     }
-    sctx->Destroy();
+    brpc::policy::H2StreamContext* removed_sctx = ctx->RemoveStreamAndDeferWU(1);
+    ASSERT_EQ(sctx, removed_sctx);
+    removed_sctx->RemoveOneRefForStage2();
 }
 
 TEST(H2UnsentMessage, clear_pending_data_releases_overcrowded_buffer) {
@@ -1080,5 +1082,100 @@ TEST(H2UnsentMessage, deferred_response_notify_registration_failure_resets_strea
     EXPECT_TRUE(out.empty());
 
     EXPECT_EQ(0, bthread_id_error(dummy_id, 0));
+    close(fds[0]);
+}
+
+TEST(H2UnsentMessage, early_response_migrates_deferred_window_update) {
+    brpc::Server server;
+    int fds[2];
+    ASSERT_EQ(0, pipe(fds));
+    brpc::SocketId server_id;
+    brpc::SocketUniquePtr server_sock;
+    brpc::SocketOptions server_options;
+    server_options.fd = fds[1];
+    ASSERT_EQ(0, brpc::Socket::Create(server_options, &server_id));
+    ASSERT_EQ(0, brpc::Socket::Address(server_id, &server_sock));
+
+    brpc::policy::H2Context* srv_ctx =
+        new brpc::policy::H2Context(server_sock.get(), &server);
+    ASSERT_EQ(0, srv_ctx->Init());
+    server_sock->initialize_parsing_context(&srv_ctx);
+    srv_ctx->_conn_state = brpc::policy::H2_CONNECTION_READY;
+
+    // Case 1: Immediate response completion in H2UnsentResponse::AppendAndDestroySelf
+    // when the request has not ended yet (_remote_ended == false) must migrate
+    // sctx->_deferred_window_update to the connection and emit connection-level
+    // WINDOW_UPDATE in `out'.
+    brpc::policy::H2StreamContext* sctx1 =
+        new brpc::policy::H2StreamContext(true);
+    sctx1->Init(srv_ctx, 1);
+    sctx1->_remote_ended = false;
+    sctx1->_deferred_window_update.store(1234, butil::memory_order_relaxed);
+    ASSERT_EQ(0, srv_ctx->TryToInsertStream(1, sctx1));
+
+    {
+        brpc::Controller cntl;
+        cntl.http_response().set_status_code(brpc::HTTP_STATUS_OK);
+        cntl.response_attachment().append("ok");
+        brpc::policy::H2UnsentResponse* resp =
+            brpc::policy::H2UnsentResponse::New(&cntl, 1, false);
+        ASSERT_NE(nullptr, resp);
+        butil::IOBuf out;
+        ASSERT_TRUE(resp->AppendAndDestroySelf(&out, server_sock.get()).ok());
+        EXPECT_EQ(nullptr, srv_ctx->FindStream(1));
+
+        std::string payload;
+        brpc::policy::H2FrameHead frame = PopFrame(&out, &payload);
+        EXPECT_EQ(brpc::policy::H2_FRAME_HEADERS, frame.type);
+        frame = PopFrame(&out, &payload);
+        EXPECT_EQ(brpc::policy::H2_FRAME_DATA, frame.type);
+        EXPECT_NE(0, frame.flags & H2_FLAGS_END_STREAM);
+        frame = PopFrame(&out, &payload);
+        EXPECT_EQ(brpc::policy::H2_FRAME_WINDOW_UPDATE, frame.type);
+        EXPECT_EQ(0, frame.stream_id);
+        ASSERT_EQ(4u, payload.size());
+        const uint32_t wu_inc =
+            (static_cast<uint8_t>(payload[0]) << 24) |
+            (static_cast<uint8_t>(payload[1]) << 16) |
+            (static_cast<uint8_t>(payload[2]) << 8) |
+            static_cast<uint8_t>(payload[3]);
+        EXPECT_EQ(1234u, wu_inc);
+        EXPECT_TRUE(out.empty());
+    }
+
+    // Case 2: Deferred response completion in H2Context::FlushPendingData when
+    // the request has not ended yet (_remote_ended == false) must also migrate
+    // sctx->_deferred_window_update to the connection.
+    srv_ctx->_remote_settings.stream_window_size = 0;
+    brpc::policy::H2StreamContext* sctx3 =
+        new brpc::policy::H2StreamContext(true);
+    sctx3->Init(srv_ctx, 3);
+    sctx3->_remote_ended = false;
+    sctx3->_deferred_window_update.store(4321, butil::memory_order_relaxed);
+    ASSERT_EQ(0, srv_ctx->TryToInsertStream(3, sctx3));
+
+    {
+        brpc::Controller cntl;
+        cntl.http_response().set_status_code(brpc::HTTP_STATUS_OK);
+        cntl.response_attachment().append("deferred");
+        brpc::policy::H2UnsentResponse* resp =
+            brpc::policy::H2UnsentResponse::New(&cntl, 3, false);
+        ASSERT_NE(nullptr, resp);
+        butil::IOBuf out;
+        ASSERT_TRUE(resp->AppendAndDestroySelf(&out, server_sock.get()).ok());
+        ASSERT_NE(nullptr, srv_ctx->FindStream(3));
+        // Clear the connection WU flushed during AppendAndDestroySelf, then
+        // restore sctx3's request-side deferred window credit to verify
+        // FlushPendingData's own migration path.
+        EXPECT_EQ(0, srv_ctx->_deferred_window_update.exchange(
+                         0, butil::memory_order_relaxed));
+        sctx3->_deferred_window_update.store(4321, butil::memory_order_relaxed);
+
+        sctx3->_remote_window_left.store(64, butil::memory_order_relaxed);
+        ASSERT_TRUE(srv_ctx->FlushPendingData(3));
+        EXPECT_EQ(nullptr, srv_ctx->FindStream(3));
+        EXPECT_EQ(4321, srv_ctx->_deferred_window_update.exchange(
+                            0, butil::memory_order_relaxed));
+    }
     close(fds[0]);
 }
