@@ -157,6 +157,8 @@ public:
                                      std::function<void()> init_fn,
                                      std::function<void()> release_fn);
     static void PollingModeRelease(bthread_tag_t tag);
+    // Stop every polling group without releasing the global IOBuf pool.
+    static void GlobalPollingModeRelease();
 
     // ---- Handshake IO helpers (also used by urma_handshake.cpp) ----
     // Read at most @len bytes from the TCP fd into @data; waits on _read_butex
@@ -338,7 +340,7 @@ private:
         std::vector<Poller> pollers;
         butil::atomic<bool> running;
     };
-    static std::vector<PollerGroup> _poller_groups;
+    static std::vector<PollerGroup>& PollerGroups();
     bthread_tag_t _poller_tag{0};
 
     DISALLOW_COPY_AND_ASSIGN(UrmaEndpoint);

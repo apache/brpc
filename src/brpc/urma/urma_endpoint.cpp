@@ -38,6 +38,7 @@
 #include "butil/iobuf.h"
 #include "butil/logging.h"
 #include "butil/macros.h"
+#include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/sys_byteorder.h"
 #include "butil/time.h"
 #include "bthread/bthread.h"
@@ -112,7 +113,12 @@ static int PreparedJettyCount() {
     return static_cast<int>(max_prepared);
 }
 
-std::vector<UrmaEndpoint::PollerGroup> UrmaEndpoint::_poller_groups;
+std::vector<UrmaEndpoint::PollerGroup>& UrmaEndpoint::PollerGroups() {
+    // Endpoints owned by process-wide Socket state may be destroyed after
+    // ordinary static objects. Keep the poller queues alive until process
+    // termination so late endpoint cleanup never enqueues into freed storage.
+    return *butil::get_leaky_singleton<std::vector<PollerGroup>>();
+}
 
 // ============================================================================
 // UrmaResource lifecycle.
@@ -1616,12 +1622,13 @@ int UrmaEndpoint::PollingModeInitialize(
     if (!FLAGS_urma_use_polling) {
         return 0;
     }
-    if (tag >= _poller_groups.size() ||
-        _poller_groups[tag].pollers.empty()) {
+    auto& poller_groups = PollerGroups();
+    if (tag >= poller_groups.size() ||
+        poller_groups[tag].pollers.empty()) {
         errno = EINVAL;
         return -1;
     }
-    auto& group = _poller_groups[tag];
+    auto& group = poller_groups[tag];
     bool expected = false;
     if (!group.running.compare_exchange_strong(expected, true)) {
         return 0;
@@ -1705,11 +1712,14 @@ int UrmaEndpoint::PollingModeInitialize(
 }
 
 void UrmaEndpoint::PollingModeRelease(bthread_tag_t tag) {
-    if (!FLAGS_urma_use_polling || tag >= _poller_groups.size()) {
+    auto& poller_groups = PollerGroups();
+    if (tag >= poller_groups.size()) {
         return;
     }
-    auto& group = _poller_groups[tag];
-    group.running.store(false, butil::memory_order_relaxed);
+    auto& group = poller_groups[tag];
+    if (!group.running.exchange(false, butil::memory_order_acq_rel)) {
+        return;
+    }
     for (auto& poller : group.pollers) {
         if (poller.tid != INVALID_BTHREAD) {
             bthread_join(poller.tid, nullptr);
@@ -1719,14 +1729,19 @@ void UrmaEndpoint::PollingModeRelease(bthread_tag_t tag) {
 }
 
 void UrmaEndpoint::PollerAddCqSid() {
-    if (_cq_sid == INVALID_SOCKET_ID || _poller_groups.empty()) {
+    auto& poller_groups = PollerGroups();
+    if (_cq_sid == INVALID_SOCKET_ID || poller_groups.empty()) {
         return;
     }
     _poller_tag = bthread_self_tag();
-    if (_poller_tag >= _poller_groups.size()) {
+    if (_poller_tag >= poller_groups.size()) {
         return;
     }
-    auto& pollers = _poller_groups[_poller_tag].pollers;
+    auto& group = poller_groups[_poller_tag];
+    if (!group.running.load(butil::memory_order_acquire)) {
+        return;
+    }
+    auto& pollers = group.pollers;
     if (pollers.empty()) {
         return;
     }
@@ -1737,11 +1752,15 @@ void UrmaEndpoint::PollerAddCqSid() {
 }
 
 void UrmaEndpoint::PollerRemoveCqSid() {
-    if (_cq_sid == INVALID_SOCKET_ID || _poller_groups.empty() ||
-        _poller_tag >= _poller_groups.size()) {
+    auto& poller_groups = PollerGroups();
+    if (_cq_sid == INVALID_SOCKET_ID || poller_groups.empty() ||
+        _poller_tag >= poller_groups.size()) {
         return;
     }
-    auto& pollers = _poller_groups[_poller_tag].pollers;
+    auto& group = poller_groups[_poller_tag];
+    // Preserve removals for ADDs left queued when a worker stopped. The queues
+    // outlive endpoints, and a restarted worker must consume the matching pair.
+    auto& pollers = group.pollers;
     if (pollers.empty()) {
         return;
     }
@@ -1754,7 +1773,8 @@ void UrmaEndpoint::PollerRemoveCqSid() {
 int UrmaEndpoint::GlobalInitialize() {
     // Pre-allocate the prepared jetty pool. Skipped if URMA init is skipped
     // (unit-test mode).
-    if (FLAGS_urma_use_polling && _poller_groups.empty()) {
+    auto& poller_groups = PollerGroups();
+    if (FLAGS_urma_use_polling && poller_groups.empty()) {
         if (FLAGS_urma_poller_num <= 0) {
             LOG(ERROR) << "urma_poller_num must be positive";
             errno = EINVAL;
@@ -1764,7 +1784,7 @@ int UrmaEndpoint::GlobalInitialize() {
         if (ntags == 0) {
             ntags = 1;
         }
-        _poller_groups = std::vector<PollerGroup>(ntags);
+        poller_groups = std::vector<PollerGroup>(ntags);
     }
     if (g_prepared_cnt > 0) {
         return 0;
@@ -1838,7 +1858,12 @@ void UrmaEndpoint::GlobalRelease() {
         }
         g_prepared_cnt = 0;
     }
-    for (size_t tag = 0; tag < _poller_groups.size(); ++tag) {
+    GlobalPollingModeRelease();
+}
+
+void UrmaEndpoint::GlobalPollingModeRelease() {
+    auto& poller_groups = PollerGroups();
+    for (size_t tag = 0; tag < poller_groups.size(); ++tag) {
         PollingModeRelease(static_cast<bthread_tag_t>(tag));
     }
 }
