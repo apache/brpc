@@ -1,0 +1,86 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: URMA Mock
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'example/urma_performance/**'
+      - '.github/workflows/ci-urma.yml'
+  push:
+    branches: [ master ]
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'example/urma_performance/**'
+      - '.github/workflows/ci-urma.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  urma-mock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libssl-dev libgflags-dev \
+            libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev \
+            libgtest-dev libgmock-dev libgoogle-perftools-dev
+      - name: Configure
+        run: |
+          cmake -S . -B build/urma-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DWITH_RDMA=OFF -DWITH_URMA=ON \
+            -DURMA_USE_MOCK=ON -DBUILD_UNIT_TESTS=ON -DDOWNLOAD_GTEST=OFF \
+            -DBRPC_SYSTEM_GTEST_SOURCE_DIR=/usr/src/googletest \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - name: Build URMA library and tests
+        run: |
+          targets=(brpc-static brpc_urma_unittest brpc_urma_recovery_unittest
+            brpc_urma_runtime_unittest brpc_urma_copy_unittest
+            brpc_urma_transport_unittest brpc_urma_remote_recovery_unittest)
+          if test -f test/brpc_urma_qos_unittest.cpp; then
+            targets+=(brpc_urma_qos_unittest brpc_urma_qos_churn_unittest)
+          fi
+          cmake --build build/urma-ci --target "${targets[@]}" -j2
+      - name: Run URMA regressions
+        run: |
+          ctest --test-dir build/urma-ci -R '^brpc_urma_.*unittest$' \
+            --output-on-failure --timeout 120 --output-junit urma-results.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: urma-test-results
+          path: |
+            build/urma-ci/urma-results.xml
+            build/urma-ci/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore

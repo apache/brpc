@@ -11,7 +11,7 @@ UrmaTransport 是使用 openEuler
 ## 技术背景
 
 URMA 在 UMDK 支持的设备上提供 verbs 风格接口。当前实现创建可靠消息
-（`URMA_TM_RM`）Jetty，并使用 CTP 传输路径；通过
+（`URMA_TM_RM`）Jetty，并使用 CTP 或 RTP 传输路径；通过
 `urma_post_jetty_send_wr` 提交发送 WR，通过 `urma_post_jfr_wr` 提交接收
 WR。完成事件既可由 JFC 忙轮询获取，也可通过 JFCE 事件 fd 获取。
 
@@ -20,22 +20,17 @@ WR。完成事件既可由 JFC 忙轮询获取，也可通过 JFCE 事件 fd 获
 ### CMake 编译
 
 ```bash
-# 带 URMA 支持编译 brpc
-cmake -B build -DWITH_URMA=ON
-make -C build -j$(nproc)
-
-# 编译 urma_performance 示例
-cd example/urma_performance
-cmake -B build
-make -C build -j$(nproc)
+cmake -S . -B build -DWITH_URMA=ON
+cmake --build build -j8
+cmake --install build --prefix "$PWD/build/install"
+cmake -S example/urma_performance -B build/urma-example \
+    -DCMAKE_PREFIX_PATH="$PWD/build/install"
+cmake --build build/urma-example -j8
 ```
 
-`WITH_URMA=ON` 使用上游 UMDK 头文件进行编译。CMake 优先使用系统安装的
-SDK；找不到头文件时，会参照 Mooncake 的 mock 构建方式下载固定版本的
-UMDK commit，可通过 `DOWNLOAD_URMA_HEADERS=OFF` 禁止下载。找到 `liburma` 时使用
-真实硬件数据通路，否则链接 brpc 的 mock，使 URMA 代码和测试仍可在无硬件
-环境编译。`URMA_USE_MOCK` 默认为 `AUTO`；设为 `ON` 可强制使用 mock，设为
-`OFF` 则要求找到 `liburma` 并排除 mock。
+CMake 优先使用系统 UMDK 头文件，缺失时下载固定版本；
+`DOWNLOAD_URMA_HEADERS=OFF` 关闭下载。`URMA_USE_MOCK=AUTO` 按 `liburma` 选择实现，
+`ON` 使用 mock，`OFF` 使用硬件库。示例通过 `URMA_ROOT` 或 `URMA_INCLUDE_PATH` 指定 SDK 头文件。
 
 ### Make 编译
 
@@ -60,7 +55,7 @@ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib \
 # 编译带 URMA 支持的 brpc
 bazel build --define=BRPC_WITH_URMA=true //:brpc
 
-# 仅展示关闭下载的开关；头文件仍须由工具链或本地 BUILD 目标声明
+# 使用本地声明的 SDK 头文件
 bazel build --define=BRPC_WITH_URMA=true \
     --define=BRPC_DOWNLOAD_URMA_HEADERS=false //:brpc
 
@@ -73,14 +68,9 @@ bazel build --define=BRPC_WITH_URMA=true \
     --define=BRPC_URMA_USE_MOCK=false //:brpc
 ```
 
-Bazel 会自动获取固定 commit 的 UMDK 头文件，并通过 `@umdk//:urma_headers`
-提供给 URMA 目标。设置 `BRPC_DOWNLOAD_URMA_HEADERS=false` 后，Bazel 不再依赖
-该外部仓库；实际构建仍需通过工具链或本地 BUILD 目标声明
-`urma_api.h`、`urma_types.h` 和 `urma_ubagg.h`。仅通过
-`--copt=-I/path` 指向工作区外目录，在默认 Bazel 沙箱下不会把未声明的头文件
-带入编译输入。设置
-`BRPC_URMA_USE_MOCK=true` 强制加入 mock；设置为 `false` 则排除 mock 并链接
-`liburma`。未指定时，URMA 构建默认使用 mock。
+Bazel 通过 `@umdk//:urma_headers` 使用固定版本的 UMDK 头文件。
+关闭下载时，由工具链或本地 BUILD 目标声明 `urma_api.h`、`urma_types.h` 和 `urma_ubagg.h`。
+`BRPC_URMA_USE_MOCK=true` 使用 mock，`false` 链接 `liburma`；默认使用 mock。
 
 ## 使用
 
@@ -130,19 +120,15 @@ urma::UrmaEndpoint : public SocketUser   (urma/urma_endpoint.{h,cpp})
 3. 双方在 TCP fd 上交换 `UrmaHello` 消息（v2 二进制 magic `URMA`，
    v3 protobuf magic `URM3`），携带本地 EID、jetty id、recv buffer 数量、
    以及扁平化的 buffer 池 segment。
-4. 双方先调用 `urma_import_seg` **再**调用 `urma_import_jetty`，为远端 EID
-   建立传输路径（TP）路由。跳过 `import_seg` 会导致首个 SEND 被硬件以
-   `URMA_CR_RNR_RETRY_CNT_EXC_ERR` 拒绝。
+4. 双方依次调用 `urma_import_seg` 和 `urma_import_jetty`，建立远端路由。
 5. 4 字节 ACK（`HELLO_ACK_URMA_OK = 0x1`）确认双方均要 URMA。
 6. 成功后 TCP fd 仅保留用于 epoll 生命周期和回退，数据走 URMA。
 
 ### 内存管理
 
-申请一大段 `mmap` 内存，用 `urma_register_seg` 一次性注册，再切成固定大小
-buffer（默认 8KB）。劫持 `butil::iobuf::blockmem_allocate` 使每个 IOBuf
-block 都由注册 segment 支撑，发送路径可直接从 IOBuf block refs 构建
-`urma_sge_t`，无需逐消息注册（与 RDMA `block_pool` 设计一致）。用户注册
-内存通过 `urma::RegisterMemoryForUrma` / `DeregisterMemoryForUrma` 支持。
+通过 `mmap` 分配内存，调用 `urma_register_seg` 注册后切为固定大小的缓冲区（默认 8KB）。
+IOBuf 使用注册池分配器，发送路径从 block refs 构建 `urma_sge_t`。
+用户内存通过 `RegisterMemoryForUrma` / `DeregisterMemoryForUrma` 管理。
 
 ## 配置
 
@@ -157,8 +143,10 @@ block 都由注册 segment 支撑，发送路径可直接从 IOBuf block refs �
 | `--urma_rq_size` | 128 | 本地 JFR 深度 [16, 4096] |
 | `--urma_cqe_poll_once` | 32 | 每次 `urma_poll_jfc` 的上限 |
 | `--urma_recv_zerocopy` | true | 大于 `--urma_zerocopy_min_size` 的接收零拷贝 |
+| `--urma_copy_send` | false | 将主机发送数据复制合并到 64 字节对齐的注册缓冲区 |
 | `--urma_zerocopy_min_size` | 512 | 小于此值的接收拷贝 |
 | `--urma_device` | "" | URMA 设备名（空=首个） |
+| `--urma_tp_type` | auto | RM 路径：auto 优先 CTP，其次 RTP；ctp 或 rtp 显式选择路径 |
 | `--urma_max_sge` | 0 | 每 WR SGE 上限（0=设备上限） |
 | `--urma_bonding_mode` | 0 | bonding 模式：0=standalone，1=active-backup，2=balance |
 | `--urma_bonding_level` | 0 | bonding 层级：0=IODIE，1=port |
@@ -171,6 +159,15 @@ block 都由注册 segment 支撑，发送路径可直接从 IOBuf block refs �
 设备名以 `bonding` 开头时，brpc 会在创建 context 后、创建 segment 和队列
 前配置 provider。默认 standalone+IODIE 配置与 UMDK 性能工具保持一致。
 bonding 支持需要 provider 扩展头文件 `urma_ubagg.h`。
+
+### 传输路径选择
+
+`--urma_tp_type=auto` 按设备能力优先选择 CTP，其次 RTP；`ctp`、`rtp` 显式指定路径。
+两端使用相同路径，进程初始化后保持固定。Jetty 取首个匹配优先级，支持组合能力位；
+设备映射决定 SL，例如 priority 0 映射 SL 2。日志记录实际 `tp_type` 和 `priority`。
+
+设备未提供能力表时，auto/ctp 使用 CTP priority 6，rtp 使用 RTP priority 0；
+路径选择失败时初始化回落 TCP。
 
 ## 与 UBRing 协同
 
@@ -185,11 +182,77 @@ UrmaTransport 推荐用于**大包和跨节点**高吞吐路径，而 UBRing
 | 跨节点大包（>= 64KB） | `SOCKET_MODE_URMA` |
 | 传统 RoCE/IB 数据中心 | `SOCKET_MODE_URMA` 或 `SOCKET_MODE_RDMA` |
 
-单连接内按包大小自动分流的方案（路线 C 方案 B）作为后续演进方向。
+## 运行环境
 
-## 限制
+Linux、`baidu_std` 协议，以及支持目标设备的 UMDK provider 和 `liburma`。
 
-- 仅支持 `baidu_std` 协议（与 RDMA 一致）。SSL、RTMP、NSHEAD、MONGO 在
-  `ContextInitOrDie` 阶段拒绝。
-- 硬件数据通路需要受支持的 UMDK provider 和 `liburma`。
-- 当前实现面向 Linux。
+## 运行期故障恢复
+
+恢复策略按进程配置，作用于新连接：
+
+| 模式 | 行为 |
+| --- | --- |
+| LEGACY（默认） | 沿用原有握手和错误处理 |
+| AUTO | 对端故障后冷却，期间使用 TCP，到期恢复 URMA 准入 |
+| TCP_ONLY | 直接使用 TCP |
+
+```cpp
+#include "brpc/urma/urma_recovery_policy.h"
+
+brpc::urma::SetUrmaRecoveryCooldownMs(5000);
+brpc::urma::SetUrmaRecoveryMode(brpc::urma::UrmaRecoveryMode::AUTO);
+```
+
+默认冷却 5 秒，故障来源包括重试耗尽、RNR、JFC 错误和 WR 提交失败。
+同一连接记录首个运行期故障；访问错误单独计数，窗口耗尽保持 EAGAIN。
+恢复策略维护进程级模式、epoch 和对端冷却缓存，模式切换过滤旧连接上报。
+
+已建立 URMA 连接的客户端收到控制 TCP 连接关闭或读取错误时，上报传输故障，
+AUTO 下冷却该对端。服务端收到正常短连接的 EOF 时直接关闭连接。
+
+`GetUrmaRecoveryStatus()` 和 `/vars/urma_recovery_status` 提供故障原因、冷却状态及协商数；
+`/vars/urma_recovery_tcp_fallback_admissions` 按连接累计 TCP 准入。
+
+### 功能验证
+
+使用上文构建的 `urma_performance_server` 和 `urma_recovery_client`，两端指定相同设备路径。
+客户端示例：
+
+```bash
+./build/urma-example/urma_recovery_client --transport=urma \
+    --server=SERVER_IP:8003 --urma_device=URMA_DEVICE --urma_tp_type=rtp \
+    --mode=auto --connection_type=short --seconds=15 --interval_ms=200
+```
+
+健康 AUTO 检查 `failure=0`、URMA 协商增加、TCP 准入为 0；
+TCP_ONLY 检查 `failure=0`、TCP 准入增加。运行中通过 `--mode_file` 切换模式。
+使用 `--connection_type=single` 或 `pooled` 验证连接复用，`--attachment_size=1048576`
+验证 1 MiB 回显附件；客户端逐字节校验，汇总输出 `validation_failures`。
+
+### 定向发送失败测试
+
+启用 Linux 注入模块，在指定客户端模拟一次数据 SEND 提交失败（EIO）：
+
+```bash
+cmake -S example/urma_performance -B build/urma-example -DBUILD_URMA_FAULT_INJECTOR=ON
+cmake --build build/urma-example --target urma_send_failure_injector -j8
+python3 example/urma_performance/run_recovery_injection.py \
+    --server=SERVER_IP:8003 --device=URMA_DEVICE --tp-type=rtp
+```
+
+运行器等待 URMA RPC 成功后注入，校验指标 PID，保存 CSV、日志和三阶段快照。
+默认 v3 握手、运行 40 秒、冷却 10 秒；验收 `send_post=1` 和冷却期间 TCP 准入。
+`short` 检查一次预期 RPC 失败和冷却后 URMA 协商恢复；`--connection-type=single` 或
+`pooled` 检查重连后 RPC 持续成功，复用已建立的 TCP 连接。
+运行器支持 `--attachment-size` 回显校验和 `--polling` 轮询模式。
+构建 `urma_send_failure_injector_test` 后，通过示例目录的 CTest 执行工具自测。
+
+主库 CTest 的 `brpc_urma_remote_recovery_*` 用例在服务端注入一次 SEND 失败，
+覆盖 CTP/RTP、v2/v3、event/polling，检查客户端对端冷却、TCP 准入、
+URMA 恢复及 64 KiB 附件回显。正常短连接关闭也在同一测试中验证。
+
+### 发送访问错误对照
+
+`--urma_copy_send=true` 将每个数据 WR 合并到 64 字节对齐的注册缓冲区，并持有至完成，
+增加一次 CPU 拷贝。两端保持设备、队列和消息大小一致，对比原发送路径与复制路径。
+初始化日志记录 `copy_send`，失败日志记录完成方向、槽位及注册段范围。
