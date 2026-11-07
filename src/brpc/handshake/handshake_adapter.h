@@ -15,34 +15,42 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef BRPC_RDMA_RDMA_HANDSHAKE_SERVER_H
-#define BRPC_RDMA_RDMA_HANDSHAKE_SERVER_H
+#ifndef BRPC_HANDSHAKE_HANDSHAKE_ADAPTER_H
+#define BRPC_HANDSHAKE_HANDSHAKE_ADAPTER_H
 
-#include "brpc/destroyable.h"
+#include "butil/macros.h"
 #include "brpc/parse_result.h"
+#include "brpc/transport_handshake.h"
 
 namespace butil {
 class IOBuf;
 }
 
 namespace brpc {
-class Socket;
-namespace rdma {
 
-// State kept across multiple parse calls of the server handshake.
-struct ServerHandshakeContext : public Destroyable {
-    static ServerHandshakeContext* Create();
-    void Destroy() override;
+class Socket;
+
+namespace handshake {
+
+// Common InputMessenger parser lifecycle. Protocol adapters provide the server
+// step and connection session.
+class HandshakeAdapter {
+public:
+    virtual ~HandshakeAdapter() = default;
+    virtual ParseResult ExecuteServerHandshake(
+        butil::IOBuf* source, Socket* socket);
+
+protected:
+    HandshakeAdapter() = default;
+    virtual StepResult RunServerStep(
+        butil::IOBuf* source, Socket* socket) = 0;
+    virtual HandshakeSession* GetSession(Socket* socket) const = 0;
+
+private:
+    DISALLOW_COPY_AND_ASSIGN(HandshakeAdapter);
 };
 
-// The single server-side RDMA handshake entry for policy::ParseRdmaHandshake.
-// Returns a ParseResult ready to be handed back from the protocol parser:
-//   - not an RDMA magic / handshake finished -> PARSE_ERROR_TRY_OTHERS;
-//   - an RDMA magic but not enough bytes yet  -> PARSE_ERROR_NOT_ENOUGH_DATA;
-//   - IO/protocol error                       -> PARSE_ERROR_ABSOLUTELY_WRONG.
-ParseResult ExecuteServerHandshake(butil::IOBuf* source, Socket* socket);
-
-}  // namespace rdma
+}  // namespace handshake
 }  // namespace brpc
 
-#endif  // BRPC_RDMA_RDMA_HANDSHAKE_SERVER_H
+#endif  // BRPC_HANDSHAKE_HANDSHAKE_ADAPTER_H

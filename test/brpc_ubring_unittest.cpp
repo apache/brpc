@@ -15,10 +15,18 @@
 // limitations under the License.
 
 #include <gtest/gtest.h>
+
+// GoogleTest 1.11 and earlier expose flags without getter/setter macros.
+#ifndef GTEST_FLAG_GET
+#define GTEST_FLAG_GET(name) ::testing::GTEST_FLAG(name)
+#define GTEST_FLAG_SET(name, value) (::testing::GTEST_FLAG(name) = (value))
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <limits>
 #include <gflags/gflags.h>
 #include <string>
@@ -28,12 +36,44 @@
 #include "brpc/socket.h"
 
 #if BRPC_WITH_UBRING
+#include <functional>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <sys/mman.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <vector>
+#include "bthread/bthread.h"
+#include "bthread/countdown_event.h"
+#include "bthread/unstable.h"
+#include "brpc/acceptor.h"
+#include "brpc/adapter_transport.h"
+#include "brpc/channel.h"
+#include "brpc/controller.h"
+#include "brpc/input_message_base.h"
+#include "brpc/input_messenger.h"
+#include "brpc/policy/baidu_rpc_meta.pb.h"
+#include "brpc/policy/baidu_rpc_protocol.h"
+#include "brpc/server.h"
+#include "brpc/ubshm_transport.h"
+#include "butil/fd_guard.h"
+#include "butil/memory/scope_guard.h"
+#include "butil/scoped_lock.h"
+#include "butil/time.h"
+#include "echo.pb.h"
 #include "brpc/ubshm/common/common.h"
+#include "brpc/handshake/ubshm_handshake.h"
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/shm/shm_mgr.h"
+#include "brpc/ubshm/shm/shm_ubs.h"
+#include "brpc/ubshm/ubs_mem/ubs_mem_def.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "brpc/ubshm/ub_ring.h"
+#include "brpc/ubshm/ub_helper.h"
+#include "brpc/ubshm/timer/timer_mgr.h"
 #include "brpc/ubshm/ubr_msg.h"
 #include "brpc/ubshm/ubr_msg_v2.h"
 
@@ -45,7 +85,14 @@ DECLARE_int32(ub_hb_timer_interval_s);
 DECLARE_int32(ub_event_queue_timer_interval_us);
 DECLARE_int32(ub_flying_io_timeout_s);
 
+extern ShmList* g_shm_list;
+extern int g_shm_timer_fd;
+extern int (*ubsmem_finalize)();
+extern int (*ubsmem_shmem_allocate)(const char*, const char*, size_t, mode_t, uint64_t);
+extern int (*ubsmem_shmem_map)(void*, size_t, int, int, const char*, off_t, void**);
 extern bool g_skip_ub_init;
+extern int (*ubsmem_shmem_deallocate)(const char*);
+extern int (*ubsmem_shmem_unmap)(void*, size_t);
 }  // namespace ubring
 }  // namespace brpc
 
@@ -586,129 +633,92 @@ TEST(IpcV2UbrDispatchTest, rejects_uninitialized_remote_ring) {
     EXPECT_EQ(0u, context.remote_rx_event.io_id);
 }
 
-struct __attribute__((packed)) HelloMessageLayout {
-    uint16_t msg_len;
-    uint16_t hello_ver;
-    uint16_t impl_ver;
-    uint64_t len;
-    char shm_name[SHM_MAX_NAME_BUFF_LEN];
-};
-}
+constexpr size_t UB_HELLO_PAYLOAD_SIZE = 64 - 2;
+}  // namespace
 
 class HelloMessageTest : public ::testing::Test {
 protected:
-    void SetUp() override {
-        memset(&msg, 0, sizeof(msg));
-        buffer.resize(256, 0);
-    }
-
-    brpc::ubring::HelloMessage msg;
-    std::string buffer;
+    brpc::ubring::HelloMessage msg{64, 2, 1, 4 * 1024 * 1024, {0}};
+    char buffer[UB_HELLO_PAYLOAD_SIZE]{};
 };
 
-TEST(HelloFormatExtensionTest, serialize_deserialize_roundtrip) {
-    brpc::ubring::HelloFormatExtension extension = {
-        brpc::ubring::HelloFormatExtension::WIRE_SIZE,
-        brpc::ubring::UBR_DATA_FORMAT_LEGACY_64};
-    char buffer[brpc::ubring::HelloFormatExtension::WIRE_SIZE] = {};
-
-    extension.Serialize(buffer);
-
-    brpc::ubring::HelloFormatExtension decoded = {};
-    decoded.Deserialize(buffer);
-    EXPECT_EQ(extension.extension_len, decoded.extension_len);
-    EXPECT_EQ(extension.format_id, decoded.format_id);
-
-    extension.format_id = brpc::ubring::UBR_DATA_FORMAT_IPC_V2;
-    extension.Serialize(buffer);
-    decoded.Deserialize(buffer);
-    EXPECT_EQ(extension.extension_len, decoded.extension_len);
-    EXPECT_EQ(extension.format_id, decoded.format_id);
-}
-
-TEST(HelloFormatExtensionTest, serialize_uses_network_byte_order) {
-    brpc::ubring::HelloFormatExtension extension = {0x0102, 0x0304};
-    char buffer[brpc::ubring::HelloFormatExtension::WIRE_SIZE] = {};
-    const unsigned char expected[] = {0x01, 0x02, 0x03, 0x04};
-
-    extension.Serialize(buffer);
-
-    EXPECT_EQ(0, memcmp(expected, buffer, sizeof(expected)));
-}
-
-TEST(HelloFormatExtensionTest, deserialize_none_format) {
-    const unsigned char buffer[] = {0x00, 0x04, 0x00, 0x00};
-    brpc::ubring::HelloFormatExtension extension = {};
-
-    extension.Deserialize(buffer);
-
-    EXPECT_EQ(4, extension.extension_len);
-    EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE, extension.format_id);
-}
-
-TEST(HelloFormatExtensionTest, deserialize_unknown_format) {
-    const unsigned char buffer[] = {0x00, 0x04, 0x12, 0x34};
-    brpc::ubring::HelloFormatExtension extension = {};
-
-    extension.Deserialize(buffer);
-
-    EXPECT_EQ(4, extension.extension_len);
-    EXPECT_EQ(0x1234, extension.format_id);
-}
-
-TEST(HelloFormatExtensionTest, selects_format_for_local_backend) {
+TEST(HelloFormatExtensionTest, wire_encoding_and_format_selection) {
     using namespace brpc::ubring;
-    EXPECT_EQ(UBR_DATA_FORMAT_IPC_V2,
-              PreferredDataFormatForShmType(SHM_TYPE_IPC));
-    EXPECT_EQ(UBR_DATA_FORMAT_LEGACY_64,
-              PreferredDataFormatForShmType(SHM_TYPE_UBS));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              PreferredDataFormatForShmType(SHM_TYPE_UB));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              PreferredDataFormatForShmType(SHM_TYPE_UNSUPPORT));
+    const struct { uint16_t length; uint16_t format; } cases[] = {
+        {4, UBR_DATA_FORMAT_LEGACY_64}, {4, UBR_DATA_FORMAT_IPC_V2},
+        {4, UBR_DATA_FORMAT_NONE}, {4, 0x1234}, {0x0102, 0x0304},
+    };
+    for (const auto& c : cases) {
+        SCOPED_TRACE(c.format);
+        HelloFormatExtension extension = {c.length, c.format};
+        char wire[4];
+        extension.Serialize(wire);
+        const unsigned char expected[] = {
+            static_cast<unsigned char>(c.length >> 8),
+            static_cast<unsigned char>(c.length),
+            static_cast<unsigned char>(c.format >> 8),
+            static_cast<unsigned char>(c.format)};
+        EXPECT_EQ(0, memcmp(expected, wire, sizeof(wire)));
+        HelloFormatExtension decoded{};
+        decoded.Deserialize(expected);
+        EXPECT_EQ(c.length, decoded.extension_len);
+        EXPECT_EQ(c.format, decoded.format_id);
+    }
+    EXPECT_EQ(UBR_DATA_FORMAT_IPC_V2, PreferredDataFormatForShmType(SHM_TYPE_IPC));
+    EXPECT_EQ(UBR_DATA_FORMAT_LEGACY_64, PreferredDataFormatForShmType(SHM_TYPE_UBS));
+    EXPECT_EQ(UBR_DATA_FORMAT_NONE, PreferredDataFormatForShmType(SHM_TYPE_UB));
+    EXPECT_EQ(UBR_DATA_FORMAT_NONE, PreferredDataFormatForShmType(SHM_TYPE_UNSUPPORT));
+    for (uint16_t local : {0, 1, 2, 0x1234}) {
+        for (uint16_t remote : {0, 1, 2, 0x1234}) {
+            SCOPED_TRACE(::testing::Message() << local << "/" << remote);
+            const auto expected = local == remote && (local == 1 || local == 2)
+                ? static_cast<UbrDataFormat>(local) : UBR_DATA_FORMAT_NONE;
+            EXPECT_EQ(expected, SelectDataFormat(
+                static_cast<UbrDataFormat>(local), remote));
+        }
+    }
 }
 
-TEST(HelloFormatExtensionTest, selects_only_matching_supported_format) {
+TEST(UBShmHandshakeAdapterTest, extension_negotiation) {
     using namespace brpc::ubring;
-    EXPECT_EQ(UBR_DATA_FORMAT_IPC_V2,
-              SelectDataFormat(UBR_DATA_FORMAT_IPC_V2,
-                               UBR_DATA_FORMAT_IPC_V2));
-    EXPECT_EQ(UBR_DATA_FORMAT_LEGACY_64,
-              SelectDataFormat(UBR_DATA_FORMAT_LEGACY_64,
-                               UBR_DATA_FORMAT_LEGACY_64));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(UBR_DATA_FORMAT_IPC_V2,
-                               UBR_DATA_FORMAT_LEGACY_64));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(UBR_DATA_FORMAT_LEGACY_64,
-                               UBR_DATA_FORMAT_IPC_V2));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(UBR_DATA_FORMAT_IPC_V2, 0x1234));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(UBR_DATA_FORMAT_NONE,
-                               UBR_DATA_FORMAT_NONE));
-    EXPECT_EQ(UBR_DATA_FORMAT_NONE,
-              SelectDataFormat(static_cast<UbrDataFormat>(0x1234), 0x1234));
+    for (auto format : {UBR_DATA_FORMAT_LEGACY_64, UBR_DATA_FORMAT_IPC_V2}) {
+        SCOPED_TRACE(format);
+        UBShmHandshakeAdapter protocol(format);
+        std::string payload;
+        ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildExtension(true, &payload));
+        const char wire[] = {0, 4, 0, static_cast<char>(format)};
+        EXPECT_EQ(std::string(wire, sizeof(wire)), payload);
+        EXPECT_EQ(brpc::handshake::STEP_OK, protocol.ParseExtension(payload));
+        for (char peer : {char(0), char(3 - format)}) {
+            payload[3] = peer;
+            EXPECT_EQ(brpc::handshake::STEP_FALLBACK, protocol.ParseExtension(payload));
+        }
+        EXPECT_EQ(brpc::handshake::STEP_ERROR,
+                  protocol.ParseExtension(std::string(3, '\0')));
+        EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
+                  protocol.ParseExtension(std::string("\0\3\0\2", 4)));
+        EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
+                  protocol.ParseExtension(std::string("\0\4\x12\x34", 4)));
+        ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildExtension(false, &payload));
+        EXPECT_EQ(std::string("\0\4\0\0", 4), payload);
+    }
 }
 
 TEST_F(HelloMessageTest, serialize_deserialize_roundtrip) {
-    msg.msg_len = 64;
-    msg.hello_ver = 2;
-    msg.impl_ver = 1;
-    msg.len = 4 * 1024 * 1024;
-    memcpy(msg.shm_name, "UBRING_test_C", 14);
-
-    msg.Serialize(&buffer[0]);
-
-    brpc::ubring::HelloMessage decoded;
-    memset(&decoded, 0, sizeof(decoded));
-    decoded.Deserialize(&buffer[0]);
-
-    EXPECT_EQ(msg.msg_len, decoded.msg_len);
-    EXPECT_EQ(msg.hello_ver, decoded.hello_ver);
-    EXPECT_EQ(msg.impl_ver, decoded.impl_ver);
-    EXPECT_EQ(msg.len, decoded.len);
-    EXPECT_EQ(0, memcmp(msg.shm_name, decoded.shm_name, SHM_MAX_NAME_BUFF_LEN));
+    const uint64_t lengths[] = {4 * 1024 * 1024, 0xFFFFFFFFFFFFFFFFULL};
+    for (uint64_t len : lengths) {
+        SCOPED_TRACE(len);
+        msg.len = len;
+        memcpy(msg.shm_name, "UBRING_test_C", 14);
+        msg.Serialize(buffer);
+        brpc::ubring::HelloMessage decoded{};
+        decoded.Deserialize(buffer);
+        EXPECT_EQ(msg.msg_len, decoded.msg_len);
+        EXPECT_EQ(msg.hello_ver, decoded.hello_ver);
+        EXPECT_EQ(msg.impl_ver, decoded.impl_ver);
+        EXPECT_EQ(msg.len, decoded.len);
+        EXPECT_EQ(0, memcmp(msg.shm_name, decoded.shm_name, SHM_MAX_NAME_BUFF_LEN));
+    }
 }
 
 TEST_F(HelloMessageTest, serialize_uses_network_byte_order) {
@@ -720,39 +730,14 @@ TEST_F(HelloMessageTest, serialize_uses_network_byte_order) {
 
     msg.Serialize(&buffer[0]);
 
-    HelloMessageLayout* raw = reinterpret_cast<HelloMessageLayout*>(&buffer[0]);
-    EXPECT_EQ(butil::HostToNet16(0x0102), raw->msg_len);
-    EXPECT_EQ(butil::HostToNet16(0x0304), raw->hello_ver);
-    EXPECT_EQ(butil::HostToNet16(0x0506), raw->impl_ver);
-    EXPECT_EQ(butil::HostToNet64(0x0102030405060708ULL), raw->len);
-}
-
-TEST_F(HelloMessageTest, large_len_value) {
-    msg.msg_len = 64;
-    msg.hello_ver = 2;
-    msg.impl_ver = 1;
-    msg.len = 0xFFFFFFFFFFFFFFFFULL;
-    memset(msg.shm_name, 0, SHM_MAX_NAME_BUFF_LEN);
-
-    msg.Serialize(&buffer[0]);
-
-    brpc::ubring::HelloMessage decoded;
-    memset(&decoded, 0, sizeof(decoded));
-    decoded.Deserialize(&buffer[0]);
-
-    EXPECT_EQ(0xFFFFFFFFFFFFFFFFULL, decoded.len);
+    const unsigned char expected[] = {
+        1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 7, 8};
+    EXPECT_EQ(0, memcmp(expected, buffer, sizeof(expected)));
 }
 
 TEST_F(HelloMessageTest, full_shm_name) {
-    // A peer that fills every byte of shm_name leaves no terminator on the
-    // wire. Deserialize must still hand back a valid C-string, because the
-    // handshake feeds the decoded name straight into strncpy/strrchr/
-    // snprintf("%s") and the shm allocate/map calls; without a terminator
-    // those scan past shm_name.
+    // A full wire name is terminated before use by the SHM mapping functions.
     memset(msg.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN);
-    msg.msg_len = 64;
-    msg.hello_ver = 2;
-    msg.impl_ver = 1;
     msg.len = 0;
     msg.Serialize(&buffer[0]);
 
@@ -768,10 +753,6 @@ TEST_F(HelloMessageTest, full_shm_name) {
 }
 
 TEST_F(HelloMessageTest, toString_contains_fields) {
-    msg.msg_len = 64;
-    msg.hello_ver = 2;
-    msg.impl_ver = 1;
-    msg.len = 4194304;
     memcpy(msg.shm_name, "UBRING_test", 12);
 
     std::string s = msg.toString();
@@ -779,6 +760,117 @@ TEST_F(HelloMessageTest, toString_contains_fields) {
     EXPECT_NE(std::string::npos, s.find("hello_ver=2"));
     EXPECT_NE(std::string::npos, s.find("impl_ver=1"));
     EXPECT_NE(std::string::npos, s.find("UBRING_test"));
+}
+
+TEST(UBShmHandshakeAdapterTest, codec_uses_v3_wire_format) {
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    char shm_name[SHM_MAX_NAME_BUFF_LEN] = {0};
+    memcpy(shm_name, "UBRING_test_C", 14);
+
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.BuildHello(true, 4 * 1024 * 1024,
+                                 shm_name, &payload));
+    brpc::ubring::HelloMessage decoded{};
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(64, decoded.msg_len);
+    EXPECT_EQ(3, decoded.hello_ver);
+    EXPECT_EQ(1, decoded.impl_ver);
+    EXPECT_EQ(4 * 1024 * 1024, decoded.len);
+    EXPECT_EQ(0, memcmp(shm_name, decoded.shm_name,
+                        SHM_MAX_NAME_BUFF_LEN));
+
+    std::string frame;
+    ASSERT_EQ(brpc::handshake::FRAME_OK,
+              brpc::handshake::FrameCodec::Encode(
+                  adapter.HelloFrameSpec(), payload, &frame));
+    ASSERT_EQ(64, frame.size());
+    EXPECT_EQ("UB", frame.substr(0, 2));
+}
+
+TEST(UBShmHandshakeAdapterTest, short_name_is_zero_padded) {
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    char short_name[SHM_MAX_NAME_BUFF_LEN];
+    memset(short_name, 0x5a, sizeof(short_name));
+    short_name[0] = 'x';
+    short_name[1] = '\0';
+
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.BuildHello(true, 4096, short_name, &payload));
+
+    brpc::ubring::HelloMessage decoded{};
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ('x', decoded.shm_name[0]);
+    for (size_t i = 1; i < SHM_MAX_NAME_BUFF_LEN; ++i) {
+        EXPECT_EQ('\0', decoded.shm_name[i]) << "index=" << i;
+    }
+}
+
+TEST(UBShmHandshakeAdapterTest, client_hello_advertises_allocated_shm_name) {
+    brpc::ubring::SHM local_shm{};
+    local_shm.len = 4096;
+    strcpy(local_shm.name, "UBRING_127.0.0.1:8000_C");
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    adapter.ConfigureClientHello(local_shm);
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK, adapter.BuildHello(true, &payload));
+    brpc::ubring::HelloMessage decoded{};
+    ASSERT_EQ(brpc::handshake::STEP_OK, adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(local_shm.len, decoded.len);
+    EXPECT_STREQ(local_shm.name, decoded.shm_name);
+}
+
+TEST(UBShmHandshakeAdapterTest, rejects_unterminated_remote_name) {
+    brpc::ubring::HelloMessage message{};
+    message.msg_len = 64;
+    message.hello_ver = 3;
+    message.impl_ver = 1;
+    message.len = 4096;
+    memset(message.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN);
+
+    std::string payload(UB_HELLO_PAYLOAD_SIZE, '\0');
+    message.Serialize(&payload[0]);
+
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    brpc::ubring::HelloMessage decoded{};
+    errno = 0;
+    EXPECT_EQ(brpc::handshake::STEP_ERROR,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(EPROTO, errno);
+}
+
+TEST(UBShmHandshakeAdapterTest, accepts_name_terminated_at_wire_boundary) {
+    brpc::ubring::HelloMessage message{};
+    message.msg_len = 64;
+    message.hello_ver = 3;
+    message.impl_ver = 1;
+    message.len = 4096;
+    memset(message.shm_name, 'A', SHM_MAX_NAME_BUFF_LEN - 1);
+    std::string payload(UB_HELLO_PAYLOAD_SIZE, '\0');
+    message.Serialize(&payload[0]);
+
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    brpc::ubring::HelloMessage decoded{};
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(static_cast<size_t>(SHM_MAX_NAME_BUFF_LEN - 1),
+              strlen(decoded.shm_name));
+    EXPECT_EQ(0, memcmp(message.shm_name, decoded.shm_name,
+                        SHM_MAX_NAME_BUFF_LEN));
+}
+
+TEST(UBShmHandshakeAdapterTest, disabled_hello_requests_tcp_fallback) {
+    brpc::ubring::UBShmHandshakeAdapter adapter;
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK,
+              adapter.BuildHello(false, 0, NULL, &payload));
+    brpc::ubring::HelloMessage decoded{};
+    EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
+              adapter.ParseHello(payload, &decoded));
+    EXPECT_EQ(64, decoded.msg_len);
 }
 
 TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
@@ -819,6 +911,18 @@ TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
                   USEC_TO_NSEC);
 }
 
+TEST(UBRingConfigurationTest, cleanup_delay_requires_positive_seconds) {
+    const int saved = brpc::ubring::FLAGS_ub_flying_io_timeout_s;
+    BRPC_SCOPE_EXIT { brpc::ubring::FLAGS_ub_flying_io_timeout_s = saved; };
+    for (const char* value : {"0", "-1"}) {
+        EXPECT_TRUE(GFLAGS_NAMESPACE::SetCommandLineOption(
+            "ub_flying_io_timeout_s", value).empty());
+        EXPECT_EQ(saved, brpc::ubring::FLAGS_ub_flying_io_timeout_s);
+    }
+    EXPECT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+        "ub_flying_io_timeout_s", "1").empty());
+}
+
 namespace brpc {
 namespace ubring {
 class UBShmEndpointTest : public ::testing::Test {
@@ -826,6 +930,7 @@ protected:
     void SetUp() override {
         _saved_skip = g_skip_ub_init;
         g_skip_ub_init = false;
+        GlobalUBInitializeOrDie();
         ShmMgrInit();
         UBRingManager::UbrMgrInit();
         UBShmEndpoint::GlobalInitialize();
@@ -860,19 +965,89 @@ protected:
 
 using brpc::ubring::UBShmEndpointTest;
 
+TEST(UBShmExitDeathTest, stops_pollers_before_static_storage_is_destroyed) {
+    const std::string saved = GTEST_FLAG_GET(death_test_style);
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    BRPC_SCOPE_EXIT { GTEST_FLAG_SET(death_test_style, saved); };
+    EXPECT_EXIT({
+        static std::atomic<bool> stopped{false};
+        std::atexit([] { if (!stopped.load()) { _exit(1); } });
+        brpc::ubring::g_skip_ub_init = false;
+        brpc::ubring::GlobalUBInitializeOrDie();
+        if (!brpc::ubring::InitPollingModeWithTag(
+                0, nullptr, nullptr, [] { stopped.store(true); })) {
+            _exit(2);
+        }
+        std::exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
 TEST_F(UBShmEndpointTest, construct_initial_state) {
     ASSERT_NE(nullptr, _ep);
     EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE,
-              _ep->_negotiated_data_format);
+              _ep->negotiated_data_format());
+}
+
+TEST_F(UBShmEndpointTest, last_message_is_dispatched_outside_the_poller) {
+    struct Message : brpc::InputMessageBase {
+        void DestroyImpl() override {}
+        ~Message() override = default;
+        bthread::CountdownEvent done;
+        bthread_t worker = 0;
+    } message;
+    message._process = [](brpc::InputMessageBase* base) {
+        auto* msg = static_cast<Message*>(base);
+        msg->worker = bthread_self();
+        msg->done.signal();
+    };
+    brpc::UBShmTransport transport;
+    brpc::SocketOptions options;
+    transport.Init(_socket, options);
+    BRPC_SCOPE_EXIT { transport.Release(); };
+    brpc::InputMessageClosure input;
+    input.reset(&message);
+    int queued = 0;
+    transport.QueueMessage(input, &queued, true);
+    auto* remaining = input.release();
+    EXPECT_EQ(nullptr, remaining);
+    if (remaining != nullptr) {
+        return;
+    }
+    bthread_flush();
+    message.done.wait();
+    EXPECT_NE(bthread_self(), message.worker);
+}
+
+TEST_F(UBShmEndpointTest, queued_poll_does_not_retain_a_destroyed_endpoint) {
+    using namespace brpc::ubring;
+    brpc::SocketOptions options;
+    options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr owner;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &owner));
+    auto* ep = brpc::UBShmTransport::Get(owner.get())->GetUBShmEp();
+    SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_EQ(0, ep->AllocateClientResources(&local, "queued_poll"));
+    brpc::SocketUniquePtr poller;
+    ASSERT_EQ(0, brpc::Socket::Address(ep->_poller_sid, &poller));
+    const UBShmEndpoint::PollerSidOp op = {
+        ep->_poller_sid, id, EPOLLIN | EPOLLOUT,
+        UBShmEndpoint::PollerSidOp::ADD};
+    owner->SetFailed();
+    owner.reset();
+    EXPECT_EQ(nullptr, poller->user());
+    UBShmEndpoint::Poll(op);
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
 }
 
 TEST_F(UBShmEndpointTest, reset_clears_negotiated_data_format) {
-    _ep->_negotiated_data_format = brpc::ubring::UBR_DATA_FORMAT_LEGACY_64;
+    _ep->SetNegotiatedDataFormat(brpc::ubring::UBR_DATA_FORMAT_LEGACY_64);
 
     _ep->Reset();
 
     EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE,
-              _ep->_negotiated_data_format);
+              _ep->negotiated_data_format());
 }
 
 TEST_F(UBShmEndpointTest, allocate_client_resources_real_shm) {
@@ -892,6 +1067,861 @@ TEST_F(UBShmEndpointTest, reset_cleans_up_resources) {
 TEST_F(UBShmEndpointTest, reset_is_idempotent) {
     _ep->Reset();
     _ep->Reset();
+}
+
+#if defined(OS_LINUX)
+TEST_F(UBShmEndpointTest, cancel_unexpired_timer_does_not_wait_for_expiration) {
+    using namespace brpc::ubring;
+    bthread::CountdownEvent canceled;
+    std::atomic<int> callbacks(0);
+    itimerspec spec{};
+    spec.it_value.tv_sec = 10;
+    const int fd = TimerStart(&spec, [](void* arg) -> void* {
+        static_cast<std::atomic<int>*>(arg)->fetch_add(1);
+        return nullptr;
+    }, &callbacks);
+    ASSERT_GE(fd, 0);
+    std::thread cancel([&] {
+        DeleteTimerSafe(fd);
+        canceled.signal();
+    });
+    const int result = canceled.timed_wait(butil::milliseconds_from_now(1000));
+    if (result != 0) {
+        // Wake a blocking delete so a failure can still join the thread.
+        spec.it_value.tv_sec = 0;
+        spec.it_value.tv_nsec = 1;
+        timerfd_settime(fd, 0, &spec, nullptr);
+    }
+    cancel.join();
+    EXPECT_EQ(0, result);
+    EXPECT_EQ(0, callbacks.load());
+}
+
+TEST_F(UBShmEndpointTest, expired_one_shot_timer_releases_its_descriptor) {
+    using namespace brpc::ubring;
+    const uint32_t timers = GetActiveTimerNum();
+    bthread::CountdownEvent called;
+    itimerspec spec{};
+    spec.it_value.tv_nsec = 1;
+    const int fd = TimerStart(&spec, [](void* arg) -> void* {
+        static_cast<bthread::CountdownEvent*>(arg)->signal();
+        return nullptr;
+    }, &called);
+    ASSERT_GE(fd, 0);
+    EXPECT_EQ(0, called.timed_wait(butil::milliseconds_from_now(1000)));
+    const int64_t deadline = butil::gettimeofday_us() + 1000000;
+    while (GetActiveTimerNum() != timers &&
+           butil::gettimeofday_us() < deadline) {
+        bthread_usleep(1000);
+    }
+    const bool released = GetActiveTimerNum() == timers;
+    if (!released) {
+        timerfd_settime(fd, 0, &spec, nullptr);
+    }
+    EXPECT_TRUE(released);
+}
+
+TEST_F(UBShmEndpointTest, repeated_close_preserves_deferred_cleanup_timer) {
+    using namespace brpc::ubring;
+    for (UbrCloseType type : {UBR_SEND_CLOSE, UBR_CALL_BACK_CLOSE}) {
+        UBRing ring;
+        SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+        ASSERT_EQ(0, ring.UbrAllocateLocalShm(&local, "close_once"));
+        UbrTrx& trx = *ring._trx;
+        reinterpret_cast<UbrEventQMsg*>(trx.ubr_tx.local_tx_event_q.addr)
+            ->flag = UBR_STATE_CONNECTED;
+        trx.initializing = false;
+        itimerspec spec{};
+        spec.it_interval.tv_sec = 10;
+        spec.it_value.tv_sec = 10;
+        auto noop = [](void*) -> void* { return nullptr; };
+        trx.timer_fd = TimerStart(&spec, noop, nullptr);
+        trx.hb_timer_fd = TimerStart(&spec, noop, nullptr);
+        ASSERT_GE(trx.timer_fd, 0);
+        ASSERT_GE(trx.hb_timer_fd, 0);
+        BRPC_SCOPE_EXIT {
+            DeleteTimerSafe(trx.clear_timer_fd);
+            if (ATOMIC_LOAD(trx.ref_count) == 2) {
+                UBRing::UbrAsynClearCallback(&trx);
+            }
+            ring.UbrTrxAbort();
+        };
+        ASSERT_EQ(UBRING_OK, UBRing::ClearTrxResource(&trx, type));
+        EXPECT_EQ(UBRING_REENTRY,
+                  UBRing::ClearTrxResource(&trx, UBR_SEND_CLOSE));
+        EXPECT_GE(fcntl(trx.clear_timer_fd, F_GETFD), 0);
+    }
+}
+
+TEST_F(UBShmEndpointTest, concurrent_close_schedules_one_cleanup_timer) {
+    using namespace brpc::ubring;
+    UBRing ring;
+    SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_EQ(0, ring.UbrAllocateLocalShm(&local, "close_concurrently"));
+    UbrTrx& trx = *ring._trx;
+    reinterpret_cast<UbrEventQMsg*>(trx.ubr_tx.local_tx_event_q.addr)
+        ->flag = UBR_STATE_CONNECTED;
+    trx.initializing = false;
+    itimerspec spec{};
+    spec.it_value.tv_sec = 10;
+    auto noop = [](void*) -> void* { return nullptr; };
+    trx.timer_fd = TimerStart(&spec, noop, nullptr);
+    trx.hb_timer_fd = TimerStart(&spec, noop, nullptr);
+    ASSERT_GE(trx.timer_fd, 0);
+    ASSERT_GE(trx.hb_timer_fd, 0);
+    BRPC_SCOPE_EXIT {
+        DeleteTimerSafe(trx.clear_timer_fd);
+        if (ATOMIC_LOAD(trx.ref_count) == 2) {
+            UBRing::UbrAsynClearCallback(&trx);
+        }
+        ring.UbrTrxAbort();
+    };
+    bthread::CountdownEvent start;
+    int results[2];
+    auto close = [&](int i) {
+        start.wait();
+        results[i] = UBRing::ClearTrxResource(&trx, UBR_SEND_CLOSE);
+    };
+    std::thread first(close, 0);
+    std::thread second(close, 1);
+    start.signal();
+    first.join();
+    second.join();
+    std::sort(results, results + 2);
+    int expected[] = {UBRING_OK, UBRING_REENTRY};
+    std::sort(expected, expected + 2);
+    EXPECT_EQ(expected[0], results[0]);
+    EXPECT_EQ(expected[1], results[1]);
+    EXPECT_GE(fcntl(trx.clear_timer_fd, F_GETFD), 0);
+}
+
+TEST_F(UBShmEndpointTest, failed_cleanup_timer_releases_transaction_after_io_wait) {
+    using namespace brpc::ubring;
+    const int saved_timeout = FLAGS_ub_flying_io_timeout_s;
+    FLAGS_ub_flying_io_timeout_s = 1;
+    BRPC_SCOPE_EXIT { FLAGS_ub_flying_io_timeout_s = saved_timeout; };
+    struct sigaction action{};
+    struct sigaction saved_action;
+    action.sa_handler = [](int) {};
+    sigemptyset(&action.sa_mask);
+    ASSERT_EQ(0, sigaction(SIGUSR1, &action, &saved_action));
+    BRPC_SCOPE_EXIT { sigaction(SIGUSR1, &saved_action, nullptr); };
+    struct rlimit limit;
+    ASSERT_EQ(0, getrlimit(RLIMIT_NOFILE, &limit));
+    for (UbrCloseType type : {UBR_SEND_CLOSE, UBR_CALL_BACK_CLOSE}) {
+        const uint32_t allocated = UBRingManager::g_ubr_mgr.trx_num;
+        UBRing ring;
+        SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+        const std::string name = "timer_failure_" + std::to_string(getpid());
+        ASSERT_EQ(UBRING_OK, ring.UbrAllocateLocalShm(&local, name.c_str()));
+        UbrTrx* trx = ring._trx;
+        BRPC_SCOPE_EXIT {
+            if (UBRingManager::g_ubr_mgr.trx_num != allocated) {
+                DeleteTimerSafe(trx->timer_fd);
+                DeleteTimerSafe(trx->hb_timer_fd);
+                UBRing::UbrTrxFreeShm(trx);
+                UBRingManager::ReleaseUbrTrxFromMgr(trx);
+            }
+        };
+        SHM remote = local;
+        ASSERT_EQ(UBRING_OK, ShmRemoteMalloc(&remote));
+        ASSERT_EQ(UBRING_OK, ring.UbrTrxMapRemoteShm(&remote));
+        auto* tx = reinterpret_cast<UbrEventQMsg*>(
+            trx->ubr_tx.local_tx_event_q.addr);
+        auto* rx = reinterpret_cast<UbrEventQMsg*>(
+            trx->ubr_rx.local_rx_event_q.addr);
+        tx->flag = UBR_STATE_CONNECTED;
+        rx->flag = UBR_STATE_CLOSED;
+        trx->initializing = false;
+        itimerspec spec{};
+        spec.it_value.tv_sec = 10;
+        auto noop = [](void*) -> void* { return nullptr; };
+        trx->timer_fd = TimerStart(&spec, noop, nullptr);
+        trx->hb_timer_fd = TimerStart(&spec, noop, nullptr);
+        ASSERT_GE(trx->timer_fd, 0);
+        ASSERT_GE(trx->hb_timer_fd, 0);
+
+        const pthread_t closing_thread = pthread_self();
+        std::thread interrupt([closing_thread] {
+            usleep(100000);
+            pthread_kill(closing_thread, SIGUSR1);
+        });
+        BRPC_SCOPE_EXIT { interrupt.join(); };
+        // Closing existing descriptors still works, but timerfd_create fails.
+        struct rlimit exhausted = limit;
+        exhausted.rlim_cur = 0;
+        ASSERT_EQ(0, setrlimit(RLIMIT_NOFILE, &exhausted));
+        BRPC_SCOPE_EXIT { setrlimit(RLIMIT_NOFILE, &limit); };
+        const int64_t start = butil::gettimeofday_us();
+        const RETURN_CODE result = type == UBR_SEND_CLOSE
+            ? ring.UbrTrxClose()
+            : UBRing::ClearTrxResource(trx, type);
+        const int64_t elapsed = butil::gettimeofday_us() - start;
+        ASSERT_EQ(0, setrlimit(RLIMIT_NOFILE, &limit));
+        if (type == UBR_CALL_BACK_CLOSE) {
+            EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+        }
+        EXPECT_EQ(UBRING_OK, result);
+        EXPECT_GE(elapsed, 1000000);
+        EXPECT_EQ(allocated, UBRingManager::g_ubr_mgr.trx_num);
+        EXPECT_EQ(nullptr, trx->local_shm.addr);
+        EXPECT_EQ(nullptr, trx->remote_shm.addr);
+        if (type == UBR_SEND_CLOSE) {
+            EXPECT_EQ(nullptr, ring._trx);
+            EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+        }
+        butil::fd_guard removed(shm_open(local.name, O_RDONLY, 0));
+        EXPECT_LT(removed, 0);
+        EXPECT_EQ(ENOENT, errno);
+    }
+}
+#endif
+
+TEST_F(UBShmEndpointTest, initialize_preserves_acquired_transactions) {
+    using namespace brpc::ubring;
+    UbrTrx* trx = nullptr;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&trx));
+    auto* pool = UBRingManager::g_ubr_mgr.trx_mgr;
+    EXPECT_EQ(UBRING_OK, UBRingManager::UbrMgrInit());
+    EXPECT_EQ(pool, UBRingManager::g_ubr_mgr.trx_mgr);
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    if (pool == UBRingManager::g_ubr_mgr.trx_mgr) {
+        EXPECT_EQ(UBRING_OK, UBRingManager::ReleaseUbrTrxFromMgr(trx));
+    }
+}
+
+TEST_F(UBShmEndpointTest, finalize_waits_for_pending_cleanup) {
+    using namespace brpc::ubring;
+    UbrTrx* trx = nullptr;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&trx));
+    bthread::CountdownEvent finalized;
+    std::thread finalize([&] {
+        UBRingManager::UbrMgrFini();
+        finalized.signal();
+    });
+    const int result = finalized.timed_wait(butil::milliseconds_from_now(100));
+    if (result == ETIMEDOUT) {
+        EXPECT_EQ(UBRING_OK, UBRingManager::ReleaseUbrTrxFromMgr(trx));
+    }
+    finalize.join();
+    EXPECT_EQ(ETIMEDOUT, result);
+    EXPECT_EQ(nullptr, UBRingManager::g_ubr_mgr.trx_mgr);
+    EXPECT_EQ(UBRING_OK, UBRingManager::UbrMgrInit());
+}
+
+TEST_F(UBShmEndpointTest, reset_unmapped_client_does_not_wait_for_peer) {
+    using namespace brpc::ubring;
+    const uint32_t allocated = UBRingManager::g_ubr_mgr.trx_num;
+    SHM local = {nullptr, 4 * 1024 * 1024, 0, {0},
+                 static_cast<uint32_t>(_socket->fd())};
+    const std::string name = "unmapped_" + std::to_string(getpid());
+    ASSERT_EQ(0, _ep->AllocateClientResources(&local, name.c_str()));
+    const std::string shm_name(local.name);
+    EXPECT_EQ(allocated + 1, UBRingManager::g_ubr_mgr.trx_num);
+
+    const int64_t start = butil::gettimeofday_us();
+    _ep->Reset();
+    EXPECT_LT(butil::gettimeofday_us() - start, 1000000);
+    EXPECT_EQ(allocated, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_EQ(nullptr, _ep->_ub_ring);
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, _ep->_poller_sid);
+    butil::fd_guard missing(shm_open(shm_name.c_str(), O_RDONLY, 0));
+    EXPECT_LT(missing, 0);
+    EXPECT_EQ(ENOENT, errno);
+    _ep->Reset();
+}
+
+namespace {
+bool WaitForUBCondition(const std::function<bool()>& condition) {
+    const int64_t deadline = butil::gettimeofday_us() + 5000000;
+    while (!condition()) {
+        if (butil::gettimeofday_us() >= deadline) {
+            return false;
+        }
+        bthread_usleep(1000);
+    }
+    return true;
+}
+
+bool TransferUBTestBytes(int fd, void* bytes, size_t size, bool sending) {
+    size_t offset = 0;
+    while (offset < size) {
+        const ssize_t n = sending
+            ? send(fd, static_cast<char*>(bytes) + offset, size - offset,
+                   MSG_NOSIGNAL)
+            : recv(fd, static_cast<char*>(bytes) + offset, size - offset, 0);
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        if (n <= 0) {
+            return false;
+        }
+        offset += n;
+    }
+    return true;
+}
+
+class UBFallbackEchoService : public test::EchoService {
+public:
+    void Echo(google::protobuf::RpcController*, const test::EchoRequest* request,
+              test::EchoResponse* response, google::protobuf::Closure* done)
+        override {
+        response->set_message(request->message());
+        done->Run();
+    }
+};
+
+void SendAndCheckUBFallbackRPC(int fd, bool include_ack, uint64_t id) {
+    test::EchoRequest request;
+    request.set_message("UBSHM fallback RPC");
+    brpc::Controller cntl;
+    butil::IOBuf body;
+    brpc::policy::SerializeRpcRequest(&body, &cntl, &request);
+    butil::IOBuf packet;
+    brpc::policy::PackRpcRequest(&packet, nullptr, id,
+        test::EchoService::descriptor()->FindMethodByName("Echo"),
+        &cntl, body, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    std::string bytes(include_ack ? 4 : 0, '\0');
+    bytes += packet.to_string();
+    ASSERT_TRUE(TransferUBTestBytes(fd, &bytes[0], bytes.size(), true));
+    uint8_t header[12];
+    ASSERT_TRUE(TransferUBTestBytes(fd, header, sizeof(header), false));
+    ASSERT_EQ(0, memcmp(header, "PRPC", 4));
+    uint32_t total_size;
+    uint32_t meta_size;
+    memcpy(&total_size, header + 4, sizeof(total_size));
+    memcpy(&meta_size, header + 8, sizeof(meta_size));
+    total_size = butil::NetToHost32(total_size);
+    meta_size = butil::NetToHost32(meta_size);
+    ASSERT_GT(total_size, 0u);
+    ASSERT_LT(total_size, 65536u);
+    ASSERT_LE(meta_size, total_size);
+    std::string response(total_size, '\0');
+    ASSERT_TRUE(TransferUBTestBytes(fd, &response[0], response.size(), false));
+    brpc::policy::RpcMeta meta;
+    ASSERT_TRUE(meta.ParseFromArray(response.data(), meta_size));
+    ASSERT_EQ(id, meta.correlation_id());
+    ASSERT_EQ(0, meta.response().error_code());
+    test::EchoResponse echo;
+    ASSERT_TRUE(echo.ParseFromArray(response.data() + meta_size,
+                                   total_size - meta_size));
+    ASSERT_EQ(request.message(), echo.message());
+}
+}  // namespace
+
+class UBRingLifetimeTest : public UBShmEndpointTest {
+protected:
+    void SetUp() override {
+        UBShmEndpointTest::SetUp();
+        using namespace brpc::ubring;
+        saved_delay = brpc::ubring::FLAGS_ub_flying_io_timeout_s;
+        saved_timeout = brpc::ubring::FLAGS_ub_disconnect_timeout_s;
+        brpc::ubring::FLAGS_ub_flying_io_timeout_s = 1;
+        local.len = peer.len = 4 * 1024 * 1024;
+        const std::string name = "lifetime_" + std::to_string(getpid());
+        ASSERT_EQ(0, ring.UbrAllocateLocalShm(&local, name.c_str()));
+        snprintf(peer.name, sizeof(peer.name), "lifetime_peer_%d", getpid());
+        ASSERT_EQ(UBRING_OK, ShmLocalCalloc(&peer));
+        ASSERT_EQ(UBRING_OK, ring.UbrTrxMapRemoteShm(&peer));
+        auto* trx = ring._trx;
+        reinterpret_cast<UbrEventQMsg*>(trx->ubr_tx.local_tx_event_q.addr)
+            ->flag = UBR_STATE_CONNECTED;
+        reinterpret_cast<UbrEventQMsg*>(trx->ubr_rx.local_rx_event_q.addr)
+            ->flag = UBR_STATE_CONNECTED;
+        trx->initializing = false;
+        timers = brpc::ubring::GetActiveTimerNum();
+    }
+
+    void TearDown() override {
+        ring.UbrTrxAbort();
+        shm_unlink(peer.name);
+        UBShmEndpointTest::TearDown();
+        brpc::ubring::FLAGS_ub_flying_io_timeout_s = saved_delay;
+        brpc::ubring::FLAGS_ub_disconnect_timeout_s = saved_timeout;
+    }
+
+    brpc::ubring::UBRing ring;
+    brpc::ubring::SHM local{};
+    brpc::ubring::SHM peer{};
+    int saved_delay = 0;
+    int saved_timeout = 0;
+    uint32_t timers = 0;
+};
+
+TEST_F(UBRingLifetimeTest, timed_out_close_detaches_before_pool_slot_reuse) {
+    using namespace brpc::ubring;
+    FLAGS_ub_disconnect_timeout_s = 0;
+    UbrTrx* old_trx = ring._trx;
+    ASSERT_EQ(UBRING_ERR_TIMEOUT, ring.UbrTrxClose());
+    EXPECT_EQ(nullptr, ring._trx);
+    ASSERT_TRUE(WaitForUBCondition([&] { return GetActiveTimerNum() == timers; }));
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
+
+    UBRing replacement;
+    SHM next = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_EQ(0, replacement.UbrAllocateLocalShm(&next, "timeout_replacement"));
+    BRPC_SCOPE_EXIT { replacement.UbrTrxAbort(); };
+    EXPECT_EQ(old_trx, replacement._trx);
+    EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    butil::fd_guard fd(shm_open(next.name, O_RDONLY, 0));
+    EXPECT_GE(fd, 0);
+}
+
+TEST_F(UBRingLifetimeTest, concurrent_device_events_share_cleanup_and_keep_ring_reference) {
+    using namespace brpc::ubring;
+    bthread::CountdownEvent start;
+    RETURN_CODE results[2];
+    auto close = [&](int i) {
+        start.wait();
+        results[i] = static_cast<RETURN_CODE>(
+            UBRingManager::UbEventCallback(local.name));
+    };
+    std::thread first(close, 0);
+    std::thread second(close, 1);
+    start.signal();
+    first.join();
+    second.join();
+    EXPECT_EQ(UBRING_OK, results[0]);
+    EXPECT_EQ(UBRING_OK, results[1]);
+    ASSERT_TRUE(WaitForUBCondition([&] { return GetActiveTimerNum() == timers; }));
+    EXPECT_EQ(nullptr, ring._trx->local_shm.addr);
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_EQ(1, ATOMIC_LOAD(ring._trx->ref_count));
+
+    UBRing replacement;
+    SHM next = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_EQ(0, replacement.UbrAllocateLocalShm(&next, "passive_replacement"));
+    BRPC_SCOPE_EXIT { replacement.UbrTrxAbort(); };
+    EXPECT_NE(ring._trx, replacement._trx);
+    EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    butil::fd_guard fd(shm_open(peer.name, O_RDONLY, 0));
+    EXPECT_GE(fd, 0);
+}
+
+TEST_F(UBRingLifetimeTest, device_event_completes_an_active_close_once) {
+    using namespace brpc::ubring;
+    UbrTrx* trx = ring._trx;
+    ATOMIC_ADD(trx->ref_count, 1);
+    BRPC_SCOPE_EXIT { UBRingManager::ReleaseUbrTrxFromMgr(trx); };
+    RETURN_CODE result = UBRING_ERR;
+    std::thread close([&] { result = ring.UbrTrxClose(); });
+    const bool closing = WaitForUBCondition([&] {
+        return ATOMIC_LOAD(trx->close_cnt) == MAX_CLOSE_COUNT - 1;
+    });
+    const int event_result = UBRingManager::UbEventCallback(local.name);
+    close.join();
+    EXPECT_TRUE(closing);
+    EXPECT_EQ(UBRING_OK, event_result);
+    EXPECT_EQ(UBRING_OK, result);
+    EXPECT_EQ(nullptr, ring._trx);
+    ASSERT_TRUE(WaitForUBCondition([&] { return GetActiveTimerNum() == timers; }));
+    EXPECT_EQ(1, ATOMIC_LOAD(trx->ref_count));
+}
+
+TEST_F(UBRingLifetimeTest, released_ipc_name_survives_old_mapping_cleanup) {
+    using namespace brpc::ubring;
+    ASSERT_EQ(UBRING_OK, ring.UbrUnlinkLocalShm());
+    SHM replacement = local;
+    replacement.addr = nullptr;
+    ASSERT_EQ(UBRING_OK, ShmLocalCalloc(&replacement));
+    BRPC_SCOPE_EXIT { ShmLocalFree(&replacement); };
+    ASSERT_EQ(UBRING_OK, UBRing::UbrTrxFreeShm(ring._trx));
+    EXPECT_EQ(UBRING_OK, ring.ReleaseTrx());
+    butil::fd_guard fd(shm_open(replacement.name, O_RDONLY, 0));
+    EXPECT_GE(fd, 0);
+}
+
+TEST_F(UBShmEndpointTest, ubs_unlink_preserves_mapping_until_unmap) {
+    using namespace brpc::ubring;
+    const SHM_TYPE saved_type = GetShmType();
+    const auto saved_deallocate = ubsmem_shmem_deallocate;
+    const auto saved_unmap = ubsmem_shmem_unmap;
+    BRPC_SCOPE_EXIT {
+        SetShmType(saved_type);
+        ubsmem_shmem_deallocate = saved_deallocate;
+        ubsmem_shmem_unmap = saved_unmap;
+    };
+    SetShmType(SHM_TYPE_UBS);
+    static int unmaps = 0;
+    unmaps = 0;
+    ubsmem_shmem_deallocate = [](const char*) { return 0; };
+    ubsmem_shmem_unmap = [](void*, size_t) { ++unmaps; return 0; };
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    BRPC_SCOPE_EXIT { ring.ReleaseTrx(); };
+    uint8_t mapped_byte = 0;
+    ring._trx->local_shm = {&mapped_byte, 4 * 1024 * 1024, 0, {0}, 0};
+    strcpy(ring._trx->local_shm.name, "ubs_mapping");
+    ASSERT_EQ(UBRING_OK, ring.UbrUnlinkLocalShm());
+    EXPECT_EQ(&mapped_byte, ring._trx->local_shm.addr);
+    EXPECT_EQ(UBRING_OK, UBRing::UbrTrxFreeShm(ring._trx));
+    EXPECT_EQ(1, unmaps);
+}
+
+class UBShmServerTest : public UBShmEndpointTest {
+protected:
+    void StartServer(brpc::SocketMode mode = brpc::SOCKET_MODE_UBRING) {
+        ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+        brpc::ServerOptions options;
+        options.socket_mode = mode;
+        options.enabled_protocols = "baidu_std";
+        options.internal_port = -1;
+        ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+    }
+
+    void ConnectPeer(int timeout_s = 5) {
+        peer.reset(::socket(AF_INET, SOCK_STREAM, 0));
+        ASSERT_GE(peer, 0);
+        timeval timeout = {timeout_s, 0};
+        ASSERT_EQ(0, setsockopt(peer, SOL_SOCKET, SO_RCVTIMEO,
+                               &timeout, sizeof(timeout)));
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(server.listen_address().port);
+        ASSERT_EQ(0, connect(peer, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
+        ASSERT_TRUE(WaitForUBCondition([&] {
+            std::vector<brpc::SocketId> ids;
+            server._am->ListConnections(&ids);
+            return !ids.empty() && brpc::Socket::Address(ids[0], &server_socket) == 0;
+        }));
+    }
+
+    void TearDown() override {
+        peer.reset(-1);
+        server_socket.reset();
+        server.Stop(0);
+        server.Join();
+        UBShmEndpointTest::TearDown();
+    }
+
+    UBFallbackEchoService service;
+    brpc::Server server;
+    brpc::SocketUniquePtr server_socket;
+    butil::fd_guard peer;
+};
+
+TEST_F(UBShmServerTest, tcp_server_fallback_completes_with_short_rpc_timeout) {
+    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_TCP));
+
+    const uint32_t allocated = brpc::ubring::UBRingManager::g_ubr_mgr.trx_num;
+    brpc::Channel channel;
+    brpc::ChannelOptions channel_options;
+    channel_options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    channel_options.connect_timeout_ms = 1000;
+    channel_options.timeout_ms = 1000;
+    channel_options.max_retry = 0;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &channel_options));
+    brpc::Controller cntl;
+    test::EchoRequest request;
+    test::EchoResponse response;
+    request.set_message("UBSHM client to TCP server");
+    test::EchoService_Stub stub(&channel);
+    stub.Echo(&cntl, &request, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(request.message(), response.message());
+    EXPECT_EQ(allocated, brpc::ubring::UBRingManager::g_ubr_mgr.trx_num);
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(cntl._single_server_id, &socket));
+    EXPECT_EQ(brpc::handshake::FALLBACK_TCP,
+              brpc::AdapterTransport::Get(socket.get())->handshake_phase());
+    EXPECT_EQ(nullptr, brpc::UBShmTransport::Get(socket.get())
+                           ->GetUBShmEp()->_ub_ring);
+    socket->SetFailed();
+}
+
+TEST_F(UBShmServerTest, unavailable_endpoint_serves_rpc_after_health_check_revival) {
+    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_TCP));
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    options.timeout_ms = 1000;
+    options.max_retry = 0;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
+    const brpc::SocketId id = channel._server_id;
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+    auto* adapter = brpc::AdapterTransport::Get(socket.get());
+    // Reproduce endpoint allocation failure before selecting AppConnect.
+    adapter->high_speed_transport()->Release();
+    socket->_app_connect = adapter->Connect();
+    const auto app_connect = socket->_app_connect;
+
+    test::EchoService_Stub stub(&channel);
+    auto echo = [&] {
+        brpc::Controller cntl;
+        test::EchoRequest request;
+        test::EchoResponse response;
+        request.set_message("TCP fallback across health-check revival");
+        stub.Echo(&cntl, &request, &response, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        EXPECT_EQ(request.message(), response.message());
+        EXPECT_EQ(id, cntl._single_server_id);
+    };
+    ASSERT_NO_FATAL_FAILURE(echo());
+    ASSERT_GE(socket->fd(), 0);
+    ASSERT_EQ(0, socket->SetFailed());
+    socket.reset();  // The health check waits for outstanding pins to drain.
+    ASSERT_TRUE(WaitForUBCondition([&] {
+        return brpc::Socket::Address(id, &socket) == 0;
+    }));
+    EXPECT_EQ(-1, socket->fd());
+    EXPECT_EQ(app_connect.get(), socket->_app_connect.get());
+    ASSERT_NO_FATAL_FAILURE(echo());
+    EXPECT_GE(socket->fd(), 0);
+    socket->SetFailed();
+}
+
+TEST_F(UBShmServerTest, failed_server_allocation_cleans_resources_and_serves_tcp) {
+    ASSERT_NO_FATAL_FAILURE(StartServer());
+    ASSERT_NO_FATAL_FAILURE(ConnectPeer());
+
+    // A valid Hello references absent remote SHM. Allocation creates a ring
+    // and poller socket before mapping fails, exercising partial cleanup.
+    std::string missing_name = "UBRING_missing_" + std::to_string(getpid());
+    butil::fd_guard absent(shm_open(missing_name.c_str(), O_RDONLY, 0));
+    ASSERT_LT(absent, 0);
+    ASSERT_EQ(ENOENT, errno);
+    brpc::ubring::UBShmHandshakeAdapter protocol;
+    protocol.ConfigureClientHello(4 * 1024 * 1024, missing_name.c_str());
+    std::string payload;
+    ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildHello(true, &payload));
+    std::string hello;
+    ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
+        protocol.HelloFrameSpec(), payload, &hello));
+    ASSERT_TRUE(TransferUBTestBytes(peer, &hello[0], hello.size(), true));
+    char reply[64];
+    ASSERT_TRUE(TransferUBTestBytes(peer, reply, sizeof(reply), false));
+    brpc::ubring::HelloMessage disabled{};
+    disabled.Deserialize(reply + 2);
+    ASSERT_EQ(0u, disabled.len);
+
+    ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, true, 101));
+    auto* adapter = brpc::AdapterTransport::Get(server_socket.get());
+    ASSERT_TRUE(WaitForUBCondition([&] {
+        return adapter->handshake_phase() == brpc::handshake::FALLBACK_TCP;
+    }));
+    auto* transport = brpc::UBShmTransport::Get(server_socket.get());
+    EXPECT_FALSE(transport->UpgradeActive());
+    EXPECT_EQ(nullptr, transport->GetUBShmEp()->_ub_ring);
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, transport->GetUBShmEp()->_poller_sid);
+    EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_NONE,
+              transport->GetUBShmEp()->negotiated_data_format());
+    ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, false, 102));
+    EXPECT_EQ(brpc::handshake::FALLBACK_TCP, adapter->handshake_phase());
+    EXPECT_FALSE(server_socket->Failed());
+}
+
+TEST_F(UBShmEndpointTest, malformed_hello_releases_allocated_ring_and_poller) {
+    brpc::SocketOptions options;
+    options.socket_mode = brpc::SOCKET_MODE_UBRING;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+    BRPC_SCOPE_EXIT { socket->SetFailed(); };
+    auto* transport = brpc::UBShmTransport::Get(socket.get());
+    brpc::ubring::SHM local{};
+    local.len = 4 * 1024 * 1024;
+    const std::string name = "cleanup_" + std::to_string(getpid());
+    ASSERT_EQ(0, transport->PrepareUpgradeResources(&local, name.c_str()));
+    auto* ep = transport->GetUBShmEp();
+    ASSERT_NE(nullptr, ep->_ub_ring);
+    const brpc::SocketId poller = ep->_poller_sid;
+    ASSERT_NE(brpc::INVALID_SOCKET_ID, poller);
+
+    brpc::ubring::HelloMessage hello{};
+    hello.msg_len = 64;
+    hello.hello_ver = 3;
+    hello.impl_ver = 1;
+    hello.len = 4 * 1024 * 1024;
+    memset(hello.shm_name, 'x', sizeof(hello.shm_name));
+    char frame[64] = {'U', 'B'};
+    hello.Serialize(frame + 2);
+    butil::IOBuf source;
+    source.append(frame, sizeof(frame));
+    EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+        brpc::handshake::GetUBShmServerHandshakeAdapter()
+            ->ExecuteServerHandshake(&source, socket.get()).error());
+    EXPECT_EQ(brpc::handshake::FAILED,
+              brpc::AdapterTransport::Get(socket.get())->handshake_phase());
+    EXPECT_FALSE(transport->UpgradeActive());
+    EXPECT_EQ(nullptr, ep->_ub_ring);
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, ep->_poller_sid);
+    brpc::SocketUniquePtr old_poller;
+    EXPECT_NE(0, brpc::Socket::Address(poller, &old_poller));
+    butil::fd_guard removed(shm_open(local.name, O_RDONLY, 0));
+    EXPECT_LT(removed, 0);
+    EXPECT_EQ(ENOENT, errno);
+}
+
+class UBShmHandshakeTest : public UBShmServerTest {
+protected:
+    void PrepareUntilAck(const char* prefix, int timeout_s) {
+        ASSERT_NO_FATAL_FAILURE(StartServer());
+        ASSERT_NO_FATAL_FAILURE(ConnectPeer(timeout_s));
+
+        brpc::SocketOptions client_options;
+        client_options.socket_mode = brpc::SOCKET_MODE_UBRING;
+        brpc::SocketId client_id;
+        ASSERT_EQ(0, brpc::Socket::Create(client_options, &client_id));
+        ASSERT_EQ(0, brpc::Socket::Address(client_id, &client_socket));
+        client_transport = brpc::UBShmTransport::Get(client_socket.get());
+        local.len = 4 * 1024 * 1024;
+        local.fd = peer;
+        name = std::string(prefix) + std::to_string(getpid());
+        ASSERT_EQ(0, client_transport->PrepareUpgradeResources(&local, name.c_str()));
+        brpc::ubring::UBShmHandshakeAdapter protocol(
+            brpc::ubring::PreferredDataFormatForShmType(brpc::ubring::GetShmType()));
+        protocol.ConfigureClientHello(local);
+        std::string payload;
+        ASSERT_EQ(brpc::handshake::STEP_OK, protocol.BuildHello(true, &payload));
+        std::string hello;
+        ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
+            protocol.HelloFrameSpec(), payload, &hello));
+        ASSERT_TRUE(TransferUBTestBytes(peer, &hello[0], hello.size(), true));
+        char reply[64];
+        ASSERT_TRUE(TransferUBTestBytes(peer, reply, sizeof(reply), false));
+        server_hello.Deserialize(reply + 2);
+        ASSERT_GT(server_hello.len, 0u);
+        std::string extension_payload;
+        ASSERT_EQ(brpc::handshake::STEP_OK,
+                  protocol.BuildExtension(true, &extension_payload));
+        std::string extension;
+        ASSERT_EQ(brpc::handshake::FRAME_OK, brpc::handshake::FrameCodec::Encode(
+            protocol.ExtensionFrameSpec(), extension_payload, &extension));
+        ASSERT_TRUE(TransferUBTestBytes(peer, &extension[0], extension.size(), true));
+        char extension_reply[brpc::ubring::HelloFormatExtension::WIRE_SIZE];
+        ASSERT_TRUE(TransferUBTestBytes(peer, extension_reply,
+                                       sizeof(extension_reply), false));
+        adapter = brpc::AdapterTransport::Get(server_socket.get());
+        ASSERT_TRUE(WaitForUBCondition([&] {
+            return adapter->handshake_phase() == brpc::handshake::ACK_WAIT;
+        }));
+        format = protocol.local_format();
+    }
+
+    void TearDown() override {
+        if (client_socket) {
+            client_socket->SetFailed();
+        }
+        client_socket.reset();
+        UBShmServerTest::TearDown();
+    }
+
+    brpc::SocketUniquePtr client_socket;
+    brpc::ubring::SHM local{};
+    brpc::ubring::HelloMessage server_hello{};
+    std::string name;
+    brpc::ubring::UbrDataFormat format;
+    brpc::UBShmTransport* client_transport = nullptr;
+    brpc::AdapterTransport* adapter = nullptr;
+};
+
+TEST_F(UBShmHandshakeTest, shared_memory_rpc_waits_for_final_tcp_ack) {
+    ASSERT_NO_FATAL_FAILURE(PrepareUntilAck("ack_race_", 5));
+    ASSERT_EQ(0, client_transport->NegotiateUpgradeResources(
+        &local, name.c_str(), server_hello.len, format));
+
+    test::EchoRequest request;
+    request.set_message("RPC queued before the final ACK");
+    brpc::Controller cntl;
+    butil::IOBuf body;
+    brpc::policy::SerializeRpcRequest(&body, &cntl, &request);
+    butil::IOBuf packet;
+    brpc::policy::PackRpcRequest(&packet, nullptr, 201,
+        test::EchoService::descriptor()->FindMethodByName("Echo"),
+        &cntl, body, nullptr);
+    ASSERT_FALSE(cntl.Failed());
+    const std::string bytes = packet.to_string();
+    iovec data{const_cast<char*>(bytes.data()), bytes.size()};
+    auto* client_ring = client_transport->GetUBShmEp()->_ub_ring;
+    ASSERT_EQ(static_cast<ssize_t>(bytes.size()), client_ring->UbrTrxWritev(&data, 1));
+
+    auto* server_ep = brpc::UBShmTransport::Get(server_socket.get())->GetUBShmEp();
+    EXPECT_FALSE(server_ep->_receive_events_started.load(butil::memory_order_acquire));
+    // Invoke a would-be early poll synchronously while ACK is deliberately
+    // withheld. It must not feed PRPC bytes into the TCP handshake context.
+    ASSERT_NE(nullptr, server_socket->parsing_context());
+    brpc::ubring::UBShmEndpoint::PollIn(server_ep, EPOLLIN);
+    EXPECT_EQ(brpc::handshake::ACK_WAIT, adapter->handshake_phase());
+    EXPECT_FALSE(server_socket->Failed());
+
+    uint32_t ack = butil::HostToNet32(1);
+    ASSERT_TRUE(TransferUBTestBytes(peer, &ack, sizeof(ack), true));
+    // No second SHM write: registering level-triggered receive polling must
+    // pick up the request that was already queued before the ACK.
+    butil::IOPortal response;
+    ASSERT_TRUE(WaitForUBCondition([&] {
+        const ssize_t n = response.append_from_reader(client_ring, 65536);
+        if (n < 0 && errno != EAGAIN && errno != EINTR) {
+            return true;
+        }
+        if (response.size() < 12) {
+            return false;
+        }
+        uint8_t header[12];
+        response.copy_to(header, sizeof(header));
+        uint32_t total_size;
+        memcpy(&total_size, header + 4, sizeof(total_size));
+        return response.size() >= 12 + butil::NetToHost32(total_size);
+    }));
+    const std::string received = response.to_string();
+    ASSERT_GE(received.size(), 12u);
+    ASSERT_EQ(0, memcmp(received.data(), "PRPC", 4));
+    uint32_t meta_size;
+    memcpy(&meta_size, received.data() + 8, sizeof(meta_size));
+    meta_size = butil::NetToHost32(meta_size);
+    ASSERT_LE(meta_size, received.size() - 12);
+    brpc::policy::RpcMeta meta;
+    ASSERT_TRUE(meta.ParseFromArray(received.data() + 12, meta_size));
+    EXPECT_EQ(201u, meta.correlation_id());
+    EXPECT_EQ(0, meta.response().error_code());
+    test::EchoResponse echo;
+    ASSERT_TRUE(echo.ParseFromArray(received.data() + 12 + meta_size,
+                                   received.size() - 12 - meta_size));
+    EXPECT_EQ(request.message(), echo.message());
+    EXPECT_EQ(brpc::handshake::ESTABLISHED, adapter->handshake_phase());
+    EXPECT_TRUE(server_ep->_receive_events_started.load(butil::memory_order_acquire));
+    client_transport->DeactivateUpgrade();
+}
+
+TEST_F(UBShmServerTest, upgraded_client_receives_shared_memory_rpc_responses) {
+    ASSERT_NO_FATAL_FAILURE(StartServer());
+    {
+        brpc::Channel channel;
+        brpc::ChannelOptions options;
+        options.socket_mode = brpc::SOCKET_MODE_UBRING;
+        options.timeout_ms = 5000;
+        ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
+        test::EchoService_Stub stub(&channel);
+        for (int i = 0; i < 2; ++i) {
+            brpc::Controller cntl;
+            test::EchoRequest request;
+            request.set_message(std::string(1024, 'a' + i));
+            test::EchoResponse response;
+            stub.Echo(&cntl, &request, &response, nullptr);
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            EXPECT_EQ(request.message(), response.message());
+        }
+        std::vector<brpc::SocketId> ids;
+        server._am->ListConnections(&ids);
+        ASSERT_EQ(1u, ids.size());
+        brpc::SocketUniquePtr socket;
+        ASSERT_EQ(0, brpc::Socket::Address(ids[0], &socket));
+        EXPECT_EQ(brpc::handshake::ESTABLISHED,
+                  brpc::AdapterTransport::Get(socket.get())->handshake_phase());
+        EXPECT_TRUE(brpc::UBShmTransport::Get(socket.get())->UpgradeActive());
+        EXPECT_EQ(brpc::ubring::UBR_DATA_FORMAT_IPC_V2,
+                  brpc::UBShmTransport::Get(socket.get())->GetUBShmEp()
+                      ->negotiated_data_format());
+    }
+    server.Stop(0);
+    server.Join();
 }
 
 // The receive paths (UbrTrxRecvBlockMode / StartReadv) read `msg_len' and
@@ -932,6 +1962,697 @@ TEST(UBRingRecvChunkHeaderTest, crafted_chunk_is_rejected) {
     chunk.header[UBR_MSG_CUR_INDEX] = 0;
     EXPECT_TRUE(brpc::ubring::UBRing::IsRecvChunkHeaderValid(
         chunk.header[UBR_MSG_LEN_INDEX], chunk.header[UBR_MSG_CUR_INDEX]));
+}
+
+TEST_F(UBShmHandshakeTest, negative_ack_after_server_allocation_serves_tcp_without_delay) {
+    ASSERT_NO_FATAL_FAILURE(PrepareUntilAck("negative_ack_", 1));
+
+    ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, true, 301));
+    EXPECT_EQ(brpc::handshake::FALLBACK_TCP, adapter->handshake_phase());
+    auto* ep = brpc::UBShmTransport::Get(server_socket.get())->GetUBShmEp();
+    EXPECT_EQ(nullptr, ep->_ub_ring);
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, ep->_poller_sid);
+    ASSERT_NO_FATAL_FAILURE(SendAndCheckUBFallbackRPC(peer, false, 302));
+    client_transport->DeactivateUpgrade();
+}
+
+#if defined(OS_LINUX)
+TEST_F(UBShmEndpointTest, cancel_waits_for_callback_before_releasing_descriptor) {
+    using namespace brpc::ubring;
+    struct Context {
+        bthread::CountdownEvent entered;
+        bthread::CountdownEvent release;
+    } context;
+    itimerspec spec{};
+    spec.it_value.tv_nsec = 1;
+    const int fd = TimerStart(&spec, [](void* arg) -> void* {
+        auto* ctx = static_cast<Context*>(arg);
+        ctx->entered.signal();
+        ctx->release.wait();
+        return nullptr;
+    }, &context);
+    ASSERT_GE(fd, 0);
+    bool released = false;
+    BRPC_SCOPE_EXIT {
+        if (!released) { context.release.signal(); }
+        DeleteTimerSafe(fd);
+    };
+    ASSERT_EQ(0, context.entered.timed_wait(butil::milliseconds_from_now(1000)));
+    bthread::CountdownEvent cancel_started;
+    bthread::CountdownEvent canceled;
+    std::thread cancel([&] {
+        cancel_started.signal();
+        DeleteTimerSafe(fd);
+        canceled.signal();
+    });
+    cancel_started.wait();
+    const int wait_result = canceled.timed_wait(butil::milliseconds_from_now(100));
+    spec.it_value.tv_nsec = 0;
+    spec.it_value.tv_sec = 10;
+    const int replacement = TimerStart(&spec, [](void*) -> void* {
+        return nullptr;
+    }, nullptr);
+    context.release.signal();
+    released = true;
+    cancel.join();
+    EXPECT_EQ(ETIMEDOUT, wait_result);
+    EXPECT_NE(fd, replacement);
+    EXPECT_GE(fcntl(replacement, F_GETFD), 0);
+    DeleteTimerSafe(replacement);
+}
+
+TEST_F(UBShmEndpointTest, callback_can_cancel_its_own_periodic_timer) {
+    using namespace brpc::ubring;
+    struct Context {
+        bthread::CountdownEvent ready;
+        bthread::CountdownEvent done;
+        int fd;
+    } context;
+    itimerspec spec{};
+    spec.it_value.tv_nsec = 1;
+    spec.it_interval.tv_sec = 10;
+    context.fd = TimerStart(&spec, [](void* arg) -> void* {
+        auto* ctx = static_cast<Context*>(arg);
+        ctx->ready.wait();
+        DeleteTimerSafe(ctx->fd);
+        ctx->done.signal();
+        return nullptr;
+    }, &context);
+    ASSERT_GE(context.fd, 0);
+    context.ready.signal();
+    EXPECT_EQ(0, context.done.timed_wait(butil::milliseconds_from_now(1000)));
+    DeleteTimerSafe(context.fd);
+    EXPECT_EQ(-1, fcntl(context.fd, F_GETFD));
+}
+#endif
+
+
+namespace {
+struct UbsCleanupState {
+    uint8_t local = 0;
+    uint8_t remote = 0;
+    std::atomic<int> unmap_error{UBSM_ERR_NET};
+    std::atomic<int> deallocate_error{0};
+    std::atomic<int> unmaps{0};
+    std::atomic<int> remote_unmaps{0};
+    std::atomic<int> deallocates{0};
+    std::atomic<int> finalizes{0};
+    int generation = 1;
+    bool shm_exists = true;
+    int allocations = 0;
+    int map_error = 0;
+    uint8_t* mappings[2] = {};
+    int map_count = 0;
+    int fault_stage = -1;
+    std::atomic<bool> block_unmap{false};
+    std::atomic<bool> in_unmap{false};
+    std::atomic<bool> finalized_during_unmap{false};
+    bthread::CountdownEvent entered;
+    bthread::CountdownEvent resume;
+};
+UbsCleanupState* ubs_cleanup = nullptr;
+}
+
+class UbsCleanupTest : public UBShmEndpointTest {
+protected:
+    void SetUp() override {
+        using namespace brpc::ubring;
+        UBShmEndpointTest::SetUp();
+        saved_type = GetShmType();
+        saved_list = g_shm_list;
+        saved_fd = g_shm_timer_fd;
+        saved_unmap = ubsmem_shmem_unmap;
+        saved_deallocate = ubsmem_shmem_deallocate;
+        saved_finalize = ubsmem_finalize;
+        saved_allocate = ubsmem_shmem_allocate;
+        saved_map = ubsmem_shmem_map;
+        saved_delay = FLAGS_ub_flying_io_timeout_s;
+        list = static_cast<ShmList*>(calloc(1, sizeof(ShmList)));
+        ASSERT_NE(nullptr, list);
+        ASSERT_EQ(0, pthread_mutex_init(&list->shm_lock, nullptr));
+        g_shm_list = list;
+        g_shm_timer_fd = 0;
+        FLAGS_ub_flying_io_timeout_s = 1;
+        ubs_cleanup = &state;
+        SetShmType(SHM_TYPE_UBS);
+        ubsmem_shmem_unmap = [](void* address, size_t) {
+            auto& state = *ubs_cleanup;
+            ++state.unmaps;
+            if (address == &state.remote) {
+                ++state.remote_unmaps;
+            }
+            if (state.block_unmap.load()) {
+                state.in_unmap.store(true);
+                state.entered.signal();
+                state.resume.wait();
+                state.in_unmap.store(false);
+            }
+            return state.unmap_error.load();
+        };
+        ubsmem_shmem_deallocate = [](const char*) {
+            ++ubs_cleanup->deallocates;
+            const int error = ubs_cleanup->deallocate_error.load();
+            if (error == 0) {
+                ubs_cleanup->shm_exists = false;
+            }
+            return error;
+        };
+        ubsmem_shmem_allocate = [](const char*, const char*, size_t, mode_t, uint64_t) {
+            auto& state = *ubs_cleanup;
+            ++state.allocations;
+            if (state.shm_exists) {
+                return static_cast<int>(UBSM_ERR_ALREADY_EXIST);
+            }
+            state.shm_exists = true;
+            ++state.generation;
+            return 0;
+        };
+        ubsmem_shmem_map = [](void*, size_t, int, int, const char*, off_t, void** address) {
+            *address = &ubs_cleanup->remote;
+            return ubs_cleanup->map_error;
+        };
+        ubsmem_finalize = []() {
+            ++ubs_cleanup->finalizes;
+            ubs_cleanup->finalized_during_unmap.store(
+                ubs_cleanup->in_unmap.load());
+            return 0;
+        };
+    }
+    void TearDown() override {
+        using namespace brpc::ubring;
+        if (g_shm_list != nullptr) {
+            DestroyShmTimer(g_shm_list);
+        }
+        g_shm_list = saved_list;
+        g_shm_timer_fd = saved_fd;
+        FLAGS_ub_flying_io_timeout_s = saved_delay;
+        ubsmem_shmem_unmap = saved_unmap;
+        ubsmem_shmem_deallocate = saved_deallocate;
+        ubsmem_finalize = saved_finalize;
+        ubsmem_shmem_allocate = saved_allocate;
+        ubsmem_shmem_map = saved_map;
+        SetShmType(saved_type);
+        ubs_cleanup = nullptr;
+        UBShmEndpointTest::TearDown();
+    }
+    brpc::ubring::SHM Mapping(bool remote = false) {
+        brpc::ubring::SHM shm{};
+        shm.addr = remote ? &state.remote : &state.local;
+        shm.len = 4 * 1024 * 1024;
+        strcpy(shm.name, remote ? "ubs_remote" : "ubs_local");
+        return shm;
+    }
+    uint32_t TransactionCount() {
+        using namespace brpc::ubring;
+        std::lock_guard<pthread_mutex_t> lock(UBRingManager::g_ubr_trx_mgr_mtx);
+        return UBRingManager::g_ubr_mgr.trx_num;
+    }
+    UbsCleanupState state;
+    brpc::ubring::ShmList* list = nullptr;
+    brpc::ubring::ShmList* saved_list = nullptr;
+    int saved_fd = 0;
+    int saved_delay = 0;
+    brpc::ubring::SHM_TYPE saved_type;
+    decltype(brpc::ubring::ubsmem_shmem_unmap) saved_unmap;
+    decltype(brpc::ubring::ubsmem_shmem_deallocate) saved_deallocate;
+    decltype(brpc::ubring::ubsmem_finalize) saved_finalize;
+    decltype(brpc::ubring::ubsmem_shmem_allocate) saved_allocate;
+    decltype(brpc::ubring::ubsmem_shmem_map) saved_map;
+};
+
+TEST_F(UbsCleanupTest, abort_hands_off_resources_before_reusing_transaction_slot) {
+    using namespace brpc::ubring;
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    UbrTrx* old_trx = ring._trx;
+    BRPC_SCOPE_EXIT {
+        if (ring._trx != nullptr) {
+            ring.ReleaseTrx();
+        }
+    };
+    old_trx->local_shm = Mapping();
+    UbrEventQMsg event{};
+    event.flag = UBR_STATE_CONNECTED;
+    old_trx->ubr_tx.local_tx_event_q.addr = reinterpret_cast<uint8_t*>(&event);
+    ASSERT_EQ(UBRING_OK, ring.UbrTrxAbort());
+    EXPECT_EQ(nullptr, ring._trx);
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
+    ASSERT_EQ(1u, list->size);
+
+    UBRing replacement;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&replacement._trx));
+    BRPC_SCOPE_EXIT { replacement.ReleaseTrx(); };
+    EXPECT_EQ(old_trx, replacement._trx);
+    state.unmap_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(1, state.deallocates.load());
+    EXPECT_EQ(1u, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_EQ(1, ATOMIC_LOAD(replacement._trx->ref_count));
+}
+
+TEST_F(UbsCleanupTest, passive_cleanup_retries_both_mappings_independently) {
+    using namespace brpc::ubring;
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    ring._trx->local_shm = Mapping();
+    ring._trx->remote_shm = Mapping(true);
+    ring._trx->close_state = UBR_CLOSE_SECOND;
+    ring._trx->ref_count = 2;
+    UBRing::UbrAsynClearCallback(ring._trx);
+    ASSERT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
+    EXPECT_EQ(1, state.remote_unmaps.load());
+    ASSERT_EQ(2u, list->size);
+    // A completed remote task is removed even while the local task still fails.
+    state.unmap_error.store(0);
+    state.deallocate_error.store(UBSM_ERR_NET);
+    ubsmem_shmem_deallocate = [](const char* name) {
+        ++ubs_cleanup->deallocates;
+        return strcmp(name, "ubs_local") == 0
+            ? ubs_cleanup->deallocate_error.load() : 0;
+    };
+    UbsShmCallback(list);
+    EXPECT_EQ(1u, list->size);
+    state.deallocate_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(4, state.unmaps.load());
+    EXPECT_EQ(2, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, retry_resumes_at_deallocate_and_accepts_already_deleted_names) {
+    using namespace brpc::ubring;
+    state.unmap_error.store(0);
+    state.deallocate_error.store(UBSM_ERR_IN_USING);
+    SHM shm = Mapping();
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&shm));
+    EXPECT_EQ(nullptr, shm.addr);
+    UbsShmCallback(list);
+    EXPECT_EQ(1u, list->size);
+    state.deallocate_error.store(UBSM_ERR_NOT_FOUND);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(1, state.unmaps.load());
+    EXPECT_EQ(3, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, remote_retry_keeps_distinct_mappings_and_never_deallocates) {
+    using namespace brpc::ubring;
+    SHM first = Mapping();
+    SHM second = Mapping(true);
+    strcpy(second.name, first.name);
+    ASSERT_EQ(UBRING_OK, UbsShmRemoteFree(&first));
+    ASSERT_EQ(UBRING_OK, UbsShmRemoteFree(&second));
+    ASSERT_EQ(2u, list->size);
+    state.unmap_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(4, state.unmaps.load());
+    EXPECT_EQ(0, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, duplicate_handoff_preserves_completed_operations) {
+    using namespace brpc::ubring;
+    SHM remote = Mapping();
+    SHM local = remote;
+    ASSERT_EQ(UBRING_OK, UbsShmRemoteFree(&remote));
+    state.unmap_error.store(0);
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&local));
+    EXPECT_EQ(1u, list->size);
+    EXPECT_EQ(1, state.unmaps.load());
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(2, state.unmaps.load());
+    EXPECT_EQ(1, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, rejected_handoff_keeps_a_cleanup_reference_and_retries) {
+    using namespace brpc::ubring;
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    UbrTrx* trx = ring._trx;
+    trx->local_shm = Mapping();
+    UbrEventQMsg event{};
+    event.flag = UBR_STATE_CONNECTED;
+    trx->ubr_tx.local_tx_event_q.addr = reinterpret_cast<uint8_t*>(&event);
+    g_shm_list = nullptr;
+    const RETURN_CODE rc = ring.UbrTrxAbort();
+    state.block_unmap.store(true);
+    bool resumed = false;
+    BRPC_SCOPE_EXIT {
+        g_shm_list = list;
+        state.unmap_error.store(0);
+        if (!resumed) {
+            state.resume.signal();
+        }
+        EXPECT_TRUE(WaitForUBCondition([&] { return TransactionCount() == 0; }));
+    };
+    ASSERT_EQ(0, state.entered.timed_wait(butil::milliseconds_from_now(3000)));
+    EXPECT_EQ(UBRING_OK, rc);
+    EXPECT_EQ(nullptr, ring._trx);
+    EXPECT_EQ(1u, TransactionCount());
+    const int retry_fd = trx->clear_timer_fd;
+    g_shm_list = list;
+    state.unmap_error.store(0);
+    state.resume.signal();
+    resumed = true;
+    DeleteTimerSafe(retry_fd);
+    EXPECT_EQ(0u, TransactionCount());
+    EXPECT_EQ(1, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, allocation_waits_for_old_cleanup_before_reusing_a_name) {
+    using namespace brpc::ubring;
+    state.unmap_error.store(0);
+    state.deallocate_error.store(UBSM_ERR_NET);
+    SHM old_shm = Mapping();
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&old_shm));
+    ASSERT_EQ(1u, list->size);
+    SHM new_shm = Mapping();
+    state.deallocate_error.store(0);
+    EXPECT_EQ(SHM_ERR_EXIST, UbsShmLocalMalloc(&new_shm));
+    EXPECT_EQ(0, state.allocations);
+    EXPECT_EQ(1, state.generation);
+    EXPECT_TRUE(state.shm_exists);
+    UbsShmCallback(list);
+    ASSERT_EQ(0u, list->size);
+    ASSERT_EQ(UBRING_OK, UbsShmLocalMalloc(&new_shm));
+    EXPECT_EQ(2, state.generation);
+    UbsShmCallback(list);
+    EXPECT_TRUE(state.shm_exists);
+    EXPECT_EQ(UBRING_OK, UbsShmLocalFree(&new_shm));
+}
+
+TEST_F(UbsCleanupTest, allocation_does_not_replace_an_existing_sdk_object) {
+    using namespace brpc::ubring;
+    SHM shm = Mapping();
+    EXPECT_EQ(SHM_ERR_EXIST, UbsShmLocalMalloc(&shm));
+    EXPECT_EQ(1, state.allocations);
+    EXPECT_EQ(0, state.deallocates.load());
+    EXPECT_EQ(1, state.generation);
+    EXPECT_TRUE(state.shm_exists);
+}
+
+TEST_F(UbsCleanupTest, failed_mapping_keeps_its_name_reserved_until_deallocated) {
+    using namespace brpc::ubring;
+    state.shm_exists = false;
+    state.map_error = UBSM_ERR_NET;
+    state.deallocate_error.store(UBSM_ERR_NET);
+    SHM shm = Mapping();
+    EXPECT_EQ(SHM_ERR, UbsShmLocalMalloc(&shm));
+    ASSERT_EQ(1u, list->size);
+    EXPECT_FALSE(list->head->unmap);
+    EXPECT_TRUE(list->head->deallocate);
+    state.deallocate_error.store(0);
+    EXPECT_EQ(SHM_ERR_EXIST, UbsShmLocalMalloc(&shm));
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_FALSE(state.shm_exists);
+    EXPECT_EQ(0, state.unmaps.load());
+}
+
+TEST_F(UbsCleanupTest, failed_server_allocation_hands_off_the_remote_mapping) {
+    using namespace brpc::ubring;
+    ubsmem_shmem_allocate = [](const char*, const char*, size_t, mode_t, uint64_t) {
+        return static_cast<int>(UBSM_ERR_NET);
+    };
+    UBRing ring;
+    SHM remote = Mapping(true);
+    SHM local = Mapping();
+    EXPECT_EQ(-1, ring.UbrAllocateServerShm(&remote, &local, UBR_DATA_FORMAT_LEGACY_64));
+    EXPECT_EQ(nullptr, ring._trx);
+    EXPECT_EQ(0u, TransactionCount());
+    ASSERT_EQ(1u, list->size);
+    EXPECT_FALSE(list->head->deallocate);
+    state.unmap_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(0, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, failed_server_initialization_retains_rejected_cleanup) {
+    using namespace brpc::ubring;
+    rlimit limit{};
+    ASSERT_EQ(0, getrlimit(RLIMIT_NOFILE, &limit));
+    BRPC_SCOPE_EXIT { setrlimit(RLIMIT_NOFILE, &limit); };
+    std::vector<uint8_t> remote_bytes(4 * 1024 * 1024);
+    std::vector<uint8_t> local_bytes(4 * 1024 * 1024);
+    state.mappings[0] = remote_bytes.data();
+    state.mappings[1] = local_bytes.data();
+    state.shm_exists = false;
+    ubsmem_shmem_map = [](void*, size_t, int, int, const char*, off_t, void** address) {
+        *address = ubs_cleanup->mappings[ubs_cleanup->map_count++];
+        if (ubs_cleanup->map_count == 2) {
+            brpc::ubring::g_shm_list = nullptr;
+        }
+        return 0;
+    };
+    ubsmem_shmem_unmap = [](void*, size_t) {
+        auto& state = *ubs_cleanup;
+        if (++state.unmaps == 3) {
+            state.entered.signal();
+            state.resume.wait();
+        }
+        return state.unmap_error.load();
+    };
+    UBRing ring;
+    SHM remote = Mapping(true);
+    SHM local = Mapping();
+    rlimit exhausted = limit;
+    exhausted.rlim_cur = 0;
+    ASSERT_EQ(0, setrlimit(RLIMIT_NOFILE, &exhausted));
+    int result = 0;
+    std::thread allocate([&] {
+        result = ring.UbrAllocateServerShm(&remote, &local, UBR_DATA_FORMAT_LEGACY_64);
+    });
+    const int entered = state.entered.timed_wait(butil::milliseconds_from_now(3000));
+    EXPECT_EQ(0, entered);
+    EXPECT_EQ(1u, TransactionCount());
+    g_shm_list = list;
+    state.unmap_error.store(0);
+    setrlimit(RLIMIT_NOFILE, &limit);
+    state.resume.signal();
+    allocate.join();
+    EXPECT_EQ(-1, result);
+    EXPECT_EQ(nullptr, ring._trx);
+    EXPECT_EQ(0u, TransactionCount());
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(4, state.unmaps.load());
+    EXPECT_EQ(1, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, successful_unlink_never_deletes_a_reused_name) {
+    using namespace brpc::ubring;
+    state.unmap_error.store(0);
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    BRPC_SCOPE_EXIT { ring.ReleaseTrx(); };
+    ring._trx->local_shm = Mapping();
+    ASSERT_EQ(UBRING_OK, ring.UbrUnlinkLocalShm());
+    SHM replacement = Mapping();
+    ASSERT_EQ(UBRING_OK, UbsShmLocalMalloc(&replacement));
+    ASSERT_EQ(2, state.generation);
+    EXPECT_EQ(UBRING_OK, ring.UbrUnlinkLocalShm());
+    EXPECT_EQ(UBRING_OK, UBRing::UbrTrxFreeShm(ring._trx));
+    EXPECT_TRUE(state.shm_exists);
+    EXPECT_EQ(1, state.deallocates.load());
+    EXPECT_EQ(1, state.unmaps.load());
+    EXPECT_EQ(UBRING_OK, UbsShmLocalFree(&replacement));
+}
+
+TEST_F(UbsCleanupTest, cleanup_waits_for_in_progress_unlink_without_unmapping) {
+    using namespace brpc::ubring;
+    state.unmap_error.store(0);
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    BRPC_SCOPE_EXIT { ring.ReleaseTrx(); };
+    ring._trx->local_shm = Mapping();
+    ubsmem_shmem_deallocate = [](const char*) {
+        ++ubs_cleanup->deallocates;
+        ubs_cleanup->entered.signal();
+        ubs_cleanup->resume.wait();
+        ubs_cleanup->shm_exists = false;
+        return 0;
+    };
+    RETURN_CODE rc = UBRING_ERR;
+    std::thread unlink([&] { rc = ring.UbrUnlinkLocalShm(); });
+    const int entered = state.entered.timed_wait(butil::milliseconds_from_now(3000));
+    EXPECT_EQ(0, entered);
+    EXPECT_EQ(UBRING_ERR, UBRing::UbrTrxFreeShm(ring._trx));
+    EXPECT_EQ(0, state.unmaps.load());
+    state.resume.signal();
+    unlink.join();
+    EXPECT_EQ(UBRING_OK, rc);
+    EXPECT_EQ(UBRING_OK, UBRing::UbrTrxFreeShm(ring._trx));
+    EXPECT_EQ(1, state.deallocates.load());
+    EXPECT_EQ(1, state.unmaps.load());
+}
+
+TEST_F(UbsCleanupTest, failed_unlink_retains_name_cleanup_for_retry) {
+    using namespace brpc::ubring;
+    state.unmap_error.store(0);
+    state.deallocate_error.store(UBSM_ERR_NET);
+    UBRing ring;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&ring._trx));
+    BRPC_SCOPE_EXIT { ring.ReleaseTrx(); };
+    ring._trx->local_shm = Mapping();
+    EXPECT_EQ(SHM_ERR, ring.UbrUnlinkLocalShm());
+    EXPECT_EQ(UBR_SHM_NAME_OWNED, ATOMIC_LOAD(ring._trx->local_name_state));
+    EXPECT_EQ(UBRING_OK, UBRing::UbrTrxFreeShm(ring._trx));
+    ASSERT_EQ(1u, list->size);
+    EXPECT_TRUE(list->head->deallocate);
+    state.deallocate_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(1, state.unmaps.load());
+}
+
+TEST_F(UbsCleanupTest, device_faults_during_server_construction_abort_the_upgrade) {
+    using namespace brpc::ubring;
+    std::vector<uint8_t> remote_bytes(4 * 1024 * 1024);
+    std::vector<uint8_t> local_bytes(4 * 1024 * 1024);
+    state.mappings[0] = remote_bytes.data();
+    state.mappings[1] = local_bytes.data();
+    state.unmap_error.store(0);
+    ubsmem_shmem_allocate = [](const char*, const char*, size_t, mode_t, uint64_t) {
+        ubs_cleanup->shm_exists = true;
+        if (ubs_cleanup->fault_stage == 1) {
+            std::thread event([] {
+                EXPECT_EQ(UBRING_OK, brpc::ubring::UBRingManager::UbEventCallback("ubs_remote"));
+            });
+            event.join();
+            EXPECT_EQ(0, ubs_cleanup->unmaps.load());
+        }
+        return 0;
+    };
+    ubsmem_shmem_map = [](void*, size_t, int, int, const char* name, off_t, void** address) {
+        auto& state = *ubs_cleanup;
+        const int stage = state.map_count++;
+        *address = state.mappings[stage];
+        if ((stage == 0 && state.fault_stage == 0) ||
+            (stage == 1 && state.fault_stage == 2)) {
+            std::thread event([name] {
+                EXPECT_EQ(UBRING_OK, brpc::ubring::UBRingManager::UbEventCallback(name));
+            });
+            event.join();
+            EXPECT_EQ(0, state.unmaps.load());
+        }
+        return 0;
+    };
+    for (int stage = 0; stage != 3; ++stage) {
+        SCOPED_TRACE(stage);
+        state.fault_stage = stage;
+        state.map_count = 0;
+        state.unmaps.store(0);
+        state.deallocates.store(0);
+        UBRing ring;
+        SHM remote = Mapping(true);
+        SHM local = Mapping();
+        EXPECT_EQ(-1, ring.UbrAllocateServerShm(&remote, &local, UBR_DATA_FORMAT_LEGACY_64));
+        EXPECT_EQ(nullptr, ring._trx);
+        EXPECT_EQ(0u, TransactionCount());
+        EXPECT_EQ(stage == 0 ? 1 : 2, state.unmaps.load());
+        EXPECT_EQ(stage == 0 ? 0 : 1, state.deallocates.load());
+    }
+}
+
+TEST_F(UbsCleanupTest, device_fault_before_client_negotiation_prevents_activation) {
+    using namespace brpc::ubring;
+    std::vector<uint8_t> bytes(4 * 1024 * 1024);
+    state.mappings[0] = bytes.data();
+    state.shm_exists = false;
+    state.unmap_error.store(0);
+    ubsmem_shmem_map = [](void*, size_t, int, int, const char*, off_t, void** address) {
+        *address = ubs_cleanup->mappings[0];
+        return 0;
+    };
+    UBRing ring;
+    SHM local = Mapping();
+    ASSERT_EQ(0, ring.UbrAllocateLocalShm(&local, "client_fault"));
+    EXPECT_EQ(UBRING_OK, UBRingManager::UbEventCallback(local.name));
+    EXPECT_TRUE(ATOMIC_LOAD(ring._trx->device_fault));
+    EXPECT_EQ(0, state.unmaps.load());
+    EXPECT_EQ(-1, ring.UbrMapRemoteShm(&local, "client_fault", local.len,
+                                    UBR_DATA_FORMAT_LEGACY_64));
+    EXPECT_EQ(UBRING_OK, ring.UbrTrxAbort());
+    EXPECT_EQ(0u, TransactionCount());
+    EXPECT_EQ(1, state.unmaps.load());
+}
+
+TEST_F(UbsCleanupTest, device_fault_after_initialization_cleans_mapping_without_peer_name) {
+    using namespace brpc::ubring;
+    std::vector<uint8_t> remote_bytes(4 * 1024 * 1024);
+    std::vector<uint8_t> local_bytes(4 * 1024 * 1024);
+    state.mappings[0] = remote_bytes.data();
+    state.mappings[1] = local_bytes.data();
+    state.shm_exists = false;
+    state.unmap_error.store(0);
+    ubsmem_shmem_map = [](void*, size_t, int, int, const char*, off_t, void** address) {
+        *address = ubs_cleanup->mappings[ubs_cleanup->map_count++];
+        return 0;
+    };
+    UBRing ring;
+    SHM remote = Mapping(true);
+    SHM local = Mapping();
+    ASSERT_EQ(0, ring.UbrAllocateServerShm(&remote, &local, UBR_DATA_FORMAT_LEGACY_64));
+    EXPECT_FALSE(ATOMIC_LOAD(ring._trx->initializing));
+    EXPECT_EQ(UBRING_OK, UBRingManager::UbEventCallback(remote.name));
+    EXPECT_EQ(UBRING_OK, ring.UbrTrxClose());
+    EXPECT_TRUE(WaitForUBCondition([&] { return TransactionCount() == 0; }));
+    EXPECT_EQ(2, state.unmaps.load());
+    EXPECT_EQ(1, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, finalize_retains_failed_tasks_until_sdk_recovery) {
+    using namespace brpc::ubring;
+    SHM shm = Mapping();
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&shm));
+    EXPECT_EQ(UBRING_ERR, UbsShmFini());
+    EXPECT_EQ(0, state.finalizes.load());
+    EXPECT_NE(nullptr, g_shm_list);
+    DeleteTimerSafe(g_shm_timer_fd);
+    g_shm_timer_fd = 0;
+    state.unmap_error.store(0);
+    EXPECT_EQ(UBRING_OK, UbsShmFini());
+    EXPECT_EQ(nullptr, g_shm_list);
+    EXPECT_EQ(1, state.finalizes.load());
+    EXPECT_EQ(1, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, finalize_waits_for_an_active_retry_callback) {
+    using namespace brpc::ubring;
+    SHM shm = Mapping();
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&shm));
+    state.unmap_error.store(0);
+    state.block_unmap.store(true);
+    itimerspec spec{};
+    spec.it_interval.tv_sec = 10;
+    spec.it_value.tv_nsec = 1;
+    g_shm_timer_fd = TimerStart(&spec, UbsShmCallback, list);
+    ASSERT_GE(g_shm_timer_fd, 0);
+    const int entered = state.entered.timed_wait(butil::milliseconds_from_now(1000));
+    if (entered != 0) {
+        state.resume.signal();
+        FAIL() << "Retry callback did not start";
+    }
+    bthread::CountdownEvent started;
+    bthread::CountdownEvent finished;
+    RETURN_CODE rc = UBRING_ERR;
+    std::thread close([&] {
+        started.signal();
+        rc = UbsShmFini();
+        finished.signal();
+    });
+    started.wait();
+    EXPECT_NE(0, finished.timed_wait(butil::milliseconds_from_now(30)));
+    EXPECT_EQ(0, state.finalizes.load());
+    state.resume.signal();
+    close.join();
+    EXPECT_EQ(UBRING_OK, rc);
+    EXPECT_FALSE(state.finalized_during_unmap.load());
+    EXPECT_EQ(1, state.finalizes.load());
+    EXPECT_EQ(nullptr, g_shm_list);
 }
 
 #else

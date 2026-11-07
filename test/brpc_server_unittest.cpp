@@ -584,7 +584,7 @@ TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     ASSERT_EQ(0, server.Join());
 }
 
-// http, h2 and rdma_handshake are served whatever enabled_protocols says, but
+// http, h2 and transport_handshake are served whatever enabled_protocols says, but
 // naming them in it used to make Start() fail: the exemption was tested
 // before whitelist.erase() and `&&' short-circuited it, so the names survived
 // into the leftover check and came back as "unknown protocols=`http '".
@@ -592,8 +592,8 @@ TEST_F(ServerTest, enabled_protocols_can_name_always_enabled_protocols) {
     std::string cases[] = {
         "baidu_std http",
         "baidu_std h2",
-        "baidu_std rdma_handshake",
-        "baidu_std http h2 rdma_handshake",
+        "baidu_std transport_handshake",
+        "baidu_std http h2 transport_handshake",
     };
     for (size_t i = 0; i < arraysize(cases); ++i) {
         brpc::Server server;

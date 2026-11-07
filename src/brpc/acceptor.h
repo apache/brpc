@@ -135,7 +135,7 @@ private:
     bool _force_ssl;
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
-    // Choose to use a certain socket: 0 TCP, 1 RDMA
+    // Requested transport for accepted connections.
     SocketMode _socket_mode;
 
     // Acceptor belongs to this tag
