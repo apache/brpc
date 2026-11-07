@@ -748,6 +748,29 @@ void HPacker::Encode(butil::IOBufAppender* out, const Header& header,
     EncodeString<false>(out, header.value, options.encode_value);
 }
 
+void HPacker::EncodeWithoutDynamicTable(butil::IOBufAppender* out,
+                                        const Header& header,
+                                        const HPackOptions& options) {
+    CreateStaticTableOnceOrDie();
+    if (options.index_policy != HPACK_NEVER_INDEX_HEADER) {
+        const HeaderAndHashCode hhc = { HeaderHasher()(header), &header };
+        const int index = s_static_table->GetIndexOfHeader(hhc);
+        if (index > 0) {
+            return EncodeInteger(out, 0x80, 7, index);
+        }
+    }
+    const int name_index = s_static_table->GetIndexOfName(header.name);
+    if (options.index_policy == HPACK_NEVER_INDEX_HEADER) {
+        EncodeInteger(out, 0x10, 4, name_index);
+    } else {
+        EncodeInteger(out, 0x00, 4, name_index);
+    }
+    if (name_index == 0) {
+        EncodeString<true>(out, header.name, options.encode_name);
+    }
+    EncodeString<false>(out, header.value, options.encode_value);
+}
+
 inline const HPacker::Header* HPacker::HeaderAt(int index) const {
     return (index >= _decode_table->start_index())
             ? _decode_table->HeaderAt(index) : s_static_table->HeaderAt(index);

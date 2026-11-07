@@ -477,6 +477,7 @@ Socket::Socket(Forbidden f)
     , _connection_type_for_progressive_read(CONNECTION_TYPE_UNKNOWN)
     , _controller_released_socket(false)
     , _fail_me_at_server_stop(false)
+    , _idle_fail_ref_count(0)
     , _logoff_flag(false)
     , _error_code(0)
     , _pipeline_q(nullptr)
@@ -773,6 +774,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _controller_released_socket.store(false, butil::memory_order_relaxed);
     // Maybe non-zero for RTMP connections.
     _fail_me_at_server_stop = false;
+    _idle_fail_ref_count.store(0, butil::memory_order_relaxed);
     _logoff_flag.store(false, butil::memory_order_relaxed);
     _error_code = 0;
     _agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
@@ -1112,10 +1114,11 @@ int Socket::ReleaseReferenceIfIdle(int idle_seconds) {
     LOG_IF(WARNING, FLAGS_log_idle_connection_close)
         << "Close " << *this << " due to no data transmission for "
         << idle_seconds << " seconds";
-    if (shall_fail_me_at_server_stop()) {
-        // sockets for streaming purposes (say RTMP) are probably referenced
-        // by many places, ReleaseAdditionalReference() cannot notify other
-        // places to release refs, SetFailed() is a must.
+    if (shall_fail_me_at_server_stop() || shall_fail_me_at_idle_timeout()) {
+        // sockets for streaming purposes (say RTMP) or holding deferred
+        // responses are probably referenced by other places,
+        // ReleaseAdditionalReference() cannot notify other places to release
+        // refs, SetFailed() is a must.
         return SetFailed(EUNUSED, "No data transmission for %d seconds",
                          idle_seconds);
     }

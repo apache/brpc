@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <set>
 #include <string>
+#include <thread>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <butil/build_config.h> // OS_MACOSX
@@ -69,6 +70,9 @@ DECLARE_int64(socket_max_unwritten_bytes);
 DECLARE_uint32(http_max_header_count);
 DECLARE_uint32(http_max_query_count);
 extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
+namespace policy {
+DECLARE_int64(h2_max_pending_data_bytes);
+}
 }
 
 int main(int argc, char* argv[]) {
@@ -330,6 +334,21 @@ protected:
     }
 
     void MakeH2EchoResponseBuf(butil::IOBuf* out, int h2_stream_id) {
+        brpc::policy::H2Context* srv_ctx =
+            static_cast<brpc::policy::H2Context*>(_socket->parsing_context());
+        if (srv_ctx == NULL) {
+            srv_ctx = new brpc::policy::H2Context(_socket.get(), &_server);
+            ASSERT_EQ(0, srv_ctx->Init());
+            _socket->initialize_parsing_context(&srv_ctx);
+        }
+        if (srv_ctx->FindStream(h2_stream_id) == NULL) {
+            brpc::policy::H2StreamContext* srv_sctx =
+                new brpc::policy::H2StreamContext(false);
+            srv_sctx->Init(srv_ctx, h2_stream_id);
+            srv_sctx->_remote_ended = true;
+            ASSERT_EQ(0, srv_ctx->TryToInsertStream(h2_stream_id, srv_sctx));
+        }
+
         brpc::Controller cntl;
         test::EchoResponse res;
         res.set_message(EXP_RESPONSE);
@@ -339,7 +358,7 @@ protected:
             EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
         }
         brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id, false /*is grpc*/);
-        butil::Status st = h2_res->AppendAndDestroySelf(out, _h2_client_sock.get());
+        butil::Status st = h2_res->AppendAndDestroySelf(out, _socket.get());
         ASSERT_TRUE(st.ok());
     }
 
@@ -1714,10 +1733,15 @@ TEST_F(HttpTest, http2_sanity) {
 
     // Check that the first request larger than the default window completes
     // after SETTINGS and WINDOW_UPDATE make more capacity available.
+    // main() sets -socket_max_unwritten_bytes=2000000 for HTTP/1 overcrowding
+    // tests, so raise -h2_max_pending_data_bytes to allow buffering the 2MB
+    // HTTP/2 request before the initial SETTINGS/WINDOW_UPDATE arrives.
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::policy::FLAGS_h2_max_pending_data_bytes = 4 * 1024 * 1024;
     brpc::Controller cntl;
     test::EchoRequest big_req;
     test::EchoResponse res;
-    std::string message(128 * 1024, 'x');
+    std::string message(2 * 1024 * 1024 /* 2M */, 'x');
     big_req.set_message(message);
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.http_request().uri() = "/EchoService/Echo";
@@ -1806,6 +1830,33 @@ TEST_F(HttpTest, http2_rst_before_header) {
     ASSERT_TRUE(cntl.Failed());
     ASSERT_TRUE(cntl.ErrorCode() == brpc::EHTTP);
     ASSERT_TRUE(cntl.http_response().status_code() == brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR);
+    ASSERT_NE(std::string::npos,
+              cntl.ErrorText().find("terminated by RST_STREAM: INTERNAL_ERROR[0x2]"))
+        << cntl.ErrorText();
+}
+
+TEST_F(HttpTest, http2_rst_flow_control_error_message) {
+    brpc::Controller cntl;
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+    butil::IOBuf res_out;
+    char rstbuf[9 /*FRAME_HEAD_SIZE*/ + 4];
+    brpc::policy::SerializeFrameHead(
+        rstbuf, 4, brpc::policy::H2_FRAME_RST_STREAM, 0, h2_stream_id);
+    SaveUint32(rstbuf + 9, brpc::H2_FLOW_CONTROL_ERROR);
+    res_out.append(rstbuf, sizeof(rstbuf));
+    brpc::ParseResult res_pr =
+        brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_TRUE(cntl.Failed());
+    EXPECT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    EXPECT_EQ(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              cntl.http_response().status_code());
+    EXPECT_NE(std::string::npos,
+              cntl.ErrorText().find("terminated by RST_STREAM: FLOW_CONTROL_ERROR[0x3]"))
+        << cntl.ErrorText();
 }
 
 TEST_F(HttpTest, http2_rst_after_header_and_data) {
@@ -1867,14 +1918,371 @@ TEST_F(HttpTest, http2_window_used_up_buffers_request) {
         butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
         ASSERT_TRUE(st.ok());
         if (i == nsuc) {
-            ASSERT_GT(ctx->_pending_data_size, 0u);
+            const int blocked_stream_id = h2_req->_stream_id;
+            ASSERT_GT(ctx->_pending_data_size.load(), 0u);
+            ASSERT_NE(nullptr, ctx->FindStream(blocked_stream_id));
             h2_req->DestroyStreamUserData(
                 _h2_client_sock, &cntl, ECANCELED, false);
-            ASSERT_EQ(0u, ctx->_pending_data_size);
+            ASSERT_EQ(0u, ctx->_pending_data_size.load());
+            EXPECT_EQ(nullptr, ctx->FindStream(blocked_stream_id));
         } else {
             h2_req->DestroyStreamUserData(_h2_client_sock, &cntl, 0, false);
         }
     }
+}
+
+TEST_F(HttpTest, http2_client_upload_timeout_sends_rst_and_cleans_server_stream) {
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions srv_options;
+    // Configure stream_window_size (256KB) > connection_window_size (64KB) so a
+    // 100KB request sends HEADERS + the first ~64KB of DATA frames to the server
+    // (stored in server sctx->body(), which is < quota=128KB so server does not
+    // immediately send WINDOW_UPDATE), while the remaining ~36KB of DATA stays
+    // buffered in client _pending_data until the RPC times out mid-upload.
+    srv_options.h2_settings.stream_window_size = 256 * 1024;
+    srv_options.h2_settings.connection_window_size =
+        brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE;
+    ASSERT_EQ(0, server.Start(0, &srv_options));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "h2";
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
+
+    // Warmup RPC ensures the connection is established and the client has
+    // received the server's SETTINGS frame.
+    {
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+    }
+
+    auto read_bvar = [](const char* name) -> int64_t {
+        std::string val = bvar::Variable::describe_exposed(name);
+        int64_t out = -1;
+        butil::StringToInt64(val, &out);
+        return out;
+    };
+    const int64_t base_stream_count = read_bvar("h2_stream_context_count");
+    const int64_t base_rst_count = read_bvar("h2_stream_reset_count");
+
+    // Case 1: Send a 100KB POST request: ~64KB of DATA is uploaded to the server
+    // and ~36KB remains buffered on the client waiting for connection WINDOW_UPDATE.
+    // When it times out mid-upload, DestroyStreamUserData must send
+    // RST_STREAM(CANCEL) so the server releases its half-open H2StreamContext
+    // and partial request body.
+    {
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(std::string(100 * 1024, 'a'));
+        cntl.set_timeout_ms(50);
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_TRUE(cntl.Failed());
+        EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode());
+    }
+
+    for (int i = 0; i < 40; ++i) {
+        if (read_bvar("h2_stream_context_count") == base_stream_count) {
+            break;
+        }
+        bthread_usleep(5000);
+    }
+    EXPECT_EQ(base_stream_count, read_bvar("h2_stream_context_count"));
+    EXPECT_EQ(0, read_bvar("h2_pending_data_bytes"));
+    // Both client (sending RST_STREAM) and server (receiving RST_STREAM in
+    // OnResetStream) increment h2_stream_reset_count in the same process.
+    EXPECT_EQ(base_rst_count + 2, read_bvar("h2_stream_reset_count"));
+
+    // Case 2: Small request completes upload (END_STREAM sent, client _pending_data
+    // is empty), then times out while waiting for the server response.
+    // DestroyStreamUserData must still send RST_STREAM(CANCEL).
+    {
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
+        cntl.set_timeout_ms(50);
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo?sleep_ms=200";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_TRUE(cntl.Failed());
+        EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode());
+    }
+    for (int i = 0; i < 40; ++i) {
+        if (read_bvar("h2_stream_context_count") == base_stream_count) {
+            break;
+        }
+        bthread_usleep(5000);
+    }
+    EXPECT_EQ(base_stream_count, read_bvar("h2_stream_context_count"));
+    EXPECT_EQ(base_rst_count + 4, read_bvar("h2_stream_reset_count"));
+}
+
+TEST_F(HttpTest, http2_server_stop_drains_pending_response) {
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.idle_timeout_sec = 1;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, &server_options));
+
+    butil::fd_guard client_fd(butil::tcp_connect(server.listen_address(), NULL));
+    ASSERT_GE(client_fd, 0);
+
+    // Advertise a 10-byte initial stream window so the 19-byte JSON response
+    // ({"message":"world"}) sends 10 bytes immediately and leaves 9 bytes
+    // buffered in the server's H2Context after HttpResponseSender destroys the
+    // server-side Controller.
+    brpc::policy::H2Context* cli_ctx =
+        new brpc::policy::H2Context(_h2_client_sock.get(), NULL);
+    ASSERT_EQ(0, cli_ctx->Init());
+    cli_ctx->_client_preface_pending = true;
+    cli_ctx->_unack_local_settings.stream_window_size = 10;
+    cli_ctx->_local_settings.stream_window_size = 10;
+    _h2_client_sock->initialize_parsing_context(&cli_ctx);
+
+    brpc::Controller cntl;
+    cntl.http_request().uri() = "/EchoService/Echo";
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+    const ssize_t req_size = static_cast<ssize_t>(req_out.size());
+    ASSERT_EQ(req_size, req_out.cut_into_file_descriptor(client_fd));
+
+    auto read_bvar = [](const char* name) -> int64_t {
+        std::string val = bvar::Variable::describe_exposed(name);
+        int64_t out = -1;
+        butil::StringToInt64(val, &out);
+        return out;
+    };
+
+    butil::IOPortal resp_buf;
+    for (int i = 0; i < 100; ++i) {
+        int bytes_in_sock = 0;
+        ioctl(client_fd, FIONREAD, &bytes_in_sock);
+        if (bytes_in_sock > 0) {
+            ASSERT_GT(resp_buf.append_from_file_descriptor(client_fd, bytes_in_sock), 0);
+            brpc::ParseResult pr = brpc::policy::ParseH2Message(
+                &resp_buf, _h2_client_sock.get(), false, NULL);
+            ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
+        }
+        brpc::policy::H2StreamContext* cli_sctx = cli_ctx->FindStream(h2_stream_id);
+        if (cli_sctx != NULL && cli_sctx->body().size() == 10 &&
+            read_bvar("h2_pending_data_bytes") == 9) {
+            break;
+        }
+        bthread_usleep(5000);
+    }
+    ASSERT_EQ(9, read_bvar("h2_pending_data_bytes"));
+
+    // Stop the server while the remaining 9 bytes of response DATA are waiting
+    // for WINDOW_UPDATE. The connection must stay alive until the deferred
+    // response finishes draining.
+    server.Stop(0);
+    butil::atomic<bool> join_done(false);
+    std::thread join_thread([&]() {
+        server.Join();
+        join_done.store(true, butil::memory_order_release);
+    });
+    bthread_usleep(50000);
+    EXPECT_FALSE(join_done.load(butil::memory_order_acquire));
+    EXPECT_EQ(9, read_bvar("h2_pending_data_bytes"));
+
+    // Send stream and connection WINDOW_UPDATE so the server can flush the
+    // remaining 9 bytes + END_STREAM and finish draining.
+    char winbuf[(brpc::policy::FRAME_HEAD_SIZE + 4) * 2];
+    brpc::policy::SerializeFrameHead(
+        winbuf, 4, brpc::policy::H2_FRAME_WINDOW_UPDATE, 0, h2_stream_id);
+    SaveUint32(winbuf + brpc::policy::FRAME_HEAD_SIZE, 10);
+    brpc::policy::SerializeFrameHead(
+        winbuf + brpc::policy::FRAME_HEAD_SIZE + 4,
+        4, brpc::policy::H2_FRAME_WINDOW_UPDATE, 0, 0);
+    SaveUint32(winbuf + brpc::policy::FRAME_HEAD_SIZE * 2 + 4, 10);
+    ASSERT_EQ(static_cast<ssize_t>(sizeof(winbuf)),
+              ::write(client_fd, winbuf, sizeof(winbuf)));
+
+    join_thread.join();
+    EXPECT_TRUE(join_done.load(butil::memory_order_acquire));
+    EXPECT_EQ(0, read_bvar("h2_pending_data_bytes"));
+
+    brpc::ParseResult res_pr =
+        brpc::MakeParseError(brpc::PARSE_ERROR_NOT_ENOUGH_DATA);
+    for (int i = 0; i < 100 && !res_pr.is_ok(); ++i) {
+        int bytes_in_sock = 0;
+        ioctl(client_fd, FIONREAD, &bytes_in_sock);
+        if (bytes_in_sock > 0) {
+            ASSERT_GT(resp_buf.append_from_file_descriptor(client_fd, bytes_in_sock), 0);
+            res_pr = brpc::policy::ParseH2Message(
+                &resp_buf, _h2_client_sock.get(), false, NULL);
+        } else {
+            bthread_usleep(5000);
+        }
+    }
+    ASSERT_TRUE(res_pr.is_ok());
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ("{\"message\":\"world\"}", cntl.response_attachment().to_string());
+}
+
+TEST_F(HttpTest, http2_idle_timeout_cleans_up_pending_response) {
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.idle_timeout_sec = 1;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, &server_options));
+
+    auto read_bvar = [](const char* name) -> int64_t {
+        std::string val = bvar::Variable::describe_exposed(name);
+        int64_t out = -1;
+        butil::StringToInt64(val, &out);
+        return out;
+    };
+
+    auto start_stalled_zero_window_request = [&](butil::fd_guard* out_fd) {
+        butil::fd_guard fd(butil::tcp_connect(server.listen_address(), NULL));
+        ASSERT_GE(fd, 0);
+
+        brpc::policy::H2Context* cli_ctx =
+            new brpc::policy::H2Context(_h2_client_sock.get(), NULL);
+        ASSERT_EQ(0, cli_ctx->Init());
+        cli_ctx->_client_preface_pending = true;
+        cli_ctx->_unack_local_settings.stream_window_size = 0;
+        cli_ctx->_local_settings.stream_window_size = 0;
+        _h2_client_sock->reset_parsing_context(cli_ctx);
+
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/EchoService/Echo";
+        butil::IOBuf req_out;
+        int h2_stream_id = 0;
+        MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+        const ssize_t req_size = static_cast<ssize_t>(req_out.size());
+        ASSERT_EQ(req_size, req_out.cut_into_file_descriptor(fd));
+
+        butil::IOPortal resp_buf;
+        for (int i = 0; i < 100; ++i) {
+            int bytes_in_sock = 0;
+            ioctl(fd, FIONREAD, &bytes_in_sock);
+            if (bytes_in_sock > 0) {
+                ASSERT_GT(resp_buf.append_from_file_descriptor(fd, bytes_in_sock), 0);
+                brpc::ParseResult pr = brpc::policy::ParseH2Message(
+                    &resp_buf, _h2_client_sock.get(), false, NULL);
+                ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
+            }
+            if (read_bvar("h2_pending_data_bytes") == 19) {
+                break;
+            }
+            bthread_usleep(5000);
+        }
+        ASSERT_EQ(19, read_bvar("h2_pending_data_bytes"));
+        cntl._current_call.stream_user_data->DestroyStreamUserData(
+            _h2_client_sock, &cntl, 0, false);
+        cntl._current_call.stream_user_data = NULL;
+        out_fd->reset(fd.release());
+    };
+
+    // Case 1: While the server is running, idle expiration must fail the
+    // stalled connection and clean up its buffered response even when the peer
+    // keeps TCP open without sending WINDOW_UPDATE or RST_STREAM.
+    butil::fd_guard client_fd1;
+    start_stalled_zero_window_request(&client_fd1);
+    for (int i = 0; i < 300 && read_bvar("h2_pending_data_bytes") != 0; ++i) {
+        bthread_usleep(10000);
+    }
+    ASSERT_EQ(0, read_bvar("h2_pending_data_bytes"));
+
+    // Case 2: If Server::Stop() is called before idle expiration while a
+    // deferred response is buffered on a stalled connection, idle expiration
+    // must still clean up the buffered response and unblock Server::Join().
+    butil::fd_guard client_fd2;
+    start_stalled_zero_window_request(&client_fd2);
+
+    server.Stop(0);
+    butil::atomic<bool> join_done(false);
+    std::thread join_thread([&]() {
+        server.Join();
+        join_done.store(true, butil::memory_order_release);
+    });
+    bthread_usleep(50000);
+    EXPECT_FALSE(join_done.load(butil::memory_order_acquire));
+    EXPECT_EQ(19, read_bvar("h2_pending_data_bytes"));
+
+    for (int i = 0; i < 300 && !join_done.load(butil::memory_order_acquire); ++i) {
+        bthread_usleep(10000);
+    }
+    EXPECT_TRUE(join_done.load(butil::memory_order_acquire));
+    join_thread.join();
+    EXPECT_EQ(0, read_bvar("h2_pending_data_bytes"));
+    EXPECT_EQ(0, read_bvar("h2_unsent_request_count"));
+}
+
+TEST_F(HttpTest, http2_deferred_response_notify_registration_failure_resets_stream) {
+    brpc::Controller cntl;
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+
+    brpc::policy::H2Context* srv_ctx =
+        new brpc::policy::H2Context(_socket.get(), &_server);
+    ASSERT_EQ(0, srv_ctx->Init());
+    _socket->initialize_parsing_context(&srv_ctx);
+    srv_ctx->_remote_settings.stream_window_size = 0;
+
+    brpc::policy::H2StreamContext* srv_sctx =
+        new brpc::policy::H2StreamContext(false);
+    srv_sctx->Init(srv_ctx, h2_stream_id);
+    srv_sctx->_remote_ended = true;
+    ASSERT_EQ(0, srv_ctx->TryToInsertStream(h2_stream_id, srv_sctx));
+
+    // Saturate _socket->_id_wait_list so Socket::NotifyOnFailed() fails with
+    // EAGAIN while _socket itself remains healthy (!_socket->Failed()).
+    bthread_id_t dummy_id = INVALID_BTHREAD_ID;
+    ASSERT_EQ(0, bthread_id_create(&dummy_id, NULL, NULL));
+    {
+        BAIDU_SCOPED_LOCK(_socket->_id_wait_list_mutex);
+        int consecutive_eagain = 0;
+        while (consecutive_eagain < 26000) {
+            const int rc =
+                bthread_id_list_add(&_socket->_id_wait_list, dummy_id);
+            if (rc == EAGAIN) {
+                ++consecutive_eagain;
+            } else {
+                ASSERT_EQ(0, rc);
+                consecutive_eagain = 0;
+            }
+        }
+    }
+    ASSERT_FALSE(_socket->Failed());
+
+    butil::IOBuf res_out;
+    MakeH2EchoResponseBuf(&res_out, h2_stream_id);
+
+    EXPECT_FALSE(_socket->Failed());
+    EXPECT_EQ(nullptr, srv_ctx->FindStream(h2_stream_id));
+    EXPECT_EQ(0u, srv_ctx->_pending_data_size.load());
+    EXPECT_EQ(0, _socket->_idle_fail_ref_count.load());
+
+    brpc::ParseResult res_pr =
+        brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_TRUE(cntl.Failed());
+    EXPECT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    EXPECT_EQ(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              cntl.http_response().status_code());
+    EXPECT_NE(std::string::npos,
+              cntl.ErrorText().find("terminated by RST_STREAM: INTERNAL_ERROR[0x2]"))
+        << cntl.ErrorText();
+
+    EXPECT_EQ(0, bthread_id_error(dummy_id, 0));
 }
 
 TEST_F(HttpTest, http2_settings) {
@@ -3292,6 +3700,9 @@ TEST_F(HttpTest, grpc_auth_failed_response) {
 
     // Initialize the stream context with connection context and stream ID
     h2_msg->Init(h2_ctx, 1); // stream_id = 1
+    h2_msg->_remote_ended = true;
+    h2_msg->AddOneRefForStage2();
+    ASSERT_EQ(0, h2_ctx->TryToInsertStream(1, h2_msg));
 
     // Set socket and arg using existing test pattern
     if (h2_msg->_socket == nullptr) {
