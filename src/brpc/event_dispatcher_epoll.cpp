@@ -67,6 +67,8 @@ int EventDispatcher::Start(const bthread_attr_t* thread_attr) {
         return -1;
     }
 
+    _use_polling = FLAGS_event_dispatcher_use_polling;
+
     // Set _thread_attr before creating epoll thread to make sure
     // everyting seems sane to the thread.
     if (thread_attr) {
@@ -85,11 +87,13 @@ int EventDispatcher::Start(const bthread_attr_t* thread_attr) {
     // when the older comlog (e.g. 3.1.85) calls com_openlog_r(). Since this
     // is also a potential issue for consumer threads, using the same attr
     // should be a reasonable solution.
-    int rc = bthread_start_background(&_tid, &epoll_thread_attr, RunThis, this);
+    bthread_t tid;
+    int rc = bthread_start_background(&tid, &epoll_thread_attr, RunThis, this);
     if (rc) {
         LOG(FATAL) << "Fail to create epoll thread: " << berror(rc);
         return -1;
     }
+    _tid.store(tid, std::memory_order_release);
     return 0;
 }
 
@@ -98,7 +102,7 @@ bool EventDispatcher::Running() const {
 }
 
 void EventDispatcher::Stop() {
-    _stop = true;
+    _stop.store(true, std::memory_order_release);
 
     if (_event_dispatcher_fd >= 0) {
         epoll_event evt = { EPOLLOUT,  { nullptr } };
@@ -107,9 +111,10 @@ void EventDispatcher::Stop() {
 }
 
 void EventDispatcher::Join() {
-    if (_tid) {
-        bthread_join(_tid, nullptr);
-        _tid = 0;
+    const bthread_t tid = _tid.load(std::memory_order_acquire);
+    if (tid) {
+        bthread_join(tid, nullptr);
+        _tid.store(0, std::memory_order_release);
     }
 }
 
@@ -201,21 +206,22 @@ void* EventDispatcher::RunThis(void* arg) {
 }
 
 void EventDispatcher::Run() {
-    while (!_stop) {
+    while (!_stop.load(std::memory_order_acquire)) {
+        if (_use_polling) {
+            ProcessPollingCommand();
+        }
         epoll_event e[32];
 #ifdef BRPC_ADDITIONAL_EPOLL
         // Performance downgrades in examples.
         int n = epoll_wait(_event_dispatcher_fd, e, ARRAY_SIZE(e), 0);
-        if (n == 0) {
+        if (n == 0 && !_use_polling) {
             n = epoll_wait(_event_dispatcher_fd, e, ARRAY_SIZE(e), -1);
         }
 #else
-        const int n = epoll_wait(_event_dispatcher_fd, e, ARRAY_SIZE(e), -1);
+        const int n = epoll_wait(_event_dispatcher_fd, e, ARRAY_SIZE(e),
+                                 _use_polling ? 0 : -1);
 #endif
-        if (_stop) {
-            // epoll_ctl/epoll_wait should have some sort of memory fencing
-            // guaranteeing that we(after epoll_wait) see _stop set before
-            // epoll_ctl.
+        if (_stop.load(std::memory_order_acquire)) {
             break;
         }
         if (n < 0) {
@@ -246,7 +252,11 @@ void EventDispatcher::Run() {
                 (*g_edisp_write_lantency) << (butil::cpuwide_time_us() - start_us);
             }
         }
+        if (_use_polling) {
+            RunPollingCallback();
+        }
     }
+    FinishPolling();
 }
 
 } // namespace brpc
