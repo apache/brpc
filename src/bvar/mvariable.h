@@ -40,6 +40,7 @@ public:
     // Shared, single-use handle that lets describe_exposed()/dump_exposed()
     // call describe()/dump() OUTSIDE the global MVarMap lock (issue #2888).
     using SharedExposedRef = detail::SharedExposedRef<MVariableBase>;
+    using ScopedExposedRef = detail::ScopedExposedRef<MVariableBase>;
 
     MVariableBase() = default;
 

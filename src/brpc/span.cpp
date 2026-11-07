@@ -70,18 +70,18 @@ void EndBthreadSpan() {
 
 void SetTlsParentSpan(std::shared_ptr<Span> span) {
     using namespace bthread;
-    LocalStorage ls = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
+    LocalStorage ls = tls_bls();
     if (ls.rpcz_parent_span) {
         *static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span) = span;
     } else {
         ls.rpcz_parent_span = new std::weak_ptr<Span>(span);
-        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, ls);
+        tls_bls() = ls;
     }
 }
 
 std::shared_ptr<Span> GetTlsParentSpan() {
     using namespace bthread;
-    LocalStorage ls = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
+    LocalStorage ls = tls_bls();
     if (!ls.rpcz_parent_span) {
         return nullptr;
     }
@@ -92,7 +92,7 @@ std::shared_ptr<Span> GetTlsParentSpan() {
 
 void ClearTlsParentSpan() {
     using namespace bthread;
-    LocalStorage ls = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
+    LocalStorage ls = tls_bls();
     if (ls.rpcz_parent_span) {
         static_cast<std::weak_ptr<Span>*>(ls.rpcz_parent_span)->reset();
     }
@@ -100,7 +100,7 @@ void ClearTlsParentSpan() {
 
 bool HasTlsParentSpan() {
     using namespace bthread;
-    LocalStorage ls = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
+    LocalStorage ls = tls_bls();
     if (!ls.rpcz_parent_span) {
         return false;
     }
@@ -154,8 +154,8 @@ struct IdGen {
     butil::FastRandSeed seed;
 };
 
-static __thread IdGen tls_trace_id_gen = { false, 0, 0, { { 0, 0 } } };
-static __thread IdGen tls_span_id_gen = { false, 0, 0, { { 0, 0 } } };
+static BUTIL_THREAD_LOCAL(IdGen, tls_trace_id_gen, { false, 0, 0, { { 0, 0 } } });
+static BUTIL_THREAD_LOCAL(IdGen, tls_span_id_gen, { false, 0, 0, { { 0, 0 } } });
 
 inline uint64_t UpdateTLSRandom64(IdGen* g) {
     if (!g->init) {
@@ -169,7 +169,7 @@ inline uint64_t UpdateTLSRandom64(IdGen* g) {
 
 inline uint64_t GenerateSpanId() {
     // 0 is an invalid Id
-    IdGen* g = &tls_span_id_gen;
+    IdGen* g = &tls_span_id_gen();
     if (g->seq == 0) {
         UpdateTLSRandom64(g);
         g->seq = 1;
@@ -179,7 +179,7 @@ inline uint64_t GenerateSpanId() {
 
 inline uint64_t GenerateTraceId() {
     // 0 is an invalid Id
-    IdGen* g = &tls_trace_id_gen;
+    IdGen* g = &tls_trace_id_gen();
     if (g->seq == 0) {
         UpdateTLSRandom64(g);
         g->seq = 1;

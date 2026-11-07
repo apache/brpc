@@ -187,8 +187,6 @@ int wait_pthread(ButexPthreadWaiter& pw, const timespec* abstime) {
     }
 }
 
-EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
-
 // Returns 0 when no need to unschedule or successfully unscheduled,
 // -1 otherwise.
 inline int unsleep_if_necessary(ButexBthreadWaiter* w,
@@ -280,7 +278,7 @@ void butex_destroy(void* butex) {
 
 // if TaskGroup tls_task_group is belong to tag
 inline bool is_same_tag(bthread_tag_t tag) {
-    auto g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    auto g = tls_task_group();
     return g && g->tag() == tag;
 }
 
@@ -291,7 +289,7 @@ inline bool check_nosignal(bool nosignal, bthread_tag_t tag) {
 
 // if tag is same return tls_task_group else choose one group with tag
 inline TaskGroup* get_task_group(TaskControl* c, bthread_tag_t tag) {
-    return is_same_tag(tag) ? BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)
+    return is_same_tag(tag) ? tls_task_group()
                             : c->choose_one_group(tag);
 }
 
@@ -322,7 +320,7 @@ int butex_wake(void* arg, bool nosignal) {
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
     TaskGroup* g = get_task_group(bbw->control, bbw->task_meta->attr.tag);
-    if (g == BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)) {
+    if (g == tls_task_group()) {
         run_in_local_task_group(g, bbw->task_meta, nosignal);
     } else {
         g->ready_to_run_remote(bbw->task_meta, check_nosignal(nosignal, g->tag()));
@@ -386,7 +384,7 @@ int butex_wake_n(void* arg, size_t n, bool nosignal) {
         }
     }
     auto g = get_task_group(next->control, next->task_meta->attr.tag);
-    if (g == BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)) {
+    if (g == tls_task_group()) {
         run_in_local_task_group(g, next->task_meta, nosignal);
     } else {
         g->ready_to_run_remote(next->task_meta, check_nosignal(nosignal, g->tag()));
@@ -491,7 +489,7 @@ int butex_requeue(void* arg, void* arg2) {
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
     auto g = is_same_tag(bbw->task_meta->attr.tag)
-                 ? BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)
+                 ? tls_task_group()
                  : nullptr;
     if (g) {
         TaskGroup::exchange(&g, bbw->task_meta);
@@ -637,7 +635,7 @@ void wait_for_butex(void* arg) {
     // the two functions. The on-stack ButexBthreadWaiter is safe to use and
     // bw->waiter_state will not change again.
     // unsleep_if_necessary(bw, get_global_timer_thread());
-    BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)->ready_to_run(bw->task_meta);
+    tls_task_group()->ready_to_run(bw->task_meta);
     // FIXME: jump back to original thread is buggy.
     
     // // Value unmatched or waiter is already woken up by TimerThread, jump
@@ -759,7 +757,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime, bool prep
         butil::atomic_thread_fence(butil::memory_order_acquire);
         return -1;
     }
-    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    TaskGroup* g = tls_task_group();
     if (nullptr == g || g->is_current_pthread_task()) {
         return butex_wait_from_pthread(g, b, expected_value, abstime, prepend);
     }
