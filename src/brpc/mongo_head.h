@@ -62,13 +62,16 @@ struct mongo_head_t {
     int32_t op_code;         // request type, see MongoOpCode.
 
     void make_host_endian() {
-        if (!ARCH_CPU_LITTLE_ENDIAN) {
-            message_length = butil::ByteSwap((uint32_t)message_length);
-            request_id = butil::ByteSwap((uint32_t)request_id);
-            response_to = butil::ByteSwap((uint32_t)response_to);
-            op_code = butil::ByteSwap((uint32_t)op_code);
-        }
+#if !defined(ARCH_CPU_LITTLE_ENDIAN)
+        message_length = butil::ByteSwap((uint32_t)message_length);
+        request_id = butil::ByteSwap((uint32_t)request_id);
+        response_to = butil::ByteSwap((uint32_t)response_to);
+        op_code = butil::ByteSwap((uint32_t)op_code);
+#endif
     }
+    // The wire format is little-endian, so the conversion between it and the
+    // host byte order is the same swap in both directions.
+    void make_wire_endian() { make_host_endian(); }
 };
 #pragma pack()
 

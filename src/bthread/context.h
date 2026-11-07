@@ -71,6 +71,17 @@
     #endif
   #endif
 
+  // The 64-bit PowerPC ELFv2 ABI is the same on every OS that uses it:
+  // ppc64le everywhere, big-endian ppc64 on FreeBSD and musl.
+  #if defined(__powerpc64__)
+	#if defined(_CALL_ELF) && _CALL_ELF == 2
+	    #define BTHREAD_CONTEXT_PLATFORM_ppc64_elfv2
+	    #define BTHREAD_CONTEXT_CALL_CONVENTION
+	#else
+	    #error "64-bit PowerPC is supported with the ELFv2 ABI only"
+	#endif
+  #endif
+
 #endif
 
 #if defined(_WIN32_WCE)

@@ -261,6 +261,13 @@ inline uint64_t clock_cycles() {
         : "=r" (cycles)
         );
     return cycles;
+#elif defined(__powerpc64__)
+    uint64_t tb;
+    __asm__ __volatile__ (
+        "mftb %0"
+        : "=r" (tb)
+        );
+    return tb;
 #else
   #error "unsupported arch"
 #endif
