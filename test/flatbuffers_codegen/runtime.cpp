@@ -240,6 +240,14 @@ void TestDispatchAndErrors() {
     ExpectFailure([&](Controller* controller, Done* done) {
         disconnected.Repeat(controller, &request, &response, done);
     });
+    // The brpc::Channel overload goes through the library adapter; a null
+    // channel must leave the stub disconnected rather than crash.
+    Echo::Stub null_channel(static_cast<brpc::Channel*>(nullptr),
+                            brpc::flatbuffers::Service::STUB_OWNS_CHANNEL);
+    CODEGEN_CHECK(null_channel.channel() == nullptr);
+    ExpectFailure([&](Controller* controller, Done* done) {
+        null_channel.Repeat(controller, &request, &response, done);
+    });
     ExpectFailure([&](Controller* controller, Done* done) {
         disconnected.Inspect(controller, &request, &response, done);
     });

@@ -395,7 +395,9 @@ TEST_F(SSLTest, connect_on_create) {
         brpc::policy::PackRpcRequest,nullptr, ProcessResponse,
         nullptr, nullptr, nullptr, brpc::CONNECTION_TYPE_ALL, "ssl_ut_baidu"
     };
-    ASSERT_EQ(0, RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+    // Private protocols must not reuse builtin IDs (30 is fb_rpc); use the
+    // last slot of the protocol table.
+    ASSERT_EQ(0, RegisterProtocol((brpc::ProtocolType)127, dummy_protocol));
 
     brpc::InputMessageHandler dummy_handler ={
         dummy_protocol.parse, dummy_protocol.process_response,

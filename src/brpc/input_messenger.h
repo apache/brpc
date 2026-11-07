@@ -147,6 +147,9 @@ private:
     // User-supplied scissors and handlers.
     // the index of handler is exactly the same as the protocol
     InputMessageHandler* _handlers;
+    // Order in which handlers are tried on a connection whose protocol is
+    // not known yet. A permutation of [0, _capacity), fixed once allocated.
+    int* _probe_order;
     // Max added protocol type
     butil::atomic<int> _max_index;
     bool _non_protocol;
