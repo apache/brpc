@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <atomic>
 #include <memory>
 #include <atomic>
 #include <thread>
@@ -28,6 +29,7 @@
 namespace {
 struct MyObject {};
 struct FreeChunkCountObject {};
+struct DescribeRaceObject {};
 
 int nfoo_dtor = 0;
 struct Foo {
@@ -109,6 +111,41 @@ TEST_F(ObjectPoolTest, change_config) {
     std::cout << describe_objects<MyObject>() << std::endl;
     return_object(p);
     std::cout << describe_objects<MyObject>() << std::endl;
+}
+
+struct DescribeObjectsArgs {
+    std::atomic<bool>* started;
+    std::atomic<bool>* done;
+};
+
+void* create_objects_while_describing(void* arg) {
+    DescribeObjectsArgs* args = static_cast<DescribeObjectsArgs*>(arg);
+    args->started->store(true, std::memory_order_release);
+    for (int i = 0; i < 100000; ++i) {
+        (void)get_object<DescribeRaceObject>();
+    }
+    args->done->store(true, std::memory_order_release);
+    return nullptr;
+}
+
+TEST_F(ObjectPoolTest, describe_while_creating_objects) {
+    // Keep the pool alive while the worker's LocalPool is being destroyed.
+    DescribeRaceObject* guard = get_object<DescribeRaceObject>();
+    ASSERT_NE(nullptr, guard);
+    std::atomic<bool> started(false);
+    std::atomic<bool> done(false);
+    DescribeObjectsArgs args = { &started, &done };
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr,
+                                create_objects_while_describing, &args));
+    while (!started.load(std::memory_order_acquire)) {
+    }
+    while (!done.load(std::memory_order_acquire)) {
+        describe_objects<DescribeRaceObject>();
+    }
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+    return_object(guard);
+    clear_objects<DescribeRaceObject>();
 }
 
 struct NonDefaultCtorObject {
