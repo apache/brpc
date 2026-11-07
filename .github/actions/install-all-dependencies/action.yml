@@ -10,10 +10,20 @@ runs:
       run: |
         set -euo pipefail
         readonly thrift_archive=thrift-0.11.0.tar.gz
-        readonly thrift_url=https://archive.apache.org/dist/thrift/0.11.0/${thrift_archive}
         readonly thrift_sha256=c4ad38b6cb4a3498310d405a91fef37b9a8e79a50cd0968148ee2524d2fa60c2
-        curl --fail --location --retry 5 --retry-delay 2 --connect-timeout 30 \
-          --output "${thrift_archive}" "${thrift_url}"
+        readonly thrift_urls=(
+          https://archive.apache.org/dist/thrift/0.11.0/${thrift_archive}
+          https://mirrors.huaweicloud.com/apache/thrift/0.11.0/${thrift_archive}
+        )
+        for thrift_url in "${thrift_urls[@]}"; do
+          if curl --fail --location --retry 1 --retry-delay 2 \
+              --connect-timeout 15 --max-time 45 \
+              --output "${thrift_archive}" "${thrift_url}"; then
+            break
+          fi
+          rm -f "${thrift_archive}"
+        done
+        test -s "${thrift_archive}"
         printf '%s  %s\n' "${thrift_sha256}" "${thrift_archive}" | sha256sum --check -
         tar -xzf "${thrift_archive}"
         cd thrift-0.11.0
