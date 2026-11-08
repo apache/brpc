@@ -160,8 +160,43 @@ void InputMessenger::OnNewMessages(Socket* m) {
     }
 }
 
+// Unknown connections are probed in protocol number order, except that each
+// `type' below is tried right after `after'. This lets a newer protocol be
+// probed early without renumbering it: protocol numbers are recorded in RPC
+// dumps and are also the handler indices.
+static const struct {
+    ProtocolType type;
+    ProtocolType after;
+} kProbeAfter[] = {
+    { PROTOCOL_FLATBUFFERS_RPC, PROTOCOL_BAIDU_STD },
+};
+
+// Fill `order' with a permutation of [0, capacity) as described above.
+static void InitProtocolProbeOrder(int* order, size_t capacity) {
+    size_t n = 0;
+    for (size_t i = 0; i < capacity; ++i) {
+        bool moved = false;
+        for (const auto& e : kProbeAfter) {
+            if ((size_t)e.type == i && (size_t)e.after < capacity) {
+                moved = true;
+            }
+        }
+        if (moved) {
+            continue;
+        }
+        order[n++] = (int)i;
+        for (const auto& e : kProbeAfter) {
+            if ((size_t)e.after == i && (size_t)e.type < capacity) {
+                order[n++] = (int)e.type;
+            }
+        }
+    }
+    CHECK_EQ(capacity, n);
+}
+
 InputMessenger::InputMessenger(size_t capacity)
     : _handlers(nullptr)
+    , _probe_order(nullptr)
     , _max_index(-1)
     , _non_protocol(false)
     , _capacity(capacity) {
@@ -170,6 +205,8 @@ InputMessenger::InputMessenger(size_t capacity)
 InputMessenger::~InputMessenger() {
     delete[] _handlers;
     _handlers = nullptr;        
+    delete[] _probe_order;
+    _probe_order = nullptr;
     _max_index.store(-1, butil::memory_order_relaxed);
     _capacity = 0;
 }
@@ -184,6 +221,8 @@ int InputMessenger::AddHandler(const InputMessageHandler& handler) {
     if (nullptr == _handlers) {
         _handlers = new InputMessageHandler[_capacity];
         memset(_handlers, 0, sizeof(*_handlers) * _capacity);
+        _probe_order = new int[_capacity];
+        InitProtocolProbeOrder(_probe_order, _capacity);
         _non_protocol = false;
     }
     if (_non_protocol) {
@@ -225,6 +264,11 @@ int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
     if (nullptr == _handlers) {
         _handlers = new InputMessageHandler[_capacity];
         memset(_handlers, 0, sizeof(*_handlers) * _capacity);
+        // Non-protocol handlers are probed in the order they were added.
+        _probe_order = new int[_capacity];
+        for (size_t i = 0; i < _capacity; ++i) {
+            _probe_order[i] = (int)i;
+        }
         _non_protocol = true;
     }
     if (!_non_protocol) {

@@ -709,9 +709,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
         const int req_size = static_cast<int>(msg->payload.size());
         if (meta.has_attachment_size()) {
-            if (req_size < meta.attachment_size()) {
+            if (meta.attachment_size() < 0 ||
+                req_size < meta.attachment_size()) {
                 cntl->SetFailed(EREQUEST,
-                    "attachment_size=%d is larger than request_size=%d",
+                    "Invalid attachment_size=%d (request_size=%d)",
                     meta.attachment_size(), req_size);
                 break;
             }
@@ -1018,9 +1019,10 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         const int res_size = msg->payload.length();
         butil::IOBuf* res_buf_ptr = &msg->payload;
         if (meta.has_attachment_size()) {
-            if (meta.attachment_size() > res_size) {
+            if (meta.attachment_size() < 0 ||
+                meta.attachment_size() > res_size) {
                 cntl->SetFailed(
-                    ERESPONSE, "attachment_size=%d is larger than response_size=%d",
+                    ERESPONSE, "Invalid attachment_size=%d (response_size=%d)",
                     meta.attachment_size(), res_size);
                 break;
             }

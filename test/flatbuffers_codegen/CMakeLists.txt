@@ -21,9 +21,9 @@ set(CODEGEN_PROTOBUF_CONFIG ${Protobuf_FOUND})
 if(NOT Protobuf_FOUND)
     find_package(Protobuf REQUIRED)
 endif()
-set(CODEGEN_CXX_STANDARD 14)
+# FlatBuffers support requires C++17.
+set(CODEGEN_CXX_STANDARD 17)
 if(Protobuf_VERSION VERSION_GREATER 4.21)
-    set(CODEGEN_CXX_STANDARD 17)
     if(NOT CODEGEN_PROTOBUF_CONFIG)
         message(FATAL_ERROR "Protobuf 5+ needs its CMake config package for codegen tests")
     endif()
@@ -82,17 +82,20 @@ file(MAKE_DIRECTORY "${GENERATED_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/include/buti
 set(WITH_FLATBUFFERS_VAL 1)
 configure_file("${BRPC_SOURCE_DIR}/src/butil/config.h.in"
                "${CMAKE_CURRENT_BINARY_DIR}/include/butil/config.h")
+# Put the selected Protobuf before generic prefixes such as the gflags one:
+# a shared prefix like /opt/homebrew/include may hold another Protobuf.
 set(CODEGEN_INCLUDE_DIRS
     "${CMAKE_CURRENT_BINARY_DIR}/include"
     "${BRPC_SOURCE_DIR}/src"
     "${GENERATED_DIR}"
-    "${FLATBUFFERS_INCLUDE_DIR}"
-    "${CODEGEN_GFLAGS_INCLUDE_DIR}"
     ${Protobuf_INCLUDE_DIRS})
 get_target_property(CODEGEN_PROTOBUF_INCLUDE_DIRS protobuf::libprotobuf INTERFACE_INCLUDE_DIRECTORIES)
 if(CODEGEN_PROTOBUF_INCLUDE_DIRS)
     list(APPEND CODEGEN_INCLUDE_DIRS ${CODEGEN_PROTOBUF_INCLUDE_DIRS})
 endif()
+list(APPEND CODEGEN_INCLUDE_DIRS
+    "${FLATBUFFERS_INCLUDE_DIR}"
+    "${CODEGEN_GFLAGS_INCLUDE_DIR}")
 if(TARGET absl::base)
     get_target_property(CODEGEN_ABSL_INCLUDE_DIRS absl::base INTERFACE_INCLUDE_DIRECTORIES)
     if(CODEGEN_ABSL_INCLUDE_DIRS)
