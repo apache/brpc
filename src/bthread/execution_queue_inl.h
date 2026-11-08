@@ -57,7 +57,7 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
         , iterated(false) 
         , high_priority(false)
         , in_place(false) 
-        , next(UNCONNECTED)
+        , next(nullptr)
         , q(nullptr)
     {}
     ~TaskNode() {}
@@ -91,7 +91,7 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
     bool iterated;
     bool high_priority;
     bool in_place;
-    TaskNode* next;
+    butil::atomic<TaskNode*> next;
     ExecutionQueueBase* q;
     union {
         char static_task_mem[56];  // Make sizeof TaskNode exactly 128 bytes
@@ -486,7 +486,7 @@ inline bool ExecutionQueueBase::_more_tasks(
         TaskNode* old_head, TaskNode** new_tail, 
         bool has_uniterated) {
 
-    CHECK(old_head->next == nullptr);
+    CHECK(old_head->next.load(butil::memory_order_relaxed) == nullptr);
     // Try to set _head to nullptr to mark that the execute is done.
     TaskNode* new_head = old_head;
     TaskNode* desired = nullptr;
@@ -512,19 +512,20 @@ inline bool ExecutionQueueBase::_more_tasks(
     }
     TaskNode* p = new_head;
     do {
-        while (p->next == TaskNode::UNCONNECTED) {
+        TaskNode* saved_next;
+        while ((saved_next = p->next.load(butil::memory_order_acquire)) ==
+               TaskNode::UNCONNECTED) {
             // TODO(gejun): elaborate this
             sched_yield();
         }
-        TaskNode* const saved_next = p->next;
-        p->next = tail;
+        p->next.store(tail, butil::memory_order_relaxed);
         tail = p;
         p = saved_next;
         CHECK(p != nullptr);
     } while (p != old_head);
 
     // Link old list with new list.
-    old_head->next = tail;
+    old_head->next.store(tail, butil::memory_order_relaxed);
     return true;
 }
 

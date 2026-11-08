@@ -311,7 +311,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     static WriteRequest* const UNCONNECTED;
 
     butil::IOBuf data;
-    WriteRequest* next;
+    butil::atomic<WriteRequest*> next;
     bthread_id_t id_wait;
 
     void clear_and_set_control_bits(bool notify_on_success,
@@ -533,8 +533,9 @@ void Socket::ReturnFailedWriteRequest(Socket::WriteRequest* p, int error_code,
 Socket::WriteRequest* Socket::ReleaseWriteRequestsExceptLast(
     Socket::WriteRequest* req, int error_code, const std::string& error_text) {
     WriteRequest* p = req;
-    while (p->next != nullptr) {
-        WriteRequest* const saved_next = p->next;
+    while (p->next.load(butil::memory_order_relaxed) != nullptr) {
+        WriteRequest* const saved_next =
+            p->next.load(butil::memory_order_relaxed);
         ReturnFailedWriteRequest(p, error_code, error_text);
         p = saved_next;
     }
@@ -1195,7 +1196,7 @@ int Socket::Status(SocketId id, int32_t* nref) {
 bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
                              bool singular_node,
                              Socket::WriteRequest** new_tail) {
-    CHECK(nullptr == old_head->next);
+    CHECK(nullptr == old_head->next.load(butil::memory_order_relaxed));
     // Try to set _write_head to nullptr to mark that the write is done.
     WriteRequest* new_head = old_head;
     WriteRequest* desired = nullptr;
@@ -1222,23 +1223,25 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
     WriteRequest* tail = nullptr;
     WriteRequest* p = new_head;
     do {
-        while (p->next == WriteRequest::UNCONNECTED) {
+        WriteRequest* saved_next;
+        while ((saved_next = p->next.load(butil::memory_order_acquire)) ==
+               WriteRequest::UNCONNECTED) {
             // TODO(gejun): elaborate this
             sched_yield();
         }
-        WriteRequest* const saved_next = p->next;
-        p->next = tail;
+        p->next.store(tail, butil::memory_order_relaxed);
         tail = p;
         p = saved_next;
         CHECK(p != nullptr);
     } while (p != old_head);
 
     // Link old list with new list.
-    old_head->next = tail;
+    old_head->next.store(tail, butil::memory_order_relaxed);
     // Call Setup() from oldest to newest, notice that the calling sequence
     // matters for protocols using pipelined_count, this is why we don't
     // call Setup in above loop which is from newest to oldest.
-    for (WriteRequest* q = tail; q; q = q->next) {
+    for (WriteRequest* q = tail; q;
+         q = q->next.load(butil::memory_order_relaxed)) {
         q->Setup(this);
     }
     if (new_tail) {
@@ -1669,7 +1672,7 @@ int Socket::Write(butil::IOBuf* data, const WriteOptions* options_in) {
     req->data.swap(*data);
     // Set `req->next' to UNCONNECTED so that the KeepWrite thread will
     // wait until it points to a valid WriteRequest or nullptr.
-    req->next = WriteRequest::UNCONNECTED;
+    req->next.store(WriteRequest::UNCONNECTED, butil::memory_order_relaxed);
     req->id_wait = opt.id_wait;
     req->clear_and_set_control_bits(opt.notify_on_success, opt.shutdown_write);
     req->set_pipelined_count_and_user_message(
@@ -1706,7 +1709,7 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
 
     // Set `req->next' to UNCONNECTED so that the KeepWrite thread will
     // wait until it points to a valid WriteRequest or nullptr.
-    req->next = WriteRequest::UNCONNECTED;
+    req->next.store(WriteRequest::UNCONNECTED, butil::memory_order_relaxed);
     req->id_wait = opt.id_wait;
     req->clear_and_set_control_bits(opt.notify_on_success, opt.shutdown_write);
     req->set_pipelined_count_and_user_message(
@@ -1724,7 +1727,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
         // lock-free, but the duration is so short(1~2 instructions,
         // depending on compiler) that the spin rarely occurs in practice
         // (I've not seen any spin in highly contended tests).
-        req->next = prev_head;
+        req->next.store(prev_head, butil::memory_order_release);
         return 0;
     }
 
@@ -1737,7 +1740,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     int ret = 0;
 
     // We've got the right to write.
-    req->next = nullptr;
+    req->next.store(nullptr, butil::memory_order_relaxed);
 
     // Fast fail when write has been shutdown.
     if (_is_write_shutdown) {
@@ -1827,10 +1830,11 @@ void* Socket::KeepWrite(void* void_arg) {
     do {
         // req was written, skip it.
         bool need_shutdown = false;
-        if (req->next != nullptr && req->data.empty()) {
+        if (req->next.load(butil::memory_order_relaxed) != nullptr &&
+            req->data.empty()) {
             WriteRequest* const saved_req = req;
             need_shutdown = req->need_shutdown_write();
-            req = req->next;
+            req = req->next.load(butil::memory_order_relaxed);
             s->ReturnSuccessfulWriteRequest(saved_req);
         }
         if (need_shutdown) {
@@ -1851,10 +1855,11 @@ void* Socket::KeepWrite(void* void_arg) {
             s->AddOutputBytes(nw);
         }
         // Release WriteRequest until non-empty data, last request or shutdown write.
-        while (req->next != nullptr && req->data.empty()) {
+        while (req->next.load(butil::memory_order_relaxed) != nullptr &&
+               req->data.empty()) {
             WriteRequest* const saved_req = req;
             need_shutdown = req->need_shutdown_write();
-            req = req->next;
+            req = req->next.load(butil::memory_order_relaxed);
             s->ReturnSuccessfulWriteRequest(saved_req);
             if (need_shutdown) {
                 break;
@@ -1884,8 +1889,9 @@ void* Socket::KeepWrite(void* void_arg) {
             }
         }
         if (nullptr == cur_tail) {
-            for (cur_tail = req; cur_tail->next != nullptr;
-                 cur_tail = cur_tail->next);
+            for (cur_tail = req;
+                 cur_tail->next.load(butil::memory_order_relaxed) != nullptr;
+                 cur_tail = cur_tail->next.load(butil::memory_order_relaxed));
         }
         // Return when there's no more WriteRequests and req is completely
         // written.
@@ -1906,7 +1912,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
     butil::IOBuf* data_list[DATA_LIST_MAX];
     size_t ndata = 0;
     for (WriteRequest* p = req; p != nullptr && ndata < DATA_LIST_MAX;
-         p = p->next) {
+         p = p->next.load(butil::memory_order_relaxed)) {
         data_list[ndata++] = &p->data;
         if (p->need_shutdown_write()) {
             // Write WriteRequest until shutdown write.
