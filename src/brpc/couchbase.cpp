@@ -51,7 +51,6 @@ constexpr uint32_t APPLE_VBUCKET_COUNT ALLOW_UNUSED = 64;
 constexpr uint32_t DEFAULT_VBUCKET_COUNT ALLOW_UNUSED = 1024;
 constexpr int CONNECTION_ID_SIZE = 33;
 constexpr size_t RANDOM_ID_HEX_SIZE = 67;  // 33 bytes * 2 + null terminator
-
 }  // namespace
 
 // Static member definitions
@@ -128,7 +127,12 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
 
   BUTIL_RAPIDJSON_NAMESPACE::Document document;
   if (!ParseJsonWithDepthLimit(json, &document)) {
-    DEBUG_PRINT("Failed to parse JSON: " << document.GetParseError());
+    if (document.HasParseError()) {
+      DEBUG_PRINT("Failed to parse JSON: " << document.GetParseError());
+    } else {
+      DEBUG_PRINT("Rejected JSON: embedded NUL or nesting exceeds "
+                  << kMaxJsonDepth << " levels (including the root)");
+    }
     return false;
   }
 
