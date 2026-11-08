@@ -180,7 +180,7 @@ public:
         size = RAPIDJSON_ALIGN(size);
         if ((chunkHead_ == 0 || chunkHead_->size + size > chunkHead_->capacity)
             && !AddChunk(chunk_capacity_ > size ? chunk_capacity_ : size))
-            return NULL;
+            return nullptr;
 
         void *buffer = reinterpret_cast<char *>(chunkHead_) + RAPIDJSON_ALIGN(sizeof(ChunkHeader)) + chunkHead_->size;
         chunkHead_->size += size;
@@ -211,8 +211,8 @@ public:
 
         // Realloc process: allocate and copy memory, do not free original buffer.
         void* newBuffer = Malloc(newSize);
-        if (newBuffer == 0)
-            return NULL;
+        if (newBuffer == nullptr)
+            return nullptr;
         if (originalSize)
             std::memcpy(newBuffer, originalPtr, originalSize);
         return newBuffer;
@@ -229,12 +229,14 @@ private:
 
     //! Creates a new chunk.
     /*! \param capacity Capacity of the chunk in bytes.
+        \return true on success; false if the backing allocator fails,
+        leaving chunkHead_ unchanged.
     */
     bool AddChunk(size_t capacity) {
         if (!baseAllocator_)
             ownBaseAllocator_ = baseAllocator_ = RAPIDJSON_NEW(BaseAllocator());
         ChunkHeader* chunk = reinterpret_cast<ChunkHeader*>(baseAllocator_->Malloc(RAPIDJSON_ALIGN(sizeof(ChunkHeader)) + capacity));
-        if (chunk == 0)
+        if (chunk == nullptr)
             return false;
         chunk->capacity = capacity;
         chunk->size = 0;

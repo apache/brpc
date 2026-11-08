@@ -27,7 +27,7 @@ struct FailingAllocator {
     static void Free(void* ptr) { std::free(ptr); }
 };
 
-TEST(RapidJsonAllocatorTest, allocation_failure_preserves_existing_chunks) {
+TEST(RapidJsonAllocatorTest, AllocationFailurePreservesExistingChunks) {
     FailingAllocator allocator;
     BUTIL_RAPIDJSON_NAMESPACE::MemoryPoolAllocator<FailingAllocator> pool(
         32, &allocator);
@@ -36,7 +36,7 @@ TEST(RapidJsonAllocatorTest, allocation_failure_preserves_existing_chunks) {
     allocator.fail = false;
     char* saved = static_cast<char*>(pool.Malloc(8));
     ASSERT_NE(nullptr, saved);
-    memcpy(saved, "stored", 7);
+    std::memcpy(saved, "stored", 7);
     const size_t size = pool.Size();
     const size_t capacity = pool.Capacity();
     allocator.fail = true;
