@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 #include "butil/containers/mpsc_queue.h"
+#include "butil/iobuf.h"
 
 namespace {
 
@@ -226,6 +227,31 @@ TEST(MPSCQueueTest, enqueue_move_only) {
   ASSERT_TRUE(q.Dequeue(out));
   ASSERT_NE(nullptr, out);
   ASSERT_EQ(1, *out);
+}
+
+TEST(MPSCQueueTest, emplace_transfers_iobuf_ownership) {
+    char bytes[] = "user payload";
+    int released = 0;
+    butil::IOBuf input;
+    ASSERT_EQ(0, input.append_user_data(bytes, sizeof(bytes), [&](void* data) {
+        EXPECT_EQ(static_cast<void*>(bytes), data);
+        ++released;
+    }));
+    butil::MPSCQueue<butil::IOBuf, butil::ObjectPoolAllocator<butil::IOBuf>> q;
+    // 通过 Movable 直接构造节点。若先转换成 IOBuf 临时对象再拷贝入队，
+    // 临时引用仍可能在入队返回时触发用户 deleter。
+    q.Emplace(input.movable());
+    EXPECT_TRUE(input.empty());
+    EXPECT_EQ(0, released);
+
+    butil::IOBuf output;
+    ASSERT_TRUE(q.Dequeue(output));
+    EXPECT_EQ(sizeof(bytes), output.size());
+    EXPECT_EQ(static_cast<const void*>(bytes), output.fetch1());
+    EXPECT_EQ(0, released);
+    output.clear();
+    EXPECT_EQ(1, released);
+    EXPECT_FALSE(q.Dequeue(output));
 }
 
 TEST(MPSCQueueTest, mpsc_test_allocator) {

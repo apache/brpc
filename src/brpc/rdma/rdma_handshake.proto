@@ -33,7 +33,7 @@ message RdmaHello {
     // side-by-side reasoning when debugging mixed v2/v3 traffic.
     //
     // Marked `required` because the handshake cannot proceed without
-    // any of these; ParseFromArray() will reject a missing field at
+    // any of these. ParseFromArray() will reject a missing field at
     // the protobuf layer, so we don't need an extra has_xxx() check
     // in RdmaHelloValid() for presence.
     required uint32 block_size = 1;
@@ -58,16 +58,23 @@ message RdmaHello {
 
     // MTU negotiation (v3 only).
     // Optional: carries the sender's active MTU (IBV_MTU_256 .. IBV_MTU_4096).
-    // Absent on v2 peers and on older v3 peers that predate MTU negotiation;
-    // the receiver then falls back to IBV_MTU_1024.
+    // Absent on v2 peers and on older v3 peers that predate MTU negotiation.
+    // The receiver then falls back to IBV_MTU_1024.
     //
     // Semantics differ by sender role:
     //   Client hello: the locally queried active MTU of the RDMA port.
-    //   Server hello: the negotiated MTU = min(local_active_mtu, client_mtu).
+    //   Server hello: the minimum of the local and peer active MTUs.
     optional uint32 mtu = 8;
+
+    // Profile 1: shared RQ/CQs, RNR retry and request/grant IMM semantics.
+    // `rq_size` must be zero so old v3 peers reject this profile and use TCP.
+    // An absent profile retains the private-RQ incremental ACK protocol.
+    optional uint32 srq_protocol = 9;
+    // Receive-side virtual credit window, independent of physical SRQ depth.
+    optional uint32 fc_window = 10;
 }
 
-// Mirrors struct ibv_ece { uint32 vendor_id; uint32 options; uint32 comp_mask; }.
+// Mirrors ibv_ece with uint32 fields vendor_id, options and comp_mask.
 message RdmaEce {
     required uint32 vendor_id = 1;
     required uint32 options   = 2;

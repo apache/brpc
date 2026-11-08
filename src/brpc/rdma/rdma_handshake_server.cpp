@@ -115,9 +115,9 @@ static int DrainClientHelloV3(butil::IOBuf* source) {
 static int SendUnnegotiableHello(Socket* socket, int version) {
     butil::IOBuf packet;
     if (version == 2) {
-        // magic "RDMA" + msg_len(=40) + invalid hello_ver; rest stays zero.
+        // magic "RDMA" + msg_len(=40) + invalid hello_ver. Rest stays zero.
         // NOTE: msg_len is the length of the WHOLE hello INCLUDING the 4B magic
-        // (== HELLO_V2_MSG_LEN_MIN), not just the body; the client rejects any
+        // (== HELLO_V2_MSG_LEN_MIN), not just the body. The client rejects any
         // msg_len < HELLO_V2_MSG_LEN_MIN as a protocol error.
         packet.append(HELLO_MAGIC, HELLO_MAGIC_LEN);
         char reply[HELLO_V2_MSG_LEN_MIN - HELLO_MAGIC_LEN]{};
@@ -178,7 +178,7 @@ static ParseResult FallbackServerHandshake(butil::IOBuf* source, Socket* socket)
 
         const int r = version == 2 ? DrainClientHelloV2(source) : DrainClientHelloV3(source);
         if (r == 0) {
-            // Hello not complete yet; keep the buffer intact and retry later.
+            // Hello not complete yet. Keep the buffer intact and retry later.
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
         if (r < 0) {

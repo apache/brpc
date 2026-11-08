@@ -30,6 +30,8 @@
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rdma_helper.h"
+#include "brpc/rdma/srq_receive_pool.h"
+#include "brpc/rdma/srq_worker.h"
 
 
 namespace butil {
@@ -59,6 +61,8 @@ ibv_pd* (*IbvAllocPd)(ibv_context*) = nullptr;
 int (*IbvDeallocPd)(ibv_pd*) = nullptr;
 ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int) = nullptr;
 int (*IbvDestroyCq)(ibv_cq*) = nullptr;
+ibv_srq* (*IbvCreateSrq)(ibv_pd*, ibv_srq_init_attr*) = nullptr;
+int (*IbvDestroySrq)(ibv_srq*) = nullptr;
 ibv_qp* (*IbvCreateQp)(ibv_pd*, ibv_qp_init_attr*) = nullptr;
 int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask) = nullptr;
 int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_attr*) = nullptr;
@@ -88,7 +92,7 @@ static int g_max_sge = 0;
 static uint32_t g_vendor_id = 0;
 static uint8_t g_port_num = 1;
 
-static int g_comp_vector_index = 0;
+static butil::atomic<uint32_t> g_comp_vector_index(0);
 
 butil::atomic<bool> g_rdma_available(false);
 
@@ -98,7 +102,6 @@ DEFINE_string(rdma_device, "", "The name of the HCA device used "
 DEFINE_int32(rdma_port, 1, "The port number to use. For RoCE, it is always 1.");
 DEFINE_int32(rdma_gid_index, -1, "The GID index to use. -1 means using the last one.");
 
-// static const size_t SYSFS_SIZE = 4096;
 static ibv_device** g_devices = nullptr;
 static ibv_context* g_context = nullptr;
 static SocketId g_async_socket;
@@ -134,6 +137,14 @@ static void GlobalRelease() {
     // close async_fd twice.
 
     RdmaEndpoint::GlobalRelease();
+
+    SrqReceivePool::RetryDeregistrations();
+    if (SrqWorkerCount() != 0 || SrqReceivePool::RegisteredBytes() != 0) {
+        // Business-owned IOBufs and quarantined DMA references may outlive
+        // workers. Keep their PD, context and registered memory valid.
+        LOG(WARNING) << "Retaining RDMA context for outstanding SRQ references";
+        return;
+    }
 
     if (g_user_mrs_lock) {
         BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
@@ -257,89 +268,35 @@ static bool FindRdmaGid(ibv_context* context) {
 static void OnRdmaAsyncEvent(Socket* m) {
     int progress = Socket::PROGRESS_INIT;
     do {
+        // One edge may cover many events. Drain the fd before resetting the
+        // Socket event counter, otherwise QP destruction can wait forever for
+        // a LAST_WQE event left unread on an already-readable fd.
         ibv_async_event event;
-        if (IbvGetAsyncEvent(g_context, &event) != 0) {
-            break;
-        }
-        LOG(WARNING) << "rdma async event: " << IbvEventTypeStr(event.event_type);
-        switch (event.event_type) {
-        case IBV_EVENT_QP_REQ_ERR:
-        case IBV_EVENT_QP_ACCESS_ERR:
-        case IBV_EVENT_QP_FATAL: {
-            SocketId sid = (SocketId)event.element.qp->qp_context;
-            SocketUniquePtr s;
-            if (Socket::Address(sid, &s) == 0) {
-                s->SetFailed(ERDMA, "QP fatal error");
-                LOG(WARNING) << "Receive a QP fatal error on " << s->description();
+        while (IbvGetAsyncEvent(g_context, &event) == 0) {
+            if (event.event_type != IBV_EVENT_QP_LAST_WQE_REACHED &&
+                event.event_type != IBV_EVENT_SRQ_LIMIT_REACHED) {
+                LOG(WARNING) << "rdma async event: "
+                             << IbvEventTypeStr(event.event_type);
             }
-            // NOTE:
-            // We must ack the async event here, before `s' is recycled.
-            // Otherwise there will be an deadlock.
-            // Please check the use of ibv_ack_async_event at:
-            // http://www.rdmamojo.com/2012/08/16/ibv_ack_async_event/
+            if (DispatchRdmaAsyncEvent(&event)) {
+                continue;
+            }
+            switch (event.event_type) {
+            case IBV_EVENT_LID_CHANGE:
+                FindRdmaLid();
+                break;
+            case IBV_EVENT_GID_CHANGE:
+                FindRdmaGid(g_context);
+                break;
+            case IBV_EVENT_DEVICE_FATAL:
+                GlobalDisableRdma();
+                break;
+            default:
+                break;
+            }
             IbvAckAsyncEvent(&event);
-            break;
         }
-        case IBV_EVENT_CQ_ERR: {
-            LOG(WARNING) << "CQ overruns, the connection will be stopped.";
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_COMM_EST:
-        case IBV_EVENT_SQ_DRAINED:
-        case IBV_EVENT_QP_LAST_WQE_REACHED: {
-            // just ignore the event
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_SRQ_ERR:
-        case IBV_EVENT_SRQ_LIMIT_REACHED: {
-            // SRQ not used, should not happen
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_LID_CHANGE: {
-            FindRdmaLid();
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_PATH_MIG:
-        case IBV_EVENT_PATH_MIG_ERR:
-        case IBV_EVENT_PKEY_CHANGE:
-        case IBV_EVENT_SM_CHANGE:
-        case IBV_EVENT_CLIENT_REREGISTER: {
-            // for IB only, we haven't test these events carefully
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_PORT_ACTIVE:
-        case IBV_EVENT_PORT_ERR: {
-            // Port up/down will lead these two events.
-            // The port error is recoverable.
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_GID_CHANGE: {
-            FindRdmaGid(g_context);
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_DEVICE_FATAL: {
-            // because the memory resources are related to rdma device
-            // we view this error unrecoverable
-            GlobalDisableRdma();
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        default:
-            // should not happen
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        if (!m->MoreReadEvents(&progress)) {
-            break;
-        }
-    } while (true);
+    } while (m->MoreReadEvents(&progress));
 }
 
 #define LoadSymbol(handle, func, symbol)                 \
@@ -390,6 +347,8 @@ static int ReadRdmaDynamicLib() {
     LoadSymbol(g_handle_ibverbs, IbvDeallocPd, "ibv_dealloc_pd");
     LoadSymbol(g_handle_ibverbs, IbvCreateCq, "ibv_create_cq");
     LoadSymbol(g_handle_ibverbs, IbvDestroyCq, "ibv_destroy_cq");
+    LoadSymbol(g_handle_ibverbs, IbvCreateSrq, "ibv_create_srq");
+    LoadSymbol(g_handle_ibverbs, IbvDestroySrq, "ibv_destroy_srq");
     LoadSymbol(g_handle_ibverbs, IbvCreateQp, "ibv_create_qp");
     LoadSymbol(g_handle_ibverbs, IbvModifyQp, "ibv_modify_qp");
     LoadSymbol(g_handle_ibverbs, IbvQueryQp, "ibv_query_qp");
@@ -565,8 +524,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     if (RdmaEndpoint::GlobalInitialize() < 0) {
-        LOG(ERROR) << "rdma_recv_block_type incorrect "
-                   << "(valid value: default/large/huge)";
+        PLOG(ERROR) << "Fail to initialize RDMA endpoint";
         ExitWithError();
     }
 
@@ -655,15 +613,11 @@ uint32_t GetRdmaVendorId() {
 }
 
 int GetRdmaCompVector() {
-    if (!g_context) {
+    if (!g_context || g_context->num_comp_vectors <= 0) {
         return 0;
     }
-    // g_comp_vector_index is not an atomic variable. If more than
-    // one CQ is created at the same time, some CQs will share the
-    // same index. However, this vector is only used to assign an
-    // event queue for the CQ. Sharing the same event queue is not
-    // a problem.
-    return (g_comp_vector_index++) % g_context->num_comp_vectors;
+    return g_comp_vector_index.fetch_add(1, butil::memory_order_relaxed) %
+        g_context->num_comp_vectors;
 }
 
 ibv_context* GetRdmaContext() {

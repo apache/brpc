@@ -71,13 +71,14 @@ public:
     void Enqueue(typename add_const_reference<T>::type data);
     void Enqueue(T&& data);
 
+    // Construct the element in place before publishing the node.
+    template <typename... Args>
+    void Emplace(Args&&... args);
+
     // Dequeue data from the queue.
     bool Dequeue(T& data);
 
 private:
-    template <typename U>
-    void EnqueueInternal(U&& data);
-
     // Reverse the list until old_head.
     void ReverseList(MPSCQueueNode<T>* old_head);
 
@@ -97,20 +98,20 @@ MPSCQueue<T, Alloc>::~MPSCQueue() {
 
 template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::Enqueue(typename add_const_reference<T>::type data) {
-    EnqueueInternal(data);
+    Emplace(data);
 }
 
 template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::Enqueue(T&& data) {
-    EnqueueInternal(std::move(data));
+    Emplace(std::move(data));
 }
 
 template <typename T, typename Alloc>
-template <typename U>
-void MPSCQueue<T, Alloc>::EnqueueInternal(U&& data) {
-    auto node = new (_alloc.Alloc()) MPSCQueueNode<T>;
+template <typename... Args>
+void MPSCQueue<T, Alloc>::Emplace(Args&&... args) {
+    auto* node = new (_alloc.Alloc()) MPSCQueueNode<T>;
     node->next.store(MPSCQueueNode<T>::UNCONNECTED, memory_order_relaxed);
-    node->data_mem.Init(std::forward<U>(data));
+    node->data_mem.Init(std::forward<Args>(args)...);
     EnqueueImpl(node);
 }
 

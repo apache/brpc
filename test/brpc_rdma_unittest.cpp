@@ -23,12 +23,16 @@
 #if BRPC_WITH_RDMA
 #include <errno.h>
 #include <unistd.h>
+#include <algorithm>                            // std::min
 #include <functional>
+#include <sstream>
 #include <vector>
 #include <google/protobuf/descriptor.h>
+#include "butil/atomicops.h"
 #include "butil/endpoint.h"
 #include "butil/fd_guard.h"
 #include "butil/iobuf.h"
+#include "butil/memory/scope_guard.h"
 #include "butil/sys_byteorder.h"
 #include "butil/time.h"
 #include "butil/files/temp_file.h"
@@ -42,18 +46,21 @@
 #include "brpc/selective_channel.h"
 #include "brpc/rdma_transport.h"
 #include "brpc/rdma/block_pool.h"
+#include "brpc/rdma/rdma_connection.h"
 #include "brpc/rdma/rdma_endpoint.h"
-#include <algorithm>                            // std::min
-
+#include "brpc/rdma/rq_connection.h"
 #include "brpc/rdma/rdma_handshake.h"
 #include "brpc/rdma/rdma_handshake_constants.h"
 #include "brpc/rdma/rdma_handshake.pb.h"
 #include "brpc/rdma/rdma_helper.h"
-#include "echo.pb.h"
+#include "brpc/rdma/srq_worker.h"
+#include "rdma_test_helper.h"
+
 
 static const int PORT = 8713;
 
 using namespace brpc;
+using namespace brpc::rdma_test;
 
 namespace brpc {
 
@@ -63,6 +70,11 @@ DEFINE_bool(rdma_test_enable, false, "Enable tests requring rdma runtime.");
 
 namespace rdma {
 
+namespace v3_wire {
+bool ValidRdmaHello(const RdmaHello& msg);
+void TranslateHello(const RdmaHello& msg, ParsedHello* out);
+}
+
 // HELLO_V2_VERSION / IMPL_V2_VERSION come from
 // brpc/rdma/rdma_handshake_constants.h (shared wire constants).
 
@@ -71,12 +83,9 @@ DECLARE_int32(rdma_memory_pool_max_regions);
 DECLARE_int32(rdma_client_handshake_version);
 DECLARE_bool(rdma_ece);
 
-extern ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int);
-extern int (*IbvDestroyCq)(ibv_cq*);
 extern ibv_qp* (*IbvCreateQp)(ibv_pd*, ibv_qp_init_attr*);
 extern int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask);
 extern int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_attr*);
-extern int (*IbvDestroyQp)(ibv_qp*);
 extern butil::atomic<bool> g_rdma_available;
 extern bool g_skip_rdma_init;
 extern bool g_fail_resource_alloc_for_test;
@@ -90,37 +99,6 @@ extern bool ShouldPostInline(bool in_pool, size_t len,
                              uint32_t max_inline_data);
 } // namespace rdma
 } // namespace brpc
-
-static std::string g_ip = "127.0.0.1";
-static butil::EndPoint g_ep;
-
-// Number of Echo requests the server has actually served. The churn tests below
-// cut the connection while requests are in flight, and from the client side
-// "the server never saw this request" is indistinguishable from "the server
-// answered it and the reply died with the connection" -- both just look like a
-// failed RPC. Only this counter tells the two apart, and it is the server having
-// real work in flight that makes the race those tests hunt reachable at all.
-static butil::atomic<int> g_echo_served(0);
-
-// The server side runs in its own threads, so the only thing a test can rely on
-// is that an expected transition happens *eventually*. Polling with a generous
-// upper bound keeps the common case as fast as the machine allows and does not
-// turn into a flake when CI is loaded, which a fixed sleep does.
-static const int64_t WAIT_TIMEOUT_US = 5000000;
-static const int64_t WAIT_INTERVAL_US = 1000;
-
-// Returns true if `pred` turned true before the timeout expired.
-static bool WaitUntil(const std::function<bool()>& pred,
-                      int64_t timeout_us = WAIT_TIMEOUT_US) {
-    const int64_t deadline = butil::gettimeofday_us() + timeout_us;
-    while (!pred()) {
-        if (butil::gettimeofday_us() >= deadline) {
-            return false;
-        }
-        usleep((useconds_t)WAIT_INTERVAL_US);
-    }
-    return true;
-}
 
 // write(2) may transfer less than asked for, so a test that cares about the
 // whole buffer reaching the peer has to loop.
@@ -159,7 +137,7 @@ static bool ReadAll(int fd, void* buf, size_t len) {
     return true;
 }
 
-// Connect a raw socket to the test server. Note that sin_addr is taken from
+// Connect a raw socket to the test server. Note that `sin_addr` is taken from
 // `g_ep`: a zeroed one means 0.0.0.0, which only happens to reach the local
 // server on some systems. The receive timeout keeps a missing server reply from
 // hanging the test forever.
@@ -176,114 +154,6 @@ static void ConnectToServer(butil::fd_guard* sockfd) {
     tv.tv_usec = WAIT_TIMEOUT_US % 1000000;
     ASSERT_EQ(0, setsockopt(*sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)));
     ASSERT_EQ(0, connect(*sockfd, (sockaddr*)&addr, sizeof(addr)));
-}
-
-class MyEchoService : public ::test::EchoService {
-    void Echo(google::protobuf::RpcController* cntl_base,
-              const ::test::EchoRequest* req,
-              ::test::EchoResponse* res,
-              google::protobuf::Closure* done) {
-        Controller* cntl = static_cast<Controller*>(cntl_base);
-        ClosureGuard done_guard(done);
-        g_echo_served.fetch_add(1, butil::memory_order_relaxed);
-        if (req->server_fail()) {
-            cntl->SetFailed(req->server_fail(), "Server fail1");
-            cntl->SetFailed(req->server_fail(), "Server fail2");
-            return;
-        }
-        if (req->close_fd()) {
-            usleep(1);
-            LOG(INFO) << "close fd...";
-            cntl->CloseConnection("Close connection according to request");
-            return;
-        }
-        if (req->sleep_us() > 0) {
-            LOG(INFO) << "sleep " << req->sleep_us() << "us...";
-            bthread_usleep(req->sleep_us());
-        }
-        res->set_message("MyEchoService");
-        if (req->code() != 0) {
-            res->add_code_list(req->code());
-        }
-        cntl->response_attachment().append(cntl->request_attachment());
-    }
-};
-
-class RdmaTest : public ::testing::Test {
-protected:
-    RdmaTest() {
-        butil::ip_t ip;
-        EXPECT_EQ(0, butil::str2ip(g_ip.c_str(), &ip));
-        butil::EndPoint ep(ip, PORT);
-        g_ep = ep;
-        EXPECT_EQ(0, _server_list.save(butil::endpoint2str(g_ep).c_str()));
-        _naming_url = std::string("File://") + _server_list.fname();
-        _server.AddService(&_svc, SERVER_DOESNT_OWN_SERVICE);
-    }
-    ~RdmaTest() { }
-
-    virtual void SetUp() { }
-
-    virtual void TearDown() {
-        rdma::DumpMemoryPoolInfo(std::cout);
-    }
-
-protected:
-    void StartServer(bool use_rdma = true) {
-        ServerOptions options;
-        options.enabled_protocols = "baidu_std";
-        options.socket_mode = use_rdma ? SOCKET_MODE_RDMA : SOCKET_MODE_TCP;
-        options.idle_timeout_sec = 5;
-        options.max_concurrency = 0;
-        options.internal_port = -1;
-        EXPECT_EQ(0, _server.Start(PORT, &options));
-    }
-
-    void StopServer() {
-        _server.Stop(0);
-        _server.Join();
-    }
-
-    Socket* GetSocketFromServer(size_t index) {
-        std::vector<SocketId> sids;
-        _server._am->ListConnections(&sids);
-        if (index >= sids.size()) {
-            return nullptr;
-        }
-        SocketUniquePtr s;
-        if (Socket::Address(sids[index], &s) == 0) {
-            return s.get();
-        }
-        return nullptr;
-    }
-
-    // Accepting the connection happens in the server threads, so poll for it
-    // rather than sleeping. Returns nullptr if it never showed up.
-    Socket* WaitForServerSocket() {
-        Socket* s = nullptr;
-        WaitUntil([this, &s] { return (s = GetSocketFromServer(0)) != nullptr; });
-        return s;
-    }
-
-    // Ditto for the connection going away.
-    bool WaitForServerSocketGone() {
-        return WaitUntil([this] { return GetSocketFromServer(0) == nullptr; });
-    }
-
-    butil::TempFile _server_list;
-    std::string _naming_url;
-
-    Server _server;
-    MyEchoService _svc;
-};
-
-// Shorthand for the RDMA transport behind a Socket, which every endpoint state
-// check below has to go through.
-static RdmaTransport* RdmaTransportOf(Socket* s) {
-    return static_cast<RdmaTransport*>(s->_transport.get());
-}
-static RdmaTransport* RdmaTransportOf(const SocketUniquePtr& s) {
-    return RdmaTransportOf(s.get());
 }
 
 // Polls until the endpoint reaches `expected` and returns the last state seen,
@@ -326,12 +196,13 @@ static void MakeV2ClientHello(uint8_t (&data)[rdma::HELLO_V2_MSG_LEN_MIN]) {
     msg.Serialize(data + 4);
 }
 
-// Parameterized fixture used by upper-layer RPC tests that have no
-// dependency on the handshake wire format. The parameter is the
-// client-side handshake protocol version (FLAGS_rdma_client_handshake_version),
-// so every TEST_P below is automatically executed once per supported
-// version. Add a new version to INSTANTIATE_TEST_SUITE_P at the bottom
-// of this file and these RPC tests will gain coverage for free.
+// Parameterized fixture used by upper-layer RPC tests that have no dependency
+// on the handshake wire format. The parameter is the client-side handshake
+// protocol version (`FLAGS_rdma_client_handshake_version`), so every TEST_P
+// below is automatically executed once per supported version. Add a new version
+// to INSTANTIATE_TEST_SUITE_P at the bottom of this file and these RPC tests
+// will gain coverage for free. v2 always uses private RQ. SRQ is selected only
+// for v3 when `FLAGS_rdma_use_srq` is enabled.
 class RdmaRpcTest : public RdmaTest,
                     public ::testing::WithParamInterface<int> {
 protected:
@@ -340,6 +211,7 @@ protected:
         _saved_handshake_version = rdma::FLAGS_rdma_client_handshake_version;
         rdma::FLAGS_rdma_client_handshake_version = GetParam();
     }
+
     void TearDown() override {
         rdma::FLAGS_rdma_client_handshake_version = _saved_handshake_version;
         RdmaTest::TearDown();
@@ -350,6 +222,12 @@ private:
 };
 
 TEST_F(RdmaTest, stale_cq_callback_does_not_poll_new_generation) {
+    // The synthetic payload below enters the IOBuf TLS cache. In hardware
+    // runs it must already use registered memory, or later RPC tests can reuse
+    // an unregistered block allocated before RDMA initialization.
+    if (FLAGS_rdma_test_enable) {
+        rdma::GlobalRdmaInitializeOrDie();
+    }
     SocketOptions main_options;
     main_options.socket_mode = SOCKET_MODE_RDMA;
     SocketId main_sid;
@@ -361,8 +239,10 @@ TEST_F(RdmaTest, stale_cq_callback_does_not_poll_new_generation) {
         static_cast<RdmaTransport*>(main_socket->_transport.get());
     rdma::RdmaEndpoint* ep = transport->_rdma_ep;
 
+    auto connection = std::shared_ptr<rdma::RqConnection>(
+        new rdma::RqConnection(main_socket.get()));
+    ep->_connection = connection;
     SocketOptions cq_options;
-    cq_options.user = ep;
     SocketId stale_cq_sid;
     SocketId current_cq_sid;
     ASSERT_EQ(0, Socket::Create(cq_options, &stale_cq_sid));
@@ -372,15 +252,307 @@ TEST_F(RdmaTest, stale_cq_callback_does_not_poll_new_generation) {
     SocketUniquePtr current_cq_socket;
     ASSERT_EQ(0, Socket::Address(stale_cq_sid, &stale_cq_socket));
     ASSERT_EQ(0, Socket::Address(current_cq_sid, &current_cq_socket));
-    ep->_cq_sid = current_cq_sid;
+    stale_cq_socket->set_user(new rdma::RqConnection::CqContext(connection));
+    current_cq_socket->set_user(new rdma::RqConnection::CqContext(connection));
+    connection->_cq_sid = current_cq_sid;
 
-    rdma::RdmaEndpoint::PollCq(stale_cq_socket.get());
+    // A stale CQ identity must return before touching the null verbs resource.
+    rdma::RqConnection::PollCq(stale_cq_socket.get());
 
-    stale_cq_socket->_user = NULL;
-    current_cq_socket->_user = NULL;
+    // Even a matching CQ cannot deliver into a replacement connection.
+    auto replacement = std::shared_ptr<rdma::RqConnection>(
+        new rdma::RqConnection(main_socket.get()));
+    ep->_connection = replacement;
+    rdma::RqConnection::PollCq(current_cq_socket.get());
+    butil::IOBuf late_data;
+    late_data.append("late data");
+    InputMessageClosure last_msg;
+    EXPECT_EQ(-1, ep->Deliver(connection.get(), &late_data,
+                             late_data.size(), last_msg));
+    EXPECT_EQ(ENOTCONN, errno);
+    EXPECT_EQ("late data", late_data.to_string());
+    EXPECT_TRUE(ep->_input_processor.read_buf().empty());
+
+    // CQ ownership keeps the old connection alive until callbacks are gone.
+    std::weak_ptr<rdma::RqConnection> retained = connection;
+    connection->_cq_sid = INVALID_SOCKET_ID;
+    connection.reset();
+    EXPECT_FALSE(retained.expired());
     stale_cq_socket->SetFailed();
     current_cq_socket->SetFailed();
+    stale_cq_socket.reset();
+    current_cq_socket.reset();
+    EXPECT_TRUE(retained.expired());
     main_socket->SetFailed();
+}
+
+TEST_F(RdmaTest, stale_private_rq_async_error_does_not_fail_revived_socket) {
+    SocketOptions options;
+    options.socket_mode = SOCKET_MODE_RDMA;
+    SocketId sid;
+    ASSERT_EQ(0, Socket::Create(options, &sid));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(sid, &socket));
+    BUTIL_SCOPE_EXIT { socket->SetFailed(); };
+    auto* endpoint = RdmaTransportOf(socket)->GetRdmaEp();
+    auto old = std::make_shared<rdma::RqConnection>(socket.get());
+    endpoint->_connection = old;
+    std::weak_ptr<rdma::RqConnection> deferred = old;
+
+    ASSERT_EQ(0, socket->SetFailed(ERDMA, "Simulate failure before revival"));
+    endpoint->Reset();
+    socket->Revive(1);
+    auto current = std::make_shared<rdma::RqConnection>(socket.get());
+    endpoint->_connection = current;
+    ASSERT_FALSE(socket->Failed());
+
+    // Model a queued error after revival while an old CQ context still keeps
+    // its connection alive. SocketId alone and weak locking both succeed.
+    auto retained = deferred.lock();
+    ASSERT_NE(nullptr, retained);
+    retained->FailFromAsyncEvent();
+    EXPECT_FALSE(socket->Failed());
+    EXPECT_TRUE(endpoint->OwnsConnection(current.get()));
+
+    current->FailFromAsyncEvent();
+    EXPECT_TRUE(socket->Failed());
+}
+
+TEST_F(RdmaTest, failed_socket_completes_connect_callback) {
+    SocketOptions options;
+    options.socket_mode = SOCKET_MODE_RDMA;
+    SocketId sid;
+    ASSERT_EQ(0, Socket::Create(options, &sid));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(sid, &socket));
+    ASSERT_EQ(0, socket->SetFailed());
+    struct Result {
+        int calls = 0;
+        int error = 0;
+    } result;
+    rdma::RdmaConnect connector;
+    connector.StartConnect(socket.get(), [](int error, void* data) {
+        auto* result = static_cast<Result*>(data);
+        ++result->calls;
+        result->error = error;
+    }, &result);
+    EXPECT_EQ(1, result.calls);
+    EXPECT_EQ(EFAILEDSOCKET, result.error);
+}
+
+TEST_F(RdmaTest, private_rq_poller_remove_uses_registration_tag) {
+    if (rdma::FLAGS_rdma_use_polling) {
+        GTEST_SKIP() << "Requires no running private RQ pollers";
+    }
+    GFLAGS_NAMESPACE::FlagSaver flags;
+    rdma::FLAGS_rdma_poller_num = 1;
+    auto saved_groups = std::move(rdma::RqConnection::_poller_groups);
+    auto restore = butil::MakeScopeGuard([&] {
+        rdma::RqConnection::_poller_groups = std::move(saved_groups);
+    });
+    rdma::RqConnection::_poller_groups =
+        std::vector<rdma::RqConnection::PollerGroup>(2);
+    ASSERT_EQ(BTHREAD_TAG_DEFAULT, bthread_self_tag());
+    SocketOptions options;
+    SocketId sid;
+    ASSERT_EQ(0, Socket::Create(options, &sid));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(sid, &socket));
+    auto cleanup = butil::MakeScopeGuard([&] { socket->SetFailed(); });
+    auto connection = std::shared_ptr<rdma::RqConnection>(
+        new rdma::RqConnection(socket.get()));
+    connection->_cq_sid = sid;
+    connection->PollerAddCqSid();
+    EXPECT_EQ(BTHREAD_TAG_DEFAULT, connection->_poller_tag);
+    rdma::RqConnection::CqSidOp op;
+    EXPECT_TRUE(rdma::RqConnection::_poller_groups[0].pollers[0].op_queue.Dequeue(op));
+    EXPECT_EQ(rdma::RqConnection::CqSidOp::ADD, op.type);
+    // Simulate registration under tag 1 and close from the current tag 0.
+    connection->_poller_tag = 1;
+    connection->PollerRemoveCqSid();
+    EXPECT_TRUE(rdma::RqConnection::_poller_groups[1].pollers[0].op_queue.Dequeue(op));
+    EXPECT_EQ(rdma::RqConnection::CqSidOp::REMOVE, op.type);
+    EXPECT_EQ(sid, op.sid);
+    EXPECT_FALSE(rdma::RqConnection::_poller_groups[0].pollers[0].op_queue.Dequeue(op));
+    EXPECT_EQ(BTHREAD_TAG_INVALID, connection->_poller_tag);
+    connection->_cq_sid = INVALID_SOCKET_ID;
+}
+
+// Force A and B to share the connector, keep both hellos pending, then
+// finish A before B. This detects callback overwrite without dereferencing
+// a real WriteRequest after the wrong callback would have released it.
+TEST_F(RdmaTest, shared_connector_keeps_handshake_callbacks_separate) {
+    if (!rdma::g_skip_rdma_init) {
+        GTEST_SKIP();
+    }
+    GFLAGS_NAMESPACE::FlagSaver flags;
+    rdma::FLAGS_rdma_client_handshake_version = 2;
+    struct Result {
+        // Number of completed callbacks for this specific handshake.
+        butil::atomic<int> calls{0};
+        // Error published before the callback count.
+        int error = -1;
+    } results[2];
+    SocketOptions options;
+    options.socket_mode = SOCKET_MODE_RDMA;
+    options.remote_side = g_ep;
+    options.on_edge_triggered_events =
+        rdma::RdmaEndpoint::OnNewDataFromTcpAtClient;
+    SocketId parent_id;
+    ASSERT_EQ(0, Socket::Create(options, &parent_id));
+    SocketUniquePtr parent;
+    ASSERT_EQ(0, Socket::Address(parent_id, &parent));
+    SocketUniquePtr children[2];
+    butil::fd_guard peers[2];
+    int started = 0;
+    auto cleanup = butil::MakeScopeGuard([&] {
+        for (int i = 0; i < 2; ++i) {
+            if (children[i]) {
+                children[i]->SetFailed();
+            }
+            peers[i].reset(-1);
+        }
+        parent->SetFailed();
+        EXPECT_TRUE(WaitUntil([&] {
+            return results[0].calls.load() + results[1].calls.load() == started;
+        }));
+    });
+    for (int i = 0; i < 2; ++i) {
+        ASSERT_EQ(0, parent->GetShortSocket(&children[i]));
+        ASSERT_EQ(parent->_app_connect, children[i]->_app_connect);
+        int fds[2];
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        butil::fd_guard client_fd(fds[0]);
+        peers[i].reset(fds[1]);
+        timeval timeout = {5, 0};
+        ASSERT_EQ(0, setsockopt(peers[i], SOL_SOCKET, SO_RCVTIMEO,
+                               &timeout, sizeof(timeout)));
+        ASSERT_EQ(0, children[i]->ResetFileDescriptor(client_fd));
+        client_fd.release();
+        ++started;
+        children[i]->_app_connect->StartConnect(children[i].get(),
+            [](int error, void* data) {
+                auto* result = static_cast<Result*>(data);
+                result->error = error;
+                result->calls.fetch_add(1, butil::memory_order_release);
+            }, &results[i]);
+        ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT,
+                          RdmaTransportOf(children[i]));
+        uint8_t hello[rdma::HELLO_V2_MSG_LEN_MIN];
+        ASSERT_TRUE(ReadAll(peers[i], hello, sizeof(hello)));
+    }
+    EXPECT_EQ(0, results[0].calls.load());
+    EXPECT_EQ(0, results[1].calls.load());
+    for (int i = 0; i < 2; ++i) {
+        uint8_t hello[rdma::HELLO_V2_MSG_LEN_MIN];
+        MakeV2ClientHello(hello);
+        ASSERT_TRUE(WriteAll(peers[i], hello, sizeof(hello)));
+        uint32_t ack = 0;
+        ASSERT_TRUE(ReadAll(peers[i], &ack, sizeof(ack)));
+        ASSERT_EQ(rdma::HELLO_ACK_RDMA_OK, butil::NetToHost32(ack));
+        ASSERT_TRUE(WaitUntil([&] {
+            return results[0].calls.load() + results[1].calls.load() == i + 1;
+        }));
+        EXPECT_EQ(1, results[0].calls.load());
+        EXPECT_EQ(i, results[1].calls.load());
+    }
+    EXPECT_EQ(0, results[0].error);
+    EXPECT_EQ(0, results[1].error);
+}
+
+TEST_F(RdmaTest, client_handshake_cancels_failed_socket) {
+    if (!rdma::g_skip_rdma_init) {
+        GTEST_SKIP();
+    }
+    GFLAGS_NAMESPACE::FlagSaver flags;
+    rdma::FLAGS_rdma_use_srq = false;
+    for (int version : {2, 3}) {
+        rdma::FLAGS_rdma_client_handshake_version = version;
+        for (bool blocked_send : {false, true}) {
+            SCOPED_TRACE(testing::Message() << "version=" << version
+                         << " blocked_send=" << blocked_send);
+            struct Result {
+                butil::atomic<int> calls{0};
+                int error{-1};
+            } result;
+            int fds[2];
+            ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+            butil::fd_guard client_fd(fds[0]);
+            butil::fd_guard peer(fds[1]);
+            SocketOptions options;
+            options.socket_mode = SOCKET_MODE_RDMA;
+            options.remote_side = g_ep;
+            options.on_edge_triggered_events =
+                rdma::RdmaEndpoint::OnNewDataFromTcpAtClient;
+            SocketId sid;
+            ASSERT_EQ(0, Socket::Create(options, &sid));
+            SocketUniquePtr socket;
+            ASSERT_EQ(0, Socket::Address(sid, &socket));
+            bool started = false;
+            auto cleanup = butil::MakeScopeGuard([&] {
+                socket->SetFailed();
+                peer.reset(-1);
+                if (started) {
+                    EXPECT_TRUE(WaitUntil([&] {
+                        return result.calls.load(butil::memory_order_acquire) == 1;
+                    }));
+                }
+            });
+            ASSERT_EQ(0, socket->ResetFileDescriptor(client_fd));
+            client_fd.release();
+            if (blocked_send) {
+                int size = 4096;
+                ASSERT_EQ(0, setsockopt(socket->fd(), SOL_SOCKET, SO_SNDBUF,
+                                       &size, sizeof(size)));
+                std::string padding(8192, 'x');
+                while (write(socket->fd(), padding.data(), padding.size()) > 0 ||
+                       errno == EINTR) {}
+                ASSERT_EQ(EAGAIN, errno);
+            }
+            started = true;
+            socket->_app_connect->StartConnect(socket.get(),
+                [](int error, void* data) {
+                    auto* result = static_cast<Result*>(data);
+                    result->error = error;
+                    result->calls.fetch_add(1, butil::memory_order_release);
+                }, &result);
+            auto* ep = RdmaTransportOf(socket)->GetRdmaEp();
+            ASSERT_RDMA_STATE(blocked_send ? rdma::RdmaEndpoint::C_HELLO_SEND :
+                                            rdma::RdmaEndpoint::C_HELLO_WAIT,
+                              RdmaTransportOf(socket));
+            char hello[rdma::HELLO_V3_MAX_PB_SIZE];
+            ssize_t hello_size = 0;
+            size_t prefix = version == 2 ? rdma::HELLO_MAGIC_LEN :
+                rdma::HELLO_MAGIC_LEN + rdma::HELLO_V3_PB_SIZE_LEN;
+            if (!blocked_send) {
+                hello_size = recv(peer, hello, sizeof(hello), MSG_DONTWAIT);
+                ASSERT_GT(hello_size, static_cast<ssize_t>(prefix));
+                // Leave the body pending to cover both raw and IOPortal reads.
+                ASSERT_TRUE(WriteAll(peer, hello, prefix));
+                ASSERT_TRUE(WaitUntil([&] {
+                    char byte;
+                    return recv(socket->fd(), &byte, 1,
+                                MSG_PEEK | MSG_DONTWAIT) == -1 && errno == EAGAIN;
+                }));
+            }
+            ASSERT_EQ(0, socket->SetFailed(ECANCELED, "Cancel RDMA handshake"));
+            // Keep the peer open and silent. No EOF or explicit `StopConnect()`
+            // call may be needed to release the handshake task.
+            ASSERT_TRUE(WaitUntil([&] {
+                return result.calls.load(butil::memory_order_acquire) == 1;
+            }));
+            EXPECT_EQ(EFAILEDSOCKET, result.error);
+            EXPECT_EQ(rdma::RdmaEndpoint::FAILED,
+                      ep->_state.load(butil::memory_order_acquire));
+            if (!blocked_send) {
+                ASSERT_TRUE(WriteAll(peer, hello + prefix, hello_size - prefix));
+                uint32_t ack;
+                EXPECT_EQ(-1, recv(peer, &ack, sizeof(ack), MSG_DONTWAIT));
+                EXPECT_EQ(EAGAIN, errno);
+                EXPECT_EQ(1, result.calls.load(butil::memory_order_acquire));
+            }
+        }
+    }
 }
 
 TEST_F(RdmaTest, client_close_before_hello_send) {
@@ -414,7 +586,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_magic_str) {
     // nothing: it is already UNINIT before the server has read anything.
     ASSERT_TRUE(WaitForFdReadBuf(s, 4));
     // A non-RDMA magic makes ParseRdmaHandshake return TRY_OTHERS and hand the
-    // bytes to other protocols; it does not touch the endpoint state, so it
+    // bytes to other protocols. It does not touch the endpoint state, so it
     // stays UNINIT (the old blocking handshake used to set FALLBACK_TCP here).
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
@@ -459,13 +631,13 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
     s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
-    // Send the 4B magic plus a valid msg_len (=40) but no body, so the server
+    // Send the 4B magic plus a valid `msg_len` (=40) but no body, so the server
     // recognizes an RDMA v2 hello and waits for the remaining bytes. (A zero
-    // msg_len would now be rejected up-front as a protocol error.)
+    // `msg_len` would now be rejected up-front as a protocol error.)
     memcpy(data, "RDMA", 4);
     uint16_t v2_len = butil::HostToNet16(rdma::HELLO_V2_MSG_LEN_MIN);
     memcpy(data + 4, &v2_len, sizeof(v2_len));
-    ASSERT_TRUE(WriteAll(sockfd3, data, 6));  // magic + msg_len, body missing
+    ASSERT_TRUE(WriteAll(sockfd3, data, 6));  // magic + `msg_len`, body missing
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_HELLO_WAIT, RdmaTransportOf(s));
     sockfd3.reset(-1);
     ASSERT_TRUE(WaitForServerSocketGone());
@@ -526,13 +698,13 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_HELLO_WAIT, RdmaTransportOf(s));
     memcpy(data + 4, &len, 2);
     memset(data + 6, 0, 34);
-    memcpy(data + 6, &ver, 2);  // hello_ver == 1, impl_ver == 0
-    // Write the 36B base starting at data + 4 (NOT data). Pre-Step-1 this
+    memcpy(data + 6, &ver, 2);  // `hello_ver` == 1, `impl_ver` == 0
+    // Write the 36B base starting at `data + 4` (NOT `data`). Pre-Step-1 this
     // UT mistakenly wrote `data, 36` which included the leftover "RDMA"
-    // magic at data[0..4); the server parsed it as msg_len = 0x5244 and
+    // magic at `data[0..4)`. The server parsed it as `msg_len` = 0x5244 and
     // happened to fall through to NegotiationValid (which then failed on
-    // hello_ver). Now that Step 1 enforces a HELLO_V2_MSG_LEN_MAX upper bound,
-    // such an oversized msg_len would be rejected before reaching the
+    // `hello_ver`). Now that Step 1 enforces a HELLO_V2_MSG_LEN_MAX upper bound,
+    // such an oversized `msg_len` would be rejected before reaching the
     // version check, breaking the intent of this UT.
     ASSERT_TRUE(WriteAll(sockfd1, data + 4, 36));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, RdmaTransportOf(s));
@@ -553,9 +725,9 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_HELLO_WAIT, RdmaTransportOf(s));
     memcpy(data + 4, &len, 2);
     memset(data + 6, 0, 32);
-    memcpy(data + 8, &ver, 2);  // hello_ver == 0, impl_ver == 1
+    memcpy(data + 8, &ver, 2);  // `hello_ver` == 0, `impl_ver` == 1
     // See comment above on `WriteAll(sockfd1, data + 4, 36)` for why we
-    // write from data + 4 instead of data.
+    // write from `data + 4` instead of `data`.
     ASSERT_TRUE(WriteAll(sockfd2, data + 4, 36));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, RdmaTransportOf(s));
     ASSERT_EQ(RdmaTransport::RDMA_OFF, RdmaTransportOf(s)->_rdma_state);
@@ -891,8 +1063,8 @@ TEST_F(RdmaTest, server_parses_qp_stream_after_rdma_is_on) {
     qp_stream.read_buf().append("PRPC");
     InputMessageClosure last_msg;
     // The real caller stamps messages with cpuwide_time_us() and derives
-    // base_realtime from it, so feed ProcessNewMessage() the same time domain:
-    // received_us also ends up in Socket::_last_readtime_us.
+    // `base_realtime` from it, so feed ProcessNewMessage() the same time
+    // domain: `received_us` also ends up in `Socket::_last_readtime_us`.
     const uint64_t received_us = butil::cpuwide_time_us();
     const uint64_t base_realtime = butil::gettimeofday_us() - received_us;
     ASSERT_EQ(0, qp_stream.ProcessNewMessage(
@@ -1518,13 +1690,13 @@ TEST_F(RdmaTest, v2_client_hello_bytes_baseline) {
 
     // [0..4) magic
     ASSERT_EQ(0, memcmp(data, "RDMA", 4));
-    // [4..6) msg_len, big-endian uint16 == 40
+    // [4..6) `msg_len`, big-endian uint16 == 40
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN,
               (size_t)(((uint16_t)data[4] << 8) | (uint16_t)data[5]));
-    // [6..8) hello_ver, big-endian uint16 == rdma::HELLO_V2_VERSION
+    // [6..8) `hello_ver`, big-endian uint16 == rdma::HELLO_V2_VERSION
     ASSERT_EQ(rdma::HELLO_V2_VERSION,
               (uint16_t)(((uint16_t)data[6] << 8) | (uint16_t)data[7]));
-    // [8..10) impl_ver, big-endian uint16 == rdma::IMPL_V2_VERSION
+    // [8..10) `impl_ver`, big-endian uint16 == rdma::IMPL_V2_VERSION
     ASSERT_EQ(rdma::IMPL_V2_VERSION,
               (uint16_t)(((uint16_t)data[8] << 8) | (uint16_t)data[9]));
 
@@ -1586,7 +1758,7 @@ TEST_F(RdmaTest, v2_server_hello_bytes_baseline) {
     ASSERT_EQ(rdma::HELLO_V2_VERSION, reply_msg.hello_ver);
     ASSERT_EQ(rdma::IMPL_V2_VERSION,  reply_msg.impl_ver);
 
-    // Drive the server into FALLBACK_TCP via ACK flags=0 so the test ends
+    // Drive the server into FALLBACK_TCP via ACK `flags`=0 so the test ends
     // cleanly without requiring real RDMA hardware.
     uint32_t flags = butil::HostToNet32(0);
     ASSERT_EQ(sizeof(flags), write(sockfd, &flags, sizeof(flags)));
@@ -1612,7 +1784,7 @@ TEST_F(RdmaTest, v2_server_drains_tail_then_reads_ack) {
     ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
-    // Build a v2 hello with msg_len = 48 (40 base + 8B zero tail).
+    // Build a v2 hello with `msg_len` = 48 (40 base + 8B zero tail).
     rdma::v2_wire::HelloMessage msg{};
     msg.msg_len = 48;
     msg.hello_ver = rdma::HELLO_V2_VERSION;
@@ -1633,7 +1805,7 @@ TEST_F(RdmaTest, v2_server_drains_tail_then_reads_ack) {
     // ride along in the same read and this would no longer test the drain.
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, RdmaTransportOf(s));
 
-    // Send the real ACK (flags=1 = ACK_MSG_RDMA_OK).
+    // Send the real ACK (`flags`=1 = ACK_MSG_RDMA_OK).
     uint32_t flags = butil::HostToNet32(1);
     ASSERT_EQ(sizeof(flags), write(sockfd, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, RdmaTransportOf(s));
@@ -1658,8 +1830,8 @@ TEST_F(RdmaTest, v2_server_rejects_oversized_msg_len) {
     ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
-    // Build a v2 hello with msg_len = 4097 (HELLO_V2_MSG_LEN_MAX + 1).
-    // We only send the 40B base; the server must reject before reading
+    // Build a v2 hello with `msg_len` = 4097 (HELLO_V2_MSG_LEN_MAX + 1).
+    // We only send the 40B base. The server must reject before reading
     // (and definitely before attempting to drain) any "tail".
     rdma::v2_wire::HelloMessage msg{};
     msg.msg_len = 4097;
@@ -1682,7 +1854,7 @@ TEST_F(RdmaTest, v2_server_rejects_oversized_msg_len) {
     StopServer();
 }
 
-// RAII for FLAGS_rdma_client_handshake_version: lets us flip the
+// RAII for `FLAGS_rdma_client_handshake_version`: lets us flip the
 // client-side handshake version for a single test and restore it on
 // scope exit so subsequent tests stay on the v2 default.
 class HandshakeVersionFlag {
@@ -1691,6 +1863,7 @@ public:
         : _saved(rdma::FLAGS_rdma_client_handshake_version) {
         rdma::FLAGS_rdma_client_handshake_version = v;
     }
+
     ~HandshakeVersionFlag() {
         rdma::FLAGS_rdma_client_handshake_version = _saved;
     }
@@ -1698,7 +1871,7 @@ private:
     int _saved;
 };
 
-// Build a v3 wire packet from an RdmaHello: "RDM3" + pb_size_be + body.
+// Build a v3 wire packet from an RdmaHello: "RDM3" + `pb_size_be` + body.
 std::string MakeV3Packet(const rdma::RdmaHello& msg) {
     std::string body;
     EXPECT_TRUE(msg.SerializeToString(&body));
@@ -1714,10 +1887,10 @@ std::string MakeV3Packet(const rdma::RdmaHello& msg) {
 
 // Build a fully-valid RdmaHello: all 6 required fields are set, with
 // values that pass RdmaHelloV3Wire::RdmaHelloValid().
-//   - block_size = 8192 (>= MIN_BLOCK_SIZE)
-//   - sq_size / rq_size = 16 (>= MIN_QP_SIZE)
-//   - gid = exactly 16B (sizeof(ibv_gid))
-//   - qp_num = 0  (allowed because g_skip_rdma_init in UT)
+//   - `block_size` = 8192 (>= MIN_BLOCK_SIZE)
+//   - `sq_size` / `rq_size` = 16 (>= MIN_QP_SIZE)
+//   - `gid` = exactly 16B (sizeof(ibv_gid))
+//   - `qp_num` = 0  (allowed because `g_skip_rdma_init` in UT)
 rdma::RdmaHello MakeValidV3Hello() {
     rdma::RdmaHello msg;
     msg.set_block_size(8192);
@@ -1729,6 +1902,64 @@ rdma::RdmaHello MakeValidV3Hello() {
                             sizeof(gid.raw)));
     msg.set_qp_num(0);
     return msg;
+}
+
+TEST_F(RdmaTest, v3_mtu_and_srq_wire_fields_are_independent) {
+    rdma::RdmaHello msg = MakeValidV3Hello();
+    msg.set_qp_num(1);
+    std::string wire = msg.SerializeAsString();
+    // Field 8 is the upstream MTU field. A legacy v3 hello must not select SRQ.
+    wire.append("\x40\x05", 2);
+    ASSERT_TRUE(msg.ParseFromString(wire));
+    ASSERT_TRUE(rdma::v3_wire::ValidRdmaHello(msg));
+    EXPECT_EQ(static_cast<uint32_t>(IBV_MTU_4096), msg.mtu());
+    EXPECT_FALSE(msg.has_srq_protocol());
+    EXPECT_FALSE(msg.has_fc_window());
+
+    msg.set_rq_size(0);
+    wire = msg.SerializeAsString();
+    // Fields 9 and 10 select SRQ and its initial window independently of MTU.
+    wire.append("\x48\x01\x50\x20", 4);
+    ASSERT_TRUE(msg.ParseFromString(wire));
+    ASSERT_TRUE(rdma::v3_wire::ValidRdmaHello(msg));
+    rdma::ParsedHello parsed{};
+    rdma::v3_wire::TranslateHello(msg, &parsed);
+    ASSERT_TRUE(parsed.path_mtu.has_value());
+    EXPECT_EQ(static_cast<uint32_t>(IBV_MTU_4096), *parsed.path_mtu);
+    EXPECT_EQ(1u, parsed.srq_protocol);
+    EXPECT_EQ(32u, parsed.fc_window);
+    EXPECT_EQ(0u, parsed.rq_size);
+}
+
+TEST_F(RdmaTest, v3_srq_profile_requires_explicit_valid_window_and_zero_rq) {
+    rdma::RdmaHello msg = MakeValidV3Hello();
+    msg.set_qp_num(1);
+    ASSERT_TRUE(rdma::v3_wire::ValidRdmaHello(msg));
+    msg.set_srq_protocol(1);
+    msg.set_fc_window(32);
+    EXPECT_FALSE(rdma::v3_wire::ValidRdmaHello(msg));
+    msg.set_rq_size(0);
+    ASSERT_TRUE(rdma::v3_wire::ValidRdmaHello(msg));
+    rdma::ParsedHello parsed{};
+    rdma::v3_wire::TranslateHello(msg, &parsed);
+    EXPECT_EQ(1u, parsed.srq_protocol);
+    EXPECT_EQ(32u, parsed.fc_window);
+    EXPECT_EQ(0u, parsed.rq_size);
+    for (uint32_t window : {0u, 1u, 3u, 65536u, UINT32_MAX}) {
+        msg.set_fc_window(window);
+        EXPECT_FALSE(rdma::v3_wire::ValidRdmaHello(msg));
+    }
+    for (uint32_t window : {4u, 32u, 65535u}) {
+        msg.set_fc_window(window);
+        EXPECT_TRUE(rdma::v3_wire::ValidRdmaHello(msg));
+    }
+    msg.set_srq_protocol(2);
+    EXPECT_FALSE(rdma::v3_wire::ValidRdmaHello(msg));
+    msg.clear_srq_protocol();
+    msg.set_rq_size(16);
+    EXPECT_FALSE(rdma::v3_wire::ValidRdmaHello(msg));
+    msg.clear_fc_window();
+    EXPECT_TRUE(rdma::v3_wire::ValidRdmaHello(msg));
 }
 
 
@@ -1761,7 +1992,7 @@ TEST_F(RdmaTest, v3_client_hello_bytes_baseline) {
     ASSERT_EQ(4, read(acc_fd, magic, 4));
     ASSERT_EQ(0, memcmp(magic, "RDM3", 4));
 
-    // [4..8) pb_size, big-endian uint32, must be in (0, 4096]
+    // [4..8) `pb_size`, big-endian uint32, must be in (0, 4096]
     uint8_t size_buf[4];
     ASSERT_EQ(4, read(acc_fd, size_buf, 4));
     uint32_t pb_size =
@@ -1769,7 +2000,7 @@ TEST_F(RdmaTest, v3_client_hello_bytes_baseline) {
     ASSERT_GT(pb_size, 0u);
     ASSERT_LE(pb_size, 4096u);
 
-    // [8..8+pb_size) RdmaHello protobuf body.
+    // `[8..8+pb_size)` RdmaHello protobuf body.
     std::string body(pb_size, '\0');
     ASSERT_EQ((ssize_t)pb_size, read(acc_fd, &body[0], pb_size));
     rdma::RdmaHello msg;
@@ -1783,7 +2014,7 @@ TEST_F(RdmaTest, v3_client_hello_bytes_baseline) {
     ASSERT_TRUE(msg.has_lid());
     ASSERT_TRUE(msg.has_gid());
     ASSERT_TRUE(msg.has_qp_num());
-    // gid wire encoding must be exactly 16 bytes (sizeof(ibv_gid)).
+    // `gid` wire encoding must be exactly 16 bytes (sizeof(ibv_gid)).
     ASSERT_EQ(sizeof(ibv_gid), msg.gid().size());
 
     // Let the RPC time out and release resources.
@@ -1810,7 +2041,7 @@ TEST_F(RdmaTest, v3_server_hello_bytes_baseline) {
               write(sockfd, packet.data(), packet.size()));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, RdmaTransportOf(s));
 
-    // Read server's reply hello: 4B magic + 4B pb_size + body.
+    // Read server's reply hello: 4B magic + 4B `pb_size` + body.
     uint8_t reply_magic[4];
     ASSERT_EQ(4, read(sockfd, reply_magic, 4));
     ASSERT_EQ(0, memcmp(reply_magic, "RDM3", 4));
@@ -1832,7 +2063,7 @@ TEST_F(RdmaTest, v3_server_hello_bytes_baseline) {
     ASSERT_TRUE(reply.has_gid());
     ASSERT_EQ(sizeof(ibv_gid), reply.gid().size());
 
-    // Drive the server into FALLBACK_TCP via ACK flags=0 so the test ends
+    // Drive the server into FALLBACK_TCP via ACK `flags`=0 so the test ends
     // cleanly without requiring real RDMA hardware.
     uint32_t flags = butil::HostToNet32(0);
     ASSERT_EQ((ssize_t)sizeof(flags),
@@ -1858,7 +2089,7 @@ TEST_F(RdmaTest, v3_server_rejects_zero_pb_size) {
     Socket* s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
-    // "RDM3" + pb_size = 0 (4B big-endian zero).
+    // "RDM3" + `pb_size` = 0 (4B big-endian zero).
     uint8_t buf[8] = {'R', 'D', 'M', '3', 0, 0, 0, 0};
     ASSERT_EQ(8, write(sockfd, buf, 8));
     ASSERT_TRUE(WaitForServerSocketGone());
@@ -1882,7 +2113,7 @@ TEST_F(RdmaTest, v3_server_rejects_oversized_pb_size) {
 
     uint8_t buf[8];
     memcpy(buf, "RDM3", 4);
-    // pb_size just above the allowed maximum -> rejected.
+    // `pb_size` just above the allowed maximum -> rejected.
     uint32_t pb_size_be =
         butil::HostToNet32(static_cast<uint32_t>(rdma::HELLO_V3_MAX_PB_SIZE + 1));
     memcpy(buf + 4, &pb_size_be, 4);
@@ -1906,7 +2137,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_pb_bytes) {
     Socket* s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
-    // "RDM3" + pb_size = 8 + 8 bytes of 0xff (invalid protobuf body).
+    // "RDM3" + `pb_size` = 8 + 8 bytes of 0xff (invalid protobuf body).
     uint8_t buf[16];
     memcpy(buf, "RDM3", 4);
     uint32_t pb_size_be = butil::HostToNet32(8);
@@ -1937,12 +2168,12 @@ TEST_F(RdmaTest, v3_server_invalid_sq_size_falls_back) {
     std::string packet = MakeV3Packet(msg);
     ASSERT_TRUE(WriteAll(sockfd, packet.data(), packet.size()));
 
-    // Server validated the hello as invalid -> _rdma_state = RDMA_OFF,
+    // Server validated the hello as invalid -> `_rdma_state` = RDMA_OFF,
     // but still proceeds to S_ACK_WAIT (sends its own reply hello).
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, RdmaTransportOf(s));
     ASSERT_EQ(RdmaTransport::RDMA_OFF, RdmaTransportOf(s)->_rdma_state);
 
-    // Drain server's reply hello (content not asserted here; covered
+    // Drain server's reply hello (content not asserted here, covered
     // by v3_server_hello_bytes_baseline).
     uint8_t reply_hdr[8];
     ASSERT_EQ(8, read(sockfd, reply_hdr, 8));
@@ -1953,7 +2184,7 @@ TEST_F(RdmaTest, v3_server_invalid_sq_size_falls_back) {
     ASSERT_EQ((ssize_t)reply_pb_size,
               read(sockfd, &reply_body[0], reply_pb_size));
 
-    // Client ACK flags=0 -> server settles into FALLBACK_TCP.
+    // Client ACK `flags`=0 -> server settles into FALLBACK_TCP.
     uint32_t flags = butil::HostToNet32(0);
     ASSERT_EQ((ssize_t)sizeof(flags),
               write(sockfd, &flags, sizeof(flags)));
@@ -1965,12 +2196,13 @@ TEST_F(RdmaTest, v3_server_invalid_sq_size_falls_back) {
     StopServer();
 }
 
-// RAII guard to toggle FLAGS_rdma_ece for a single test and restore it.
+// RAII guard to toggle `FLAGS_rdma_ece` for a single test and restore it.
 class EceFlagGuard {
 public:
     explicit EceFlagGuard(bool v) : _saved(rdma::FLAGS_rdma_ece) {
         rdma::FLAGS_rdma_ece = v;
     }
+
     ~EceFlagGuard() {
         rdma::FLAGS_rdma_ece = _saved;
     }
@@ -1990,7 +2222,7 @@ rdma::RdmaHello MakeValidV3HelloWithEce(uint32_t vendor_id,
     return msg;
 }
 
-// Read the server's v3 reply hello (4B magic + 4B pb_size + body) and parse
+// Read the server's v3 reply hello (4B magic + 4B `pb_size` + body) and parse
 // it into `reply`. Asserts the framing along the way.
 static void ReadServerV3Reply(int fd, rdma::RdmaHello* reply) {
     uint8_t reply_hdr[8];
@@ -2003,6 +2235,47 @@ static void ReadServerV3Reply(int fd, rdma::RdmaHello* reply) {
     ASSERT_EQ((ssize_t)reply_pb_size,
               read(fd, &reply_body[0], reply_pb_size));
     ASSERT_TRUE(reply->ParseFromString(reply_body));
+}
+
+TEST_F(RdmaTest, v3_srq_profile_is_selected_only_when_enabled) {
+    if (!rdma::g_skip_rdma_init) {
+        GTEST_SKIP() << "Synthetic hello has no peer QP for a hardware handshake";
+    }
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    for (bool enabled : {false, true}) {
+        rdma::FLAGS_rdma_use_srq = enabled;
+        StartServer();
+        sockaddr_in addr = {};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(PORT);
+        butil::fd_guard fd(socket(AF_INET, SOCK_STREAM, 0));
+        ASSERT_GE(fd, 0);
+        ASSERT_EQ(0, connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
+        Socket* server_socket = WaitForServerSocket();
+        ASSERT_NE(nullptr, server_socket);
+        auto hello = MakeValidV3Hello();
+        hello.set_srq_protocol(1);
+        hello.set_rq_size(0);
+        hello.set_fc_window(32);
+        const std::string packet = MakeV3Packet(hello);
+        ASSERT_TRUE(WriteAll(fd, packet.data(), packet.size()));
+        rdma::RdmaHello reply;
+        ReadServerV3Reply(fd, &reply);
+        EXPECT_EQ(enabled ? 1u : 0u, reply.srq_protocol());
+        if (enabled) {
+            EXPECT_EQ(0u, reply.rq_size());
+            EXPECT_EQ(static_cast<uint32_t>(rdma::FLAGS_rdma_srq_window),
+                      reply.fc_window());
+        }
+        const uint32_t ack = butil::HostToNet32(enabled ? rdma::HELLO_ACK_RDMA_OK : 0);
+        ASSERT_TRUE(WriteAll(fd, &ack, sizeof(ack)));
+        const auto expected = enabled ? rdma::RdmaEndpoint::ESTABLISHED :
+                                        rdma::RdmaEndpoint::FALLBACK_TCP;
+        ASSERT_RDMA_STATE(expected, RdmaTransportOf(server_socket));
+        fd.reset(-1);
+        ASSERT_TRUE(WaitForServerSocketGone());
+        StopServer();
+    }
 }
 
 // A client hello carrying ECE must not break the server handshake: with ECE
@@ -2030,7 +2303,7 @@ TEST_F(RdmaTest, v3_server_accepts_client_hello_with_ece) {
     rdma::RdmaHello reply;
     ReadServerV3Reply(sockfd, &reply);
 
-    // ACK flags=0 -> clean FALLBACK_TCP so the test ends without hardware.
+    // ACK `flags`=0 -> clean FALLBACK_TCP so the test ends without hardware.
     uint32_t flags = butil::HostToNet32(0);
     ASSERT_EQ((ssize_t)sizeof(flags), write(sockfd, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
@@ -2075,8 +2348,9 @@ TEST_F(RdmaTest, v3_server_reply_has_no_ece_when_disabled) {
 }
 
 // When ECE is enabled but there is no negotiated result (UT skips the real QP
-// bring-up, so the server never fills _outgoing_ece), the server reply must
-// still NOT advertise ECE (FillLocalRdmaHello degrade branch #2 -> degrade-safe).
+// bring-up, so the server never fills `_outgoing_ece`), the server reply must
+// still NOT advertise ECE (FillLocalRdmaHello degrade branch #2 ->
+// degrade-safe).
 TEST_F(RdmaTest, v3_server_reply_has_no_ece_without_hw_negotiation) {
     EceFlagGuard ece_flag_guard(true);
     StartServer();
@@ -2115,6 +2389,7 @@ public:
         : _saved(rdma::g_fail_resource_alloc_for_test) {
         rdma::g_fail_resource_alloc_for_test = v;
     }
+
     ~ResourceAllocFailGuard() {
         rdma::g_fail_resource_alloc_for_test = _saved;
     }
@@ -2588,47 +2863,6 @@ static void ShutdownClientConnection(Controller& cntl) {
     }
 }
 
-// Returns the number of RPCs that succeeded. A test that severs the connection
-// cannot predict which ones make it, but the ones that do must still be right,
-// so failures are tolerated here and the caller decides how many it demands.
-static int SendEchoRpcs(Channel& channel, int rpc_num, size_t attach_size,
-                        const std::function<void(Controller&)>& disturb = nullptr,
-                        int disturb_at = 0) {
-    std::vector<Controller> cntl(rpc_num);
-    std::vector<test::EchoRequest> req(rpc_num);
-    std::vector<test::EchoResponse> res(rpc_num);
-    std::vector<butil::IOBuf> attach(rpc_num);
-    for (int i = 0; i < rpc_num; ++i) {
-        req[i].set_message("hello");
-        req[i].set_code(i + 1);
-        if (attach_size > 0) {
-            EXPECT_EQ(0, attach[i].resize(
-                attach_size, static_cast<char>('a' + i % 26)));
-            cntl[i].request_attachment().append(attach[i]);
-        }
-        ::test::EchoService::Stub(&channel).Echo(&cntl[i], &req[i], &res[i], DoNothing());
-        if (disturb && i == disturb_at) {
-            disturb(cntl[i]);
-        }
-    }
-    int succeeded = 0;
-    for (int i = 0; i < rpc_num; ++i) {
-        bthread_id_join(cntl[i].call_id());
-        if (cntl[i].Failed()) {
-            continue;
-        }
-        ++succeeded;
-        EXPECT_EQ("MyEchoService", res[i].message()) << "rpc[" << i << "]";
-        EXPECT_EQ(1, res[i].code_list_size()) << "rpc[" << i << "]";
-        if (res[i].code_list_size() == 1) {
-            EXPECT_EQ(i + 1, res[i].code_list(0)) << "rpc[" << i << "]";
-        }
-        EXPECT_EQ(attach_size, cntl[i].response_attachment().size()) << "rpc[" << i << "]";
-        EXPECT_TRUE(attach[i].equals(cntl[i].response_attachment())) << "rpc[" << i << "]";
-    }
-    return succeeded;
-}
-
 static void SendEchoRpcsInRounds(Channel& channel) {
     for (int round = 0; round < E2E_ROUND_NUM; ++round) {
         for (size_t i = 0; i < arraysize(E2E_ATTACH_SIZE); ++i) {
@@ -2655,6 +2889,50 @@ TEST_P(RdmaRpcTest, rdma_client_to_rdma_server) {
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
     ASSERT_NO_FATAL_FAILURE(SendEchoRpcsInRounds(channel));
+
+    // Verify both peers actually use the negotiated RDMA mode, including v2
+    // retaining private RQ when this test is run with `rdma_use_srq`=true.
+    SocketUniquePtr client_socket;
+    ASSERT_EQ(0, Socket::Address(channel._server_id, &client_socket));
+    Socket* server_socket = GetSocketFromServer(0);
+    ASSERT_NE(nullptr, server_socket);
+    const bool expect_srq = GetParam() == 3 && rdma::FLAGS_rdma_use_srq;
+    for (Socket* socket : {client_socket.get(), server_socket}) {
+        auto* transport = RdmaTransportOf(socket);
+        ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, transport);
+        ASSERT_EQ(RdmaTransport::RDMA_ON, transport->_rdma_state);
+        EXPECT_EQ(GetParam(), transport->_rdma_ep->_handshake_version);
+        const auto& connection = transport->_rdma_ep->_connection;
+        ASSERT_TRUE(connection);
+        ibv_qp* qp = nullptr;
+        rdma::RdmaLocalInfo info;
+        connection->GetLocalInfo(&info);
+        if (expect_srq) {
+            auto srq = std::dynamic_pointer_cast<rdma::SrqConnection>(connection);
+            ASSERT_NE(nullptr, srq);
+            qp = srq->qp();
+            EXPECT_EQ(1u, info.srq_protocol);
+            EXPECT_EQ(0u, info.rq_size);
+            EXPECT_EQ(static_cast<uint32_t>(rdma::FLAGS_rdma_srq_window),
+                      info.fc_window);
+        } else {
+            auto rq = std::dynamic_pointer_cast<rdma::RqConnection>(connection);
+            ASSERT_NE(nullptr, rq);
+            qp = rq->_resource->qp;
+            EXPECT_EQ(0u, info.srq_protocol);
+            EXPECT_GT(info.rq_size, 0u);
+            EXPECT_EQ(0u, info.fc_window);
+        }
+        ibv_qp_attr attr{};
+        ibv_qp_init_attr init{};
+        ASSERT_EQ(0, rdma::IbvQueryQp(qp, &attr, IBV_QP_PATH_MTU, &init));
+        uint32_t expected_mtu = rdma::GetRdmaActiveMtu();
+        if (GetParam() == 2) {
+            expected_mtu = std::min(expected_mtu,
+                                    static_cast<uint32_t>(IBV_MTU_1024));
+        }
+        EXPECT_EQ(expected_mtu, static_cast<uint32_t>(attr.path_mtu));
+    }
 
     StopServer();
 }
@@ -3147,8 +3425,21 @@ TEST_P(RdmaRpcTest, rdma_client_close_during_rpc_repeatedly) {
         ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
         // Warm up so the cut lands on an established RDMA connection.
         ASSERT_EQ(1, SendEchoRpcs(channel, 1, 0)) << "round=" << round;
+        const int before_round = g_echo_served.load(butil::memory_order_relaxed);
+        auto cut = [round, before_round](Controller& cntl) {
+            // Earlier rounds race freely with receive/parse. In the final
+            // round also cover a cut after the peer has processed data. CPU
+            // contention must not decide whether this case is exercised.
+            if (round == CHURN_ROUND_NUM - 1) {
+                EXPECT_TRUE(WaitUntil([before_round] {
+                    return g_echo_served.load(butil::memory_order_relaxed) >
+                        before_round;
+                }));
+            }
+            ShutdownClientConnection(cntl);
+        };
         succeeded += SendEchoRpcs(channel, CHURN_RPC_NUM, CHURN_ATTACH_SIZE,
-                                  ShutdownClientConnection,
+                                  cut,
                                   round * CHURN_RPC_NUM / CHURN_ROUND_NUM);
         ASSERT_FALSE(HasFailure()) << "round=" << round;
     }
@@ -3206,7 +3497,15 @@ TEST_P(RdmaRpcTest, verbs_error_handling) {
     wr.num_sge = 1;
     ibv_send_wr* bad = nullptr;
     auto rdma_transport = RdmaTransportOf(s);
-    ibv_post_send(rdma_transport->_rdma_ep->_resource->qp, &wr, &bad);
+    auto connection = rdma_transport->_rdma_ep->_connection;
+    if (auto srq = std::dynamic_pointer_cast<rdma::SrqConnection>(connection)) {
+        rdma::SrqConnection::PostLock lock(srq.get());
+        ibv_post_send(srq->qp(), &wr, &bad);
+    } else {
+        auto rq = std::dynamic_pointer_cast<rdma::RqConnection>(connection);
+        ASSERT_TRUE(rq);
+        ibv_post_send(rq->_resource->qp, &wr, &bad);
+    }
     bthread_id_join(cntl.call_id());
     ASSERT_EQ(ERDMA, cntl.ErrorCode());
     free(buf);
@@ -3276,8 +3575,6 @@ TEST_P(RdmaRpcTest, rdma_use_selective_channel) {
     StopServer();
 }
 
-static void MockFree(void* buf) { }
-
 TEST_P(RdmaRpcTest, send_rpcs_with_user_defined_iobuf) {
     if (!FLAGS_rdma_test_enable) {
         return;
@@ -3297,8 +3594,10 @@ TEST_P(RdmaRpcTest, send_rpcs_with_user_defined_iobuf) {
     test::EchoResponse res[RPC_NUM];
 
     butil::IOBuf attach;
-    void* data = malloc(4096);;
-    attach.append_user_data(data, 4096, nullptr);
+    void* data = malloc(4096);
+    ASSERT_NE(nullptr, data);
+    ASSERT_EQ(0u, rdma::GetLKey(data));
+    ASSERT_EQ(0, attach.append_user_data(data, 4096, nullptr));
     req[0].set_message(__FUNCTION__);
     cntl[0].request_attachment().append(attach);
     google::protobuf::Closure* done = DoNothing();
@@ -3311,17 +3610,23 @@ TEST_P(RdmaRpcTest, send_rpcs_with_user_defined_iobuf) {
 
     char* mr[2 * RPC_NUM];
     uint32_t lkey[2 * RPC_NUM];
+    auto released = std::make_shared<butil::atomic<int>>(0);
     for (size_t i = 0; i < RPC_NUM; ++i) {
-        mr[2 * i] = (char*)malloc(4096);
-        memset(mr[2 * i], i % 100, 4096);
-        lkey[2 * i] = rdma::RegisterMemoryForRdma(mr[2 * i], 4096);
-        ASSERT_TRUE(lkey[2 * i] != 0);
-        cntl[i].request_attachment().append_user_data_with_meta(mr[2 * i] + i, 4096 - i, MockFree, lkey[2 * i]);
-        mr[2 * i + 1] = (char*)malloc(4096);
-        memset(mr[2 * i + 1], i % 100, 4096);
-        lkey[2 * i + 1] = rdma::RegisterMemoryForRdma(mr[2 * i + 1], 4096);
-        ASSERT_TRUE(lkey[2 * i + 1] != 0);
-        cntl[i].request_attachment().append_user_data_with_meta(mr[2 * i + 1] + i, 4096 - i, MockFree, lkey[2 * i + 1]);
+        for (size_t part = 0; part < 2; ++part) {
+            const size_t index = 2 * i + part;
+            mr[index] = static_cast<char*>(malloc(4096));
+            ASSERT_NE(nullptr, mr[index]);
+            memset(mr[index], i % 100, 4096);
+            lkey[index] = rdma::RegisterMemoryForRdma(mr[index], 4096);
+            ASSERT_NE(0u, lkey[index]);
+            char* base = mr[index];
+            ASSERT_EQ(0, cntl[i].request_attachment().append_user_data_with_meta(
+                base + i, 4096 - i, [base, released](void*) {
+                    rdma::DeregisterMemoryForRdma(base);
+                    free(base);
+                    released->fetch_add(1, butil::memory_order_release);
+                }, lkey[index]));
+        }
         req[i].set_message(__FUNCTION__);
         google::protobuf::Closure* done = DoNothing();
         ::test::EchoService::Stub(&channel).Echo(&cntl[i], &req[i], &res[i], done);
@@ -3329,17 +3634,28 @@ TEST_P(RdmaRpcTest, send_rpcs_with_user_defined_iobuf) {
     for (size_t i = 0; i < RPC_NUM; ++i) {
         bthread_id_join(cntl[i].call_id());
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
-        rdma::DeregisterMemoryForRdma(mr[i]);
         ASSERT_EQ(2 * (4096 - i), cntl[i].response_attachment().size());
         char tmp[8192];
         cntl[i].response_attachment().copy_to(tmp, 2 * (4096 - i));
         ASSERT_EQ(0, memcmp(mr[2 * i] + i, tmp, 4096 - i));
         ASSERT_EQ(0, memcmp(mr[2 * i + 1] + i, tmp + 4096 - i, 4096 - i));
-        free(mr[2 * i]);
-        free(mr[2 * i + 1]);
+        cntl[i].request_attachment().clear();
     }
 
+    // The private-RQ implementation can retain an unsignaled tail. Close the
+    // connection before requiring every user reference and MR to be released.
+    SocketUniquePtr socket;
+    if (Socket::Address(cntl[RPC_NUM - 1]._single_server_id, &socket) == 0) {
+        socket->SetFailed();
+        socket.reset();
+    }
     StopServer();
+    EXPECT_TRUE(WaitUntil([&] {
+        return released->load(butil::memory_order_acquire) == 2 * RPC_NUM;
+    }));
+    for (char* base : mr) {
+        EXPECT_EQ(0u, rdma::GetLKey(base));
+    }
 }
 
 TEST_P(RdmaRpcTest, try_memory_pool_empty) {
@@ -3385,8 +3701,7 @@ TEST_P(RdmaRpcTest, try_memory_pool_empty) {
 // client-side handshake forced to v2 ("RDMA" magic + fixed-layout
 // HelloMessage), once with v3 ("RDM3" magic + protobuf RdmaHello).
 // The server always accepts both via magic-byte dispatch, so this
-// proves the upper-layer RPC paths behave identically under either
-// wire format.
+// covers both wire formats and SRQ negotiation when enabled.
 INSTANTIATE_TEST_SUITE_P(
     HandshakeVersion, RdmaRpcTest,
     ::testing::Values(2, 3),
@@ -3398,6 +3713,48 @@ static const uint32_t MELLANOX = 0x02c9;
 static const uint32_t INTEL = 0x8086;
 static const uint32_t ALIBABA = 0x1ded;
 static const uint32_t OTHER = 0xffffff;  // e.g. rxe
+
+TEST(RdmaMtuTest, connection_activation_applies_negotiated_mtu) {
+    auto modify_qp = rdma::IbvModifyQp;
+    BUTIL_SCOPE_EXIT {
+        rdma::IbvModifyQp = modify_qp;
+    };
+    rdma::IbvModifyQp = [](ibv_qp* qp, ibv_qp_attr* attr,
+                           ibv_qp_attr_mask mask) -> int {
+        if (attr->qp_state == IBV_QPS_RTR) {
+            EXPECT_NE(0, mask & IBV_QP_PATH_MTU);
+            *static_cast<ibv_mtu*>(qp->qp_context) = attr->path_mtu;
+        }
+        return 0;
+    };
+    uint32_t local_mtu = rdma::GetRdmaActiveMtu();
+    uint32_t legacy_mtu = std::min(local_mtu,
+                                   static_cast<uint32_t>(IBV_MTU_1024));
+    struct MtuCase {
+        bool server;
+        uint32_t advertised;
+        uint32_t expected;
+    } cases[] = {
+        {false, 0, legacy_mtu},
+        {true, 0, legacy_mtu},
+        {false, IBV_MTU_256, IBV_MTU_256},
+        {true, IBV_MTU_256, IBV_MTU_256},
+        {false, IBV_MTU_4096, IBV_MTU_4096},
+        {true, IBV_MTU_4096, local_mtu},
+    };
+    for (auto test_case : cases) {
+        rdma::ParsedHello peer{};
+        if (test_case.advertised != 0) {
+            peer.path_mtu = test_case.advertised;
+        }
+        ibv_mtu applied{};
+        ibv_qp qp{};
+        qp.qp_context = &applied;
+        EXPECT_EQ(rdma::QpActivationStage::RTS,
+                  rdma::ConnectRcQp(&qp, peer, test_case.server, 0, 0));
+        EXPECT_EQ(test_case.expected, static_cast<uint32_t>(applied));
+    }
+}
 
 TEST(RdmaInlineDataTest, inline_data_to_request) {
     // First try: the project's 236 bytes, capped at the vendor's first
@@ -3419,8 +3776,9 @@ TEST(RdmaInlineDataTest, inline_data_to_request) {
 }
 
 // Stub for IbvCreateQp: records every inline size requested, refuses a request
-// above g_stub_limit (every request if g_stub_limit < 0) with g_stub_errno, and
-// otherwise writes back g_stub_grant as the granted size (0: the request).
+// above `g_stub_limit` (every request if `g_stub_limit` < 0) with
+// `g_stub_errno`, and otherwise writes back `g_stub_grant` as the granted size
+// (0: the request).
 static std::vector<uint32_t> g_stub_requests;
 static int64_t g_stub_limit = 0;
 static int g_stub_errno = EINVAL;
@@ -3440,8 +3798,9 @@ static ibv_qp* StubCreateQp(ibv_pd*, ibv_qp_init_attr* attr) {
 }
 
 // Runs CreateQpWithInlineData() against the stub. Returns whether a QP was
-// created; *limit gets the inline limit, *err the errno left behind. Unless
-// keep_cached, forgets the inline size cached by earlier QP creations first.
+// created. `*limit` gets the inline limit, `*err` the `errno` left behind.
+// Unless `keep_cached`, forgets the inline size cached by earlier QP creations
+// first.
 static bool CreateWithStub(uint32_t vendor_id, int64_t device_limit,
                            int refuse_errno, uint32_t grant, uint32_t* limit,
                            int* err, bool keep_cached = false) {
@@ -3469,7 +3828,7 @@ TEST(RdmaInlineDataTest, create_qp_with_inline_data) {
     int err = 0;
     typedef std::vector<uint32_t> Sizes;
 
-    // Mellanox: 236 accepted on the first try; a larger grant (316) is capped
+    // Mellanox: 236 accepted on the first try. A larger grant (316) is capped
     // at 236 so that the inlined WQE fits the BlueFlame buffer.
     ASSERT_TRUE(CreateWithStub(MELLANOX, 1024, EINVAL, 316, &limit, &err));
     EXPECT_EQ(Sizes({236}), g_stub_requests);
@@ -3502,7 +3861,7 @@ TEST(RdmaInlineDataTest, create_qp_with_inline_data) {
               g_stub_requests);
     EXPECT_EQ(92u, limit);
 
-    // A failure that is not EINVAL stops at once and leaves its errno.
+    // A failure that is not EINVAL stops at once and leaves its `errno`.
     ASSERT_FALSE(CreateWithStub(OTHER, -1, ENOMEM, 0, &limit, &err));
     EXPECT_EQ(Sizes({236}), g_stub_requests);
     EXPECT_EQ(ENOMEM, err);
@@ -3521,7 +3880,7 @@ TEST(RdmaInlineDataTest, create_qp_reuses_inline_size) {
     int err = 0;
     typedef std::vector<uint32_t> Sizes;
 
-    // The first QP on an Intel device limited to 48 bytes steps down; the next
+    // The first QP on an Intel device limited to 48 bytes steps down. The next
     // asks for 48 straight away.
     ASSERT_TRUE(CreateWithStub(INTEL, 48, EINVAL, 0, &limit, &err));
     EXPECT_EQ(Sizes({216, 101, 48}), g_stub_requests);
@@ -3543,7 +3902,7 @@ TEST(RdmaInlineDataTest, create_qp_reuses_inline_size) {
     ASSERT_TRUE(CreateWithStub(INTEL, 40, EINVAL, 0, &limit, &err, true));
     EXPECT_EQ(Sizes({32}), g_stub_requests);
 
-    // Mellanox: 236 is accepted and asked for again; the grant is still capped.
+    // Mellanox: 236 is accepted and asked for again. The grant is still capped.
     ASSERT_TRUE(CreateWithStub(MELLANOX, 1024, EINVAL, 316, &limit, &err));
     ASSERT_TRUE(CreateWithStub(MELLANOX, 1024, EINVAL, 316, &limit, &err,
                                true));
