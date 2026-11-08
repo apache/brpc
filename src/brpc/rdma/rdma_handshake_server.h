@@ -37,8 +37,8 @@ struct ServerHandshakeContext : public Destroyable {
 
 // The single server-side RDMA handshake entry for policy::ParseRdmaHandshake.
 // Returns a ParseResult ready to be handed back from the protocol parser:
-//   - not an RDMA magic / handshake finished -> PARSE_ERROR_TRY_OTHERS;
-//   - an RDMA magic but not enough bytes yet  -> PARSE_ERROR_NOT_ENOUGH_DATA;
+//   - not an RDMA magic / handshake finished -> PARSE_ERROR_TRY_OTHERS.
+//   - an RDMA magic but not enough bytes yet  -> PARSE_ERROR_NOT_ENOUGH_DATA.
 //   - IO/protocol error                       -> PARSE_ERROR_ABSOLUTELY_WRONG.
 ParseResult ExecuteServerHandshake(butil::IOBuf* source, Socket* socket);
 
