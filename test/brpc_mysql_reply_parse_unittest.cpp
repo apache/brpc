@@ -813,4 +813,69 @@ TEST(MysqlReplyParseTest, RejectTruncatedBinaryTimeAndDatetime) {
     }
 }
 
+// A binary DATETIME (len 11) or TIME (len 12) value with its 4-byte
+// microseconds field appended, in little-endian order.
+std::string MakeBinaryTemporalRow(uint8_t type, uint32_t micros) {
+    std::string row;
+    row.push_back('\x00');            // binary row marker
+    row.push_back('\x00');            // NULL bitmap
+    if (type == brpc::MYSQL_FIELD_TYPE_TIME) {
+        row.push_back('\x0c');        // len 12
+        row.append(8, '\x00');        // sign, days(4), hour, min, sec
+    } else {
+        row.push_back('\x0b');        // len 11
+        row.append("\xe8\x07\x01\x01", 4);  // 2024-01-01
+        row.append(3, '\x00');        // hour, min, sec
+    }
+    for (int i = 0; i < 4; ++i) {
+        row.push_back((char)((micros >> (8 * i)) & 0xFF));
+    }
+    return row;
+}
+
+// The microseconds field is formatted two digits at a time through lookup
+// tables that only cover 0..99, so a value above 999999 must be rejected
+// rather than indexing past the end of those tables.
+TEST(MysqlReplyParseTest, RejectOutOfRangeBinaryMicroseconds) {
+    const uint8_t types[] = {brpc::MYSQL_FIELD_TYPE_DATETIME,
+                             brpc::MYSQL_FIELD_TYPE_TIME};
+    const uint32_t micros[] = {1000000, 1010000, 0xFFFFFFFF};
+    for (size_t t = 0; t < sizeof(types) / sizeof(types[0]); ++t) {
+        for (size_t m = 0; m < sizeof(micros) / sizeof(micros[0]); ++m) {
+            brpc::MysqlReply reply;
+            butil::Arena arena;
+            ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                      ParseWire(MakeBinaryResultSet(
+                                    MakeColumnDef(types[t], 0, 6),
+                                    MakeBinaryTemporalRow(types[t], micros[m])),
+                                &reply, &arena, brpc::MYSQL_PREPARED_STATEMENT))
+                << "type " << (int)types[t] << " micros " << micros[m];
+        }
+    }
+}
+
+TEST(MysqlReplyParseTest, AcceptMaxBinaryMicroseconds) {
+    const struct {
+        uint8_t type;
+        const char* expected;
+    } cases[] = {
+        {brpc::MYSQL_FIELD_TYPE_DATETIME, "2024-01-01 00:00:00.999999"},
+        {brpc::MYSQL_FIELD_TYPE_TIME, "00:00:00.999999"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        brpc::MysqlReply reply;
+        butil::Arena arena;
+        ASSERT_EQ(brpc::PARSE_OK,
+                  ParseWire(MakeBinaryResultSet(
+                                MakeColumnDef(cases[i].type, 0, 6),
+                                MakeBinaryTemporalRow(cases[i].type, 999999)),
+                            &reply, &arena, brpc::MYSQL_PREPARED_STATEMENT))
+            << "case " << i;
+        ASSERT_EQ(1u, reply.row_count());
+        ASSERT_EQ(butil::StringPiece(cases[i].expected),
+                  reply.next().field(0).string())
+            << "case " << i;
+    }
+}
+
 }  // namespace

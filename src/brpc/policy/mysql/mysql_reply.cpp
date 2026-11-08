@@ -1408,10 +1408,16 @@ ParseError MysqlReply::Field::ParseMicrosecs(butil::IOBuf& buf, uint8_t decimal,
     // only invokes this when the value length includes them); format them only
     // when the column declares 1..6 fractional digits (0 / 0x1f == no fraction).
     MY_PARSE_CHECK(parse_fixed(buf, &microsecs, 4));
+    microsecs = mysql_uint4korr((uint8_t*)&microsecs);
+    // MySQL never sends more than 999999. A larger value would split into
+    // p1/p2/p3 above 99 and index past the digits01/digits10 tables.
+    if (microsecs > 999999) {
+        LOG(ERROR) << "invalid microseconds value " << microsecs;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     if (decimal == 0 || decimal > 6) {
         return PARSE_OK;
     }
-    microsecs = mysql_uint4korr((uint8_t*)&microsecs);
     p1 = microsecs / 10000;
     microsecs -= 10000 * p1;
     p2 = microsecs / 100;
