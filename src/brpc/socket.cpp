@@ -1206,8 +1206,11 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
         // Write is obviously not complete if old_head is not fully written.
         return_when_no_more = false;
     }
-    if (_write_head.compare_exchange_strong(
-            new_head, desired, butil::memory_order_acquire)) {
+    // Release the writer's state when making the queue idle. On failure,
+    // acquire the initialization of the newly published requests.
+    if (_write_head.compare_exchange_strong(new_head, desired,
+                                            butil::memory_order_acq_rel,
+                                            butil::memory_order_acquire)) {
         // No one added new requests.
         if (new_tail) {
             *new_tail = old_head;
@@ -1718,9 +1721,9 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
 }
 
 int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
-    // Release fence makes sure the thread getting request sees *req
-    WriteRequest* const prev_head =
-        _write_head.exchange(req, butil::memory_order_release);
+    // Publish *req, and acquire the previous writer's state when taking
+    // ownership of an idle queue.
+    WriteRequest* const prev_head = _write_head.exchange(req, butil::memory_order_acq_rel);
     if (prev_head != nullptr) {
         // Someone is writing to the fd. The KeepWrite thread may spin
         // until req->next to be non-UNCONNECTED. This process is not

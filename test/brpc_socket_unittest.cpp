@@ -23,6 +23,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>  // F_GETFD
+#include <thread>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include "gperftools_helper.h"
@@ -1454,6 +1455,75 @@ TEST_F(SocketTest, multi_threaded_write) {
         ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
         close(fds[0]);
     }
+}
+
+struct SocketHandoffState {
+    unsigned next = 0;
+    unsigned mismatches = 0;
+};
+
+class HandoffMessage : public brpc::SocketMessage {
+public:
+    HandoffMessage(SocketHandoffState* state, unsigned expected)
+        : _state(state), _expected(expected) {}
+
+    butil::Status AppendAndDestroySelf(
+        butil::IOBuf*, brpc::Socket* socket) override {
+        if (socket) {
+            _state->mismatches += (_state->next != _expected);
+            ++_state->next;
+        }
+        delete this;
+        return butil::Status();
+    }
+
+private:
+    SocketHandoffState* _state;
+    unsigned _expected;
+};
+
+TEST_F(SocketTest, idle_writer_handoff) {
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    butil::fd_guard peer(fds[0]);
+    brpc::SocketOptions options;
+    options.fd = fds[1];
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+
+    SocketHandoffState state;
+    const unsigned rounds = 1000;
+    butil::atomic<unsigned> turn(0);
+    bool succeeded[2] = {true, true};
+    std::thread writers[2];
+    for (unsigned p = 0; p < 2; ++p) {
+        writers[p] = std::thread([&, p] {
+            for (unsigned i = 0; i < rounds; ++i) {
+                // This schedules successive writers without synchronizing
+                // their callback state; the write queue must publish it.
+                while (turn.load(butil::memory_order_relaxed) != p) {
+                    std::this_thread::yield();
+                }
+                // An empty message keeps the write synchronous, so each
+                // writer takes over an empty queue from the previous writer.
+                brpc::SocketMessagePtr<> message(
+                    new HandoffMessage(&state, 2 * i + p));
+                succeeded[p] &= (socket->Write(message) == 0);
+                turn.store(1 - p, butil::memory_order_relaxed);
+            }
+        });
+    }
+    for (auto& writer : writers) {
+        writer.join();
+    }
+    EXPECT_TRUE(succeeded[0]);
+    EXPECT_TRUE(succeeded[1]);
+    EXPECT_EQ(2 * rounds, state.next);
+    EXPECT_EQ(0u, state.mismatches);
+    EXPECT_EQ(nullptr, socket->_write_head.load(butil::memory_order_relaxed));
+    ASSERT_EQ(0, socket->SetFailed());
 }
 
 void* FastWriter(void* void_arg) {

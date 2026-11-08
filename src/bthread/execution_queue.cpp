@@ -77,7 +77,9 @@ void ExecutionQueueBase::start_execute(TaskNode* node) {
         // point, we think it's just fine.
         _high_priority_tasks.fetch_add(1, butil::memory_order_relaxed);
     }
-    TaskNode* const prev_head = _head.exchange(node, butil::memory_order_release);
+    // Publish the task, and acquire the previous executor's state when
+    // taking ownership of an idle queue.
+    TaskNode* prev_head = _head.exchange(node, butil::memory_order_acq_rel);
     if (prev_head != nullptr) {
         node->next.store(prev_head, butil::memory_order_release);
         return;
