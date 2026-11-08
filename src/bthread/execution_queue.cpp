@@ -66,7 +66,7 @@ inline ExecutionQueueVars* get_execq_vars() {
 }
 
 void ExecutionQueueBase::start_execute(TaskNode* node) {
-    node->next = TaskNode::UNCONNECTED;
+    node->next.store(TaskNode::UNCONNECTED, butil::memory_order_relaxed);
     node->status = TaskNode::UNEXECUTED;
     node->iterated = false;
     if (node->high_priority) {
@@ -79,12 +79,12 @@ void ExecutionQueueBase::start_execute(TaskNode* node) {
     }
     TaskNode* const prev_head = _head.exchange(node, butil::memory_order_release);
     if (prev_head != nullptr) {
-        node->next = prev_head;
+        node->next.store(prev_head, butil::memory_order_release);
         return;
     }
     // Get the right to execute the task, start a bthread to avoid deadlock
     // or stack overflow
-    node->next = nullptr;
+    node->next.store(nullptr, butil::memory_order_relaxed);
     node->q = this;
 
     ExecutionQueueVars* const vars = get_execq_vars();
@@ -149,9 +149,9 @@ void* ExecutionQueueBase::_execute_tasks(void* arg) {
     bool destroy_queue = false;
     for (;;) {
         if (head->iterated) {
-            CHECK(head->next != nullptr);
+            CHECK(head->next.load(butil::memory_order_relaxed) != nullptr);
             TaskNode* saved_head = head;
-            head = head->next;
+            head = head->next.load(butil::memory_order_relaxed);
             m->return_task_node(saved_head);
         }
         int rc = 0;
@@ -172,14 +172,16 @@ void* ExecutionQueueBase::_execute_tasks(void* arg) {
             destroy_queue = true;
         }
         // Release TaskNode until uniterated task or last task
-        while (head->next != nullptr && head->iterated) {
+        while (head->next.load(butil::memory_order_relaxed) != nullptr &&
+               head->iterated) {
             TaskNode* saved_head = head;
-            head = head->next;
+            head = head->next.load(butil::memory_order_relaxed);
             m->return_task_node(saved_head);
         }
         if (cur_tail == nullptr) {
-            for (cur_tail = head; cur_tail->next != nullptr; 
-                    cur_tail = cur_tail->next) {}
+            for (cur_tail = head;
+                 cur_tail->next.load(butil::memory_order_relaxed) != nullptr;
+                 cur_tail = cur_tail->next.load(butil::memory_order_relaxed)) {}
         }
         // break when no more tasks and head has been executed
         if (!m->_more_tasks(cur_tail, &cur_tail, !head->iterated)) {
@@ -301,7 +303,7 @@ int ExecutionQueueBase::stop() {
 
 int ExecutionQueueBase::_execute(TaskNode* head, bool high_priority, int* niterated) {
     if (head != nullptr && head->stop_task) {
-        CHECK(head->next == nullptr);
+        CHECK(head->next.load(butil::memory_order_relaxed) == nullptr);
         head->iterated = true;
         head->status = TaskNode::EXECUTED;
         TaskIteratorBase iter(nullptr, this, true, false);
@@ -431,7 +433,7 @@ void TaskIteratorBase::operator++() {
         return;
     }
     if (_cur_node->iterated) {
-        _cur_node = _cur_node->next;
+        _cur_node = _cur_node->next.load(butil::memory_order_relaxed);
     }
     if (should_break_for_high_priority_tasks()) {
         return;
@@ -447,7 +449,7 @@ void TaskIteratorBase::operator++() {
             _num_iterated += !_cur_node->iterated;
             _cur_node->iterated = true;
         }
-        _cur_node = _cur_node->next;
+        _cur_node = _cur_node->next.load(butil::memory_order_relaxed);
     }
     return;
 }
@@ -463,7 +465,7 @@ TaskIteratorBase::~TaskIteratorBase() {
         if (_head->iterated && _head->high_priority == _high_priority) {
             _head->set_executed();
         }
-        _head = _head->next;
+        _head = _head->next.load(butil::memory_order_relaxed);
     }
     if (_should_break && _cur_node != nullptr 
             && _cur_node->high_priority == _high_priority && _cur_node->iterated) {
