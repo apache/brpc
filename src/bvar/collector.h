@@ -28,6 +28,16 @@
 
 namespace bvar {
 
+namespace detail {
+// Permanently stop the process-wide collector and wait for its callbacks.
+// Pending samples are discarded without dumping.
+// Internal exit hook, not a supported user API. May be called repeatedly, but
+// never from a collector callback. Does not create or delete the singleton.
+// Owners of destructible callback dependencies must call this before teardown;
+// the collector may have been initialized before those dependencies.
+void StopCollector();
+}  // namespace detail
+
 static const size_t INVALID_SAMPLING_RANGE = 0;
 
 inline bool is_sampling_range_valid(size_t sampling_range) {
@@ -75,6 +85,7 @@ public:
     // from the timestamp updated by collecting thread(which basically means
     // the thread is not scheduled by OS in time), this sample is directly
     // destroy()-ed to avoid memory explosion.
+    // Submissions after collector shutdown are also destroy()-ed in-place.
     void submit(int64_t cpuwide_us);
     void submit() { submit(butil::cpuwide_time_us()); }
 
