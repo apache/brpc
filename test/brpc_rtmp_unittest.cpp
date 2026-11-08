@@ -901,47 +901,82 @@ TEST(RtmpTest, amf_rejects_oversized_strict_array_count) {
     EXPECT_EQ(0u, arr.size());
 }
 
-TEST(RtmpTest, amf_rejects_stray_object_end_marker) {
-    // A stray object-end marker (0x09) in a value position used to hit
-    // CHECK(false): the process aborted with -crash_on_fatal_log, and the
-    // object/array readers then continued as if the input were valid.
-    {
-        // As the value of a field in a generic object.
-        std::string req_buf;
-        AppendAMFObjectHeader(&req_buf);
-        AppendAMFShortStringBody(&req_buf, "a");
-        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
-        AppendAMFObjectEnd(&req_buf);
+TEST(RtmpTest, amf_rejects_invalid_value) {
+    // A value position must reject a stray object-end marker (0x09), any
+    // marker that AMF0 does not define (0x12 and up), and a typed object
+    // whose class name is longer than the limit.
+    ScopedAMFLimit scoped_limit(&brpc::FLAGS_amf_max_string_size, 4);
+    std::string typed_object(1, (char)brpc::AMF_MARKER_TYPED_OBJECT);
+    AppendAMFShortStringBody(&typed_object, "hello");
+    AppendAMFObjectEnd(&typed_object);
+    const std::string values[] = {
+        std::string(1, (char)brpc::AMF_MARKER_OBJECT_END),
+        std::string(1, (char)0x12),
+        std::string(1, (char)0xff),
+        typed_object,
+    };
+    for (size_t i = 0; i < arraysize(values); ++i) {
+        {
+            // As the value of a field in a generic object.
+            std::string req_buf;
+            AppendAMFObjectHeader(&req_buf);
+            AppendAMFShortStringBody(&req_buf, "a");
+            req_buf.append(values[i]);
+            AppendAMFObjectEnd(&req_buf);
 
-        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
-        brpc::AMFInputStream istream(&zc_stream);
-        brpc::AMFObject obj;
-        EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream));
-    }
-    {
-        // As an item of a strict array.
-        std::string req_buf;
-        AppendAMFStrictArrayHeader(&req_buf, 1);
-        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
+            google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+            brpc::AMFInputStream istream(&zc_stream);
+            brpc::AMFObject obj;
+            EXPECT_FALSE(brpc::ReadAMFObject(&obj, &istream)) << "i=" << i;
+        }
+        {
+            // As an item of a strict array.
+            std::string req_buf;
+            AppendAMFStrictArrayHeader(&req_buf, 1);
+            req_buf.append(values[i]);
 
-        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
-        brpc::AMFInputStream istream(&zc_stream);
-        brpc::AMFArray arr;
-        EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream));
-    }
-    {
-        // As the value of a field mapped to a protobuf message.
-        std::string req_buf;
-        AppendAMFObjectHeader(&req_buf);
-        AppendAMFShortStringBody(&req_buf, "code");
-        req_buf.push_back((char)brpc::AMF_MARKER_OBJECT_END);
-        AppendAMFObjectEnd(&req_buf);
+            google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+            brpc::AMFInputStream istream(&zc_stream);
+            brpc::AMFArray arr;
+            EXPECT_FALSE(brpc::ReadAMFArray(&arr, &istream)) << "i=" << i;
+        }
+        {
+            // As the value of a field mapped to a protobuf message.
+            std::string req_buf;
+            AppendAMFObjectHeader(&req_buf);
+            AppendAMFShortStringBody(&req_buf, "code");
+            req_buf.append(values[i]);
+            AppendAMFObjectEnd(&req_buf);
 
-        google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
-        brpc::AMFInputStream istream(&zc_stream);
-        brpc::RtmpInfo info;
-        EXPECT_FALSE(brpc::ReadAMFObject(&info, &istream));
+            google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+            brpc::AMFInputStream istream(&zc_stream);
+            brpc::RtmpInfo info;
+            EXPECT_FALSE(brpc::ReadAMFObject(&info, &istream)) << "i=" << i;
+        }
     }
+}
+
+TEST(RtmpTest, amf_skips_object_value_of_non_message_field) {
+    // {code: {level: "inner"}, description: "outer"}: code is a string.
+    std::string req_buf;
+    AppendAMFObjectHeader(&req_buf);
+    AppendAMFShortStringBody(&req_buf, "code");
+    AppendAMFObjectHeader(&req_buf);
+    AppendAMFShortStringBody(&req_buf, "level");
+    req_buf.push_back((char)brpc::AMF_MARKER_STRING);
+    AppendAMFShortStringBody(&req_buf, "inner");
+    AppendAMFObjectEnd(&req_buf);
+    AppendAMFShortStringBody(&req_buf, "description");
+    req_buf.push_back((char)brpc::AMF_MARKER_STRING);
+    AppendAMFShortStringBody(&req_buf, "outer");
+    AppendAMFObjectEnd(&req_buf);
+
+    google::protobuf::io::ArrayInputStream zc_stream(req_buf.data(), req_buf.size());
+    brpc::AMFInputStream istream(&zc_stream);
+    brpc::RtmpInfo info;
+    ASSERT_TRUE(brpc::ReadAMFObject(&info, &istream));
+    EXPECT_FALSE(info.has_level());
+    EXPECT_EQ("outer", info.description());
 }
 
 TEST(RtmpTest, amf_rejects_deep_nested_arrays) {

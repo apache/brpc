@@ -246,7 +246,7 @@ int InputMessenger::Create(const butil::EndPoint& remote_side,
     options.on_edge_triggered_events = OnNewMessages;
     options.health_check_interval_s = health_check_interval_s;
     if (FLAGS_socket_keepalive) {
-        options.keepalive_options = std::make_shared<SocketKeepaliveOptions>();
+        options.keepalive_options.emplace();
         options.keepalive_options->keepalive_idle_s
             = FLAGS_socket_keepalive_idle_s;
         options.keepalive_options->keepalive_interval_s
@@ -265,7 +265,7 @@ int InputMessenger::Create(SocketOptions options, SocketId* id) {
     // Priority: options > Gflag.
     if (options.keepalive_options || FLAGS_socket_keepalive) {
         if (!options.keepalive_options) {
-            options.keepalive_options = std::make_shared<SocketKeepaliveOptions>();
+            options.keepalive_options.emplace();
         }
         if (options.keepalive_options->keepalive_idle_s <= 0) {
             options.keepalive_options->keepalive_idle_s

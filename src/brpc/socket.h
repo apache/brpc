@@ -23,6 +23,7 @@
 #include <deque>                               // std::deque
 #include <set>                                 // std::set
 #include "butil/atomicops.h"                    // butil::atomic
+#include "butil/containers/optional.h"          // butil::optional
 #include "bthread/types.h"                      // bthread_id_t
 #include "butil/iobuf.h"                        // butil::IOBuf, IOPortal
 #include "butil/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
@@ -317,7 +318,7 @@ struct SocketOptions {
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
+    butil::optional<SocketKeepaliveOptions> keepalive_options;
     // https://github.com/apache/brpc/issues/1154
     // https://github.com/grpc/grpc/pull/16419/files
     // Only linux supports TCP_USER_TIMEOUT.
@@ -743,6 +744,9 @@ private:
     // reference on created.
     void HoldHCRelatedRef();
 
+    // Copy connection configuration for pooled and short sockets.
+    SocketOptions GetSubSocketOptions() const;
+
     static int Status(SocketId, int32_t* nref = nullptr);  // for unit-test.
 
     // Perform SSL handshake after TCP connection has been established.
@@ -957,6 +961,13 @@ private:
 
     // Saved context for parsing, reset before trying other protocols.
     butil::atomic<Destroyable*> _parsing_context;
+    // DebugSocket() describes _parsing_context outside the bthread parsing
+    // messages, which may reset or release the context at the same time.
+    // Both hold this mutex, so that the context is not destroyed while
+    // being described. Describe() runs under the mutex and must not reset
+    // the parsing context of the socket. initialize_parsing_context() does
+    // not need it: it never destroys a context set in the socket.
+    butil::Mutex _parsing_context_mutex;
 
     // The stream whose data the handlers are currently cutting.
     butil::atomic<InputMessengerProcessor::StreamType> _parsing_stream_type;
@@ -1053,8 +1064,8 @@ private:
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    // non-nullptr means that keepalive is on.
-    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+    // An engaged value means that keepalive is on.
+    butil::optional<SocketKeepaliveOptions> _keepalive_options;
 
     // Only linux supports TCP_USER_TIMEOUT.
     // When the value is greater than 0, it specifies the maximum

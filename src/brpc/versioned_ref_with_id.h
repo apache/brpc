@@ -301,7 +301,8 @@ public:
 
     // Release the additional reference which added inside `Create'
     // before so that `VersionedRefWithId' will be recycled automatically
-    // once on one is addressing it.
+    // once no one is addressing it. Unlike SetFailed(), this permanently
+    // prevents revival, even if SetFailed() already released the reference.
     int ReleaseAdditionalReference();
 
     VRefId id() const { return _this_id; }
@@ -312,14 +313,16 @@ public:
 protected:
 friend void DereferenceVersionedRefWithId<>(T* r);
 
-    // Status flag used to mark that
+    // State of the additional reference.
     enum AdditionalRefStatus {
         // 1. Additional reference has been increased;
         ADDITIONAL_REF_USING,
         // 2. Additional reference is increasing;
         ADDITIONAL_REF_REVIVING,
-        // 3. Additional reference has been decreased.
-        ADDITIONAL_REF_RECYCLED
+        // 3. SetFailed() released the reference; Revive() may add it back.
+        ADDITIONAL_REF_RELEASED_ON_FAILURE,
+        // 4. The owner has released the reference and forbidden revival.
+        ADDITIONAL_REF_RELEASED
     };
 
     AdditionalRefStatus additional_ref_status() const {
@@ -351,6 +354,8 @@ friend void DereferenceVersionedRefWithId<>(T* r);
 
 private:
     typedef butil::ResourceId<T> resource_id_t;
+
+    int ReleaseAdditionalReferenceImpl(bool permanent);
 
     // 1. When `failed_as_well=true', returns 0 on success,
     //    1 on failed object, -1 on recycled.
@@ -384,8 +389,10 @@ private:
     // decreased, or is increasing.
     // additional ref status:
     // constructor / `Create': REF_USING
-    // `SetFailed': REF_USING -> REF_RECYCLED
-    // `Revive' REF_RECYCLED -> REF_REVIVING -> REF_USING
+    // `SetFailed`: REF_USING -> REF_RELEASED_ON_FAILURE
+    // `Revive`: REF_RELEASED_ON_FAILURE -> REF_REVIVING -> REF_USING
+    // `ReleaseAdditionalReference`: REF_USING/REF_RELEASED_ON_FAILURE -> REF_RELEASED
+    // REF_RELEASED is terminal until the slot is reused by Create().
     butil::atomic<AdditionalRefStatus> _additional_ref_status;
 };
 
@@ -538,7 +545,7 @@ int VersionedRefWithId<T>::SetFailedImpl(Args&&... args) {
             CallOnFailed(static_cast<T*>(this), std::forward<Args>(args)...);
             // Deref additionally which is added at creation so that this
             // queue's reference will hit 0(recycle) when no one addresses it.
-            ReleaseAdditionalReference();
+            ReleaseAdditionalReferenceImpl(false);
             // NOTE: This object may be recycled at this point, don't
             // touch anything.
             return 0;
@@ -548,12 +555,17 @@ int VersionedRefWithId<T>::SetFailedImpl(Args&&... args) {
 
 template<typename T>
 int VersionedRefWithId<T>::ReleaseAdditionalReference() {
+    return ReleaseAdditionalReferenceImpl(true);
+}
+
+template<typename T>
+int VersionedRefWithId<T>::ReleaseAdditionalReferenceImpl(bool permanent) {
     do {
         AdditionalRefStatus expect = ADDITIONAL_REF_USING;
         if (_additional_ref_status.compare_exchange_strong(
-                expect, ADDITIONAL_REF_RECYCLED,
-                butil::memory_order_relaxed,
-                butil::memory_order_relaxed)) {
+                expect, permanent ? ADDITIONAL_REF_RELEASED 
+                                  : ADDITIONAL_REF_RELEASED_ON_FAILURE,
+                butil::memory_order_relaxed, butil::memory_order_relaxed)) {
             CallBeforeAdditionalRefReleased(static_cast<T*>(this));
             return Dereference();
         }
@@ -561,8 +573,17 @@ int VersionedRefWithId<T>::ReleaseAdditionalReference() {
         if (expect == ADDITIONAL_REF_REVIVING) {
             // sched_yield to wait until status is not REF_REVIVING.
             sched_yield();
+        } else if (permanent && expect == ADDITIONAL_REF_RELEASED_ON_FAILURE) {
+            // SetFailed() already dropped the reference, but the owner's
+            // removal must still prevent Revive() from adding it back.
+            if (_additional_ref_status.compare_exchange_strong(
+                    expect, ADDITIONAL_REF_RELEASED,
+                    butil::memory_order_relaxed,
+                    butil::memory_order_relaxed)) {
+                return -1;
+            }
         } else {
-            return -1; // REF_RECYCLED
+            return -1; // REF_RELEASED_ON_FAILURE or REF_RELEASED
         }
     } while (true);
 }
@@ -628,18 +649,24 @@ int VersionedRefWithId<T>::Dereference() {
 
 template<typename T>
 void VersionedRefWithId<T>::Revive(int32_t at_least_nref) {
+    AdditionalRefStatus expect = ADDITIONAL_REF_RELEASED_ON_FAILURE;
+    if (!_additional_ref_status.compare_exchange_strong(
+            expect, ADDITIONAL_REF_REVIVING,
+            butil::memory_order_relaxed,
+            butil::memory_order_relaxed)) {
+        CHECK_EQ(ADDITIONAL_REF_RELEASED, expect);
+        return;
+    }
     const uint32_t id_ver = VersionOfVRefId(_this_id);
     uint64_t vref = _versioned_ref.load(butil::memory_order_relaxed);
-    _additional_ref_status.store(
-        ADDITIONAL_REF_REVIVING, butil::memory_order_relaxed);
     while (true) {
         CHECK_EQ(id_ver + 1, VersionOfVRef(vref)) << "id=" << id();
 
         int32_t nref = NRefOfVRef(vref);
         if (nref < at_least_nref) {
-            // Set the status to REF_RECYCLED since no one uses this object
+            // Revival was abandoned without reacquiring the reference.
             _additional_ref_status.store(
-                ADDITIONAL_REF_RECYCLED, butil::memory_order_relaxed);
+                ADDITIONAL_REF_RELEASED_ON_FAILURE, butil::memory_order_relaxed);
             CHECK_EQ(1, nref);
             LOG(WARNING) << description() << " was abandoned during revival";
             return;

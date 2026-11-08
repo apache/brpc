@@ -16,6 +16,8 @@
 // under the License.
 
 #include <memory>
+#include <atomic>
+#include <thread>
 #include <gtest/gtest.h>
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -419,3 +421,175 @@ TEST_F(ObjectPoolTest, verify_get) {
     clear_objects<int>();
 }
 } // namespace
+
+namespace {
+std::atomic<int> idle_objects_alive(0);
+size_t idle_chunk_size = 4;
+struct IdleObject {
+    IdleObject() : in_use(false), processed(false) { ++idle_objects_alive; }
+    ~IdleObject() { --idle_objects_alive; }
+    std::atomic<bool> in_use;
+    bool processed;
+};
+}
+
+namespace butil {
+template <> struct ObjectPoolBlockMaxItem<IdleObject> {
+    static const size_t value = 4;
+};
+template <> struct ObjectPoolFreeChunkMaxItem<IdleObject> {
+    static size_t value() { return idle_chunk_size; }
+};
+}
+
+namespace {
+typedef butil::ObjectPool<IdleObject> IdlePool;
+
+class ObjectPoolIdleTest : public ::testing::Test {
+protected:
+    void TearDown() override {
+        butil::clear_objects<IdleObject>();
+        EXPECT_EQ(0, idle_objects_alive.load());
+        idle_chunk_size = 4;
+    }
+    void fill(size_t n) {
+        std::vector<IdleObject*> objects;
+        for (size_t i = 0; i < n; ++i) {
+            objects.push_back(butil::get_object<IdleObject>());
+        }
+        for (IdleObject* obj : objects) {
+            ASSERT_EQ(0, butil::return_object(obj));
+        }
+    }
+    void check_count() {
+        IdlePool* pool = IdlePool::singleton();
+        BAIDU_SCOPED_LOCK(pool->_free_chunks_mutex);
+        EXPECT_EQ(pool->_free_chunks.size() + pool->_cold_chunks.size(),
+                  pool->_nchunks.load(butil::memory_order_relaxed));
+    }
+};
+
+TEST_F(ObjectPoolIdleTest, age_budget_and_tls) {
+    fill(13);  // Three global chunks and one TLS object.
+    IdlePool* pool = IdlePool::singleton();
+    size_t calls = 0;
+    auto process = [&calls](IdleObject* obj) noexcept {
+        EXPECT_FALSE(obj->in_use.load());
+        EXPECT_FALSE(obj->processed);
+        obj->processed = true;
+        ++calls;
+    };
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(INT64_MAX, 64, process));
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(0, 0, process));
+    {
+        BAIDU_SCOPED_LOCK(pool->_free_chunks_mutex);
+        ASSERT_EQ(3u, pool->_free_chunks.size());
+        EXPECT_LE(pool->_free_chunks[0]->push_us, pool->_free_chunks[1]->push_us);
+        EXPECT_LE(pool->_free_chunks[1]->push_us, pool->_free_chunks[2]->push_us);
+        pool->_free_chunks[0]->push_us -= 2000000;
+    }
+    EXPECT_EQ(4u, butil::process_idle_objects<IdleObject>(1000000, 1, process));
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(1000000, 64, process));
+    // Whole chunks may overshoot the budget by fewer than FREE_CHUNK_NITEM.
+    EXPECT_EQ(8u, butil::process_idle_objects<IdleObject>(0, 5, process));
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(0, 64, process));
+    EXPECT_EQ(12u, calls);
+    IdleObject* local = butil::get_object<IdleObject>();
+    EXPECT_FALSE(local->processed);
+    butil::return_object(local);
+    check_count();
+    // TearDown drains both global lists and destroys every object exactly once.
+}
+
+TEST_F(ObjectPoolIdleTest, prefer_unprocessed_and_reuse_without_construction) {
+    fill(13);
+    auto process = [](IdleObject* obj) noexcept { obj->processed = true; };
+    EXPECT_EQ(12u, butil::process_idle_objects<IdleObject>(0, 64, process));
+    std::vector<IdleObject*> held;
+    for (int i = 0; i < 5; ++i) {
+        held.push_back(butil::get_object<IdleObject>());
+        held.back()->processed = false;
+    }
+    for (IdleObject* obj : held) { butil::return_object(obj); }
+    held.clear();
+    // The five returned objects (TLS + global) precede the eight processed ones.
+    for (int i = 0; i < 13; ++i) {
+        IdleObject* obj = butil::get_object<IdleObject>();
+        EXPECT_EQ(i >= 5, obj->processed);
+        held.push_back(obj);
+    }
+    EXPECT_EQ(13, idle_objects_alive.load());
+    for (IdleObject* obj : held) { butil::return_object(obj); }
+    check_count();
+}
+
+TEST_F(ObjectPoolIdleTest, zero_cache_does_not_publish_empty_chunks) {
+    idle_chunk_size = 0;
+    fill(9);
+    auto process = [](IdleObject*) noexcept {};
+    EXPECT_EQ(8u, butil::process_idle_objects<IdleObject>(0, 64, process));
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(0, 64, process));
+    check_count();
+}
+
+TEST_F(ObjectPoolIdleTest, honors_item_budget_across_many_chunks) {
+    idle_chunk_size = 1;
+    fill(301);  // 300 global chunks and one TLS object.
+    size_t calls = 0;
+    auto process = [&calls](IdleObject* obj) noexcept {
+        EXPECT_FALSE(obj->processed);
+        obj->processed = true;
+        ++calls;
+    };
+    EXPECT_EQ(200u, butil::process_idle_objects<IdleObject>(0, 200, process));
+    EXPECT_EQ(200u, calls);
+    check_count();
+    EXPECT_EQ(100u, butil::process_idle_objects<IdleObject>(0, SIZE_MAX, process));
+    EXPECT_EQ(300u, calls);
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(0, SIZE_MAX, process));
+    check_count();
+}
+
+TEST_F(ObjectPoolIdleTest, concurrent_borrow_return_and_process) {
+    fill(1024);
+    std::atomic<bool> stop(false);
+    std::atomic<size_t> calls(0);
+    auto process = [&calls](IdleObject* obj) noexcept {
+        EXPECT_FALSE(obj->in_use.exchange(true));
+        obj->processed = true;
+        EXPECT_TRUE(obj->in_use.exchange(false));
+        ++calls;
+    };
+    std::thread processor([&] {
+        // Run at least once: the workers may finish before this is scheduled.
+        do {
+            butil::process_idle_objects<IdleObject>(0, 32, process);
+            check_count();
+            std::this_thread::yield();
+        } while (!stop.load());
+    });
+    std::vector<std::thread> workers;
+    for (int i = 0; i < 4; ++i) {
+        workers.emplace_back([] {
+            for (int j = 0; j < 1000; ++j) {
+                IdleObject* held[16];
+                for (IdleObject*& obj : held) {
+                    obj = butil::get_object<IdleObject>();
+                    EXPECT_FALSE(obj->in_use.exchange(true));
+                    obj->processed = false;
+                }
+                for (IdleObject* obj : held) {
+                    EXPECT_TRUE(obj->in_use.exchange(false));
+                    butil::return_object(obj);
+                }
+            }
+        });
+    }
+    for (std::thread& worker : workers) { worker.join(); }
+    stop = true;
+    processor.join();
+    EXPECT_GT(calls.load(), 0u);
+    EXPECT_EQ(1024, idle_objects_alive.load());
+    check_count();
+}
+}  // namespace

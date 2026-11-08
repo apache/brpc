@@ -38,6 +38,7 @@
 #include "brpc/policy/most_common_message.h"
 #include "brpc/policy/public_pbrpc_protocol.h"
 #include "brpc/policy/streaming_rpc_protocol.h"
+#include "brpc/policy/dynpart_load_balancer.h"
 #include "brpc/channel.h"
 #include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/parallel_channel.h"
@@ -2238,6 +2239,57 @@ protected:
         StopAndJoin();
     }
 
+    void TestBackupRequestWithoutRetryBudget(bool single_server, bool async,
+                                            int timeout_ms,
+                                            bool consume_retry_first) {
+        ASSERT_EQ(0, StartAccept(_ep));
+        brpc::Channel channel;
+        SetUpChannel(&channel, single_server, false);
+
+        // Establish the connection before testing backup/retry ordering.
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(__FUNCTION__);
+        brpc::Controller warmup;
+        warmup.set_timeout_ms(1000);
+        CallMethod(&channel, &warmup, &req, &res, async);
+        ASSERT_FALSE(warmup.Failed()) << warmup.ErrorText();
+
+        auto attempts = std::make_shared<butil::atomic<int>>(0);
+        _svc.SetMockFunc([attempts, consume_retry_first](
+                google::protobuf::RpcController* controller,
+                const test::EchoRequest*, test::EchoResponse*,
+                google::protobuf::Closure*) {
+            if (attempts->fetch_add(1, butil::memory_order_relaxed) == 0 &&
+                consume_retry_first) {
+                static_cast<brpc::Controller*>(controller)->SetFailed(
+                    brpc::EOVERCROWDED, "Consume the only retry before backup");
+                return;
+            }
+            bthread_usleep(100000);
+        });
+
+        brpc::Controller cntl;
+        cntl.set_max_retry(consume_retry_first ? 1 : 0);
+        cntl.set_backup_request_ms(20);
+        cntl.set_timeout_ms(timeout_ms);
+        CallMethod(&channel, &cntl, &req, &res, async);
+        if (timeout_ms < 0 || timeout_ms > 100) {
+            EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+            EXPECT_EQ("received " + req.message(), res.message());
+        } else {
+            EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
+        }
+        EXPECT_FALSE(cntl.has_backup_request());
+        EXPECT_EQ(consume_retry_first ? 1 : 0, cntl.retried_count());
+        // Also finish delayed server work when the client has timed out.
+        bthread_usleep(150000);
+        EXPECT_EQ(consume_retry_first ? 2 : 1,
+                  attempts->load(butil::memory_order_relaxed));
+        StopAndJoin();
+        _svc.SetMockFunc({});
+    }
+
     class BackupRequestPolicyImpl : public brpc::BackupRequestPolicy {
     public:
         int32_t GetBackupRequestMs(const brpc::Controller*) const override {
@@ -2576,6 +2628,25 @@ TEST_F(ChannelTest, init_using_unknown_naming_service) {
     ASSERT_EQ(-1, channel.Init("unknown://unknown", "unknown", nullptr));
 }
 
+TEST_F(ChannelTest, selective_channel_invalid_load_balancer) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+#if !BRPC_WITH_GLOG
+    // Invalid configuration must return an error even when fatal logs abort.
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+                     "crash_on_fatal_log", "true").empty());
+#endif
+    const char* invalid_options[] = {
+        "", "unknown", "rr:invalid=1", "random:invalid=1"
+    };
+    for (const char* option : invalid_options) {
+        SCOPED_TRACE(option);
+        brpc::SelectiveChannel channel;
+        EXPECT_EQ(-1, channel.Init(option, nullptr));
+        // A failed initialization must leave the channel usable for retry.
+        EXPECT_EQ(0, channel.Init("rr", nullptr));
+    }
+}
+
 TEST_F(ChannelTest, init_using_unexist_fns) {
     brpc::Channel channel;
     ASSERT_EQ(-1, channel.Init("fiLe://no_such_file", "rr", nullptr));
@@ -2838,6 +2909,26 @@ TEST_F(ChannelTest, uninitialized_selective_channel) {
     ::test::EchoService::Stub(&channel).Echo(&async_cntl, &req, &res, done);
     EXPECT_TRUE(done_called);
     EXPECT_EQ(EINVAL, async_cntl.ErrorCode()) << async_cntl.ErrorText();
+}
+
+TEST_F(ChannelTest, dynpart_load_balancer_supports_more_than_eight_candidates) {
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+
+    brpc::policy::DynPartLoadBalancer lb;
+    for (int i = 0; i < 9; ++i) {
+        brpc::SelectiveChannel::ChannelHandle handle;
+        ASSERT_EQ(0, channel.AddChannel(
+                         new DeferredSelectiveChannel(&calls), &handle));
+        ASSERT_TRUE(lb.AddServer(brpc::ServerId(handle.id, handle.tag)));
+    }
+
+    brpc::SocketUniquePtr ptr;
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, nullptr };
+    brpc::LoadBalancer::SelectOut out(&ptr);
+    ASSERT_EQ(0, lb.SelectServer(in, &out));
+    ASSERT_NE(nullptr, ptr.get());
 }
 
 TEST_F(ChannelTest, empty_selective_channel) {
@@ -3391,6 +3482,25 @@ TEST_F(ChannelTest, backup_request_policy) {
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <= 1; ++k) { // Flag ShortConnection
                 TestBackupRequestPolicy(i, j, k);
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, backup_request_without_retry_budget) {
+    const int timeouts_ms[] = {1000, 60, -1};
+    for (bool single_server : {false, true}) {
+        for (bool async : {false, true}) {
+            for (int timeout_ms : timeouts_ms) {
+                for (bool consume_retry_first : {false, true}) {
+                    SCOPED_TRACE(testing::Message()
+                        << "single_server=" << single_server
+                        << " async=" << async
+                        << " timeout_ms=" << timeout_ms
+                        << " consume_retry_first=" << consume_retry_first);
+                    TestBackupRequestWithoutRetryBudget(
+                        single_server, async, timeout_ms, consume_retry_first);
+                }
             }
         }
     }
@@ -3976,6 +4086,31 @@ public:
     ~CountingSubChannel() override { --s_alive; }
 };
 int CountingSubChannel::s_alive = 0;
+
+TEST_F(ChannelTest, selective_channel_removal_prevents_revival) {
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+    brpc::SelectiveChannel::ChannelHandle handle;
+    ASSERT_EQ(0, channel.AddChannel(new CountingSubChannel, &handle));
+    ASSERT_EQ(1, CountingSubChannel::s_alive);
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(handle.id, &ptr));
+
+    // Keep the HC reference but disable automatic scheduling: the retained
+    // pointer below simulates the health check task resuming after removal.
+    ptr->_is_hc_related_ref_held = false;
+    EXPECT_EQ(0, ptr->SetFailed());
+    ptr->_is_hc_related_ref_held = true;
+    channel.RemoveAndDestroyChannel(handle);
+    EXPECT_FALSE(ptr->HCEnabled());
+    ptr->Revive(1);
+    EXPECT_TRUE(ptr->Failed());
+    EXPECT_EQ(1, ptr->nref());
+    // Also clean up the leaked additional reference if this test regresses.
+    ptr->SetFailed();
+    ptr.reset();
+    EXPECT_EQ(0, CountingSubChannel::s_alive);
+}
 
 TEST_F(ChannelTest, selective_channel_add_failure_ownership) {
     // nullptr sub channel is rejected without touching ownership.
