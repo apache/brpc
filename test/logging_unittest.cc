@@ -666,6 +666,59 @@ protected:
         }
     }
 
+    // A log carries the path of this source file in its header, so how many
+    // bytes it occupies depends on where the tree is checked out and a test
+    // that counts logs to cross the rotation threshold breaks as soon as that
+    // path changes length. The helpers below therefore watch the file instead
+    // of counting.
+
+    // Write logs until a rotation happens, which shows up as the current file
+    // restarting: it is renamed away and recreated, so its size drops from
+    // about --log_rotate_size_mb down to a single log. Returns the number of
+    // logs written, or -1 when no rotation was seen within `max_logs'.
+    int WriteLogsUntilRotation(int max_logs, size_t size) {
+        const std::string content(size, 'x');
+        off_t last = 0;
+        FileSize(_log_path, &last);
+        for (int i = 0; i < max_logs; ++i) {
+            LOG(INFO) << content;
+            off_t now = 0;
+            FileSize(_log_path, &now);  // 0 while the file is gone
+            if (now < last) {
+                return i + 1;
+            }
+            last = now;
+        }
+        return -1;
+    }
+
+    // Write logs until the current file is larger than `limit'. Rotation must
+    // be off, otherwise the file restarts before it can grow that far.
+    bool WriteLogsUntilLargerThan(off_t limit, int max_logs, size_t size) {
+        const std::string content(size, 'x');
+        off_t now = 0;
+        for (int i = 0; i < max_logs; ++i) {
+            if (FileSize(_log_path, &now) && now > limit) {
+                return true;
+            }
+            LOG(INFO) << content;
+        }
+        return FileSize(_log_path, &now) && now > limit;
+    }
+
+    // Write logs until `path' shows up, or `max_logs' of them were written.
+    bool WriteLogsUntilFileExists(const std::string& path, int max_logs,
+                                  size_t size) {
+        const std::string content(size, 'x');
+        for (int i = 0; i < max_logs; ++i) {
+            if (FileSize(path, nullptr)) {
+                return true;
+            }
+            LOG(INFO) << content;
+        }
+        return FileSize(path, nullptr);
+    }
+
     std::string _log_path;
 
 private:
@@ -857,11 +910,15 @@ TEST_F(LogRotationTest, external_rename_does_not_consume_a_backup) {
         }
     }
 
-    // Take the file away the way an external log rotator would, then log
-    // enough that a rotation would otherwise have been due.
+    // Take the file away the way an external log rotator would. Logging goes
+    // on through the handle that is still open, which now points at the
+    // renamed inode, until a rotation is due: that attempt has to notice the
+    // missing file, leave the backups alone and start a fresh file under the
+    // original name. Wait for exactly that instead of guessing how many logs
+    // it takes, since the length of the header decides that.
     const std::string moved = _log_path + ".moved";
     ASSERT_EQ(0, rename(_log_path.c_str(), moved.c_str()));
-    WriteLogs(800, 1000);
+    ASSERT_TRUE(WriteLogsUntilFileExists(_log_path, 100000, 1000));
     CloseLogFile();
 
     off_t size = 0;
@@ -949,14 +1006,14 @@ TEST_F(LogRotationTest, recovers_after_the_log_file_is_replaced) {
 // rather than let the final rename overwrite it with the current log file,
 // which would silently drop the newest generation on every rotation.
 TEST_F(LogRotationTest, shift_failure_keeps_the_newest_backup) {
+    const off_t rotate_size = 1L * 1024 * 1024;
     FLAGS_log_rotate_size_mb = 1;
     FLAGS_log_rotate_max_backups = 2;
     InitLoggingToTempFile();
 
-    // Rotate once so that ".1" holds a complete generation. The size is
-    // not enough to tell the generations apart, the rotation threshold
-    // makes them equally large, the content is compared instead.
-    WriteLogs(1200, 1000);
+    // Rotate once so that ".1" holds a complete generation. The number of
+    // logs needed is not fixed, see WriteLogsUntilRotation().
+    ASSERT_GT(WriteLogsUntilRotation(100000, 1000), 0);
     std::string first_backup;
     ASSERT_TRUE(butil::ReadFileToString(
         butil::FilePath(BackupPath(1)), &first_backup));
@@ -967,7 +1024,8 @@ TEST_F(LogRotationTest, shift_failure_keeps_the_newest_backup) {
     ASSERT_EQ(0, mkdir(BackupPath(2).c_str(), 0755));
     ASSERT_EQ(0, mkdir((BackupPath(2) + "/x").c_str(), 0755));
 
-    WriteLogs(1200, 1000);  // crosses the threshold, the shift fails
+    // Grow past the threshold: the rotation is attempted and fails.
+    ASSERT_TRUE(WriteLogsUntilLargerThan(rotate_size, 100000, 1000));
     CloseLogFile();
 
     // ".1" still holds the very same generation, rotation did not trade it
@@ -979,21 +1037,110 @@ TEST_F(LogRotationTest, shift_failure_keeps_the_newest_backup) {
     // The current file kept growing instead of losing a generation.
     off_t size = 0;
     ASSERT_TRUE(FileSize(_log_path, &size));
-    ASSERT_GT(size, 1L * 1024 * 1024);
+    ASSERT_GT(size, rotate_size);
 
     // Once the obstacle is gone, the backed off retry shifts the preserved
     // backup and rotation works again.
     ASSERT_EQ(0, rmdir((BackupPath(2) + "/x").c_str()));
     ASSERT_EQ(0, rmdir(BackupPath(2).c_str()));
-    WriteLogs(1200, 1000);
+    ASSERT_TRUE(WriteLogsUntilFileExists(BackupPath(2), 100000, 1000));
     CloseLogFile();
 
     ASSERT_TRUE(butil::ReadFileToString(
         butil::FilePath(BackupPath(2)), &backup));
     ASSERT_EQ(first_backup, backup);  // the preserved generation, shifted
-    ASSERT_TRUE(FileSize(BackupPath(1), &size));
-    ASSERT_GT(size, 1L * 1024 * 1024);
 }
+
+// Backups are numbered by renaming them one by one, so a partly failed shift
+// leaves a hole behind: ".1" and ".3", ".4" without a ".2". Cleaning up from
+// the first missing index would never reach the files above the hole, which
+// is how the oldest generations used to survive forever after the limit was
+// lowered.
+TEST_F(LogRotationTest, rotation_removes_backups_left_in_a_hole) {
+    const off_t rotate_size = 1L * 1024 * 1024;
+    // Fill the file past the threshold while rotation is still off.
+    FLAGS_log_rotate_size_mb = 0;
+    FLAGS_log_rotate_max_backups = 1;
+    InitLoggingToTempFile();
+    ASSERT_TRUE(WriteLogsUntilLargerThan(rotate_size, 100000, 1000));
+    CloseLogFile();
+
+    // The state a partly failed shift leaves behind, with a hole at ".2".
+    for (int i = 1; i <= 4; ++i) {
+        if (i == 2) {
+            continue;
+        }
+        FILE* const file = fopen(BackupPath(i).c_str(), "w");
+        ASSERT_TRUE(file != nullptr) << BackupPath(i);
+        ASSERT_EQ((size_t)1, fwrite("x", 1, 1, file));
+        fclose(file);
+    }
+
+    FLAGS_log_rotate_size_mb = 1;
+    WriteLogs(1, 10);  // the file is over the threshold, rotate
+    CloseLogFile();
+
+    // Only the limit itself survived: one backup, and no orphan above a hole.
+    ASSERT_TRUE(FileSize(BackupPath(1), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(2), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(3), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(4), nullptr));
+}
+
+// Rotation recreates the log file, and it has to be recreated with the
+// permissions of the file it replaces: falling back to 0666 & ~umask turns a
+// private 0600 log file into a world readable one on the first rotation.
+#if !defined(OS_WIN)
+TEST_F(LogRotationTest, rotation_keeps_the_file_mode) {
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 2;
+    InitLoggingToTempFile();
+    // A chmod() done while the process runs must be honoured as well, not only
+    // the mode the file was opened with.
+    ASSERT_EQ(0, chmod(_log_path.c_str(), 0600));
+
+    ASSERT_GT(WriteLogsUntilRotation(100000, 1000), 0);
+    CloseLogFile();
+
+    struct stat st;
+    ASSERT_EQ(0, stat(_log_path.c_str(), &st));
+    ASSERT_EQ(0600, (int)(st.st_mode & 07777));
+    // The rotated generation is the same inode and keeps its own permissions.
+    ASSERT_EQ(0, stat(BackupPath(1).c_str(), &st));
+    ASSERT_EQ(0600, (int)(st.st_mode & 07777));
+}
+
+// Closing the handle before the rename drops every log as soon as the path can
+// not be opened again while the handle that is still open could write just
+// fine: permissions tightened under a running process, privileges dropped at
+// start up, ... Without rotation the handle is never reopened, so closing it
+// early is a regression that the feature introduced.
+TEST_F(LogRotationTest, keeps_writing_when_the_file_can_not_be_reopened) {
+    const off_t rotate_size = 1L * 1024 * 1024;
+    FLAGS_log_rotate_size_mb = 1;
+    FLAGS_log_rotate_max_backups = 2;
+    InitLoggingToTempFile();
+    ASSERT_GT(WriteLogsUntilRotation(100000, 1000), 0);  // ".1" exists
+
+    // Make the shift fail, and make the current file impossible to reopen
+    // while the handle that is already open keeps working.
+    ASSERT_EQ(0, mkdir(BackupPath(2).c_str(), 0755));
+    ASSERT_EQ(0, mkdir((BackupPath(2) + "/x").c_str(), 0755));
+    ASSERT_EQ(0, chmod(_log_path.c_str(), 0400));
+
+    off_t before = 0;
+    ASSERT_TRUE(FileSize(_log_path, &before));
+    // Rotation keeps failing, so the file keeps growing. A log written after
+    // the failed attempt would be lost if the handle had been closed to try
+    // the rename, which is what this checks.
+    ASSERT_TRUE(WriteLogsUntilLargerThan(before + rotate_size, 100000, 1000));
+    CloseLogFile();
+
+    ASSERT_EQ(0, chmod(_log_path.c_str(), 0644));
+    ASSERT_EQ(0, rmdir((BackupPath(2) + "/x").c_str()));
+    ASSERT_EQ(0, rmdir(BackupPath(2).c_str()));
+}
+#endif  // !defined(OS_WIN)
 
 // --log_rotate_max_backups is only validated to be a positive int, so a
 // huge value must not turn into one rename() per index on every rotation,

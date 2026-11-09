@@ -83,9 +83,8 @@ typedef pthread_mutex_t* MutexHandle;
 #if defined(OS_POSIX)
 #include "butil/errno.h"
 #include "butil/fd_guard.h"
-#endif
-#if defined(OS_LINUX)
-#include <fcntl.h>
+#include <dirent.h>
+#include <fcntl.h>   // open() with the mode of the file rotation replaces
 #endif
 
 #if defined(OS_ANDROID)
@@ -204,6 +203,12 @@ FileHandle log_file = nullptr;
 // Number of bytes in the file referenced by `log_file'. Guarded by
 // LoggingLock just like `log_file' itself.
 int64_t log_file_size = 0;
+
+// Permissions of the log file, or -1 when they are unknown. A file recreated
+// by rotation is created with them instead of falling back to 0666 & ~umask,
+// which would turn a private 0600 log file into a world readable one the
+// first time it is rotated. Guarded by LoggingLock.
+int64_t log_file_mode = -1;
 
 // Size of the log file when rotation last failed, -1 when the last attempt
 // succeeded. The size that triggered a failed rotation does not change by
@@ -397,6 +402,40 @@ MutexHandle LoggingLock::log_mutex = nullptr;
 pthread_mutex_t LoggingLock::log_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
+#if defined(OS_POSIX)
+// Open the log file for appending, creating it with `mode' when it does not
+// exist yet. Rotation recreates the file right after renaming the old one
+// away, and creating it with the default 0666 & ~umask would silently make a
+// private log file readable by everybody else. A file that already exists
+// keeps the permissions it has, they are never changed behind the user's
+// back.
+FileHandle OpenLogFile(const PathString& path, int64_t mode) {
+    if (mode < 0) {
+        return fopen(path.c_str(), "a");
+    }
+    // O_EXCL tells us whether the file was created here, which is also what
+    // keeps the fchmod() below from touching a file somebody else created.
+    const int fd = ::open(path.c_str(), O_CREAT | O_EXCL | O_APPEND | O_WRONLY,
+                          static_cast<mode_t>(mode));
+    if (fd < 0) {
+        if (errno == EEXIST) {
+            return fopen(path.c_str(), "a");
+        }
+        return nullptr;
+    }
+    // The umask can only take bits away, so the file is never more permissive
+    // than `mode' in the window before the exact bits are restored.
+    if (::fchmod(fd, static_cast<mode_t>(mode)) != 0) {
+        // Not fatal: the file exists and is writable through `fd'.
+    }
+    FILE* const file = ::fdopen(fd, "a");
+    if (file == nullptr) {
+        ::close(fd);
+    }
+    return file;
+}
+#endif  // OS_POSIX
+
 // Called by logging functions to ensure that debug_file is initialized
 // and can be used for writing. Returns false if the file could not be
 // initialized. debug_file will be nullptr in this case.
@@ -430,14 +469,20 @@ bool InitializeLogFileHandle() {
         log_file_size = GetFileSizeEx(log_file, &file_size) ?
             static_cast<int64_t>(file_size.QuadPart) : 0;
 #elif defined(OS_POSIX)
-        log_file = fopen(log_file_name->c_str(), "a");
+        log_file = OpenLogFile(*log_file_name, log_file_mode);
         if (log_file == nullptr) {
             fprintf(stderr, "Fail to fopen %s: %s", log_file_name->c_str(), berror());
             return false;
         }
         struct stat st;
-        log_file_size = (0 == fstat(fileno(log_file), &st)) ?
-            static_cast<int64_t>(st.st_size) : 0;
+        if (0 == fstat(fileno(log_file), &st)) {
+            log_file_size = static_cast<int64_t>(st.st_size);
+            // Take the permissions from the file that is actually in use, so
+            // that a rotation, which recreates the file, keeps them.
+            log_file_mode = static_cast<int64_t>(st.st_mode & 07777);
+        } else {
+            log_file_size = 0;
+        }
 #endif
     }
 
@@ -467,9 +512,13 @@ void CloseLogFileUnlocked() {
 // "<log_file_name>.1" and a fresh file is opened under the original name.
 // Existing backups are shifted down (".1" -> ".2" -> ...) beforehand and the
 // ones beyond --log_rotate_max_backups are removed, so that ".1" is always
-// the most recent backup. Every rotation also removes the backups left over
-// from a previously larger --log_rotate_max_backups, so that lowering the
-// flag at run time really lowers the number of files kept.
+// the most recent backup. The backups are found by listing the directory
+// rather than by probing 1, 2, 3..., so a hole left behind by an earlier
+// failure neither strands a backup forever nor makes a huge
+// --log_rotate_max_backups cost one rename() per index.
+//
+// The fresh file is created with the permissions of the file it replaces: a
+// private 0600 log file must not become world readable on the first rotation.
 //
 // A log file that disappeared from under the process is not a rotation
 // failure: the handle is closed so that the next write starts a fresh file,
@@ -488,6 +537,12 @@ void CloseLogFileUnlocked() {
 // from closing, reopening and renaming the file for every single log. A
 // file that turns out to be smaller than it was at that point has been
 // replaced or truncated from the outside, and rotation resumes immediately.
+//
+// On POSIX nothing is closed before the rename succeeded, so the open handle
+// outlives every failure of a rotation and keeps receiving logs even when the
+// path can not be opened again (permissions tightened under a running
+// process, privileges dropped, ...). Closing it first used to drop every log
+// written after such a failure, which never happened without rotation.
 //
 // Sharing one log file between multiple processes is NOT supported together
 // with rotation: on POSIX LoggingLock only serializes the threads of a single
@@ -535,35 +590,257 @@ std::string PathAsString(const PathString& path) {
 #endif
 }
 
-// Back off after a rotation that could not rename `from' to `to': the size
-// that triggered it does not change by itself, so retrying on the next log
-// would close, reopen and rename the file for every single log. The failure
-// is printed once rather than per log. The caller must hold the logging
-// lock and `err' must have been captured before anything else could
-// overwrite it.
+// Back off after a rotation that failed in the way described by
+// `what_failed': the size that triggered it does not change by itself, so
+// retrying on the next log would close, reopen and rename the file for every
+// single log. The failure is printed once rather than per log. The caller
+// must hold the logging lock and `err' must have been captured before
+// anything else could overwrite it.
 void BackOffAfterFailedRotation(int64_t size_before_rotation,
-                                const PathString& from,
-                                const PathString& to,
+                                const std::string& what_failed,
                                 SystemErrorCode err) {
     failed_rotation_size = size_before_rotation;
     if (rotation_failure_reported) {
         return;
     }
     rotation_failure_reported = true;
-    fprintf(stderr, "Fail to rotate %s: renaming %s to %s failed: %s, "
-            "retrying after another --log_rotate_size_mb of logs\n",
-            PathAsString(*log_file_name).c_str(), PathAsString(from).c_str(),
-            PathAsString(to).c_str(),
+    fprintf(stderr, "Fail to rotate %s: %s: %s, retrying after another "
+            "--log_rotate_size_mb of logs\n",
+            PathAsString(*log_file_name).c_str(), what_failed.c_str(),
             SystemErrorCodeToString(err).c_str());
 }
 
-// Rename the current log file to "<log_file_name>.1" and shift the older
-// backups down by one. The caller must hold the logging lock.
+// Whether `name' is "<base>.<index>" with a plain positive index. Everything
+// else in the directory (a rotated name of an external rotator such as
+// "foo.log.2024-01-01", a leftover of some other tool, ...) is not ours and
+// is left alone.
+bool ParseBackupIndex(const PathString& base, const PathString& name,
+                      int* index) {
+    const PathString prefix = base + '.';
+    if (name.size() <= prefix.size() ||
+        0 != name.compare(0, prefix.size(), prefix)) {
+        return false;
+    }
+    int64_t value = 0;
+    for (size_t i = prefix.size(); i < name.size(); ++i) {
+        const PathString::value_type c = name[i];
+        if (c < '0' || c > '9') {
+            return false;
+        }
+        value = value * 10 + (c - '0');
+        if (value > std::numeric_limits<int>::max()) {
+            return false;
+        }
+    }
+    if (value <= 0) {
+        return false;
+    }
+    *index = static_cast<int>(value);
+    return true;
+}
+
+// Collect the indexes of the backups that exist right now, in no particular
+// order. Returns false when the directory can not be listed: the caller must
+// not shift anything then, because assuming that there is no backup would
+// rename the current file over "<log_file_name>.1" and destroy it.
+bool ListBackupIndices(const PathString& path, std::vector<int>* indexes) {
+#if defined(OS_WIN)
+    const PathString::size_type sep = path.find_last_of(L"\\/");
+    const PathString dir =
+        (sep == PathString::npos) ? PathString(L".") : path.substr(0, sep);
+    const PathString base =
+        (sep == PathString::npos) ? path : path.substr(sep + 1);
+    const PathString pattern = dir + L"\\" + base + L".*";
+    WIN32_FIND_DATAW entry;
+    HANDLE const handle = ::FindFirstFileW(pattern.c_str(), &entry);
+    if (handle == INVALID_HANDLE_VALUE) {
+        // No backup yet, which is not an error. Anything else means that the
+        // directory could not be listed.
+        return ::GetLastError() == ERROR_FILE_NOT_FOUND;
+    }
+    do {
+        int index = 0;
+        if (ParseBackupIndex(base, PathString(entry.cFileName), &index)) {
+            indexes->push_back(index);
+        }
+    } while (0 != ::FindNextFileW(handle, &entry));
+    ::FindClose(handle);
+    return true;
+#elif defined(OS_NACL)
+    return false;
+#else
+    const PathString::size_type sep = path.rfind('/');
+    const PathString dir =
+        (sep == PathString::npos) ? PathString(".") : path.substr(0, sep);
+    const PathString base =
+        (sep == PathString::npos) ? path : path.substr(sep + 1);
+    DIR* const stream = ::opendir(dir.c_str());
+    if (stream == nullptr) {
+        return false;
+    }
+    bool ok = true;
+    errno = 0;
+    while (struct dirent* const entry = ::readdir(stream)) {
+        int index = 0;
+        if (ParseBackupIndex(base, PathString(entry->d_name), &index)) {
+            indexes->push_back(index);
+        }
+        errno = 0;
+    }
+    if (errno != 0) {
+        ok = false;
+    }
+    ::closedir(stream);
+    return ok;
+#endif
+}
+
+// Fall back to probing "<log_file_name>.1", ".2", ... when the directory can
+// not be listed, which happens for a log directory that is writable without
+// being readable. Unlike treating a failed listing as "no backup at all",
+// every index that is about to be renamed over is checked here, so a backup
+// can not be destroyed. The bound keeps this rare path from turning a huge
+// --log_rotate_max_backups into the per-index cost described above.
+void ProbeBackupIndices(int max_backups, std::vector<int>* indexes) {
+    const int limit = std::min(max_backups, 1000);
+    for (int i = 1; i < limit; ++i) {
+        if (!PathExists(MakeBackupLogPath(*log_file_name, i))) {
+            break;
+        }
+        indexes->push_back(i);
+    }
+}
+
+// Shift the backups down by one, dropping the ones that no longer fit into
+// --log_rotate_max_backups. Returns false when a rename failed, and the
+// caller must then leave the current log file alone.
+bool ShiftBackupsUnlocked(int max_backups, int64_t size_before_rotation) {
+    std::vector<int> indexes;
+    if (!ListBackupIndices(*log_file_name, &indexes)) {
+        ProbeBackupIndices(max_backups, &indexes);
+    }
+    std::sort(indexes.begin(), indexes.end());
+    indexes.erase(std::unique(indexes.begin(), indexes.end()), indexes.end());
+    // Walk from the highest index down, so that the destination of a rename is
+    // always either a slot that was just vacated or one that is about to fall
+    // off the end. Working from the indexes that really exist, instead of from
+    // 1 to --log_rotate_max_backups, is what makes a hole harmless: the
+    // backups above it are still shifted and, once they reach the limit,
+    // removed, so a partly failed rotation can not keep an orphan around.
+    for (size_t i = indexes.size(); i-- > 0;) {
+        const int index = indexes[i];
+        const PathString from = MakeBackupLogPath(*log_file_name, index);
+        if (static_cast<int64_t>(index) + 1 > max_backups) {
+            // Would fall behind the newest backup after the shift. A file that
+            // can not be removed stays where it is and the next rotation tries
+            // again, without spinning here.
+            DeleteFilePath(from);
+            continue;
+        }
+        const PathString to = MakeBackupLogPath(*log_file_name, index + 1);
+        if (!RenameFilePath(from, to)) {
+            BackOffAfterFailedRotation(
+                size_before_rotation,
+                butil::string_printf("renaming %s to %s failed",
+                                     PathAsString(from).c_str(),
+                                     PathAsString(to).c_str()),
+                GetLastSystemErrorCode());
+            return false;
+        }
+    }
+    return true;
+}
+
+// Rename the current log file to "<log_file_name>.1" and reopen a fresh file
+// under the original name. The backups have already been shifted away by the
+// caller. Returns true when the fresh file is open and ready for writing.
+bool RotateCurrentFileUnlocked(int64_t size_before_rotation) {
+    const PathString first_backup = MakeBackupLogPath(*log_file_name, 1);
+#if defined(OS_POSIX)
+    // POSIX lets us rename a file that is still open, so the handle survives
+    // every failure below and keeps pointing at the same inode: if the path
+    // can not be opened again there is still a working handle to write
+    // through, and no log is lost. That is also why nothing is closed before
+    // the rename below.
+    if (log_file) {
+        // Bytes sitting in the stdio buffer belong to the file renamed below.
+        fflush(log_file);
+        // Take the permissions from the file that is replaced, which also
+        // picks up a chmod() done after the file was opened.
+        struct stat st;
+        if (0 == fstat(fileno(log_file), &st)) {
+            log_file_mode = static_cast<int64_t>(st.st_mode & 07777);
+        }
+    }
+    if (!RenameFilePath(*log_file_name, first_backup)) {
+        BackOffAfterFailedRotation(
+            size_before_rotation,
+            butil::string_printf("renaming %s to %s failed",
+                                 PathAsString(*log_file_name).c_str(),
+                                 PathAsString(first_backup).c_str()),
+            GetLastSystemErrorCode());
+        return false;
+    }
+    FILE* const fresh = OpenLogFile(*log_file_name, log_file_mode);
+    if (fresh == nullptr) {
+        // The path can not be opened again. Put the backup back under its
+        // original name so the file keeps the name logs are expected under.
+        // Whichever way that rename goes, the handle below still owns the
+        // inode and keeps writing to it, so no log is lost.
+        RenameFilePath(first_backup, *log_file_name);
+        BackOffAfterFailedRotation(
+            size_before_rotation,
+            butil::string_printf("reopening %s failed",
+                                 PathAsString(*log_file_name).c_str()),
+            GetLastSystemErrorCode());
+        return false;
+    }
+    if (log_file) {
+        CloseFile(log_file);
+    }
+    log_file = fresh;
+    // The fresh file is empty, unless something recreated the path before it
+    // was opened, so read the size instead of assuming zero.
+    struct stat st;
+    log_file_size = (0 == fstat(fileno(log_file), &st)) ?
+        static_cast<int64_t>(st.st_size) : 0;
+    return true;
+#else
+    // An opened file can not be renamed on Windows, so the handle has to be
+    // closed first. Reopening right away keeps the window, and the loss of the
+    // log that triggered the rotation, as small as possible.
+    CloseLogFileUnlocked();
+    if (!RenameFilePath(*log_file_name, first_backup)) {
+        // Put the handle back on the file that is still there, so the next log
+        // keeps appending instead of being dropped.
+        InitializeLogFileHandle();
+        BackOffAfterFailedRotation(
+            size_before_rotation,
+            butil::string_printf("renaming %s to %s failed",
+                                 PathAsString(*log_file_name).c_str(),
+                                 PathAsString(first_backup).c_str()),
+            GetLastSystemErrorCode());
+        return false;
+    }
+    if (!InitializeLogFileHandle()) {
+        BackOffAfterFailedRotation(
+            size_before_rotation,
+            butil::string_printf("reopening %s failed",
+                                 PathAsString(*log_file_name).c_str()),
+            GetLastSystemErrorCode());
+        return false;
+    }
+    return true;
+#endif
+}
+
+// Rotate the log file: shift the backups down, then move the current file to
+// "<log_file_name>.1". The caller must hold the logging lock.
 void RotateLogFileUnlocked() {
     if (!log_file_name) {
         return;
     }
-    // Remember it before closing, CloseLogFileUnlocked() resets the size.
+    // Remember it before anything can reset it.
     const int64_t size_before_rotation = log_file_size;
     if (!PathExists(*log_file_name)) {
         // The file was renamed or removed from the outside. There is nothing
@@ -580,57 +857,13 @@ void RotateLogFileUnlocked() {
         failed_rotation_size = size_before_rotation;
         return;
     }
-    // Close before renaming: on Windows an opened file cannot be renamed, and
-    // on POSIX the handle would keep pointing at the renamed inode.
-    CloseLogFileUnlocked();
-
     const int max_backups = std::max(1, FLAGS_log_rotate_max_backups);
-    // Remove the oldest backup, and any left over from a previously larger
-    // --log_rotate_max_backups, so that lowering the flag at run time really
-    // lowers the number of files kept.
-    for (int i = max_backups; ; ++i) {
-        const PathString path = MakeBackupLogPath(*log_file_name, i);
-        if (!PathExists(path)) {
-            break;
-        }
-        DeleteFilePath(path);
-        if (PathExists(path)) {
-            break;  // could not remove it, do not spin
-        }
+    if (!ShiftBackupsUnlocked(max_backups, size_before_rotation) ||
+        !RotateCurrentFileUnlocked(size_before_rotation)) {
+        return;  // backed off, the current file was left in place
     }
-    // Rotation numbers the backups contiguously, so the first missing index
-    // bounds the existing ones from above. Shifting from the highest
-    // existing index rather than from --log_rotate_max_backups keeps a huge
-    // value (only validated to be a positive int) from turning into as many
-    // rename() calls on every rotation, all under the logging lock.
-    int highest_backup = 0;
-    for (int i = 1; i < max_backups; ++i) {
-        if (!PathExists(MakeBackupLogPath(*log_file_name, i))) {
-            break;
-        }
-        highest_backup = i;
-    }
-    // Shift the backups down by one. A rename that fails aborts the
-    // rotation: renaming the current file over "<log_file_name>.1" anyway
-    // would destroy the newest backup, the very one that the failed shift
-    // could not move out of the way.
-    for (int i = highest_backup; i >= 1; --i) {
-        const PathString from = MakeBackupLogPath(*log_file_name, i);
-        const PathString to = MakeBackupLogPath(*log_file_name, i + 1);
-        if (!RenameFilePath(from, to)) {
-            BackOffAfterFailedRotation(size_before_rotation, from, to,
-                                       GetLastSystemErrorCode());
-            return;
-        }
-    }
-    const PathString first_backup = MakeBackupLogPath(*log_file_name, 1);
-    if (RenameFilePath(*log_file_name, first_backup)) {
-        failed_rotation_size = -1;
-        rotation_failure_reported = false;
-        return;
-    }
-    BackOffAfterFailedRotation(size_before_rotation, *log_file_name,
-                               first_backup, GetLastSystemErrorCode());
+    failed_rotation_size = -1;
+    rotation_failure_reported = false;
 }
 
 // Rotate the log file if appending `incoming_size' bytes would grow it beyond
@@ -664,6 +897,28 @@ void MaybeRotateLogFileUnlocked(size_t incoming_size) {
     RotateLogFileUnlocked();
 }
 
+// Re-read the size of the log file. `log_file_size' is what decides when to
+// rotate, and a short write or a failed flush leaves it behind the real size
+// for the rest of the process, which postpones rotation of every following
+// file as well. Re-reading it is cheaper than being wrong until restart.
+void ResyncLogFileSize() {
+    if (!log_file) {
+        log_file_size = 0;
+        return;
+    }
+#if defined(OS_WIN)
+    LARGE_INTEGER file_size;
+    if (GetFileSizeEx(log_file, &file_size)) {
+        log_file_size = static_cast<int64_t>(file_size.QuadPart);
+    }
+#else
+    struct stat st;
+    if (0 == fstat(fileno(log_file), &st)) {
+        log_file_size = static_cast<int64_t>(st.st_size);
+    }
+#endif
+}
+
 void Log2File(const std::string& log) {
     // We can have multiple threads and/or processes, so try to prevent them
     // from clobbering each other's writes.
@@ -686,14 +941,23 @@ void Log2File(const std::string& log) {
 #if defined(OS_WIN)
         SetFilePointer(log_file, 0, 0, SEEK_END);
         DWORD num_written = 0;
-        WriteFile(log_file, static_cast<const void*>(log.data()),
-                  static_cast<DWORD>(log.size()), &num_written, nullptr);
-        log_file_size += num_written;
-#else
-        if (fwrite(log.data(), log.size(), 1, log_file) == 1) {
-            log_file_size += (int64_t)log.size();
+        if (WriteFile(log_file, static_cast<const void*>(log.data()),
+                      static_cast<DWORD>(log.size()), &num_written, nullptr) &&
+            num_written == static_cast<DWORD>(log.size())) {
+            log_file_size += num_written;
+        } else {
+            ResyncLogFileSize();
         }
-        fflush(log_file);
+#else
+        const size_t written = fwrite(log.data(), 1, log.size(), log_file);
+        log_file_size += static_cast<int64_t>(written);
+        const bool flushed = fflush(log_file) == 0;
+        if (written != log.size() || !flushed) {
+            // clearerr() drops the sticky error flag, so that the next log
+            // gets a chance to be written instead of failing forever.
+            clearerr(log_file);
+            ResyncLogFileSize();
+        }
 #endif
     }
 }
@@ -1063,6 +1327,9 @@ bool BaseInitLoggingImpl(const LoggingSettings& settings) {
     // Give rotation another chance, the destination may have changed.
     failed_rotation_size = -1;
     rotation_failure_reported = false;
+    // The permissions of the previous destination say nothing about the new
+    // one. It is read again from the file that is opened below.
+    log_file_mode = -1;
 
     return InitializeLogFileHandle();
 }

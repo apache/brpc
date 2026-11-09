@@ -274,6 +274,10 @@ Rotation is disabled by default, so upgrading changes neither the file names nor
 
 If the rename fails, for example because the directory holding the log file is not writable, brpc prints an error and retries only once the file has grown by another `log_rotate_size_mb`, instead of closing, reopening and renaming the file for every single log. Logs keep being appended to the current file in the meantime, none of them are lost. A backup that cannot be renamed out of the way, for example because another process holds it open, stops the rotation altogether rather than being overwritten with the current file, so no generation is silently dropped. If the file turns out to be smaller than it was when rotation failed, it has been replaced or truncated from the outside and rotation resumes immediately.
 
+The handle is never closed ahead of the rename: POSIX allows renaming a file that is still open, so even when the rename fails, or when the path can no longer be opened because permissions were tightened (the file turned 0400 or the directory 0500 under a running process) or privileges were dropped, the handle that is already open keeps accepting logs and none of them are lost. The fresh file is created with the permissions of the file it replaces, so a private 0600 log file does not turn into a world readable 0644 one on the first rotation.
+
+Old backups are cleaned up by listing what is really in the directory instead of assuming that the indexes are contiguous: a hole left behind by a partly failed shift cannot keep the older generations around forever, and a large `log_rotate_max_backups` does not make every rotation attempt that many renames.
+
 > Do not run an external rotator such as logrotate on the same log file. Once an external tool renames the file, the next write recreates it under the original name, the two sets of rotation rules interfere with each other and the number of files kept around is no longer bounded by `log_rotate_max_backups`. Use one or the other.
 
 Both flags are modifiable at run time via `/flags`.
