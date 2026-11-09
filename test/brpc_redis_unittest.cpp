@@ -1168,6 +1168,139 @@ TEST_F(RedisTest, redis_reply_rejects_nested_array_memory_amplification) {
     }
 }
 
+TEST_F(RedisTest, redis_reply_charges_strings_to_the_budget) {
+    // Every string below is individually within -redis_max_allocation_size,
+    // but their total must not exceed it: the cap bounds one reply, not one
+    // bulk string.
+    ScopedRedisMaxAllocationSize scoped_size(1024);
+    const std::string value(600, 'a');
+
+    // Two bulk strings of 600 bytes, 1200 bytes in total.
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n$600\r\n");
+        buf.append(value);
+        buf.append("\r\n$600\r\n");
+        buf.append(value);
+        buf.append("\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  reply.ConsumePartialIOBuf(buf));
+    }
+
+    // Simple strings were not charged to the budget at all.
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n+");
+        buf.append(value);
+        buf.append("\r\n+");
+        buf.append(value);
+        buf.append("\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  reply.ConsumePartialIOBuf(buf));
+    }
+
+    // The budget must survive suspension: the second string arrives only
+    // after a resume, a fresh budget per call would let the peer reset it.
+    {
+        butil::IOBuf buf;
+        buf.append("*2\r\n$600\r\n");
+        buf.append(value);
+        buf.append("\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                  reply.ConsumePartialIOBuf(buf));
+        buf.append("$600\r\n");
+        buf.append(value);
+        buf.append("\r\n");
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  reply.ConsumePartialIOBuf(buf));
+    }
+
+    // A reply whose strings add up to exactly the budget is still accepted.
+    {
+        const int32_t payload = brpc::FLAGS_redis_max_allocation_size -
+                                2 * (int32_t)sizeof(brpc::RedisReply);
+        const std::string first(payload / 2, 'a');
+        const std::string second(payload - payload / 2, 'b');
+        butil::IOBuf buf;
+        buf.append("*2\r\n$" + std::to_string(first.size()) + "\r\n");
+        buf.append(first);
+        buf.append("\r\n$" + std::to_string(second.size()) + "\r\n");
+        buf.append(second);
+        buf.append("\r\n");
+        butil::Arena arena;
+        brpc::RedisReply reply(&arena);
+        EXPECT_EQ(brpc::PARSE_OK, reply.ConsumePartialIOBuf(buf));
+        ASSERT_EQ(2u, reply.size());
+        EXPECT_EQ(first, reply[0].data().as_string());
+        EXPECT_EQ(second, reply[1].data().as_string());
+    }
+}
+
+TEST_F(RedisTest, command_parser_charges_bulk_strings_to_the_budget) {
+    // Parsed arguments stay in the connection arena while the rest of a
+    // command is pending, so the cap must bound their sum, not each one.
+    ScopedRedisMaxAllocationSize scoped_size(1024);
+    const std::string value(600, 'a');
+
+    {
+        brpc::RedisCommandParser parser;
+        butil::Arena arena;
+        butil::IOBuf buf;
+        buf.append("*3\r\n$4\r\nmset\r\n$600\r\n");
+        buf.append(value);
+        buf.append("\r\n$600\r\n");
+        buf.append(value);
+        buf.append("\r\n");
+        std::vector<butil::StringPiece> args;
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  parser.Consume(buf, &args, &arena));
+    }
+
+    // The budget must survive suspension between partial reads.
+    {
+        brpc::RedisCommandParser parser;
+        butil::Arena arena;
+        butil::IOBuf buf;
+        buf.append("*2\r\n$600\r\n");
+        buf.append(value);
+        buf.append("\r\n");
+        std::vector<butil::StringPiece> args;
+        EXPECT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                  parser.Consume(buf, &args, &arena));
+        buf.append("$600\r\n");
+        buf.append(value);
+        buf.append("\r\n");
+        EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
+                  parser.Consume(buf, &args, &arena));
+    }
+
+    // A command whose arguments add up to exactly the budget still parses.
+    {
+        const std::string first(510, 'a');
+        const std::string second(510, 'b');
+        brpc::RedisCommandParser parser;
+        butil::Arena arena;
+        butil::IOBuf buf;
+        buf.append("*3\r\n$4\r\nmset\r\n$510\r\n");
+        buf.append(first);
+        buf.append("\r\n$510\r\n");
+        buf.append(second);
+        buf.append("\r\n");
+        std::vector<butil::StringPiece> args;
+        EXPECT_EQ(brpc::PARSE_OK, parser.Consume(buf, &args, &arena));
+        ASSERT_EQ(3u, args.size());
+        EXPECT_EQ("mset", args[0].as_string());
+        EXPECT_EQ(first, args[1].as_string());
+        EXPECT_EQ(second, args[2].as_string());
+    }
+}
+
 TEST_F(RedisTest, command_parser_does_not_preallocate_declared_args) {
     // A declared RESP array count must not commit memory before the arguments
     // actually arrive: "*<count>\r\n" used to resize _args upfront, costing
