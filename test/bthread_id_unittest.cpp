@@ -17,6 +17,8 @@
 
 #include <iostream>
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
 #include <thread>
 #include <gtest/gtest.h>
 #include "butil/time.h"
@@ -124,23 +126,93 @@ struct JoinRaceArgs {
 
 class JoinBeforeWaitHookGuard {
 public:
-    JoinBeforeWaitHookGuard(void (*hook)(void*), void* arg,
+    JoinBeforeWaitHookGuard(bthread_id_t id, void (*hook)(void*), void* arg,
                             std::atomic<bool>* release_waiter)
-        : _release_waiter(release_waiter) {
+        : _id(id)
+        , _release_waiter(release_waiter)
+        , _waiter_started(false)
+        , _waiter_joined(false)
+        , _id_locked(false)
+        , _id_destroyed(false) {
         bthread::g_bthread_id_join_before_wait_arg_for_test = arg;
         bthread::g_bthread_id_join_before_wait_for_test = hook;
     }
 
     ~JoinBeforeWaitHookGuard() {
-        if (_release_waiter != nullptr) {
-            _release_waiter->store(true, std::memory_order_release);
+        const int destroy_rc = destroy_id();
+        if (destroy_rc != 0) {
+            std::fprintf(stderr, "Failed to destroy bthread ID: %d\n", destroy_rc);
+            std::abort();
+        }
+        release_waiter();
+        const int join_rc = join_waiter();
+        if (join_rc != 0) {
+            std::fprintf(stderr, "Failed to join waiter: %d\n", join_rc);
+            std::abort();
         }
         bthread::g_bthread_id_join_before_wait_for_test = nullptr;
         bthread::g_bthread_id_join_before_wait_arg_for_test = nullptr;
     }
 
+    int start_waiter(void* (*routine)(void*), void* arg) {
+        const int rc = pthread_create(&_waiter, nullptr, routine, arg);
+        if (rc == 0) {
+            _waiter_started = true;
+        }
+        return rc;
+    }
+
+    int lock_id(void** data) {
+        const int rc = bthread_id_trylock(_id, data);
+        if (rc == 0) {
+            _id_locked = true;
+        }
+        return rc;
+    }
+
+    int destroy_id() {
+        if (_id_destroyed) {
+            return 0;
+        }
+        if (!_id_locked) {
+            const int rc = lock_id(nullptr);
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        const int rc = bthread_id_unlock_and_destroy(_id);
+        if (rc == 0) {
+            _id_locked = false;
+            _id_destroyed = true;
+        }
+        return rc;
+    }
+
+    void release_waiter() {
+        if (_release_waiter != nullptr) {
+            _release_waiter->store(true, std::memory_order_release);
+        }
+    }
+
+    int join_waiter() {
+        if (!_waiter_started || _waiter_joined) {
+            return 0;
+        }
+        const int rc = pthread_join(_waiter, nullptr);
+        if (rc == 0) {
+            _waiter_joined = true;
+        }
+        return rc;
+    }
+
 private:
+    bthread_id_t _id;
     std::atomic<bool>* _release_waiter;
+    pthread_t _waiter;
+    bool _waiter_started;
+    bool _waiter_joined;
+    bool _id_locked;
+    bool _id_destroyed;
     DISALLOW_COPY_AND_ASSIGN(JoinBeforeWaitHookGuard);
 };
 
@@ -158,6 +230,26 @@ void* join_race_waiter(void* arg) {
     return nullptr;
 }
 
+TEST(BthreadIdTest, join_hook_guard_cleans_up_on_scope_exit) {
+    bthread_id_t id;
+    ASSERT_EQ(0, bthread_id_create(&id, nullptr, nullptr));
+    JoinRaceArgs args;
+    args.id = id;
+    args.join_butex_read.store(false, std::memory_order_relaxed);
+    args.allow_wait.store(false, std::memory_order_relaxed);
+    {
+        JoinBeforeWaitHookGuard guard(id, pause_join_before_wait, &args,
+                                      &args.allow_wait);
+        ASSERT_EQ(0, guard.start_waiter(join_race_waiter, &args));
+        while (!args.join_butex_read.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+    }
+    EXPECT_EQ(EINVAL, bthread_id_trylock(id, nullptr));
+    EXPECT_EQ(nullptr, bthread::g_bthread_id_join_before_wait_for_test);
+    EXPECT_EQ(nullptr, bthread::g_bthread_id_join_before_wait_arg_for_test);
+}
+
 TEST(BthreadIdTest, join_races_with_destroy) {
     bthread_id_t id;
     ASSERT_EQ(0, bthread_id_create(&id, nullptr, nullptr));
@@ -165,19 +257,17 @@ TEST(BthreadIdTest, join_races_with_destroy) {
     args.id = id;
     args.join_butex_read.store(false, std::memory_order_relaxed);
     args.allow_wait.store(false, std::memory_order_relaxed);
-    JoinBeforeWaitHookGuard hook_guard(pause_join_before_wait, &args,
+    JoinBeforeWaitHookGuard hook_guard(id, pause_join_before_wait, &args,
                                        &args.allow_wait);
 
-    pthread_t waiter;
-    ASSERT_EQ(0, pthread_create(&waiter, nullptr, join_race_waiter, &args));
+    ASSERT_EQ(0, hook_guard.start_waiter(join_race_waiter, &args));
     while (!args.join_butex_read.load(std::memory_order_acquire)) {
         std::this_thread::yield();
     }
-    void* data = nullptr;
-    ASSERT_EQ(0, bthread_id_trylock(id, &data));
-    ASSERT_EQ(0, bthread_id_unlock_and_destroy(id));
-    args.allow_wait.store(true, std::memory_order_release);
-    ASSERT_EQ(0, pthread_join(waiter, nullptr));
+    ASSERT_EQ(0, hook_guard.lock_id(nullptr));
+    ASSERT_EQ(0, hook_guard.destroy_id());
+    hook_guard.release_waiter();
+    ASSERT_EQ(0, hook_guard.join_waiter());
 }
 
 struct JoinTsanRaceArgs {
@@ -207,22 +297,19 @@ TEST(BthreadIdTest, join_destroy_state_access_is_tsan_safe) {
     args.id = id;
     args.waiter_ready.store(false, std::memory_order_relaxed);
     args.start.store(false, std::memory_order_relaxed);
-    JoinBeforeWaitHookGuard hook_guard(race_join_with_destroy, &args,
+    JoinBeforeWaitHookGuard hook_guard(id, race_join_with_destroy, &args,
                                        &args.start);
 
-    pthread_t waiter;
-    ASSERT_EQ(0, pthread_create(&waiter, nullptr,
-                                join_tsan_race_waiter, &args));
+    ASSERT_EQ(0, hook_guard.start_waiter(join_tsan_race_waiter, &args));
     while (!args.waiter_ready.load(std::memory_order_relaxed)) {
         std::this_thread::yield();
     }
-    void* data = nullptr;
-    ASSERT_EQ(0, bthread_id_trylock(id, &data));
+    ASSERT_EQ(0, hook_guard.lock_id(nullptr));
     // Do not establish happens-before between destroy's store and the state
     // load in butex_wait(). TSAN detects a race here if join_butex is plain.
     args.start.store(true, std::memory_order_relaxed);
-    ASSERT_EQ(0, bthread_id_unlock_and_destroy(id));
-    ASSERT_EQ(0, pthread_join(waiter, nullptr));
+    ASSERT_EQ(0, hook_guard.destroy_id());
+    ASSERT_EQ(0, hook_guard.join_waiter());
 }
 
 struct OnResetArg {
