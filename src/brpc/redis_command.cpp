@@ -662,8 +662,9 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     // has arrived, so their sum, not only each argument, must be bounded by
     // -redis_max_allocation_size. Payload bytes are charged here; the _args
     // descriptors are bounded by the array-count check above.
-    if ((uint64_t)_used_bytes + (uint64_t)len >
-        (uint64_t)FLAGS_redis_max_allocation_size) {
+    if (FLAGS_redis_max_allocation_size > 0 &&
+        (uint64_t)_used_bytes + (uint64_t)len >
+            (uint64_t)FLAGS_redis_max_allocation_size) {
         LOG(ERROR) << "accumulated command allocation exceeds max allocation "
                       "size! max=" << FLAGS_redis_max_allocation_size
                    << ", already=" << _used_bytes << ", requesting=" << len;

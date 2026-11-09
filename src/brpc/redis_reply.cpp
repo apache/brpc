@@ -32,11 +32,14 @@ DEFINE_int32(redis_max_reply_depth, 128,
 //BAIDU_CASSERT(sizeof(RedisReply) == 24, size_match);
 const int RedisReply::npos = -1;
 
-// Charge `need' bytes of payload allocation to the per-reply budget kept in
+// Charge `need' payload bytes of a string to the per-reply budget kept in
 // `used_bytes'. Returns false if the budget would be exceeded, in which case
-// nothing is charged.
+// nothing is charged. The arena rounds each string up to 8 bytes; that padding
+// is not charged so that a string of exactly -redis_max_allocation_size bytes
+// stays valid, as the per-string checks allow, and it is bounded
+// constant-factor overhead.
 static bool ChargeReplyAllocation(uint32_t* used_bytes, uint64_t need) {
-    if (FLAGS_redis_max_allocation_size < 0 ||
+    if (FLAGS_redis_max_allocation_size > 0 &&
         (uint64_t)*used_bytes + need >
             (uint64_t)FLAGS_redis_max_allocation_size) {
         LOG(ERROR) << "accumulated reply allocation exceeds max allocation "
