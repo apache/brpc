@@ -116,10 +116,12 @@ struct DescribeObjectsArgs {
     std::atomic<bool>* done;
 };
 
+const size_t kDescribeRaceObjectCount = 100000;
+
 void* create_objects_while_describing(void* arg) {
     DescribeObjectsArgs* args = static_cast<DescribeObjectsArgs*>(arg);
     args->started->store(true, std::memory_order_release);
-    for (int i = 0; i < 100000; ++i) {
+    for (size_t i = 0; i < kDescribeRaceObjectCount; ++i) {
         (void)get_object<DescribeRaceObject>();
     }
     args->done->store(true, std::memory_order_release);
@@ -142,6 +144,10 @@ TEST_F(ObjectPoolTest, describe_while_creating_objects) {
         describe_objects<DescribeRaceObject>();
     }
     ASSERT_EQ(0, pthread_join(tid, nullptr));
+    // The count assertion catches non-atomic or incomplete publication on
+    // regular builds; TSan additionally detects the concurrent access race.
+    ASSERT_EQ(kDescribeRaceObjectCount + 1,
+              describe_objects<DescribeRaceObject>().item_num);
     return_object(guard);
     clear_objects<DescribeRaceObject>();
 }

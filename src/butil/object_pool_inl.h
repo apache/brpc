@@ -532,7 +532,7 @@ private:
                 if (nullptr == b) {
                     continue;
                 }
-                const size_t nitem = b->nitem.load(butil::memory_order_relaxed);
+                const size_t nitem = b->nitem.load(butil::memory_order_acquire);
                 for (size_t k = 0; k < nitem; ++k) {
                     T* obj = (T*)&b->items[k];
                     // Unpoison to avoid affecting other allocator.
