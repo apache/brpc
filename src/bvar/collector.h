@@ -30,7 +30,9 @@ namespace bvar {
 
 namespace detail {
 // Permanently stop the process-wide collector and wait for its callbacks.
-// Pending samples are discarded without dumping.
+// Discard pending samples without dumping. This is not a barrier for submit():
+// a submission overlapping shutdown may miss the final cleanup and remain
+// allocated until process termination, without another dump callback.
 // Internal exit hook, not a supported user API. May be called repeatedly, but
 // never from a collector callback. Does not create or delete the singleton.
 // Owners of destructible callback dependencies must call this before teardown;
@@ -85,7 +87,9 @@ public:
     // from the timestamp updated by collecting thread(which basically means
     // the thread is not scheduled by OS in time), this sample is directly
     // destroy()-ed to avoid memory explosion.
-    // Submissions after collector shutdown are also destroy()-ed in-place.
+    // Calls started after collector shutdown are destroy()-ed in-place.
+    // Calls overlapping shutdown may leave the sample allocated until process
+    // termination without calling destroy(), as described below.
     void submit(int64_t cpuwide_us);
     void submit() { submit(butil::cpuwide_time_us()); }
 

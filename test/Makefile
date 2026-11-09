@@ -262,6 +262,20 @@ else ifeq ($(SYSTEM),Darwin)
 endif
 endif
 
+# The pre-main test includes both implementations and needs a static archive to
+# avoid loading duplicate flags from the shared test library.
+../libbrpc.a:FORCE
+	$(MAKE) -C.. libbrpc.a
+
+brpc_collector_premain_unittest.o:../src/bvar/collector.cpp ../src/brpc/rpc_dump.cpp
+
+brpc_collector_premain_unittest:brpc_collector_premain_unittest.o ../libbrpc.a
+ifeq ($(SYSTEM),Linux)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ $(STATIC_LINKINGS) -Xlinker "-)" $(DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Darwin)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+endif
+
 brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o | libbrpc.dbg.$(SOEXT)
 	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)

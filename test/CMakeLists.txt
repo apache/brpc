@@ -340,6 +340,7 @@ endif()
 # brpc tests
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 list(REMOVE_ITEM BRPC_UNITTESTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_collector_premain_unittest.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_unittest.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_protocol_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
@@ -352,6 +353,13 @@ foreach(BRPC_UT ${BRPC_UNITTESTS})
         ${GPERFTOOLS_LIBRARIES})
     add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
 endforeach()
+
+# This test includes collector.cpp and rpc_dump.cpp to control initialization
+# order. A static archive supplies the other objects without duplicate flags.
+add_executable(brpc_collector_premain_unittest brpc_collector_premain_unittest.cpp)
+target_link_libraries(brpc_collector_premain_unittest PRIVATE
+    brpc-static brpc_test_config gtest_main ${GPERFTOOLS_LIBRARIES})
+add_test(NAME brpc_collector_premain_unittest COMMAND brpc_collector_premain_unittest)
 
 if(BUILD_FUZZ_TESTS)
     add_library(brpc-static-debug STATIC $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
