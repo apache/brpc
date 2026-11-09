@@ -6,10 +6,89 @@
 #include "butil/files/file.h"
 #include "butil/files/scoped_temp_dir.h"
 #include "butil/time/time.h"
+#if defined(OS_POSIX)
+#include <cerrno>
+#include <fcntl.h>
+#endif
+#include <cstdio>
+#include <type_traits>
+#include <utility>
 #include <gtest/gtest.h>
 
 using butil::File;
 using butil::FilePath;
+
+static_assert(!std::is_copy_constructible<File>::value,
+              "File must not be copy constructible");
+static_assert(!std::is_copy_assignable<File>::value,
+              "File must not be copy assignable");
+static_assert(std::is_move_constructible<File>::value,
+              "File must be move constructible");
+static_assert(std::is_move_assignable<File>::value,
+              "File must be move assignable");
+static_assert(std::is_nothrow_move_constructible<File>::value,
+              "File move construction must be noexcept");
+static_assert(std::is_nothrow_move_assignable<File>::value,
+              "File move assignment must be noexcept");
+static_assert(!std::is_copy_constructible<butil::ScopedFILE>::value,
+              "ScopedFILE must not be copy constructible");
+static_assert(!std::is_copy_assignable<butil::ScopedFILE>::value,
+              "ScopedFILE must not be copy assignable");
+static_assert(std::is_move_constructible<butil::ScopedFILE>::value,
+              "ScopedFILE must be move constructible");
+static_assert(!std::is_move_assignable<butil::ScopedFILE>::value,
+              "ScopedFILE must remain construct-only");
+
+TEST(FileTest, MoveTransfersHandleAndMetadata) {
+  butil::ScopedTempDir temp_dir;
+  ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+  FilePath path = temp_dir.path().AppendASCII("move_file");
+  File source(path, File::FLAG_CREATE | File::FLAG_READ | File::FLAG_WRITE |
+                        File::FLAG_ASYNC);
+  ASSERT_TRUE(source.IsValid());
+  const butil::PlatformFile handle = source.GetPlatformFile();
+
+  File constructed(std::move(source));
+  EXPECT_FALSE(source.IsValid());
+  EXPECT_EQ(handle, constructed.GetPlatformFile());
+  EXPECT_EQ(File::FILE_OK, constructed.error_details());
+  EXPECT_TRUE(constructed.created());
+  EXPECT_TRUE(constructed.async());
+
+  FilePath target_path = temp_dir.path().AppendASCII("move_target_file");
+  File assigned(target_path,
+                File::FLAG_CREATE | File::FLAG_READ | File::FLAG_WRITE);
+  ASSERT_TRUE(assigned.IsValid());
+  const butil::PlatformFile old_target_handle = assigned.GetPlatformFile();
+  assigned = std::move(constructed);
+  EXPECT_FALSE(constructed.IsValid());
+  EXPECT_EQ(handle, assigned.GetPlatformFile());
+  EXPECT_EQ(File::FILE_OK, assigned.error_details());
+  EXPECT_TRUE(assigned.created());
+  EXPECT_TRUE(assigned.async());
+#if defined(OS_POSIX)
+  errno = 0;
+  EXPECT_EQ(-1, fcntl(old_target_handle, F_GETFD));
+  EXPECT_EQ(EBADF, errno);
+#endif
+
+  auto& same_owner = assigned;
+  assigned = std::move(same_owner);
+  EXPECT_TRUE(assigned.IsValid());
+  EXPECT_EQ(handle, assigned.GetPlatformFile());
+  EXPECT_EQ(File::FILE_OK, assigned.error_details());
+  EXPECT_TRUE(assigned.created());
+  EXPECT_TRUE(assigned.async());
+}
+
+TEST(FileTest, ScopedFILEMoveConstructionTransfersOwnership) {
+  FILE* raw = std::tmpfile();
+  ASSERT_NE(nullptr, raw);
+  butil::ScopedFILE source(raw);
+  butil::ScopedFILE moved(std::move(source));
+  EXPECT_EQ(nullptr, source.get());
+  EXPECT_EQ(raw, moved.get());
+}
 
 TEST(FileTest, Create) {
   butil::ScopedTempDir temp_dir;
@@ -240,7 +319,7 @@ TEST(FileTest, Append) {
   ASSERT_TRUE(file2.IsValid());
 
   // Test passing the file around.
-  file = file2.Pass();
+  file = std::move(file2);
   EXPECT_FALSE(file2.IsValid());
   ASSERT_TRUE(file.IsValid());
 
