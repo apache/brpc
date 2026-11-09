@@ -29,22 +29,6 @@ namespace {
 const size_t CTX_WIDTH = 5;
 const size_t CRLF_NOT_FOUND = (size_t)-1;
 
-size_t FindCRLF(const butil::IOBuf& buf, size_t max_scan_size) {
-    butil::IOBufBytesIterator it(buf);
-    bool prev_cr = false;
-    size_t pos = 0;
-    while (it && pos < max_scan_size) {
-        const char c = static_cast<char>(*it);
-        if (prev_cr && c == '\n') {
-            return pos - 1;
-        }
-        prev_cr = (c == '\r');
-        ++it;
-        ++pos;
-    }
-    return CRLF_NOT_FOUND;
-}
-
 } // namespace
 
 namespace brpc {
@@ -454,7 +438,9 @@ butil::Status RedisCommandByComponents(butil::IOBuf* output,
 RedisCommandParser::RedisCommandParser()
     : _parsing_array(false)
     , _length(0)
-    , _index(0) {}
+    , _index(0) {
+    _line_scan.Reset();
+}
 
 size_t RedisCommandParser::ParsedArgsSize() {
     return _args.size();
@@ -514,7 +500,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         const size_t max_inline_size =
             FLAGS_redis_max_allocation_size > 0 ?
             static_cast<size_t>(FLAGS_redis_max_allocation_size) : 0;
-        const size_t crlf_pos = FindCRLF(buf, max_inline_size + 2);
+        const size_t crlf_pos = _line_scan.FindCRLF(buf, max_inline_size + 2);
         if (crlf_pos == CRLF_NOT_FOUND) {
             if (buf.size() <= max_inline_size) {
                 *err = PARSE_ERROR_NOT_ENOUGH_DATA;
@@ -696,6 +682,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
 }
 
 void RedisCommandParser::Reset() {
+    _line_scan.Reset();
     _parsing_array = false;
     _length = 0;
     _index = 0;
