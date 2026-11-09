@@ -45,11 +45,9 @@ DEFINE_uint32(borrow_from_globle_size, 200,
               "from the global free_keytables when no KeyTable exists in the "
               "current thread's keytable_list.");
 
-EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
-
 class KeyTable;
 
-BAIDU_VOLATILE_THREAD_LOCAL(bool, tls_ever_created_keytable, false);
+BUTIL_THREAD_LOCAL(bool, tls_ever_created_keytable, false);
 
 // We keep thread specific data in a two-level array. The top-level array
 // contains at most KEY_1STLEVEL_SIZE pointers to dynamically allocated
@@ -221,7 +219,7 @@ public:
         _head(nullptr), _tail(nullptr), _length(0) {}
 
     ~KeyTableList() {
-        TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        TaskGroup* g = tls_task_group();
         KeyTable* old_kt = tls_bls_ptr()->keytable;
         KeyTable* keytable = _head;
         while (keytable) {
@@ -235,7 +233,7 @@ public:
             if (old_kt == kt) {
                 old_kt = nullptr;
             }
-            g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+            g = tls_task_group();
         }
         tls_bls_ptr()->keytable = old_kt;
         if (g) {
@@ -489,7 +487,7 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
 
     // Cheat get/setspecific and destroy the keytables.
     bthread::TaskGroup* g =
-        bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        bthread::tls_task_group();
     bthread::KeyTable* old_kt = bthread::tls_bls_ptr()->keytable;
     while (saved_free_keytables) {
         bthread::KeyTable* kt = saved_free_keytables;
@@ -499,7 +497,7 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
             g->current_task()->local_storage.keytable = kt;
         }
         delete kt;
-        g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        g = bthread::tls_task_group();
     }
     bthread::tls_bls_ptr()->keytable = old_kt;
     if (g) {
@@ -646,15 +644,15 @@ int bthread_setspecific(bthread_key_t key, void* data) {
     if (nullptr == kt) {
         kt = new bthread::KeyTable;
         bthread::tls_bls_ptr()->keytable = kt;
-        bthread::TaskGroup* const g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        bthread::TaskGroup* const g = bthread::tls_task_group();
         if (g) {
             g->current_task()->local_storage.keytable = kt;
         } else {
             // Only cleanup keytable created by pthread.
             // keytable created by bthread will be deleted
             // in `return_keytable' or `bthread_keytable_pool_destroy'.
-            if (!bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_ever_created_keytable)) {
-                bthread::BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_ever_created_keytable, true);
+            if (!bthread::tls_ever_created_keytable()) {
+                bthread::tls_ever_created_keytable() = true;
                 CHECK_EQ(0, butil::thread_atexit(bthread::cleanup_pthread, kt));
             }
         }
@@ -667,7 +665,7 @@ void* bthread_getspecific(bthread_key_t key) {
     if (kt) {
         return kt->get_data(key);
     }
-    bthread::TaskGroup* const g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    bthread::TaskGroup* const g = bthread::tls_task_group();
     if (g) {
         bthread::TaskMeta* const task = g->current_task();
         kt = bthread::borrow_keytable(task->attr.keytable_pool);

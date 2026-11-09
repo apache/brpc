@@ -70,6 +70,7 @@ else
 fi
 printf 'FlatBuffers prefix: %s\n' "$fb"
 "$fb/bin/flatc" --version
+bash "$root/tools/flatbuffers/gen_rpc_meta.sh" --check "$fb/bin/flatc"
 
 runtime_library=
 codegen_tests=(flatbuffers_codegen_acceptance)

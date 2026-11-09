@@ -21,6 +21,6 @@
 
 namespace butil {
 
-thread_local StringMapThreadLocalTemp tls_stringmap_temp = { false, {} };
+BUTIL_THREAD_LOCAL(StringMapThreadLocalTemp, tls_stringmap_temp, { false, {} });
 
 }  // namespace butil

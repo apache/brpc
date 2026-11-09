@@ -30,6 +30,7 @@
 #include "butil/logging.h"
 #include "butil/files/temp_file.h"
 #include "butil/fd_guard.h"
+#include "butil/raw_pack.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -38,6 +39,7 @@
 #include "brpc/policy/most_common_message.h"
 #include "brpc/policy/public_pbrpc_protocol.h"
 #include "brpc/policy/streaming_rpc_protocol.h"
+#include "brpc/policy/dynpart_load_balancer.h"
 #include "brpc/channel.h"
 #include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/parallel_channel.h"
@@ -334,7 +336,9 @@ protected:
                                    nullptr, ProcessRpcRequest,
                                    VerifyMyRequest, nullptr, nullptr,
                                    brpc::CONNECTION_TYPE_ALL, "baidu_std" };
-        ASSERT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+        // Keep the test protocol outside the IDs assigned to builtins.
+        const auto dummy_type = static_cast<brpc::ProtocolType>(brpc::ProtocolType_MAX + 1);
+        ASSERT_EQ(0, RegisterProtocol(dummy_type, dummy_protocol));
     }
 
     static void ProcessRpcRequest(brpc::InputMessageBase* msg_base) {
@@ -2238,6 +2242,57 @@ protected:
         StopAndJoin();
     }
 
+    void TestBackupRequestWithoutRetryBudget(bool single_server, bool async,
+                                            int timeout_ms,
+                                            bool consume_retry_first) {
+        ASSERT_EQ(0, StartAccept(_ep));
+        brpc::Channel channel;
+        SetUpChannel(&channel, single_server, false);
+
+        // Establish the connection before testing backup/retry ordering.
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(__FUNCTION__);
+        brpc::Controller warmup;
+        warmup.set_timeout_ms(1000);
+        CallMethod(&channel, &warmup, &req, &res, async);
+        ASSERT_FALSE(warmup.Failed()) << warmup.ErrorText();
+
+        auto attempts = std::make_shared<butil::atomic<int>>(0);
+        _svc.SetMockFunc([attempts, consume_retry_first](
+                google::protobuf::RpcController* controller,
+                const test::EchoRequest*, test::EchoResponse*,
+                google::protobuf::Closure*) {
+            if (attempts->fetch_add(1, butil::memory_order_relaxed) == 0 &&
+                consume_retry_first) {
+                static_cast<brpc::Controller*>(controller)->SetFailed(
+                    brpc::EOVERCROWDED, "Consume the only retry before backup");
+                return;
+            }
+            bthread_usleep(100000);
+        });
+
+        brpc::Controller cntl;
+        cntl.set_max_retry(consume_retry_first ? 1 : 0);
+        cntl.set_backup_request_ms(20);
+        cntl.set_timeout_ms(timeout_ms);
+        CallMethod(&channel, &cntl, &req, &res, async);
+        if (timeout_ms < 0 || timeout_ms > 100) {
+            EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
+            EXPECT_EQ("received " + req.message(), res.message());
+        } else {
+            EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
+        }
+        EXPECT_FALSE(cntl.has_backup_request());
+        EXPECT_EQ(consume_retry_first ? 1 : 0, cntl.retried_count());
+        // Also finish delayed server work when the client has timed out.
+        bthread_usleep(150000);
+        EXPECT_EQ(consume_retry_first ? 2 : 1,
+                  attempts->load(butil::memory_order_relaxed));
+        StopAndJoin();
+        _svc.SetMockFunc({});
+    }
+
     class BackupRequestPolicyImpl : public brpc::BackupRequestPolicy {
     public:
         int32_t GetBackupRequestMs(const brpc::Controller*) const override {
@@ -2469,6 +2524,131 @@ TEST(ResponseSocketTest, real_rpc_responses_match_sending_socket) {
     server.Join();
 }
 
+// RpcMeta.attachment_size is a peer-controlled int32. Before it was
+// lower-bounded, a negative value passed the "larger than payload" guard and
+// `payload_size - attachment_size` overflowed (INT32_MIN) or produced a bogus
+// body/attachment split (any other negative value).
+TEST(BaiduAttachmentSizeTest, negative_response_attachment_size_is_rejected) {
+    const int32_t attachment_sizes[] = { INT32_MIN, -1 };
+    for (int32_t attachment_size : attachment_sizes) {
+        SCOPED_TRACE(attachment_size);
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        cntl._response = &res;
+        ASSERT_EQ(0, bthread_id_lock_and_reset_range(
+                         cntl.call_id(), nullptr, 2));
+        ASSERT_EQ(0, bthread_id_unlock(cntl.current_id()));
+        brpc::SocketId sending_id;
+        ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sending_id));
+        ASSERT_EQ(0, brpc::Socket::Address(
+                         sending_id, &cntl._current_call.sending_sock));
+        brpc::Socket* socket = cntl._current_call.sending_sock.get();
+        socket->ReleaseAdditionalReference();
+
+        brpc::policy::RpcMeta meta;
+        meta.set_correlation_id(cntl.current_id().value);
+        meta.mutable_response()->set_error_code(0);
+        meta.set_attachment_size(attachment_size);
+        auto* msg = brpc::policy::MostCommonMessage::Get();
+        butil::IOBufAsZeroCopyOutputStream meta_stream(&msg->meta);
+        ASSERT_TRUE(meta.SerializeToZeroCopyStream(&meta_stream));
+        test::EchoResponse response;
+        response.set_message("must not be delivered");
+        butil::IOBufAsZeroCopyOutputStream payload_stream(&msg->payload);
+        ASSERT_TRUE(response.SerializeToZeroCopyStream(&payload_stream));
+        socket->ReAddress(&msg->_socket);
+        socket->PostponeEOF();
+
+        brpc::policy::ProcessRpcResponse(msg);
+        EXPECT_EQ(brpc::ERESPONSE, cntl.ErrorCode()) << cntl.ErrorText();
+        EXPECT_TRUE(res.message().empty());
+        EXPECT_TRUE(cntl.response_attachment().empty());
+    }
+}
+
+TEST(BaiduAttachmentSizeTest, negative_request_attachment_size_is_rejected) {
+    MyEchoService service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(0, nullptr));
+
+    const int32_t attachment_sizes[] = { INT32_MIN, -1 };
+    for (int32_t attachment_size : attachment_sizes) {
+        SCOPED_TRACE(attachment_size);
+        int fds[2];
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        butil::fd_guard request_fd(fds[0]);
+        butil::fd_guard peer_fd(fds[1]);
+        brpc::SocketOptions options;
+        options.fd = request_fd;
+        brpc::SocketId socket_id;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &socket_id));
+        request_fd.release();
+        brpc::SocketUniquePtr socket;
+        ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+        socket->ReleaseAdditionalReference();
+
+        brpc::policy::RpcMeta meta;
+        meta.set_correlation_id(1);
+        meta.mutable_request()->set_service_name(
+            test::EchoService::descriptor()->full_name());
+        meta.mutable_request()->set_method_name("Echo");
+        meta.set_attachment_size(attachment_size);
+        auto* msg = brpc::policy::MostCommonMessage::Get();
+        butil::IOBufAsZeroCopyOutputStream meta_stream(&msg->meta);
+        ASSERT_TRUE(meta.SerializeToZeroCopyStream(&meta_stream));
+        test::EchoRequest request;
+        request.set_message("must not be served");
+        butil::IOBufAsZeroCopyOutputStream payload_stream(&msg->payload);
+        ASSERT_TRUE(request.SerializeToZeroCopyStream(&payload_stream));
+        msg->_arg = &server;
+        socket->ReAddress(&msg->_socket);
+        socket->PostponeEOF();
+
+        brpc::policy::ProcessRpcRequest(msg);
+
+        // The error response is written back on the arrival socket:
+        // [PRPC][body_size][meta_size] followed by the serialized RpcMeta.
+        char header[12];
+        butil::IOBuf received;
+        const int64_t deadline = butil::cpuwide_time_ms() + 5000;
+        uint32_t body_size = 0;
+        uint32_t meta_size = 0;
+        while (received.size() < sizeof(header) ||
+               received.size() < sizeof(header) + body_size) {
+            const int64_t remaining = deadline - butil::cpuwide_time_ms();
+            ASSERT_GT(remaining, 0);
+            pollfd pfd = {peer_fd, POLLIN, 0};
+            ASSERT_EQ(1, poll(&pfd, 1, remaining));
+            char buf[1024];
+            const ssize_t n = read(peer_fd, buf, sizeof(buf));
+            ASSERT_GT(n, 0);
+            received.append(buf, n);
+            if (received.size() >= sizeof(header)) {
+                received.copy_to(header, sizeof(header));
+                ASSERT_EQ(0, memcmp(header, "PRPC", 4));
+                butil::RawUnpacker(header + 4)
+                    .unpack32(body_size).unpack32(meta_size);
+            }
+        }
+        received.pop_front(sizeof(header));
+        ASSERT_LE(meta_size, body_size);
+        butil::IOBuf response_meta_buf;
+        received.cutn(&response_meta_buf, meta_size);
+        brpc::policy::RpcMeta response_meta;
+        butil::IOBufAsZeroCopyInputStream wrapper(response_meta_buf);
+        ASSERT_TRUE(response_meta.ParseFromZeroCopyStream(&wrapper));
+        EXPECT_EQ(1, response_meta.correlation_id());
+        EXPECT_EQ(brpc::EREQUEST, response_meta.response().error_code())
+            << response_meta.response().error_text();
+        // The request must not have been served: a failed request carries
+        // no body after the meta.
+        EXPECT_EQ(body_size, meta_size);
+    }
+    server.Stop(0);
+    server.Join();
+}
+
 TEST_F(ChannelTest, intrusive_ptr_sanity) {
     MyShared::nctor = 0;
     MyShared::ndtor = 0;
@@ -2574,6 +2754,25 @@ TEST_F(ChannelTest, retry_init_after_failed_init) {
 TEST_F(ChannelTest, init_using_unknown_naming_service) {
     brpc::Channel channel;
     ASSERT_EQ(-1, channel.Init("unknown://unknown", "unknown", nullptr));
+}
+
+TEST_F(ChannelTest, selective_channel_invalid_load_balancer) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+#if !BRPC_WITH_GLOG
+    // Invalid configuration must return an error even when fatal logs abort.
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+                     "crash_on_fatal_log", "true").empty());
+#endif
+    const char* invalid_options[] = {
+        "", "unknown", "rr:invalid=1", "random:invalid=1"
+    };
+    for (const char* option : invalid_options) {
+        SCOPED_TRACE(option);
+        brpc::SelectiveChannel channel;
+        EXPECT_EQ(-1, channel.Init(option, nullptr));
+        // A failed initialization must leave the channel usable for retry.
+        EXPECT_EQ(0, channel.Init("rr", nullptr));
+    }
 }
 
 TEST_F(ChannelTest, init_using_unexist_fns) {
@@ -2838,6 +3037,26 @@ TEST_F(ChannelTest, uninitialized_selective_channel) {
     ::test::EchoService::Stub(&channel).Echo(&async_cntl, &req, &res, done);
     EXPECT_TRUE(done_called);
     EXPECT_EQ(EINVAL, async_cntl.ErrorCode()) << async_cntl.ErrorText();
+}
+
+TEST_F(ChannelTest, dynpart_load_balancer_supports_more_than_eight_candidates) {
+    std::vector<DeferredSelectiveChannel::SubCall> calls;
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+
+    brpc::policy::DynPartLoadBalancer lb;
+    for (int i = 0; i < 9; ++i) {
+        brpc::SelectiveChannel::ChannelHandle handle;
+        ASSERT_EQ(0, channel.AddChannel(
+                         new DeferredSelectiveChannel(&calls), &handle));
+        ASSERT_TRUE(lb.AddServer(brpc::ServerId(handle.id, handle.tag)));
+    }
+
+    brpc::SocketUniquePtr ptr;
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, nullptr };
+    brpc::LoadBalancer::SelectOut out(&ptr);
+    ASSERT_EQ(0, lb.SelectServer(in, &out));
+    ASSERT_NE(nullptr, ptr.get());
 }
 
 TEST_F(ChannelTest, empty_selective_channel) {
@@ -3391,6 +3610,25 @@ TEST_F(ChannelTest, backup_request_policy) {
         for (int j = 0; j <= 1; ++j) { // Flag Asynchronous
             for (int k = 0; k <= 1; ++k) { // Flag ShortConnection
                 TestBackupRequestPolicy(i, j, k);
+            }
+        }
+    }
+}
+
+TEST_F(ChannelTest, backup_request_without_retry_budget) {
+    const int timeouts_ms[] = {1000, 60, -1};
+    for (bool single_server : {false, true}) {
+        for (bool async : {false, true}) {
+            for (int timeout_ms : timeouts_ms) {
+                for (bool consume_retry_first : {false, true}) {
+                    SCOPED_TRACE(testing::Message()
+                        << "single_server=" << single_server
+                        << " async=" << async
+                        << " timeout_ms=" << timeout_ms
+                        << " consume_retry_first=" << consume_retry_first);
+                    TestBackupRequestWithoutRetryBudget(
+                        single_server, async, timeout_ms, consume_retry_first);
+                }
             }
         }
     }
@@ -3976,6 +4214,31 @@ public:
     ~CountingSubChannel() override { --s_alive; }
 };
 int CountingSubChannel::s_alive = 0;
+
+TEST_F(ChannelTest, selective_channel_removal_prevents_revival) {
+    brpc::SelectiveChannel channel;
+    ASSERT_EQ(0, channel.Init("rr", nullptr));
+    brpc::SelectiveChannel::ChannelHandle handle;
+    ASSERT_EQ(0, channel.AddChannel(new CountingSubChannel, &handle));
+    ASSERT_EQ(1, CountingSubChannel::s_alive);
+    brpc::SocketUniquePtr ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(handle.id, &ptr));
+
+    // Keep the HC reference but disable automatic scheduling: the retained
+    // pointer below simulates the health check task resuming after removal.
+    ptr->_is_hc_related_ref_held = false;
+    EXPECT_EQ(0, ptr->SetFailed());
+    ptr->_is_hc_related_ref_held = true;
+    channel.RemoveAndDestroyChannel(handle);
+    EXPECT_FALSE(ptr->HCEnabled());
+    ptr->Revive(1);
+    EXPECT_TRUE(ptr->Failed());
+    EXPECT_EQ(1, ptr->nref());
+    // Also clean up the leaked additional reference if this test regresses.
+    ptr->SetFailed();
+    ptr.reset();
+    EXPECT_EQ(0, CountingSubChannel::s_alive);
+}
 
 TEST_F(ChannelTest, selective_channel_add_failure_ownership) {
     // nullptr sub channel is rejected without touching ownership.

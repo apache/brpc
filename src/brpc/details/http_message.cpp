@@ -289,7 +289,16 @@ int HttpMessage::on_body_cb(http_parser *parser,
 }
 
 int HttpMessage::on_message_complete_cb(http_parser *parser) {
-    return static_cast<HttpMessage*>(parser->data)->OnMessageComplete();
+    const int rc = static_cast<HttpMessage*>(parser->data)->OnMessageComplete();
+    if (rc == 0) {
+        // Stop at the end of this message. Otherwise http_parser goes on with
+        // the next pipelined message in the same buffer and its url, headers
+        // and body are appended to this HttpMessage, merging the two.
+        // ParseFromArray() and ParseFromIOBuf() return the bytes consumed up
+        // to here, and the caller parses the rest into a new HttpMessage.
+        http_parser_pause(parser, 1);
+    }
+    return rc;
 }
 
 int HttpMessage::OnBody(const char *at, const size_t length) {
@@ -506,6 +515,12 @@ HttpMessage::~HttpMessage() {
     }
 }
 
+// The parser is paused at the end of each message, which is not an error.
+static bool ParserOk(const http_parser& parser) {
+    return HTTP_PARSER_ERRNO(&parser) == HPE_OK ||
+        HTTP_PARSER_ERRNO(&parser) == HPE_PAUSED;
+}
+
 ssize_t HttpMessage::ParseFromArray(const char *data, const size_t length) {
     if (Completed()) {
         if (length == 0) {
@@ -517,7 +532,7 @@ ssize_t HttpMessage::ParseFromArray(const char *data, const size_t length) {
     }
     const size_t nprocessed =
         http_parser_execute(&_parser, &g_parser_settings, data, length);
-    if (_parser.http_errno != 0) {
+    if (!ParserOk(_parser)) {
         // May try HTTP on other formats, failure is norm.
         RPC_VLOG << "Fail to parse http message, parser=" << _parser
                  << ", buf=`" << butil::StringPiece(data, length) << '\'';
@@ -553,7 +568,7 @@ ssize_t HttpMessage::ParseFromIOBuf(const butil::IOBuf &buf) {
             &_parser, &g_parser_settings, blk.data(), blk.size());
         nprocessed += n;
         _parsed_block_size += n;
-        if (_parser.http_errno != 0) {
+        if (!ParserOk(_parser)) {
             // May try HTTP on other formats, failure is norm.
             RPC_VLOG << "Fail to parse http message, parser=" << _parser
                      << ", buf=" << butil::ToPrintable(buf);

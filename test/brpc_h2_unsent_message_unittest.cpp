@@ -19,10 +19,12 @@
 
 // Date: Tue Oct 9 20:27:18 CST 2018
 
+#include <map>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include "bthread/bthread.h"
 #include "butil/atomicops.h"
+#include "brpc/details/hpack.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/policy/http2_rpc_protocol.h"
 #include "gperftools_helper.h"
@@ -59,6 +61,44 @@ brpc::policy::H2FrameHead PopFrame(butil::IOBuf* buf, std::string* payload) {
                  buf->cutn(&(*payload)[0], frame.payload_size));
     }
     return frame;
+}
+
+// Decode the header block carried by the HEADERS and CONTINUATION frames in
+// |buf| with |peer|, the HPACK decoder of the remote side.
+// Returns false if the block cannot be decoded.
+bool DecodeHeaderBlock(brpc::HPacker* peer, butil::IOBuf* buf,
+                       std::map<std::string, std::string>* headers) {
+    butil::IOBuf block;
+    std::string payload;
+    while (!buf->empty()) {
+        const brpc::policy::H2FrameHead frame = PopFrame(buf, &payload);
+        if (frame.type == brpc::policy::H2_FRAME_HEADERS ||
+            frame.type == brpc::policy::H2_FRAME_CONTINUATION) {
+            block.append(payload);
+        }
+    }
+    headers->clear();
+    while (!block.empty()) {
+        brpc::HPacker::Header h;
+        if (peer->Decode(&block, &h) <= 0) {
+            return false;
+        }
+        (*headers)[h.name] = h.value;
+    }
+    return true;
+}
+
+butil::Status AppendRequest(brpc::Socket* sock, const std::string& uri,
+                            const std::string& authorization,
+                            butil::IOBuf* out) {
+    brpc::Controller cntl;
+    cntl.http_request().uri() = uri;
+    if (!authorization.empty()) {
+        cntl.http_request().SetHeader("authorization", authorization);
+    }
+    brpc::policy::H2UnsentRequest* request =
+        brpc::policy::H2UnsentRequest::New(&cntl);
+    return request->AppendAndDestroySelf(out, sock);
 }
 
 }  // namespace
@@ -160,6 +200,19 @@ TEST(H2UnsentMessage, request_does_not_fail_when_body_exceeds_window) {
     const butil::Status status =
         request->AppendAndDestroySelf(&out, sock.get());
     EXPECT_TRUE(status.ok()) << status;
+    // HEADERS (split by max_frame_size) come before the DATA the window
+    // allows, and neither ends the stream.
+    std::string payload;
+    brpc::policy::H2FrameHead frame = PopFrame(&out, &payload);
+    EXPECT_EQ(brpc::policy::H2_FRAME_HEADERS, frame.type);
+    EXPECT_EQ(0, frame.flags & 0x1);
+    while (frame.type != brpc::policy::H2_FRAME_DATA && !out.empty()) {
+        frame = PopFrame(&out, &payload);
+    }
+    EXPECT_EQ(brpc::policy::H2_FRAME_DATA, frame.type);
+    EXPECT_EQ(0, frame.flags & 0x1);
+    EXPECT_EQ("abc", payload);
+    EXPECT_TRUE(out.empty());
     brpc::policy::H2StreamContext* sctx = ctx->FindStream(1);
     ASSERT_TRUE(sctx != nullptr);
     EXPECT_EQ(7u, sctx->_pending_data.size());
@@ -242,6 +295,57 @@ TEST(H2UnsentMessage, clear_pending_data_releases_overcrowded_buffer) {
 
     EXPECT_TRUE(inserted_sctx->_pending_data.empty());
     EXPECT_EQ(0u, ctx->_pending_data_size);
+}
+
+TEST(H2UnsentMessage, append_and_destroy_self_keeps_hpack_state_on_refused_insert) {
+    brpc::SocketId id;
+    brpc::SocketUniquePtr sock;
+    brpc::SocketOptions options;
+    options.user = brpc::get_client_side_messenger();
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    ASSERT_EQ(0, brpc::Socket::Address(id, &sock));
+
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(sock.get(), nullptr);
+    ASSERT_EQ(0, ctx->Init());
+    sock->initialize_parsing_context(&ctx);
+    ctx->_last_sent_stream_id = 1;
+    ctx->_remote_settings.max_concurrent_streams = 1;
+
+    // The HPACK decoder of the server, which sees only the HEADERS that
+    // were written to the connection.
+    brpc::HPacker peer;
+    ASSERT_EQ(0, peer.Init(ctx->_unack_local_settings.header_table_size));
+    std::map<std::string, std::string> headers;
+
+    butil::IOBuf out;
+    ASSERT_TRUE(AppendRequest(sock.get(), "http://example.com/status", "",
+                              &out).ok());
+    ASSERT_TRUE(DecodeHeaderBlock(&peer, &out, &headers));
+    delete ctx->RemoveStreamAndDeferWU(1);
+
+    ASSERT_TRUE(AppendRequest(sock.get(), "http://example.com/user",
+                              "Bearer alice", &out).ok());
+    ASSERT_TRUE(DecodeHeaderBlock(&peer, &out, &headers));
+    EXPECT_EQ("/user", headers[":path"]);
+    EXPECT_EQ("Bearer alice", headers["authorization"]);
+
+    // Stream 3 takes the only stream the server allows, so this request is
+    // refused and Socket::WriteRequest::Setup drops what it appended.
+    const butil::Status refused = AppendRequest(
+        sock.get(), "http://example.com/user", "Bearer bob", &out);
+    EXPECT_EQ(brpc::ELIMIT, refused.error_code());
+    EXPECT_EQ(nullptr, ctx->FindStream(5));
+    out.clear();
+
+    // The refused request is retried on the same connection once stream 3
+    // is done. The server must decode the headers that were encoded.
+    delete ctx->RemoveStreamAndDeferWU(3);
+    ASSERT_TRUE(AppendRequest(sock.get(), "http://example.com/user",
+                              "Bearer bob", &out).ok());
+    ASSERT_TRUE(DecodeHeaderBlock(&peer, &out, &headers));
+    EXPECT_EQ("/user", headers[":path"]);
+    EXPECT_EQ("Bearer bob", headers["authorization"]);
 }
 
 TEST(H2UnsentMessage, request_throughput) {

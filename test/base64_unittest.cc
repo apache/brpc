@@ -70,4 +70,16 @@ TEST(Base64Test, DecodesLongInputWithPadding) {
   EXPECT_EQ(input, decoded);
 }
 
+TEST(Base64Test, RejectsMalformedPaddingAndLengths) {
+  for (const char* input : {"A", "AA", "AAA", "AAAAA", "=", "====",
+                            "A===", "AA======", "AA=A", "AA==AAAA"}) {
+    std::string decoded;
+    EXPECT_FALSE(butil::Base64Decode(input, &decoded)) << input;
+  }
+  for (const char* input : {"", "AA==", "AAA=", "AAAA"}) {
+    std::string decoded;
+    EXPECT_TRUE(butil::Base64Decode(input, &decoded)) << input;
+  }
+}
+
 }  // namespace butil

@@ -25,6 +25,7 @@
 
 #include "butil/string_printf.h"
 #include "butil/string_splitter.h"                  // StringMultiSplitter
+#include "butil/strings/string_number_conversions.h"
 #include "butil/strings/string_util.h"
 #include "butil/sys_byteorder.h"
 #include "butil/time.h"
@@ -420,8 +421,22 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             }
             const std::string* grpc_status = res_header->GetHeader(common->GRPC_STATUS);
             if (grpc_status) {
-                // TODO: More strict parsing
-                GrpcStatus status = (GrpcStatus)strtol(grpc_status->data(), nullptr, 10);
+                int code = 0;
+                bool valid = !grpc_status->empty();
+                for (char c : *grpc_status) {
+                    if (c < '0' || c > '9') {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (!valid || !butil::StringToInt(*grpc_status, &code)) {
+                    cntl->SetFailed(ERESPONSE, "Invalid grpc-status header");
+                    break;
+                }
+                const GrpcStatus status =
+                    code >= GRPC_OK && code < GRPC_MAX
+                        ? static_cast<GrpcStatus>(code)
+                        : GRPC_UNKNOWN;
                 if (status != GRPC_OK) {
                     const std::string* grpc_message =
                         res_header->GetHeader(common->GRPC_MESSAGE);
@@ -1294,8 +1309,13 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             // already received some or all of the message body for the
             // corresponding request, or if the framing indicates that there is
             // no message body.
+            //
+            // This branch is reached again for every read that leaves the
+            // body incomplete, so answer the expectation on the first one only.
             if (http_imsg->parser().type == HTTP_REQUEST &&
-                !http_imsg->header().before_http_1_1()) {
+                !http_imsg->header().before_http_1_1() &&
+                !http_imsg->expect_handled()) {
+                http_imsg->set_expect_handled();
                 const std::string* expect = http_imsg->header().GetHeader(common->EXPECT);
                 if (expect && *expect ==  common->CONTINUE_100) {
                     // Send 100-continue response back.

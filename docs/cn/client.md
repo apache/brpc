@@ -721,6 +721,8 @@ options.retry_policy = &g_my_retry_policy;
 
 工作机制如下：如果response没有在backup_request_ms内返回，则发送另外一个请求，哪个先回来就取哪个。新请求会被尽量送到不同的server。注意如果backup_request_ms大于超时，则backup request总不会被发送。backup request会消耗一次重试次数。backup request不意味着server端cancel。
 
+如果没有剩余的重试次数，则跳过backup request，继续等待当前请求完成或整体RPC超时。
+
 ChannelOptions.backup_request_ms影响该Channel上所有RPC，单位毫秒，默认值-1（表示不开启）。Controller.set_backup_request_ms()可修改某次RPC的值。
 
 用户可以通过继承[brpc::BackupRequestPolicy](https://github.com/apache/brpc/blob/master/src/brpc/backup_request_policy.h)自定义策略（backup_request_ms和熔断backup request）。 比如根据延时调节backup_request_ms或者根据错误率熔断部分backup request。

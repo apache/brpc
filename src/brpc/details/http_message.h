@@ -55,11 +55,14 @@ public:
     butil::IOBuf &body() { return _body; }
 
     // Parse from array, length=0 is treated as EOF.
+    // Parsing stops at the end of the message, bytes after it are left to
+    // the next message.
     // Returns bytes parsed, -1 on failure.
     ssize_t ParseFromArray(const char *data, const size_t length);
-    
+
     // Parse from butil::IOBuf.
-    // Emtpy `buf' is sliently ignored, which is different from ParseFromArray.
+    // Empty `buf' is silently ignored, which is different from ParseFromArray.
+    // Parsing stops at the end of the message as in ParseFromArray.
     // Returns bytes parsed, -1 on failure.
     ssize_t ParseFromIOBuf(const butil::IOBuf &buf);
 
