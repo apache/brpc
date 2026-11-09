@@ -113,11 +113,11 @@ struct PendingError {
     PendingError() : id(INVALID_BTHREAD_ID), error_code(0), location(nullptr) {}
 };
 
-inline uint32_t LoadButex(const butil::atomic<int>* butex) {
+inline uint32_t load_butex(const butil::atomic<int>* butex) {
     return static_cast<uint32_t>(butex->load(butil::memory_order_relaxed));
 }
 
-inline void StoreButex(butil::atomic<int>* butex, uint32_t value,
+inline void store_butex(butil::atomic<int>* butex, uint32_t value,
                        butil::memory_order order = butil::memory_order_relaxed) {
     butex->store(static_cast<int>(value), order);
 }
@@ -143,8 +143,8 @@ struct BAIDU_CACHELINE_ALIGNMENT Id {
         // does not matter, we set it to 0 to make program more deterministic.
         butex = bthread::butex_create_checked<butil::atomic<int> >();
         join_butex = bthread::butex_create_checked<butil::atomic<int> >();
-        StoreButex(butex, 0);
-        StoreButex(join_butex, 0);
+        store_butex(butex, 0);
+        store_butex(join_butex, 0);
     }
 
     ~Id() {
@@ -194,7 +194,7 @@ inline bool id_exists_with_true_negatives(bthread_id_t id) {
 uint32_t id_value(bthread_id_t id) {
     Id* const meta = address_resource(get_slot(id));
     if (meta != nullptr) {
-        return LoadButex(meta->butex);
+        return load_butex(meta->butex);
     }
     return 0;  // valid version never be zero
 }
@@ -244,7 +244,7 @@ void id_status(bthread_id_t id, std::ostream &os) {
             meta->pending_q.push(front);
             pending_q.push(front);
         }
-        butex_value = LoadButex(butex);
+        butex_value = load_butex(butex);
     } else {
         valid = false;
     }
@@ -349,15 +349,15 @@ static int id_create_impl(
         meta->on_error2 = on_error2;
         CHECK(meta->pending_q.empty());
         butil::atomic<int>* butex = meta->butex;
-        uint32_t butex_value = LoadButex(butex);
+        uint32_t butex_value = load_butex(butex);
         if (0 == butex_value ||
             butex_value + ID_MAX_RANGE + 2 < butex_value) {
             // Skip 0 so that bthread_id_t is never 0
             // avoid overflow to make comparisons simpler.
-            StoreButex(butex, 1);
+            store_butex(butex, 1);
             butex_value = 1;
         }
-        StoreButex(meta->join_butex, butex_value);
+        store_butex(meta->join_butex, butex_value);
         meta->first_ver = butex_value;
         meta->locked_ver = butex_value + 1;
         *id = make_id(butex_value, slot);
@@ -385,15 +385,15 @@ static int id_create_ranged_impl(
         meta->on_error2 = on_error2;
         CHECK(meta->pending_q.empty());
         butil::atomic<int>* butex = meta->butex;
-        uint32_t butex_value = LoadButex(butex);
+        uint32_t butex_value = load_butex(butex);
         if (0 == butex_value ||
             butex_value + ID_MAX_RANGE + 2 < butex_value) {
             // Skip 0 so that bthread_id_t is never 0
             // avoid overflow to make comparisons simpler.
-            StoreButex(butex, 1);
+            store_butex(butex, 1);
             butex_value = 1;
         }
-        StoreButex(meta->join_butex, butex_value);
+        store_butex(meta->join_butex, butex_value);
         meta->first_ver = butex_value;
         meta->locked_ver = butex_value + range;
         *id = make_id(butex_value, slot);
@@ -403,9 +403,6 @@ static int id_create_ranged_impl(
 }
 
 }  // namespace bthread
-
-using bthread::LoadButex;
-using bthread::StoreButex;
 
 extern "C" {
 
@@ -437,7 +434,7 @@ int bthread_id_lock_and_reset_range_verbose(
     bool ever_contended = false;
     meta->mutex.lock();
     while (meta->has_version(id_ver)) {
-        if (LoadButex(butex) == meta->first_ver) {
+        if (bthread::load_butex(butex) == meta->first_ver) {
             // contended locker always wakes up the butex at unlock.
             meta->lock_location = location;
             if (range == 0) {
@@ -453,16 +450,16 @@ int bthread_id_lock_and_reset_range_verbose(
             } else {
                 meta->locked_ver = meta->first_ver + range;
             }
-            StoreButex(butex, ever_contended ? meta->contended_ver()
+            bthread::store_butex(butex, ever_contended ? meta->contended_ver()
                                               : meta->locked_ver);
             meta->mutex.unlock();
             if (pdata) {
                 *pdata = meta->data;
             }
             return 0;
-        } else if (LoadButex(butex) != meta->unlockable_ver()) {
+        } else if (bthread::load_butex(butex) != meta->unlockable_ver()) {
             const uint32_t expected_ver = meta->contended_ver();
-            StoreButex(butex, expected_ver);
+            bthread::store_butex(butex, expected_ver);
             meta->mutex.unlock();
             ever_contended = true;
             if (bthread::butex_wait(butex, expected_ver, nullptr) < 0 &&
@@ -496,14 +493,15 @@ int bthread_id_about_to_destroy(bthread_id_t id) {
         meta->mutex.unlock();
         return EINVAL;
     }
-    if (LoadButex(butex) == meta->first_ver) {
+    if (bthread::load_butex(butex) == meta->first_ver) {
         meta->mutex.unlock();
         LOG(FATAL) << "bthread_id=" << id.value << " is not locked!";
         return EPERM;
     }
     const bool contended =
-        (LoadButex(butex) == meta->contended_ver());
-    StoreButex(butex, meta->unlockable_ver(), butil::memory_order_release);
+        (bthread::load_butex(butex) == meta->contended_ver());
+    bthread::store_butex(butex, meta->unlockable_ver(),
+                         butil::memory_order_release);
     meta->mutex.unlock();
     if (contended) {
         // wake up all waiting lockers.
@@ -524,12 +522,12 @@ int bthread_id_cancel(bthread_id_t id) {
         meta->mutex.unlock();
         return EINVAL;
     }
-    if (LoadButex(butex) != meta->first_ver) {
+    if (bthread::load_butex(butex) != meta->first_ver) {
         meta->mutex.unlock();
         return EPERM;
     }       
     const uint32_t next_ver = meta->end_ver();
-    StoreButex(butex, next_ver, butil::memory_order_release);
+    bthread::store_butex(butex, next_ver, butil::memory_order_release);
     meta->first_ver = next_ver;
     meta->locked_ver = next_ver;
     meta->mutex.unlock();
@@ -549,7 +547,7 @@ int bthread_id_join(bthread_id_t id) {
     while (1) {
         meta->mutex.lock();
         const bool has_ver = meta->has_version(id_ver);
-        const uint32_t expected_ver = LoadButex(join_butex);
+        const uint32_t expected_ver = bthread::load_butex(join_butex);
         meta->mutex.unlock();
         if (!has_ver) {
             break;
@@ -580,11 +578,11 @@ int bthread_id_trylock(bthread_id_t id, void** pdata) {
         meta->mutex.unlock();
         return EINVAL;
     }
-    if (LoadButex(butex) != meta->first_ver) {
+    if (bthread::load_butex(butex) != meta->first_ver) {
         meta->mutex.unlock();
         return EBUSY;
     }
-    StoreButex(butex, meta->locked_ver);
+    bthread::store_butex(butex, meta->locked_ver);
     meta->mutex.unlock();
     if (pdata != nullptr) {
         *pdata = meta->data;
@@ -612,7 +610,7 @@ int bthread_id_unlock(bthread_id_t id) {
         LOG(FATAL) << "Invalid bthread_id=" << id.value;
         return EINVAL;
     }
-    if (LoadButex(butex) == meta->first_ver) {
+    if (bthread::load_butex(butex) == meta->first_ver) {
         meta->mutex.unlock();
         LOG(FATAL) << "bthread_id=" << id.value << " is not locked!";
         return EPERM;
@@ -629,8 +627,9 @@ int bthread_id_unlock(bthread_id_t id) {
         }
     } else {
         const bool contended =
-            (LoadButex(butex) == meta->contended_ver());
-        StoreButex(butex, meta->first_ver, butil::memory_order_release);
+            (bthread::load_butex(butex) == meta->contended_ver());
+        bthread::store_butex(butex, meta->first_ver,
+                             butil::memory_order_release);
         meta->mutex.unlock();
         if (contended) {
             // We may wake up already-reused id, but that's OK.
@@ -654,14 +653,14 @@ int bthread_id_unlock_and_destroy(bthread_id_t id) {
         LOG(FATAL) << "Invalid bthread_id=" << id.value;
         return EINVAL;
     }
-    if (LoadButex(butex) == meta->first_ver) {
+    if (bthread::load_butex(butex) == meta->first_ver) {
         meta->mutex.unlock();
         LOG(FATAL) << "bthread_id=" << id.value << " is not locked!";
         return EPERM;
     }
     const uint32_t next_ver = meta->end_ver();
-    StoreButex(butex, next_ver, butil::memory_order_release);
-    StoreButex(join_butex, next_ver, butil::memory_order_release);
+    bthread::store_butex(butex, next_ver, butil::memory_order_release);
+    bthread::store_butex(join_butex, next_ver, butil::memory_order_release);
     meta->first_ver = next_ver;
     meta->locked_ver = next_ver;
     meta->pending_q.clear();
@@ -751,8 +750,8 @@ int bthread_id_error2_verbose(bthread_id_t id, int error_code,
         meta->mutex.unlock();
         return EINVAL;
     }
-    if (LoadButex(butex) == meta->first_ver) {
-        StoreButex(butex, meta->locked_ver);
+    if (bthread::load_butex(butex) == meta->first_ver) {
+        bthread::store_butex(butex, meta->locked_ver);
         meta->lock_location = location;
         meta->mutex.unlock();
         if (meta->on_error) {
