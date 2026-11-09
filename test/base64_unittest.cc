@@ -48,4 +48,26 @@ TEST(Base64Test, RejectsInvalidInput) {
   EXPECT_FALSE(Base64Decode("AAAA$AAA", &decoded));
 }
 
+TEST(Base64Test, RejectsLongInvalidInput) {
+  const std::string valid(1024, 'A');
+  const char kInvalidChars[] = {'!', '=', static_cast<char>(0x80)};
+  for (char invalid : kInvalidChars) {
+    std::string input = valid;
+    input[input.size() / 2] = invalid;
+    std::string decoded;
+    EXPECT_FALSE(Base64Decode(input, &decoded))
+        << "invalid byte=" << static_cast<unsigned char>(invalid);
+  }
+}
+
+TEST(Base64Test, DecodesLongInputWithPadding) {
+  const std::string input(193, 'x');
+  std::string encoded;
+  std::string decoded;
+  Base64Encode(input, &encoded);
+  ASSERT_EQ("==", encoded.substr(encoded.size() - 2));
+  ASSERT_TRUE(Base64Decode(encoded, &decoded));
+  EXPECT_EQ(input, decoded);
+}
+
 }  // namespace butil

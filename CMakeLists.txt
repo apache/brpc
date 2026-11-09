@@ -227,6 +227,8 @@ if(BUILD_BASE64_BENCHMARKS)
         MODP_B64_DISABLE_AVX2)
     target_include_directories(base64_benchmark_scalar PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_features(base64_benchmark_scalar PRIVATE
+        cxx_std_${BRPC_CXX_STANDARD})
 
     add_executable(base64_benchmark_avx2
         test/base64_benchmark.cpp
@@ -234,6 +236,8 @@ if(BUILD_BASE64_BENCHMARKS)
         src/butil/third_party/modp_b64/modp_b64_avx2.cc)
     target_include_directories(base64_benchmark_avx2 PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_features(base64_benchmark_avx2 PRIVATE
+        cxx_std_${BRPC_CXX_STANDARD})
 endif()
 
 add_subdirectory(test/cmake_link_dependencies EXCLUDE_FROM_ALL)

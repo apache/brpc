@@ -80,8 +80,11 @@ inline bool DecodeQuad(const uint8_t* src, uint8_t* dest) {
 }  // namespace
 
 extern "C" int modp_b64_avx2_supported(void) {
-    __builtin_cpu_init();
-    return __builtin_cpu_supports("avx2");
+    static const bool supported = []() {
+        __builtin_cpu_init();
+        return __builtin_cpu_supports("avx2");
+    }();
+    return supported;
 }
 
 extern "C" MODP_B64_AVX2_TARGET size_t modp_b64_avx2_encode(
@@ -90,8 +93,9 @@ extern "C" MODP_B64_AVX2_TARGET size_t modp_b64_avx2_encode(
     uint8_t* output = reinterpret_cast<uint8_t*>(dest);
     size_t rounds = len >= 32 ? (len - 4) / 24 : 0;
     if (rounds != 0) {
-        // The first shuffle needs four zero bytes at the start of its lower
-        // lane. This is the upstream AVX2 codec's safe first-block handling.
+        // Duplicate the first dword so this block emulates a load at src - 4.
+        // Subsequent blocks start at src + 20 + 24 * k; the four-byte offset
+        // is restored below before handling the scalar tail.
         __m256i block = _mm256_loadu_si256(
             reinterpret_cast<const __m256i*>(src));
         block = _mm256_permutevar8x32_epi32(
