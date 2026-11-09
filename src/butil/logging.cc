@@ -739,12 +739,16 @@ bool ShiftBackupsUnlocked(int max_backups, int64_t size_before_rotation) {
         }
         const PathString to = MakeBackupLogPath(*log_file_name, index + 1);
         if (!RenameFilePath(from, to)) {
+            // Captured in a statement of its own: the error code has to be
+            // read before building the message, since formatting it is free to
+            // touch errno, and the order of function arguments is unspecified.
+            const SystemErrorCode err = GetLastSystemErrorCode();
             BackOffAfterFailedRotation(
                 size_before_rotation,
                 butil::string_printf("renaming %s to %s failed",
                                      PathAsString(from).c_str(),
                                      PathAsString(to).c_str()),
-                GetLastSystemErrorCode());
+                err);
             return false;
         }
     }
@@ -773,16 +777,20 @@ bool RotateCurrentFileUnlocked(int64_t size_before_rotation) {
         }
     }
     if (!RenameFilePath(*log_file_name, first_backup)) {
+        const SystemErrorCode err = GetLastSystemErrorCode();
         BackOffAfterFailedRotation(
             size_before_rotation,
             butil::string_printf("renaming %s to %s failed",
                                  PathAsString(*log_file_name).c_str(),
                                  PathAsString(first_backup).c_str()),
-            GetLastSystemErrorCode());
+            err);
         return false;
     }
     FILE* const fresh = OpenLogFile(*log_file_name, log_file_mode);
     if (fresh == nullptr) {
+        // Taken before the rollback below, whose own failure would otherwise
+        // be the one reported.
+        const SystemErrorCode err = GetLastSystemErrorCode();
         // The path can not be opened again. Put the backup back under its
         // original name so the file keeps the name logs are expected under.
         // Whichever way that rename goes, the handle below still owns the
@@ -792,7 +800,7 @@ bool RotateCurrentFileUnlocked(int64_t size_before_rotation) {
             size_before_rotation,
             butil::string_printf("reopening %s failed",
                                  PathAsString(*log_file_name).c_str()),
-            GetLastSystemErrorCode());
+            err);
         return false;
     }
     if (log_file) {
@@ -811,6 +819,10 @@ bool RotateCurrentFileUnlocked(int64_t size_before_rotation) {
     // log that triggered the rotation, as small as possible.
     CloseLogFileUnlocked();
     if (!RenameFilePath(*log_file_name, first_backup)) {
+        // Captured before reopening the handle below, which is free to
+        // overwrite the last error (its fallback to ".\\debug.log" usually
+        // succeeds and leaves nothing behind to report).
+        const SystemErrorCode err = GetLastSystemErrorCode();
         // Put the handle back on the file that is still there, so the next log
         // keeps appending instead of being dropped.
         InitializeLogFileHandle();
@@ -819,15 +831,16 @@ bool RotateCurrentFileUnlocked(int64_t size_before_rotation) {
             butil::string_printf("renaming %s to %s failed",
                                  PathAsString(*log_file_name).c_str(),
                                  PathAsString(first_backup).c_str()),
-            GetLastSystemErrorCode());
+            err);
         return false;
     }
     if (!InitializeLogFileHandle()) {
+        const SystemErrorCode err = GetLastSystemErrorCode();
         BackOffAfterFailedRotation(
             size_before_rotation,
             butil::string_printf("reopening %s failed",
                                  PathAsString(*log_file_name).c_str()),
-            GetLastSystemErrorCode());
+            err);
         return false;
     }
     return true;

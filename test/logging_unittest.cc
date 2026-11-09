@@ -1152,16 +1152,20 @@ TEST_F(LogRotationTest, huge_max_backups_shifts_only_existing_backups) {
 
     butil::Timer timer;
     timer.start();
-    WriteLogs(2500, 1000);  // ~2.5MB, a couple of rotations
+    // Two rotations say everything there is to say: the cost has to follow the
+    // backups that exist (two of them) and not --log_rotate_max_backups, whose
+    // 1e8 renames would stall the logging lock for minutes. Watching for the
+    // backups instead of counting logs keeps the test independent of how many
+    // bytes a log occupies, which depends on the length of the source path in
+    // its header.
+    ASSERT_TRUE(WriteLogsUntilFileExists(BackupPath(2), 100000, 1000));
     CloseLogFile();
     timer.stop();
 
-    // The rotations above renamed a handful of files rather than 1e8 of
-    // them, which would stall the logging threads for minutes.
     ASSERT_LT(timer.m_elapsed(), 10 * 1000);
     ASSERT_TRUE(FileSize(BackupPath(1), nullptr));
     ASSERT_TRUE(FileSize(BackupPath(2), nullptr));
-    ASSERT_FALSE(FileSize(BackupPath(3), nullptr));
+    ASSERT_FALSE(FileSize(BackupPath(3), nullptr));  // no third rotation yet
 }
 
 struct SyncLogArgs {
