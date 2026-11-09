@@ -60,6 +60,7 @@
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
 #include "brpc/compress.h"
+#include "brpc/policy/public_pbrpc_protocol.h"
 #include "echo.pb.h"
 #include "v1.pb.h"
 #include "v2.pb.h"
@@ -2356,6 +2357,176 @@ TEST_F(ServerTest, nshead_service_is_not_served_on_internal_port) {
     chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(EXP_RESPONSE, res.body.to_string());
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// A request whose body is BLOCK_REQUEST holds the concurrency slot until the
+// test signals _release, so that the limit can be reached deterministically.
+static const char* const BLOCK_REQUEST = "block";
+
+class BlockingNsheadService : public brpc::NsheadService {
+public:
+    void ProcessNsheadRequest(const brpc::Server&,
+                              brpc::Controller* cntl,
+                              const brpc::NsheadMessage& request,
+                              brpc::NsheadMessage* response,
+                              brpc::NsheadClosure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        if (cntl->Failed()) {
+            // nshead carries no error field, echo the code back.
+            response->body.append(butil::string_printf("%d", cntl->ErrorCode()));
+            return;
+        }
+        if (request.body.equals(BLOCK_REQUEST)) {
+            _entered.signal();
+            _release.wait();
+        }
+        response->body.append(request.body);
+    }
+
+    bthread::CountdownEvent _entered{1};
+    bthread::CountdownEvent _release{1};
+};
+
+// A request rejected by the concurrency limiter of the NsheadService is a
+// normal situation instead of an impossible one: it must be failed with
+// ELIMIT and reach the user handler (serving it anyway silently disables the
+// limit configured by the operator), and the rejected concurrency must be
+// counted out so that later requests are not rejected forever.
+TEST_F(ServerTest, nshead_service_rejects_request_on_concurrency_limit) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    BlockingNsheadService* nshead_service = new BlockingNsheadService;
+    opt.nshead_service = nshead_service;
+    opt.method_max_concurrency = "1";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+
+    brpc::ChannelOptions copt;
+    copt.protocol = brpc::PROTOCOL_NSHEAD;
+    copt.connection_type = brpc::CONNECTION_TYPE_POOLED;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(server.listen_address(), &copt));
+
+    // Take the only slot and hold it.
+    brpc::NsheadMessage blocking_req;
+    brpc::NsheadMessage blocking_res;
+    brpc::Controller blocking_cntl;
+    blocking_req.body.append(BLOCK_REQUEST);
+    chan.CallMethod(nullptr, &blocking_cntl, &blocking_req,
+                    &blocking_res, brpc::DoNothing());
+    ASSERT_EQ(0, nshead_service->_entered.wait());
+
+    brpc::NsheadMessage req;
+    brpc::NsheadMessage res;
+    brpc::Controller cntl;
+    req.body.append(EXP_REQUEST);
+    chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
+
+    // Release the slot before checking the result, otherwise failures below
+    // would leave the blocking request hanging in the server.
+    nshead_service->_release.signal();
+    brpc::Join(blocking_cntl.call_id());
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_EQ(butil::string_printf("%d", brpc::ELIMIT), res.body.to_string());
+    ASSERT_FALSE(blocking_cntl.Failed()) << blocking_cntl.ErrorText();
+    ASSERT_EQ(BLOCK_REQUEST, blocking_res.body.to_string());
+
+    bool accepted = false;
+    for (int i = 0; i < 100 && !accepted; ++i) {
+        cntl.Reset();
+        res.body.clear();
+        chan.CallMethod(nullptr, &cntl, &req, &res, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        accepted = res.body.equals(EXP_REQUEST);
+        if (!accepted) {
+            bthread_usleep(10000);
+        }
+    }
+    ASSERT_TRUE(accepted) << res.body.to_string();
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// A pb method served through the nshead adaptor is protected by its own
+// concurrency limiter, the rejection must be taken as well.
+class BlockingEchoService : public test::EchoService {
+public:
+    void Echo(google::protobuf::RpcController*,
+              const test::EchoRequest* request,
+              test::EchoResponse* response,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        if (request->message() == BLOCK_REQUEST) {
+            _entered.signal();
+            _release.wait();
+        }
+        response->set_message(request->message());
+    }
+
+    bthread::CountdownEvent _entered{1};
+    bthread::CountdownEvent _release{1};
+};
+
+// Same as nshead_service_rejects_request_on_concurrency_limit, for a pb service
+// serving through the nshead adaptor: the limit is checked against the method.
+TEST_F(ServerTest, nshead_adaptor_rejects_request_on_method_concurrency_limit) {
+    brpc::Server server;
+    BlockingEchoService service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.nshead_service = new brpc::policy::PublicPbrpcServiceAdaptor;
+    opt.method_max_concurrency = "1";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+
+    brpc::ChannelOptions copt;
+    copt.protocol = "public_pbrpc";
+    copt.connection_type = brpc::CONNECTION_TYPE_POOLED;
+    copt.max_retry = 0;
+    brpc::Channel chan;
+    ASSERT_EQ(0, chan.Init(server.listen_address(), &copt));
+    test::EchoService_Stub stub(&chan);
+
+    // Take the only slot and hold it.
+    test::EchoRequest blocking_req;
+    test::EchoResponse blocking_res;
+    brpc::Controller blocking_cntl;
+    blocking_req.set_message(BLOCK_REQUEST);
+    stub.Echo(&blocking_cntl, &blocking_req, &blocking_res, brpc::DoNothing());
+    ASSERT_EQ(0, service._entered.wait());
+
+    test::EchoRequest req;
+    test::EchoResponse res;
+    brpc::Controller cntl;
+    req.set_message(EXP_REQUEST);
+    stub.Echo(&cntl, &req, &res, nullptr);
+
+    // Release the slot before checking the result, otherwise failures below
+    // would leave the blocking request hanging in the server.
+    service._release.signal();
+    brpc::Join(blocking_cntl.call_id());
+    ASSERT_EQ(brpc::ELIMIT, cntl.ErrorCode()) << cntl.ErrorText();
+    ASSERT_FALSE(blocking_cntl.Failed()) << blocking_cntl.ErrorText();
+    ASSERT_EQ(BLOCK_REQUEST, blocking_res.message());
+
+    // The slot is released, requests are no longer rejected. The response
+    // reaches the client before the pb method recycles the concurrency, hence
+    // the retry.
+    bool accepted = false;
+    for (int i = 0; i < 100 && !accepted; ++i) {
+        cntl.Reset();
+        res.Clear();
+        stub.Echo(&cntl, &req, &res, nullptr);
+        accepted = !cntl.Failed();
+        if (!accepted) {
+            bthread_usleep(10000);
+        }
+    }
+    ASSERT_TRUE(accepted) << cntl.ErrorText();
+    ASSERT_EQ(EXP_REQUEST, res.message());
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
