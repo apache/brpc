@@ -703,16 +703,4 @@ void AdapterTransport::CheckUnexpectedTcpData() {
     }
 }
 
-void AdapterTransport::TryReadOnTcp() {
-    if (_socket->_nevent.fetch_add(1, butil::memory_order_acq_rel) != 0) {
-        return;
-    }
-    const int phase = _handshake.phase(butil::memory_order_acquire);
-    if (phase == handshake::FALLBACK_TCP) {
-        InputMessenger::OnNewMessages(_socket);
-    } else if (phase == handshake::ESTABLISHED) {
-        CheckUnexpectedTcpData();
-    }
-}
-
 }  // namespace brpc

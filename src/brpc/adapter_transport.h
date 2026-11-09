@@ -84,7 +84,6 @@ private:
     Transport* ActiveTransport() const;
     void SetHighSpeedAvailable(bool available);
     void FallbackToTcp();
-    void TryReadOnTcp();
     void ProcessTcpEvent();
     void CheckUnexpectedTcpData();
     static void OnNewMessagesAfterUpgrade(Socket* socket);

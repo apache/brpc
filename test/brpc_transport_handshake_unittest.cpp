@@ -733,7 +733,7 @@ TEST(TransportHandshakeTest, established_socket_does_not_restart_handshake) {
         SocketUniquePtr socket;
         ASSERT_EQ(0, Socket::Address(id, &socket));
         AdapterTransport* adapter = AdapterTransport::Get(socket.get());
-        adapter->handshake_session()->SetPhase(ESTABLISHED);
+        adapter->handshake_session()->set_phase(ESTABLISHED);
         adapter->CompleteConnection(ESTABLISHED);
 
         const char* prefixes[] = {"RDMA", "RDM3", "UB"};
@@ -958,7 +958,7 @@ TEST(TransportHandshakeTest, debug_reads_protocol_version_during_negotiation) {
     auto* adapter = AdapterTransport::Get(pair.socket.get());
     auto* session = adapter->handshake_session();
     session->set_protocol_version(2);
-    session->SetPhase(HELLO_WAIT);
+    session->set_phase(HELLO_WAIT);
     std::atomic<bool> stop{false};
     std::thread writer([&] {
         while (!stop.load(std::memory_order_relaxed)) {
@@ -980,7 +980,7 @@ TEST(TransportHandshakeTest, debug_reads_protocol_version_during_negotiation) {
 TEST(TransportHandshakeTest, publish_fallback_after_tcp_state) {
     HandshakeSession session;
     int tcp_active = 0;
-    session.SetPhase(NEGOTIATING);
+    session.set_phase(NEGOTIATING);
     session.PublishFallback([&tcp_active]() { tcp_active = 1; });
     ASSERT_EQ(1, tcp_active);
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));

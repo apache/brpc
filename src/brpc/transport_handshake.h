@@ -162,7 +162,7 @@ public:
         return _phase.load(order);
     }
 
-    void SetPhase(int phase) {
+    void set_phase(int phase) {
         _phase.store(phase, butil::memory_order_release);
     }
 

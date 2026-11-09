@@ -231,7 +231,7 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
     // let an errno left by earlier work override this handshake's result.
     errno = 0;
 
-    SetPhase(PREPARING);
+    set_phase(PREPARING);
     StepResult result = transport->PrepareResources();
     if (result == STEP_FALLBACK) {
         return FinishWithFallback(this, transport);
@@ -240,12 +240,12 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
         return FinishWithFailure(this, transport);
     }
 
-    SetPhase(HELLO_SEND);
+    set_phase(HELLO_SEND);
     if (SendHello(protocol, true) != STEP_OK) {
         return FinishWithFailure(this, transport);
     }
 
-    SetPhase(HELLO_WAIT);
+    set_phase(HELLO_WAIT);
     result = ReceiveHello(protocol, nullptr, false);
     if (result == STEP_NOT_MINE || result == STEP_NEED_MORE) {
         errno = EPROTO;
@@ -257,11 +257,11 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
     bool enabled = result == STEP_OK;
 
     if (enabled && protocol->HasExtension()) {
-        SetPhase(EXTENSION_SEND);
+        set_phase(EXTENSION_SEND);
         if (SendExtension(protocol, true) != STEP_OK) {
             return FinishWithFailure(this, transport);
         }
-        SetPhase(EXTENSION_WAIT);
+        set_phase(EXTENSION_WAIT);
         result = ReceiveExtension(protocol, nullptr);
         if (result != STEP_OK && result != STEP_FALLBACK) {
             return FinishWithFailure(this, transport);
@@ -270,7 +270,7 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
     }
 
     if (enabled) {
-        SetPhase(NEGOTIATING);
+        set_phase(NEGOTIATING);
         result = transport->NegotiateResources();
         if (result != STEP_OK && result != STEP_FALLBACK) {
             return FinishWithFailure(this, transport);
@@ -278,7 +278,7 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
         enabled = result == STEP_OK;
     }
 
-    SetPhase(ACK_SEND);
+    set_phase(ACK_SEND);
     if (SendAck(protocol, enabled) != STEP_OK) {
         return FinishWithFailure(this, transport);
     }
@@ -300,28 +300,27 @@ StepResult HandshakeSession::RunServer(
     // Once TCP fallback has been published, subsequent bytes are application
     // protocol data and must bypass every upgrade codec without changing the
     // terminal state.
-    if (phase(butil::memory_order_acquire) == FALLBACK_TCP) {
+    const int previous_phase = phase(butil::memory_order_acquire);
+    if (previous_phase == FALLBACK_TCP) {
         return STEP_NOT_MINE;
     }
 
     HandshakeProtocol* selected = nullptr;
-    if (phase(butil::memory_order_acquire) != ACK_WAIT &&
-        phase(butil::memory_order_acquire) != EXTENSION_WAIT) {
-        const int previous_phase = phase(butil::memory_order_acquire);
+    if (previous_phase != ACK_WAIT && previous_phase != EXTENSION_WAIT) {
         _local_enabled = false;
-        SetPhase(HELLO_WAIT);
+        set_phase(HELLO_WAIT);
         StepResult result = SelectAndReceiveHello(
             protocols, input, fallback_on_not_mine, &selected);
         if (result == STEP_NOT_MINE) {
             if (fallback_on_not_mine) {
                 return FinishWithFallback(this, transport);
             }
-            SetPhase(UNINITIALIZED);
+            set_phase(UNINITIALIZED);
             return STEP_NOT_MINE;
         }
         if (result == STEP_NEED_MORE) {
             if (selected == nullptr) {
-                SetPhase(previous_phase);
+                set_phase(previous_phase);
             }
             return STEP_NEED_MORE;
         }
@@ -339,7 +338,7 @@ StepResult HandshakeSession::RunServer(
         bool enabled = result == STEP_OK;
 
         if (enabled) {
-            SetPhase(PREPARING);
+            set_phase(PREPARING);
             result = transport->PrepareResources();
             if (result != STEP_OK && result != STEP_FALLBACK) {
                 return FinishWithFailure(this, transport);
@@ -348,7 +347,7 @@ StepResult HandshakeSession::RunServer(
         }
 
         if (enabled) {
-            SetPhase(NEGOTIATING);
+            set_phase(NEGOTIATING);
             result = transport->NegotiateResources();
             if (result != STEP_OK && result != STEP_FALLBACK) {
                 return FinishWithFailure(this, transport);
@@ -356,14 +355,14 @@ StepResult HandshakeSession::RunServer(
             enabled = result == STEP_OK;
         }
 
-        SetPhase(HELLO_SEND);
+        set_phase(HELLO_SEND);
         _local_enabled = enabled;
         if (SendHello(selected, enabled) != STEP_OK) {
             return FinishWithFailure(this, transport);
         }
-        SetPhase(enabled && selected->HasExtension()
-                     ? EXTENSION_WAIT
-                     : ACK_WAIT);
+        set_phase(enabled && selected->HasExtension()
+                      ? EXTENSION_WAIT
+                      : ACK_WAIT);
     } else {
         for (size_t i = 0; i < protocols.size(); ++i) {
             if (protocols[i]->ProtocolVersion() == protocol_version()) {
@@ -385,11 +384,11 @@ StepResult HandshakeSession::RunServer(
         if (result == STEP_FALLBACK) {
             _local_enabled = false;
         }
-        SetPhase(EXTENSION_SEND);
+        set_phase(EXTENSION_SEND);
         if (SendExtension(selected, _local_enabled) != STEP_OK) {
             return FinishWithFailure(this, transport);
         }
-        SetPhase(ACK_WAIT);
+        set_phase(ACK_WAIT);
     }
 
     // Always try the ACK callback once. For a non-blocking server it returns
