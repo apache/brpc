@@ -76,6 +76,10 @@ private:
     bool _parsing_array;            // if the parser has met array indicator '*'
     int _length;                    // array length
     int _index;                     // current parsing array index
+    // Bytes of string payload allocated in the arena for the command being
+    // parsed. It is bounded by -redis_max_allocation_size and reset once the
+    // command is complete.
+    size_t _used_bytes;
     std::vector<butil::StringPiece> _args;  // parsed command string
 };
 
