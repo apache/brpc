@@ -329,6 +329,7 @@ generate_unittests(
         "brpc_mysql_auth_handshake_unittest.cpp": ["external", "local"],
         "brpc_mysql_connection_type_unittest.cpp": ["external", "local"],
         "brpc_mysql_prepared_integration_unittest.cpp": ["external", "local"],
+        "brpc_mysql_prepared_lifetime_unittest.cpp": ["local"],
         "brpc_mysql_txn_integration_unittest.cpp": ["external", "local"],
         "brpc_mysql_pool_concurrency_unittest.cpp": ["external", "local"],
     },

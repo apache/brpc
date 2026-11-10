@@ -182,8 +182,8 @@ public:
         _cntl->set_bind_sock_action(BIND_SOCK_USE);
         Socket::Address(sock_id, &_cntl->_bind_sock);
     }
-    void set_session_data(void* d) { _cntl->_session_data = d; }
-    void* session_data() const { return _cntl->_session_data; }
+    void set_mysql_statement_stub(MysqlStatementStub* stub);
+    MysqlStatementStub* mysql_statement_stub() const { return _cntl->_mysql_statement_stub; }
 
     std::string& protocol_param() { return _cntl->protocol_param(); }
     const std::string& protocol_param() const { return _cntl->protocol_param(); }
