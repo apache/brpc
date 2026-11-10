@@ -119,10 +119,136 @@ struct is_constructible_convertible_assignable_from_optional
         is_convertible_from_optional<T, U>::value ||
         is_assignable_from_optional<T, U>::value> {};
 
+template <bool enabled>
+struct OptionalCopyConstructible {};
+
+template <>
+struct OptionalCopyConstructible<false> {
+    OptionalCopyConstructible() = default;
+    OptionalCopyConstructible(const OptionalCopyConstructible&) = delete;
+    OptionalCopyConstructible(OptionalCopyConstructible&&) = default;
+    OptionalCopyConstructible& operator=(const OptionalCopyConstructible&) = default;
+    OptionalCopyConstructible& operator=(OptionalCopyConstructible&&) = default;
+};
+
+template <bool enabled>
+struct OptionalMoveConstructible {};
+
+template <>
+struct OptionalMoveConstructible<false> {
+    OptionalMoveConstructible() = default;
+    OptionalMoveConstructible(const OptionalMoveConstructible&) = default;
+    OptionalMoveConstructible(OptionalMoveConstructible&&) = delete;
+    OptionalMoveConstructible& operator=(const OptionalMoveConstructible&) = default;
+    OptionalMoveConstructible& operator=(OptionalMoveConstructible&&) = default;
+};
+
+template <bool enabled>
+struct OptionalCopyAssignable {};
+
+template <>
+struct OptionalCopyAssignable<false> {
+    OptionalCopyAssignable() = default;
+    OptionalCopyAssignable(const OptionalCopyAssignable&) = default;
+    OptionalCopyAssignable(OptionalCopyAssignable&&) = default;
+    OptionalCopyAssignable& operator=(const OptionalCopyAssignable&) = delete;
+    OptionalCopyAssignable& operator=(OptionalCopyAssignable&&) = default;
+};
+
+template <bool enabled>
+struct OptionalMoveAssignable {};
+
+template <>
+struct OptionalMoveAssignable<false> {
+    OptionalMoveAssignable() = default;
+    OptionalMoveAssignable(const OptionalMoveAssignable&) = default;
+    OptionalMoveAssignable(OptionalMoveAssignable&&) = default;
+    OptionalMoveAssignable& operator=(const OptionalMoveAssignable&) = default;
+    OptionalMoveAssignable& operator=(OptionalMoveAssignable&&) = delete;
+};
+
+template <typename T>
+class OptionalBase {
+public:
+    OptionalBase() : _engaged(false) {}
+
+    OptionalBase(const OptionalBase& rhs) : _engaged(false) {
+        if (rhs._engaged) {
+            _storage.Init(*rhs._storage);
+            _engaged = true;
+        }
+    }
+
+    OptionalBase(OptionalBase&& rhs) noexcept(
+        std::is_nothrow_move_constructible<T>::value) : _engaged(false) {
+        if (rhs._engaged) {
+            _storage.Init(std::move(*rhs._storage));
+            _engaged = true;
+        }
+    }
+
+    ~OptionalBase() { reset(); }
+
+    OptionalBase& operator=(const OptionalBase& rhs) {
+        if (this != &rhs) {
+            if (rhs._engaged) {
+                if (_engaged) {
+                    *_storage = *rhs._storage;
+                } else {
+                    _storage.Init(*rhs._storage);
+                    _engaged = true;
+                }
+            } else {
+                reset();
+            }
+        }
+        return *this;
+    }
+
+    OptionalBase& operator=(OptionalBase&& rhs) noexcept(
+        std::is_nothrow_move_constructible<T>::value &&
+        std::is_nothrow_move_assignable<T>::value) {
+        if (this != &rhs) {
+            if (rhs._engaged) {
+                if (_engaged) {
+                    *_storage = std::move(*rhs._storage);
+                } else {
+                    _storage.Init(std::move(*rhs._storage));
+                    _engaged = true;
+                }
+            } else {
+                reset();
+            }
+        }
+        return *this;
+    }
+
+protected:
+    void reset() {
+        if (_engaged) {
+            _storage.Destroy();
+            _engaged = false;
+        }
+    }
+
+    bool _engaged;
+    ManualConstructor<T> _storage;
+};
+
 } // namespace internal
 
 template<typename T>
-class optional {
+class optional : private internal::OptionalBase<T>,
+                 private internal::OptionalCopyConstructible<
+                     std::is_copy_constructible<T>::value>,
+                 private internal::OptionalMoveConstructible<
+                     std::is_move_constructible<T>::value>,
+                 private internal::OptionalCopyAssignable<
+                     std::is_copy_constructible<T>::value &&
+                     std::is_copy_assignable<T>::value>,
+                 private internal::OptionalMoveAssignable<
+                     std::is_move_constructible<T>::value &&
+                     std::is_move_assignable<T>::value> {
 public:
     typedef T value_type;
 
@@ -137,33 +263,24 @@ public:
     static_assert(!is_array<value_type>::value,
                   "Instantiation of optional with an array type is ill-formed");
 
-    optional() : _engaged(false) {}
+    optional() = default;
 
     optional(nullopt_t) : optional() {}
 
-    optional(const optional& rhs) : _engaged(false) {
-        if (rhs._engaged) {
-            _storage.Init(*rhs._storage);
-            _engaged = true;
-        }
-    }
+    optional(const optional& rhs) = default;
 
-    optional(optional&& rhs) noexcept(std::is_nothrow_move_constructible<T>::value)
-        : _engaged(false) {
-        if (rhs._engaged) {
-            _storage.Init(std::move(*rhs._storage));
-            _engaged = true;
-        }
-    }
+    optional(optional&& rhs) noexcept(
+        std::is_nothrow_move_constructible<T>::value) = default;
 
     template <typename U, std::enable_if_t<
         !std::is_same<T, U>::value &&
         std::is_constructible<T, const U&>::value &&
         !internal::is_constructible_convertible_from_optional<T, U>::value &&
         std::is_convertible<const U&, T>::value, bool> = false>
-    optional(const optional<U>& rhs) : _engaged(rhs.has_value()) {
-        if (_engaged) {
+    optional(const optional<U>& rhs) {
+        if (rhs) {
             _storage.Init(*rhs);
+            _engaged = true;
         }
     }
 
@@ -172,9 +289,10 @@ public:
         std::is_constructible<T, const U&>::value &&
         !internal::is_constructible_convertible_from_optional<T, U>::value &&
         !std::is_convertible<const U&, T>::value, bool> = false>
-    explicit optional(const optional<U>& rhs) : _engaged(rhs.has_value()) {
-        if (_engaged) {
+    explicit optional(const optional<U>& rhs) {
+        if (rhs) {
             _storage.Init(*rhs);
+            _engaged = true;
         }
     }
 
@@ -183,9 +301,10 @@ public:
         std::is_constructible<T, U&&>::value &&
         !internal::is_constructible_convertible_from_optional<T, U>::value &&
         std::is_convertible<U&&, T>::value, bool> = false>
-    optional(optional<U>&& rhs) : _engaged(rhs.has_value()) {
-        if (_engaged) {
+    optional(optional<U>&& rhs) {
+        if (rhs) {
             _storage.Init(std::move(*rhs));
+            _engaged = true;
             rhs.reset();
         }
     }
@@ -195,33 +314,37 @@ public:
         std::is_constructible<T, U&&>::value &&
         !internal::is_constructible_convertible_from_optional<T, U>::value &&
         !std::is_convertible<U&&, T>::value, bool> = false>
-    explicit optional(optional<U>&& rhs) : _engaged(rhs.has_value()) {
-        if (_engaged) {
+    explicit optional(optional<U>&& rhs) {
+        if (rhs) {
             _storage.Init(std::move(*rhs));
+            _engaged = true;
             rhs.reset();
         }
     }
 
-    optional(const T& value) : _engaged(true) {
+    optional(const T& value) {
         _storage.Init(value);
+        _engaged = true;
     }
 
-    optional(T&& value) : _engaged(true) {
+    optional(T&& value) {
         _storage.Init(std::move(value));
+        _engaged = true;
     }
 
     template <typename... Args, std::enable_if_t<
         std::is_constructible<T, Args&&...>::value, bool> = false>
-    explicit optional(in_place_t, Args&&... args) : _engaged(true) {
+    explicit optional(in_place_t, Args&&... args) {
         _storage.Init(std::forward<Args>(args)...);
+        _engaged = true;
     }
 
     template <typename U, typename... Args, std::enable_if_t<
         std::is_constructible<T, std::initializer_list<U>&, Args&&...>::value,
         bool> = false>
-    optional(in_place_t, std::initializer_list<U> il, Args&&... args)
-        : _engaged(true) {
+    optional(in_place_t, std::initializer_list<U> il, Args&&... args) {
         _storage.Init(il, std::forward<Args>(args)...);
+        _engaged = true;
     }
 
     template <typename U = T, std::enable_if_t<
@@ -229,8 +352,9 @@ public:
         !std::is_same<optional<T>, typename std::decay<U>::type>::value &&
         std::is_constructible<T, U&&>::value &&
         std::is_convertible<U&&, T>::value, bool> = false>
-    optional(U&& v) : _engaged(true) {
+    optional(U&& v) {
         _storage.Init(std::forward<U>(v));
+        _engaged = true;
     }
 
     template <typename U = T, std::enable_if_t<
@@ -238,48 +362,23 @@ public:
         !std::is_same<optional<T>, typename std::decay<U>::type>::value &&
         std::is_constructible<T, U&&>::value &&
         !std::is_convertible<U&&, T>::value, bool> = false>
-    explicit optional(U&& v) : _engaged(true) {
+    explicit optional(U&& v) {
         _storage.Init(std::forward<U>(v));
+        _engaged = true;
     }
 
-    ~optional() {
-        reset();
-    }
+    ~optional() = default;
 
     optional& operator=(nullopt_t) noexcept {
         reset();
         return *this;
     }
 
-    optional& operator=(const optional& rhs) {
-        if (this != &rhs) {
-            if (!rhs._engaged) {
-                reset();
-            } else if (_engaged) {
-                *_storage = *rhs._storage;
-            } else {
-                _storage.Init(*rhs._storage);
-                _engaged = true;
-            }
-        }
-        return *this;
-    }
+    optional& operator=(const optional& rhs) = default;
 
     optional& operator=(optional&& rhs) noexcept(
         std::is_nothrow_move_constructible<T>::value &&
-        std::is_nothrow_move_assignable<T>::value) {
-        if (this != &rhs) {
-            if (!rhs._engaged) {
-                reset();
-            } else if (_engaged) {
-                *_storage = std::move(*rhs._storage);
-            } else {
-                _storage.Init(std::move(*rhs._storage));
-                _engaged = true;
-            }
-        }
-        return *this;
-    }
+        std::is_nothrow_move_assignable<T>::value) = default;
 
     // Value assignment operators
     template <typename U = T, typename = std::enable_if_t<
@@ -439,8 +538,8 @@ public:
     }
 
 private:
-    bool _engaged;
-    ManualConstructor<T> _storage;
+    using internal::OptionalBase<T>::_engaged;
+    using internal::OptionalBase<T>::_storage;
 };
 
 template <typename T>

@@ -201,6 +201,42 @@ TEST(OptionalTest, move_only_value) {
     ASSERT_EQ(42, **assigned);
 }
 
+struct CopyConstructOnly {
+    CopyConstructOnly() = default;
+    CopyConstructOnly(const CopyConstructOnly&) = default;
+    CopyConstructOnly(CopyConstructOnly&&) = delete;
+    CopyConstructOnly& operator=(const CopyConstructOnly&) = delete;
+    CopyConstructOnly& operator=(CopyConstructOnly&&) = delete;
+};
+
+struct AssignOnly {
+    AssignOnly() = default;
+    AssignOnly(const AssignOnly&) = delete;
+    AssignOnly(AssignOnly&&) = delete;
+    AssignOnly& operator=(const AssignOnly&) = default;
+    AssignOnly& operator=(AssignOnly&&) = default;
+};
+
+TEST(OptionalTest, copy_move_traits_follow_value_type) {
+    using MoveOnly = butil::optional<std::unique_ptr<int>>;
+    static_assert(!std::is_copy_constructible<MoveOnly>::value, "");
+    static_assert(!std::is_copy_assignable<MoveOnly>::value, "");
+    static_assert(std::is_move_constructible<MoveOnly>::value, "");
+    static_assert(std::is_move_assignable<MoveOnly>::value, "");
+
+    using CopyOnly = butil::optional<CopyConstructOnly>;
+    static_assert(std::is_copy_constructible<CopyOnly>::value, "");
+    static_assert(std::is_move_constructible<CopyOnly>::value, "");
+    static_assert(!std::is_copy_assignable<CopyOnly>::value, "");
+    static_assert(!std::is_move_assignable<CopyOnly>::value, "");
+
+    using NoConstruction = butil::optional<AssignOnly>;
+    static_assert(!std::is_copy_constructible<NoConstruction>::value, "");
+    static_assert(!std::is_move_constructible<NoConstruction>::value, "");
+    static_assert(!std::is_copy_assignable<NoConstruction>::value, "");
+    static_assert(!std::is_move_assignable<NoConstruction>::value, "");
+}
+
 struct Obj {};
 
 struct Convert {
