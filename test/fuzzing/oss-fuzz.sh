@@ -57,5 +57,7 @@ zip $OUT/fuzz_hpack_seed_corpus.zip fuzz_hpack_seed_corpus/*
 # Generate rtmp's seeds gen_rtmp_seed_corpus.py
 python3 gen_rtmp_seed_corpus.py fuzz_rtmp_seed_corpus
 zip $OUT/fuzz_rtmp_seed_corpus.zip  fuzz_rtmp_seed_corpus/*
+# Generate thrift's seeds gen_thrift_seed_corpus.py
+python3 gen_thrift_seed_corpus.py fuzz_thrift_seed_corpus
 zip $OUT/fuzz_thrift_seed_corpus.zip fuzz_thrift_seed_corpus/*
 popd
