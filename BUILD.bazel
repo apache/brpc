@@ -20,6 +20,12 @@ licenses(["notice"])  # Apache v2
 
 exports_files(["LICENSE"])
 
+# Included by the pre-main shutdown test to control static initialization order.
+exports_files(
+    ["src/bvar/collector.cpp", "src/brpc/rpc_dump.cpp"],
+    visibility = ["//test:__pkg__"],
+)
+
 config_setting(
     name = "brpc_with_flatbuffers",
     define_values = {"BRPC_WITH_FLATBUFFERS": "true"},
