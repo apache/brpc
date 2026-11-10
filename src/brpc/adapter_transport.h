@@ -70,10 +70,6 @@ public:
                                   void (*done)(int, void*), void* data);
 
     ParseResult ProcessUpgradeReadable(butil::IOBuf* source);
-    void CompleteConnection(handshake::Phase terminal_phase);
-    bool connection_completed() const {
-        return _connection_completed.load(butil::memory_order_acquire) != 0;
-    }
 
     static void OnNewDataFromTcp(Socket* socket);
 
@@ -98,7 +94,6 @@ private:
     handshake::HandshakeSession _handshake;
     std::unique_ptr<TcpTransport> _tcp_transport;
     std::unique_ptr<Transport> _high_speed_transport;
-    butil::atomic<int> _connection_completed;
 };
 
 }  // namespace brpc

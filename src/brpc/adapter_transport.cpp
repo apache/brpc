@@ -77,8 +77,8 @@ public:
         if (AdapterTransport::StartClientUpgrade(
                 socket, OnUpgradeComplete, task) != 0) {
             const int error = errno != 0 ? errno : EAGAIN;
-            AdapterTransport::Get(const_cast<Socket*>(socket))->CompleteConnection(
-                handshake::FAILED);
+            AdapterTransport::Get(const_cast<Socket*>(socket))
+                ->handshake_session()->MarkFailed();
             delete task;
             done(error, data);
         }
@@ -228,7 +228,7 @@ private:
 }  // namespace
 
 AdapterTransport::AdapterTransport(SocketMode mode)
-    : _mode(mode), _connection_completed(0) {}
+    : _mode(mode) {}
 AdapterTransport::~AdapterTransport() = default;
 
 AdapterTransport* AdapterTransport::Get(Socket* socket) {
@@ -322,27 +322,7 @@ ParseResult AdapterTransport::ProcessUpgradeReadable(butil::IOBuf* source) {
             result = adapter->ExecuteServerHandshake(source, _socket);
         }
     }
-    const int phase = _handshake.phase(butil::memory_order_acquire);
-    if (!connection_completed() &&
-        (phase == handshake::ESTABLISHED ||
-         phase == handshake::FALLBACK_TCP || phase == handshake::FAILED)) {
-        CompleteConnection(static_cast<handshake::Phase>(phase));
-    }
     return result;
-}
-
-void AdapterTransport::CompleteConnection(handshake::Phase terminal_phase) {
-    CHECK(terminal_phase == handshake::ESTABLISHED ||
-          terminal_phase == handshake::FALLBACK_TCP ||
-          terminal_phase == handshake::FAILED);
-    if (terminal_phase == handshake::FAILED &&
-        _handshake.phase(butil::memory_order_acquire) != handshake::FAILED) {
-        _handshake.MarkFailed();
-    }
-    int expected = 0;
-    _connection_completed.compare_exchange_strong(
-        expected, 1, butil::memory_order_release,
-        butil::memory_order_relaxed);
 }
 
 void* AdapterTransport::ProcessClientHandshake(void* arg) {
@@ -359,7 +339,6 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
             adapter->_high_speed_transport.get());
         if (!rdma::IsRdmaAvailable()) {
             adapter->FallbackToTcp();
-            adapter->CompleteConnection(handshake::FALLBACK_TCP);
             task->done(0, task->data);
             return nullptr;
         }
@@ -370,7 +349,7 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         RdmaClientHandshakeTransport participant(
             transport, protocol.get(), socket, &connect_error);
         const handshake::StepResult result = adapter->_handshake.RunClient(
-            protocol.get(), &participant);
+            adapter->_handshake.socket_io(), protocol.get(), &participant);
         if (result == handshake::STEP_OK &&
             transport->StartUpgradeEvents() < 0) {
             const int saved_errno = errno != 0 ? errno : ERDMA;
@@ -385,8 +364,6 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         if (result == handshake::STEP_ERROR && connect_error == 0) {
             connect_error = errno != 0 ? errno : EPROTO;
         }
-        adapter->CompleteConnection(static_cast<handshake::Phase>(
-            adapter->_handshake.phase(butil::memory_order_acquire)));
         task->done(connect_error, task->data);
         return nullptr;
     }
@@ -398,7 +375,6 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
             adapter->_high_speed_transport.get());
         if (!ubring::IsUBAvailable()) {
             adapter->FallbackToTcp();
-            adapter->CompleteConnection(handshake::FALLBACK_TCP);
             task->done(0, task->data);
             return nullptr;
         }
@@ -415,7 +391,7 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
             transport, &local_trx_shm, shm_name_str.c_str(), &wire, socket,
             &connect_error);
         const handshake::StepResult result = adapter->_handshake.RunClient(
-            &wire, &participant);
+            adapter->_handshake.socket_io(), &wire, &participant);
         if (result == handshake::STEP_OK) {
             transport->FinishUpgrade();
             transport->GetUBShmEp()->StartReceiveEvents();
@@ -423,15 +399,13 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         if (result == handshake::STEP_ERROR && connect_error == 0) {
             connect_error = errno != 0 ? errno : EPROTO;
         }
-        adapter->CompleteConnection(static_cast<handshake::Phase>(
-            adapter->_handshake.phase(butil::memory_order_acquire)));
         task->done(connect_error, task->data);
         return nullptr;
     }
 #endif
 
     socket->SetFailed(EPROTO, "Unsupported client transport handshake");
-    adapter->CompleteConnection(handshake::FAILED);
+    adapter->_handshake.MarkFailed();
     task->done(EPROTO, task->data);
     return nullptr;
 }
@@ -463,7 +437,6 @@ void AdapterTransport::Init(Socket* socket, const SocketOptions& options) {
         }
     }
     _handshake.Reset(socket);
-    _connection_completed.store(0, butil::memory_order_relaxed);
     _tcp_transport.reset(new TcpTransport);
     _tcp_transport->Init(socket, options);
 
@@ -499,7 +472,6 @@ int AdapterTransport::Reset(int32_t expected_nref) {
     }
     _tcp_transport->Reset(expected_nref);
     _handshake.Reset(_socket);
-    _connection_completed.store(0, butil::memory_order_relaxed);
     return 0;
 }
 
@@ -628,7 +600,6 @@ void AdapterTransport::OnNewMessagesAfterUpgrade(Socket* socket) {
             const int saved_errno = errno != 0 ? errno : ERDMA;
             transport->DeactivateUpgrade();
             adapter->_handshake.MarkFailed();
-            adapter->CompleteConnection(handshake::FAILED);
             socket->SetFailed(
                 saved_errno,
                 "Fail to start RDMA CQ events from %s: %s",

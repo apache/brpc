@@ -450,7 +450,6 @@ public:
 
 class TestServerHandshakeAdapter : public HandshakeAdapter {
 public:
-    TestServerHandshakeAdapter() { session.SetIOForTest(&io); }
     MemoryHandshakeIO io;
     mutable HandshakeSession session;
     TestHandshakeProtocol protocol;
@@ -460,7 +459,7 @@ protected:
     StepResult RunServerStep(butil::IOBuf* source, Socket*) override {
         std::vector<HandshakeProtocol*> protocols(1, &protocol);
         transport.source = source;
-        return session.RunServer(protocols, source, &transport, false);
+        return session.RunServer(io, protocols, source, &transport, false);
     }
     HandshakeSession* GetSession(Socket*) const override {
         return &session;
@@ -734,7 +733,6 @@ TEST(TransportHandshakeTest, established_socket_does_not_restart_handshake) {
         ASSERT_EQ(0, Socket::Address(id, &socket));
         AdapterTransport* adapter = AdapterTransport::Get(socket.get());
         adapter->handshake_session()->set_phase(ESTABLISHED);
-        adapter->CompleteConnection(ESTABLISHED);
 
         const char* prefixes[] = {"RDMA", "RDM3", "UB"};
         for (const char* prefix : prefixes) {
@@ -745,7 +743,6 @@ TEST(TransportHandshakeTest, established_socket_does_not_restart_handshake) {
             EXPECT_EQ(prefix, input.to_string());
             EXPECT_EQ(ESTABLISHED, adapter->handshake_phase());
             EXPECT_EQ(nullptr, socket->parsing_context());
-            EXPECT_TRUE(adapter->connection_completed());
         }
         socket->SetFailed();
     }
@@ -996,10 +993,9 @@ TEST(TransportHandshakeTest, failed_handshake_preserves_io_error_after_cleanup) 
     } transport;
     MemoryHandshakeIO io;
     HandshakeSession session;
-    session.SetIOForTest(&io);
     TestHandshakeProtocol protocol;
 
-    EXPECT_EQ(STEP_ERROR, session.RunClient(&protocol, &transport));
+    EXPECT_EQ(STEP_ERROR, session.RunClient(io, &protocol, &transport));
     EXPECT_EQ(EIO, errno);
     EXPECT_TRUE(transport.failed);
     EXPECT_EQ(FAILED, session.phase(butil::memory_order_acquire));
@@ -1007,9 +1003,7 @@ TEST(TransportHandshakeTest, failed_handshake_preserves_io_error_after_cleanup) 
 
 class HandshakeSessionTest : public ::testing::Test {
 protected:
-    HandshakeSessionTest() : io("HSOK"), protocol(&calls), transport(&calls) {
-        session.SetIOForTest(&io);
-    }
+    HandshakeSessionTest() : io("HSOK"), protocol(&calls), transport(&calls) {}
     MemoryHandshakeIO io;
     HandshakeSession session;
     std::string calls;
@@ -1021,7 +1015,7 @@ protected:
 
 TEST_F(HandshakeSessionTest, client_runs_codec_and_resource_sequence) {
 
-    ASSERT_EQ(STEP_OK, session.RunClient(&protocol, &transport));
+    ASSERT_EQ(STEP_OK, session.RunClient(io, &protocol, &transport));
     ASSERT_EQ("prepare build parse negotiate ack1 activate", calls);
     ASSERT_EQ("HSLO1", io.output());
     ASSERT_EQ(ESTABLISHED, session.phase(butil::memory_order_acquire));
@@ -1032,7 +1026,7 @@ TEST_F(HandshakeSessionTest, client_exchanges_extension_before_ack) {
     io = MemoryHandshakeIO("HSOKE");
     protocol.EnableExtension(1);
 
-    ASSERT_EQ(STEP_OK, session.RunClient(&protocol, &transport));
+    ASSERT_EQ(STEP_OK, session.RunClient(io, &protocol, &transport));
     EXPECT_EQ("HSLOE1", io.output());
     EXPECT_EQ(ESTABLISHED, session.phase(butil::memory_order_acquire));
 }
@@ -1042,16 +1036,16 @@ TEST_F(HandshakeSessionTest, server_resumes_fragmented_extension_then_ack) {
     protocol.EnableExtension(2);
 
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &source, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     EXPECT_EQ(EXTENSION_WAIT, session.phase(butil::memory_order_acquire));
     EXPECT_EQ("HSLO", io.output());
     source.append("E", 1);
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &source, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     EXPECT_EQ(EXTENSION_WAIT, session.phase(butil::memory_order_acquire));
     source.append("11", 2);  // Remainder of extension, then ACK.
     ASSERT_EQ(STEP_OK,
-              session.RunServer(protocols, &source, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     EXPECT_EQ("HSLOE1", io.output());
     EXPECT_TRUE(source.empty());
     EXPECT_EQ(ESTABLISHED, session.phase(butil::memory_order_acquire));
@@ -1061,7 +1055,7 @@ TEST_F(HandshakeSessionTest, client_resource_failure_falls_back_before_io) {
     transport.prepare_result = STEP_FALLBACK;
     transport.negotiate_result = STEP_ERROR;
 
-    ASSERT_EQ(STEP_FALLBACK, session.RunClient(&protocol, &transport));
+    ASSERT_EQ(STEP_FALLBACK, session.RunClient(io, &protocol, &transport));
     ASSERT_TRUE(transport.tcp_active);
     ASSERT_TRUE(io.output().empty());
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
@@ -1072,14 +1066,14 @@ TEST_F(HandshakeSessionTest, server_resumes_at_buffered_ack) {
 
 
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &source, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     ASSERT_EQ(ACK_WAIT, session.phase(butil::memory_order_acquire));
     ASSERT_EQ("HSLO", io.output());
     ASSERT_TRUE(source.empty());
 
     source.append("1", 1);
     ASSERT_EQ(STEP_OK,
-              session.RunServer(protocols, &source, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     ASSERT_EQ("parse prepare negotiate build parse_ack validate activate",
               calls);
     ASSERT_EQ(ESTABLISHED, session.phase(butil::memory_order_acquire));
@@ -1091,7 +1085,7 @@ TEST_F(HandshakeSessionTest, server_resource_failure_falls_back_after_ack) {
     transport.negotiate_result = STEP_ERROR;
 
     ASSERT_EQ(STEP_FALLBACK,
-              session.RunServer(protocols, &source, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     ASSERT_EQ("HSNO", io.output());
     ASSERT_TRUE(source.empty());
     ASSERT_TRUE(transport.tcp_active);
@@ -1104,13 +1098,13 @@ TEST_F(HandshakeSessionTest, server_falls_back_without_consuming_other_magic) {
     transport.negotiate_result = STEP_ERROR;
 
     ASSERT_EQ(STEP_FALLBACK,
-              session.RunServer(protocols, &source, &transport, true));
+              session.RunServer(io, protocols, &source, &transport, true));
     ASSERT_TRUE(transport.tcp_active);
     ASSERT_EQ(4UL, source.size());
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
 
     ASSERT_EQ(STEP_NOT_MINE,
-              session.RunServer(protocols, &source, &transport, true));
+              session.RunServer(io, protocols, &source, &transport, true));
     ASSERT_EQ(4UL, source.size());
     ASSERT_EQ(FALLBACK_TCP, session.phase(butil::memory_order_acquire));
 }
@@ -1119,12 +1113,12 @@ TEST_F(HandshakeSessionTest, server_enters_hello_phase_after_magic_matches) {
 
     source.append("H", 1);
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &source, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     ASSERT_EQ(UNINITIALIZED, session.phase(butil::memory_order_acquire));
 
     source.append("S", 1);
     ASSERT_EQ(STEP_NEED_MORE,
-              session.RunServer(protocols, &source, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     ASSERT_EQ(HELLO_WAIT, session.phase(butil::memory_order_acquire));
     ASSERT_EQ(7, session.protocol_version());
     ASSERT_EQ(2UL, source.size());

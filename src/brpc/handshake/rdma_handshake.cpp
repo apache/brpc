@@ -430,8 +430,9 @@ StepResult RdmaServerHandshakeAdapter::RunFallbackServerHandshake(
     protocols.push_back(&v2);
     protocols.push_back(&v3);
     FallbackHandshakeTransport transport;
-    return GetSession(socket)->RunServer(
-        protocols, source, &transport, false);
+    auto* session = GetSession(socket);
+    return session->RunServer(
+        session->socket_io(), protocols, source, &transport, false);
 }
 
 #if BRPC_WITH_RDMA
@@ -496,8 +497,9 @@ StepResult RdmaServerHandshakeAdapter::RunRdmaServerHandshake(
         protocol_ptrs.push_back(protocols[i].get());
     }
     RdmaServerHandshakeTransport participant(transport, socket, source);
-    return GetSession(socket)->RunServer(
-        protocol_ptrs, source, &participant, false);
+    auto* session = GetSession(socket);
+    return session->RunServer(
+        session->socket_io(), protocol_ptrs, source, &participant, false);
 }
 #endif
 

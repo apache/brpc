@@ -356,8 +356,9 @@ StepResult UBShmServerHandshakeAdapter::RunFallbackServerHandshake(
     UBShmFallbackProtocol protocol;
     std::vector<HandshakeProtocol*> protocols(1, &protocol);
     FallbackHandshakeTransport transport;
-    return GetSession(socket)->RunServer(
-        protocols, source, &transport, false);
+    auto* session = GetSession(socket);
+    return session->RunServer(
+        session->socket_io(), protocols, source, &transport, false);
 }
 
 #if BRPC_WITH_UBRING
@@ -453,8 +454,9 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     std::vector<HandshakeProtocol*> protocols(1, &wire);
     UBShmServerHandshakeTransport participant(
         transport, &wire, socket, source);
-    const StepResult result = GetSession(socket)->RunServer(
-        protocols, source, &participant, false);
+    auto* session = GetSession(socket);
+    const StepResult result = session->RunServer(
+        session->socket_io(), protocols, source, &participant, false);
     if (result == STEP_OK) {
         transport->FinishUpgrade();
         LOG_IF(INFO, ubring::FLAGS_ub_trace_verbose)
