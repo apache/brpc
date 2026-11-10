@@ -1199,7 +1199,7 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
         SHM_NAME_PREFIX,
         local_name,
         SERVER_SHM_NAME_SUFFIX);
-    if (UNLIKELY(result < 0)) {
+    if (UNLIKELY(result < 0 || result >= SHM_MAX_NAME_BUFF_LEN)) {
         LOG(ERROR) << "Copy server shared memory name failed, local_name=%s, ret=%d.", local_name, result;
         return UBRING_ERR;
     }
@@ -1260,8 +1260,9 @@ RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_na
         SHM_NAME_PREFIX,
         local_name,
         CLIENT_SHM_NAME_SUFFIX);
-    if (UNLIKELY(result < 0)) {
+    if (UNLIKELY(result < 0 || result >= SHM_MAX_NAME_BUFF_LEN)) {
         LOG(ERROR) << "Copy client localTrx shared memory name failed, local_name=" << local_name << ", ret=" << result;
+        UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return UBRING_ERR;
     }
 

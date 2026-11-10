@@ -44,6 +44,7 @@ DECLARE_int32(ub_connect_timeout_s);
 DECLARE_int32(ub_hb_timer_interval_s);
 DECLARE_int32(ub_event_queue_timer_interval_us);
 DECLARE_int32(ub_flying_io_timeout_s);
+DECLARE_int32(ubr_max_managed_num);
 
 extern bool g_skip_ub_init;
 }  // namespace ubring
@@ -855,10 +856,22 @@ protected:
     UBShmEndpoint* _ep = nullptr;
     bool _saved_skip = false;
 };
+
+class UBShmEndpointOneTrxTest : public UBShmEndpointTest {
+protected:
+    void SetUp() override {
+        FLAGS_ubr_max_managed_num = 1;
+        UBShmEndpointTest::SetUp();
+    }
+
+private:
+    GFLAGS_NAMESPACE::FlagSaver _flag_saver;
+};
 }  // namespace ubring
 }  // namespace brpc
 
 using brpc::ubring::UBShmEndpointTest;
+using brpc::ubring::UBShmEndpointOneTrxTest;
 
 TEST_F(UBShmEndpointTest, construct_initial_state) {
     ASSERT_NE(nullptr, _ep);
@@ -880,6 +893,19 @@ TEST_F(UBShmEndpointTest, allocate_client_resources_real_shm) {
         {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
     int ret = _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_client");
     EXPECT_EQ(0, ret);
+}
+
+TEST_F(UBShmEndpointOneTrxTest, reject_truncated_local_shm_name) {
+    brpc::ubring::SHM local_trx_shm =
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+    brpc::ubring::UBRing ring;
+    const std::string long_name(SHM_MAX_NAME_BUFF_LEN, 'a');
+
+    ASSERT_NE(0, ring.UbrAllocateLocalShm(&local_trx_shm, long_name.c_str()));
+
+    brpc::ubring::UbrTrx* trx = nullptr;
+    ASSERT_EQ(0, brpc::ubring::UBRingManager::AcquireUbrTrxFromMgr(&trx));
+    EXPECT_EQ(0, brpc::ubring::UBRingManager::ReleaseUbrTrxFromMgr(trx));
 }
 
 TEST_F(UBShmEndpointTest, reset_cleans_up_resources) {

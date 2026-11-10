@@ -619,11 +619,11 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         }
         int result = snprintf(local_trx_shm.name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
             client_name, SERVER_SHM_NAME_SUFFIX);
-        if (UNLIKELY(result < 0)) {
+        if (UNLIKELY(result < 0 || result >= SHM_MAX_NAME_BUFF_LEN)) {
             LOG(WARNING) << "Copy client shared memory name failed, ret=" << result;
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
         }
-        if (result >= 0 && ep->AllocateServerResources(
+        if (result >= 0 && result < SHM_MAX_NAME_BUFF_LEN && ep->AllocateServerResources(
                 &remote_trx_shm, &local_trx_shm, local_format) < 0) {
             LOG(WARNING) << "Fail to allocate ub resources, fallback to tcp:"
                          << s->description();
