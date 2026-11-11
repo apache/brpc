@@ -315,7 +315,7 @@ public:
             }
             size_t len = ::strlen(host);
             if (len + 1 < host_len) {
-                snprintf(host + len, host_len - len, ":%d", _u.in6.sin6_port);
+                snprintf(host + len, host_len - len, ":%d", ntohs(_u.in6.sin6_port));
             }
             return 0;
         } else {
