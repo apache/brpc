@@ -79,11 +79,20 @@ static const size_t OP_INITIAL_FREE_LIST_SIZE = 1024;
 
 template <typename T>
 class ObjectPoolBlockItemNum {
-    static const size_t N1 = ObjectPoolBlockMaxSize<T>::value / sizeof(T);
+public:
+#ifdef BUTIL_USE_ASAN
+    // ASan manual poisoning requires slots to start at 8-byte boundaries.
+    typedef AlignedMemory<sizeof(T), __alignof__(T) < 8 ? 8 : __alignof__(T)> BlockItem;
+#else
+    typedef AlignedMemory<sizeof(T), __alignof__(T)> BlockItem;
+#endif
+
+private:
+    static const size_t N1 = ObjectPoolBlockMaxSize<T>::value / sizeof(BlockItem);
     static const size_t N2 = (N1 < 1 ? 1 : N1);
 public:
-    static const size_t value = (N2 > ObjectPoolBlockMaxItem<T>::value ?
-                                 ObjectPoolBlockMaxItem<T>::value : N2);
+    static const size_t value =
+        N2 > ObjectPoolBlockMaxItem<T>::value ? ObjectPoolBlockMaxItem<T>::value : N2;
 };
 
 template <typename T>
@@ -117,20 +126,13 @@ public:
 
     // Free objects are batched in a FreeChunk before they're added to
     // global list(_free_chunks).
-    typedef ObjectPoolFreeChunk<T, FREE_CHUNK_NITEM>    FreeChunk;
+    typedef ObjectPoolFreeChunk<T, FREE_CHUNK_NITEM> FreeChunk;
     struct GlobalFreeChunk {
         int64_t push_us;
         size_t nfree;
         T* ptrs[0];
     };
-#ifdef BUTIL_USE_ASAN
-    // According to https://github.com/google/sanitizers/wiki/AddressSanitizerManualPoisoning ,
-    // The allocated chunks should start with 8-aligned addresses,
-    // so that AlignedMemory starts with at least 8-aligned addresses.
-    typedef AlignedMemory<sizeof(T), __alignof__(T) < 8 ? 8 : __alignof__(T)> BlockItem;
-#else
-    typedef AlignedMemory<sizeof(T), __alignof__(T)> BlockItem;
-#endif
+    typedef typename ObjectPoolBlockItemNum<T>::BlockItem BlockItem;
 
     // When a thread needs memory, it allocates a Block. To improve locality,
     // items in the Block are only used by the thread.
@@ -459,10 +461,7 @@ private:
 
     // Create a Block and append it to right-most BlockGroup.
     static Block* add_block(size_t* index) {
-        Block* const new_block = new(std::nothrow) Block;
-        if (nullptr == new_block) {
-            return nullptr;
-        }
+        auto const new_block = new Block;
         size_t ngroup;
         do {
             ngroup = _ngroup.load(butil::memory_order_acquire);
@@ -497,13 +496,11 @@ private:
             return true;
         }
         if (ngroup < OP_MAX_BLOCK_NGROUP) {
-            bg = new(std::nothrow) BlockGroup;
-            if (nullptr != bg) {
-                // Release fence is paired with consume fence in add_block()
-                // to avoid un-constructed bg to be seen by other threads.
-                _block_groups[ngroup].store(bg, butil::memory_order_release);
-                _ngroup.store(ngroup + 1, butil::memory_order_release);
-            }
+            bg = new BlockGroup;
+            // Release fence is paired with consume fence in add_block()
+            // to avoid un-constructed bg to be seen by other threads.
+            _block_groups[ngroup].store(bg, butil::memory_order_release);
+            _ngroup.store(ngroup + 1, butil::memory_order_release);
         }
         return bg != nullptr;
     }
