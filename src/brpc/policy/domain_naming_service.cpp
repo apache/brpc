@@ -19,6 +19,7 @@
 #include "butil/build_config.h"                       // OS_MACOSX
 #include <netdb.h>                                    // gethostbyname_r
 #include <stdlib.h>                                   // strtol
+#include <string.h>                                   // strchr, memcpy
 #include <string>                                     // std::string
 #include "bthread/bthread.h"
 #include "brpc/log.h"
@@ -44,15 +45,29 @@ int DomainNamingService::GetServers(const char* dns_name,
     // Should be enough to hold host name
     char buf[256];
     size_t i = 0;
-    for (; i < sizeof(buf) - 1 && dns_name[i] != '\0'
-             && dns_name[i] != ':' && dns_name[i] != '/'; ++i) {
-        buf[i] = dns_name[i];
+    if (dns_name[0] == '[') {
+        // IPv6 address such as `[::1]:8080'. Keep the brackets, which
+        // butil::str2endpoint() expects.
+        const char* close = strchr(dns_name, ']');
+        if (close == nullptr ||
+            static_cast<size_t>(close - dns_name) + 1 >= sizeof(buf) ||
+            (close[1] != '\0' && close[1] != ':' && close[1] != '/')) {
+            LOG(ERROR) << "Invalid ipv6 address in `" << dns_name << '\'';
+            return -1;
+        }
+        i = close - dns_name + 1;
+        memcpy(buf, dns_name, i);
+    } else {
+        for (; i < sizeof(buf) - 1 && dns_name[i] != '\0'
+                 && dns_name[i] != ':' && dns_name[i] != '/'; ++i) {
+            buf[i] = dns_name[i];
+        }
+        if (i == sizeof(buf) - 1) {
+            LOG(ERROR) << "dns_name=`" << dns_name << "' is too long";
+            return -1;
+        }
     }
-    if (i == sizeof(buf) - 1) {
-        LOG(ERROR) << "dns_name=`" << dns_name << "' is too long";
-        return -1;
-    }
-    
+
     buf[i] = '\0';
     int port = _default_port;
     if (dns_name[i] == ':') {
@@ -77,6 +92,17 @@ int DomainNamingService::GetServers(const char* dns_name,
     if (port < 0 || port > 65535) {
         LOG(ERROR) << "Invalid port=" << port << " in `" << dns_name << '\'';
         return -1;
+    }
+
+    if (buf[0] == '[') {
+        // An address, not a name: nothing to resolve.
+        butil::EndPoint point;
+        if (butil::str2endpoint(buf, port, &point) != 0) {
+            LOG(ERROR) << "Invalid ipv6 address in `" << dns_name << '\'';
+            return -1;
+        }
+        servers->push_back(ServerNode(point, std::string()));
+        return 0;
     }
 
     if (FLAGS_dns_support_ipv6) {
