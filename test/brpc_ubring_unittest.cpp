@@ -768,6 +768,20 @@ TEST_F(HelloMessageTest, full_shm_name) {
                         SHM_MAX_NAME_BUFF_LEN - 1));
 }
 
+TEST(ServerHandshakeTest, rejects_overlong_peer_shm_name) {
+    // Deserialize limits a full wire name to SHM_MAX_NAME_BUFF_LEN - 1 bytes.
+    // Appending the server suffix must make the server reject UB setup rather
+    // than allocate a shared-memory object using a truncated name.
+    const std::string peer_name(SHM_MAX_NAME_BUFF_LEN - 1, 'A');
+    char server_name[SHM_MAX_NAME_BUFF_LEN] = {};
+    EXPECT_FALSE(brpc::ubring::BuildServerShmName(peer_name.c_str(),
+                                                  server_name));
+
+    EXPECT_TRUE(brpc::ubring::BuildServerShmName("UBRING_test",
+                                                 server_name));
+    EXPECT_STREQ("UBRING_test_S", server_name);
+}
+
 TEST_F(HelloMessageTest, toString_contains_fields) {
     msg.msg_len = 64;
     msg.hello_ver = 2;
