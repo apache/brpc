@@ -29,6 +29,11 @@ namespace {
 struct MyObject {};
 struct FreeChunkCountObject {};
 
+template <size_t Size, size_t MaxSize, size_t MaxItem = 1024>
+struct BlockSizeLimitedObject {
+    char data[Size];
+};
+
 int nfoo_dtor = 0;
 struct Foo {
     Foo() {
@@ -42,6 +47,16 @@ struct Foo {
 }
 
 namespace butil {
+template <size_t Size, size_t MaxSize, size_t MaxItem>
+struct ObjectPoolBlockMaxSize<BlockSizeLimitedObject<Size, MaxSize, MaxItem> > {
+    static const size_t value = MaxSize;
+};
+
+template <size_t Size, size_t MaxSize, size_t MaxItem>
+struct ObjectPoolBlockMaxItem<BlockSizeLimitedObject<Size, MaxSize, MaxItem> > {
+    static const size_t value = MaxItem;
+};
+
 template <> struct ObjectPoolBlockMaxSize<MyObject> {
     static const size_t value = 128;
 };
@@ -109,6 +124,60 @@ TEST_F(ObjectPoolTest, change_config) {
     std::cout << describe_objects<MyObject>() << std::endl;
     return_object(p);
     std::cout << describe_objects<MyObject>() << std::endl;
+}
+
+template <typename T>
+void check_block_capacity(size_t expected_capacity) {
+    typedef typename ObjectPool<T>::Block Block;
+    typedef typename ObjectPool<T>::BlockItem BlockItem;
+    const size_t max_size = ObjectPoolBlockMaxSize<T>::value;
+    if (max_size >= sizeof(BlockItem)) {
+        EXPECT_LE(sizeof(Block::items), max_size);
+    } else {
+        EXPECT_EQ(sizeof(BlockItem), sizeof(Block::items));
+    }
+
+    clear_objects<T>();
+    EXPECT_EQ(expected_capacity, describe_objects<T>().block_item_num);
+    std::vector<T*> objects;
+    for (size_t i = 0; i < expected_capacity; ++i) {
+        T* obj = get_object<T>();
+        ASSERT_TRUE(obj);
+        obj->data[0] = 'x';
+        objects.push_back(obj);
+    }
+    EXPECT_EQ(1u, describe_objects<T>().block_num);
+    T* next = get_object<T>();
+    ASSERT_TRUE(next);
+    EXPECT_EQ(2u, describe_objects<T>().block_num);
+    EXPECT_EQ(0, return_object(next));
+    EXPECT_EQ(next, get_object<T>());
+    EXPECT_EQ(0, return_object(next));
+    for (T* obj : objects) {
+        EXPECT_EQ('x', obj->data[0]);
+        EXPECT_EQ(0, return_object(obj));
+    }
+    clear_objects<T>();
+}
+
+TEST_F(ObjectPoolTest, block_size_limit_includes_slot_padding) {
+#ifdef BUTIL_USE_ASAN
+    check_block_capacity<BlockSizeLimitedObject<1, 1024> >(128);
+    check_block_capacity<BlockSizeLimitedObject<9, 1024> >(64);
+#else
+    check_block_capacity<BlockSizeLimitedObject<1, 1024> >(1024);
+    check_block_capacity<BlockSizeLimitedObject<9, 1024> >(113);
+#endif
+}
+
+TEST_F(ObjectPoolTest, block_size_limit_keeps_at_least_one_object) {
+    check_block_capacity<BlockSizeLimitedObject<1, 1> >(1);
+    check_block_capacity<BlockSizeLimitedObject<9, 8> >(1);
+    check_block_capacity<BlockSizeLimitedObject<1, 0> >(1);
+}
+
+TEST_F(ObjectPoolTest, block_size_limit_preserves_item_limit) {
+    check_block_capacity<BlockSizeLimitedObject<1, 1024, 3> >(3);
 }
 
 struct NonDefaultCtorObject {

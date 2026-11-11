@@ -38,9 +38,11 @@ namespace butil {
 //     };
 //   }
 
-// Memory is allocated in blocks, memory size of a block will not exceed:
-//   min(ObjectPoolBlockMaxSize<T>::value,
-//       ObjectPoolBlockMaxItem<T>::value * sizeof(T))
+// Memory is allocated in blocks. Object slots in each block are limited by
+// ObjectPoolBlockMaxSize<T>::value bytes and ObjectPoolBlockMaxItem<T>::value
+// objects. Slot size includes alignment padding, such as that required by ASan.
+// With a positive item limit, each block holds at least one object even if its
+// slot exceeds the byte limit. Block metadata and allocator overhead are excluded.
 template <typename T> struct ObjectPoolBlockMaxSize {
     static const size_t value = 64 * 1024; // bytes
 };
@@ -49,10 +51,8 @@ template <typename T> struct ObjectPoolBlockMaxItem {
 };
 
 // Free objects of each thread are grouped into a chunk before they are merged
-// to the global list. Memory size of objects in one free chunk will not exceed:
-//   min(ObjectPoolFreeChunkMaxItem<T>::value() * sizeof(T),
-//       ObjectPoolBlockMaxSize<T>::value,
-//       ObjectPoolBlockMaxItem<T>::value * sizeof(T))
+// to the global list. The object count is at most
+// ObjectPoolFreeChunkMaxItem<T>::value(), capped by the number of slots in a block.
 template <typename T> struct ObjectPoolFreeChunkMaxItem {
     static size_t value() { return 256; }
 };
