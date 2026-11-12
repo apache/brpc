@@ -2014,6 +2014,26 @@ int RdmaEndpoint::GlobalGdrInitialize() {
         errno = EINVAL;
         return -1;
     }
+    // The handshake advertises the receive SGE length (block size minus the
+    // iobuf block header), and both V2's ValidHelloMessage() and V3's
+    // ValidRdmaHello() reject block_size < MIN_BLOCK_SIZE (1024). A block
+    // size that is only marginally larger than the header (e.g.
+    // --gdr_block_size_kb=1 -> 992) would therefore pass initialization but
+    // make every GDR handshake fail and silently fall back to TCP. Reject
+    // it here, against the advertised length, so the misconfiguration
+    // surfaces at startup instead.
+    if (gdr_block_size - IOBUF_BLOCK_HEADER_LEN < MIN_BLOCK_SIZE) {
+        LOG(ERROR) << "Invalid gdr block size " << gdr_block_size
+                   << ": the advertised receive length after subtracting the "
+                   << IOBUF_BLOCK_HEADER_LEN << "-byte iobuf block header is "
+                   << (gdr_block_size - IOBUF_BLOCK_HEADER_LEN)
+                   << ", which is below the minimum block size "
+                   << MIN_BLOCK_SIZE << " required by the rdma handshake"
+                   << " (use --gdr_block_size_kb >= "
+                   << (MIN_BLOCK_SIZE + IOBUF_BLOCK_HEADER_LEN + 1023) / 1024 << ")";
+        errno = EINVAL;
+        return -1;
+    }
     g_gdr_recv_block_size = gdr_block_size - IOBUF_BLOCK_HEADER_LEN;
     LOG(INFO) << "g_gdr_recv_block_size: " << g_gdr_recv_block_size;
 #endif // BRPC_WITH_GDR

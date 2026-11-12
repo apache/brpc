@@ -91,6 +91,20 @@ extern bool ShouldPostInline(bool in_pool, size_t len,
 } // namespace rdma
 } // namespace brpc
 
+#if BRPC_WITH_GDR
+#include "butil/gpu/gpu_block_pool.h"
+namespace butil {
+namespace gdr {
+DECLARE_int32(gdr_block_size_kb);
+}  // namespace gdr
+}  // namespace butil
+namespace brpc {
+namespace rdma {
+extern uint32_t g_gdr_recv_block_size;
+} // namespace rdma
+} // namespace brpc
+#endif  // BRPC_WITH_GDR
+
 static std::string g_ip = "127.0.0.1";
 static butil::EndPoint g_ep;
 
@@ -3568,6 +3582,44 @@ TEST(RdmaInlineDataTest, should_post_inline) {
     // A QP granted no inline data inlines nothing.
     EXPECT_FALSE(rdma::ShouldPostInline(true, 1, 0));
 }
+
+#if BRPC_WITH_GDR
+// The handshake advertises the receive SGE length (gdr block size minus the
+// 32-byte iobuf block header) and both the V2/V3 hello validators reject
+// block_size < MIN_BLOCK_SIZE (1024), so a --gdr_block_size_kb=1 config would
+// pass GetGdrBlockSize() yet make every GDR handshake fail. GlobalGdrInitialize()
+// must reject it at startup, against the advertised length.
+TEST(RdmaGdrTest, gdr_block_size_boundaries) {
+    const int32_t saved_kb = butil::gdr::FLAGS_gdr_block_size_kb;
+    const uint32_t saved_recv_size = butil::gdr::GetGdrBlockSize() > 32
+        ? butil::gdr::GetGdrBlockSize() - 32 : 0;
+
+    // 1 KB block: 1024 - 32 = 992 < MIN_BLOCK_SIZE -> rejected.
+    butil::gdr::FLAGS_gdr_block_size_kb = 1;
+    EXPECT_GT(butil::gdr::GetGdrBlockSize(), 0u)  // block itself is valid...
+        << "1KB should still pass GetGdrBlockSize()";
+    EXPECT_EQ(-1, brpc::rdma::RdmaEndpoint::GlobalGdrInitialize())
+        << "1KB must be rejected: advertised length would be 992 < 1024";
+    EXPECT_EQ(EINVAL, errno);
+
+    // 2 KB block: 2048 - 32 = 2016 >= MIN_BLOCK_SIZE -> accepted.
+    butil::gdr::FLAGS_gdr_block_size_kb = 2;
+    EXPECT_EQ(0, brpc::rdma::RdmaEndpoint::GlobalGdrInitialize());
+    EXPECT_EQ(2016u, brpc::rdma::g_gdr_recv_block_size);
+
+    // Non-positive values are rejected by GetGdrBlockSize() itself.
+    butil::gdr::FLAGS_gdr_block_size_kb = 0;
+    EXPECT_EQ(0u, butil::gdr::GetGdrBlockSize());
+
+    butil::gdr::FLAGS_gdr_block_size_kb = saved_kb;
+    if (saved_recv_size > 0) {
+        // Restore the real (valid) configuration so later tests are not
+        // affected.
+        EXPECT_EQ(0, brpc::rdma::RdmaEndpoint::GlobalGdrInitialize());
+        EXPECT_EQ(saved_recv_size, brpc::rdma::g_gdr_recv_block_size);
+    }
+}
+#endif  // BRPC_WITH_GDR
 
 #endif  // if BRPC_WITH_RDMA
 
