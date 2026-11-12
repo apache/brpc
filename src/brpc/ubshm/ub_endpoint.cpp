@@ -167,7 +167,7 @@ std::string HelloMessage::toString() const {
 }
 
 bool BuildServerShmName(const char* peer_name,
-                        char shm_name[SHM_MAX_NAME_BUFF_LEN]) {
+                        char (&shm_name)[SHM_MAX_NAME_BUFF_LEN]) {
     const int result = snprintf(shm_name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
                                 peer_name, SERVER_SHM_NAME_SUFFIX);
     if (UNLIKELY(result < 0 || result >= SHM_MAX_NAME_BUFF_LEN)) {

@@ -1200,7 +1200,8 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
         local_name,
         SERVER_SHM_NAME_SUFFIX);
     if (UNLIKELY(result < 0 || result >= SHM_MAX_NAME_BUFF_LEN)) {
-        LOG(ERROR) << "Copy server shared memory name failed, local_name=%s, ret=%d.", local_name, result;
+        LOG(ERROR) << "Copy server shared memory name failed, local_name="
+                   << local_name << ", ret=" << result;
         return UBRING_ERR;
     }
     UbrSetSleepTask(UBR_TASK_CONNECT_MAP_FRONT);
