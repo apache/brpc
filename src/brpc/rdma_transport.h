@@ -24,6 +24,10 @@
 #include "brpc/transport.h"
 
 namespace brpc {
+// Test-only injection point in rdma_transport.cpp: when true, DoInit() acts
+// as if the RdmaEndpoint allocation failed (see rdma_transport.cpp).
+extern bool g_rdma_ep_alloc_fail;
+
 class RdmaTransport : public Transport {
 friend class TransportFactory;
 friend class rdma::RdmaEndpoint;

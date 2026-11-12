@@ -3583,6 +3583,65 @@ TEST(RdmaInlineDataTest, should_post_inline) {
     EXPECT_FALSE(rdma::ShouldPostInline(true, 1, 0));
 }
 
+// When the RdmaEndpoint allocation fails in RdmaTransport::DoInit() (simulated
+// here through the g_rdma_ep_alloc_fail injection), the connection must fall
+// back to TCP on both sides: the accepted server socket switches to
+// SOCKET_MODE_TCP so the server handshake takes the fallback path (instead of
+// dereferencing the null endpoint), and the client channel falls back to the
+// TCP connection logic (RdmaTransport::Connect() returns nullptr) and the RPC
+// still completes over TCP.
+TEST_F(RdmaTest, endpoint_alloc_fail_falls_back_to_tcp) {
+    // Server side: the accepted socket must be TCP mode with no endpoint.
+    {
+        g_rdma_ep_alloc_fail = true;
+        StartServer();
+
+        butil::fd_guard sockfd;
+        ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
+        Socket* s = WaitForServerSocket();
+        ASSERT_TRUE(s != nullptr);
+        RdmaTransport* t = RdmaTransportOf(s);
+        EXPECT_EQ(nullptr, t->_rdma_ep);
+        EXPECT_EQ(RdmaTransport::RDMA_OFF, t->_rdma_state);
+        EXPECT_EQ(SOCKET_MODE_TCP, s->socket_mode());
+        sockfd.reset(-1);
+        ASSERT_TRUE(WaitForServerSocketGone());
+
+        StopServer();
+        g_rdma_ep_alloc_fail = false;
+    }
+
+    // Client side: the channel must connect over TCP and the RPC must succeed.
+    {
+        StartServer();
+
+        g_rdma_ep_alloc_fail = true;
+        Channel channel;
+        ChannelOptions chan_options;
+        chan_options.socket_mode = SOCKET_MODE_RDMA;
+        ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
+
+        Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message("endpoint_alloc_fail_falls_back_to_tcp");
+        ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, nullptr);
+        EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        // MyEchoService replies with a fixed message; the RPC completing at
+        // all is the point (it went over TCP after the endpoint allocation
+        // failure), not the echoed content.
+        EXPECT_EQ("MyEchoService", res.message());
+
+        g_rdma_ep_alloc_fail = false;
+
+        SocketUniquePtr s;
+        ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
+        EXPECT_EQ(SOCKET_MODE_TCP, s->socket_mode());
+
+        StopServer();
+    }
+}
+
 #if BRPC_WITH_GDR
 // The handshake advertises the receive SGE length (gdr block size minus the
 // 32-byte iobuf block header) and both the V2/V3 hello validators reject
