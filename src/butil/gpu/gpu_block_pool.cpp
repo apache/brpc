@@ -92,13 +92,13 @@ void BlockPoolAllocators::init(int gpu_id, ibv_pd* pd) {
     LOG(INFO) << "set GPU BlockPoolAllocator for " << gpu_id;
     size_t region_size = 1024LL * 1024 * 1024;
     size_t block_size = FLAGS_gdr_block_size_kb * 1024;
-    gpu_mem_alloc = new BlockPoolAllocator(gpu_id, true, pd, block_size, region_size);
+    _gpu_mem_alloc = new BlockPoolAllocator(gpu_id, true, pd, block_size, region_size);
 
     region_size = 32LL * 1024 * 1024;
     block_size = 512;
-    cpu_mem_alloc = new BlockPoolAllocator(gpu_id, false, pd, block_size, region_size);
+    _cpu_mem_alloc = new BlockPoolAllocator(gpu_id, false, pd, block_size, region_size);
 
-    gpu_stream_pool = new GPUStreamPool(gpu_id);
+    _gpu_stream_pool = new GPUStreamPool(gpu_id);
 }
 
 bool InitGPUBlockPool(int gpu_id, ibv_pd* pd) {
@@ -154,26 +154,26 @@ static BlockHeaderList* get_bh_list() {
 
 BlockPoolAllocator::BlockPoolAllocator(int gpuId, bool onGpu, ibv_pd* ibvPd,
     size_t blockSize, size_t regionSize) :
-    gpu_id(gpuId)
-    , on_gpu(onGpu)
-    , pd(ibvPd)
+    _gpu_id(gpuId)
+    , _on_gpu(onGpu)
+    , _pd(ibvPd)
     , BLOCK_SIZE(std::max(blockSize, sizeof(BlockHeader)))
     , REGION_SIZE((regionSize / blockSize) * blockSize)  // 对齐到块大小的倍数
-    , freeList(nullptr)
-    , g_region_num(0)
-    , totalAllocated(0)
-    , totalDeallocated(0)
-    , peakUsage(0) {
-    g_regions.resize(FLAGS_max_gdr_regions);
+    , _free_list(nullptr)
+    , _region_num(0)
+    , _total_allocated(0)
+    , _total_deallocated(0)
+    , _peak_usage(0) {
+    _regions.resize(FLAGS_max_gdr_regions);
     LOG(INFO) << "Memory Pool initialized: block_size=" << BLOCK_SIZE 
       << ", region_size=" << REGION_SIZE  << ", max_gdr_regions=" << FLAGS_max_gdr_regions
-      << ", gpu_id=" << gpu_id << ", on_gpu=" << on_gpu << ", pd=" << pd;
+      << ", gpu_id=" << _gpu_id << ", on_gpu=" << _on_gpu << ", pd=" << _pd;
 
     // The very first region is required at construction time; failure here is
     // fatal because the pool would be unusable.
     if (extendRegion() != 0) {
         LOG(FATAL) << "Failed to initialize GDR memory pool (first region) on gpu "
-                   << gpu_id << ", on_gpu " << on_gpu;
+                   << _gpu_id << ", on_gpu " << _on_gpu;
     }
 }
 
@@ -183,14 +183,14 @@ BlockPoolAllocator::~BlockPoolAllocator() {
 #endif
 
     for (int i = 0; i < FLAGS_max_gdr_regions; i++) {
-        Region* r = &g_regions[i];
+        Region* r = &_regions[i];
         if (!r->mr) {
             continue;
         }
 
-        LOG(INFO) << "try to free " << r->size << " bytes from gpu " << gpu_id << ", on_gpu " << on_gpu;
+        LOG(INFO) << "try to free " << r->size << " bytes from gpu " << _gpu_id << ", _on_gpu " << _on_gpu;
         ibv_dereg_mr(r->mr);
-        if (on_gpu) {
+        if (_on_gpu) {
             CHECK_CUDA(cudaFree(reinterpret_cast<void*>(r->start)));
         } else {
             CHECK_CUDA(cudaFreeHost(reinterpret_cast<void*>(r->start)));
@@ -198,8 +198,8 @@ BlockPoolAllocator::~BlockPoolAllocator() {
     }
 }
 
-// NOTE: g_regions is written by extendRegion() under poolMutex (from
-// AllocateRaw). Readers must hold poolMutex (or otherwise synchronize) so
+// NOTE: _regions is written by extendRegion() under _pool_mutex (from
+// AllocateRaw). Readers must hold _pool_mutex (or otherwise synchronize) so
 // they cannot observe a half-published region (e.g. aligned_start set but
 // mr still null) while another thread extends the pool.
 Region* BlockPoolAllocator::GetRegion(const void* buf) {
@@ -210,12 +210,12 @@ Region* BlockPoolAllocator::GetRegion(const void* buf) {
     Region* r = NULL;
     uintptr_t addr = (uintptr_t)buf;
     for (int i = 0; i < FLAGS_max_gdr_regions; ++i) {
-        if (g_regions[i].aligned_start == 0) {
+        if (_regions[i].aligned_start == 0) {
             break;
         }
-        if (addr >= g_regions[i].aligned_start &&
-                addr < g_regions[i].aligned_start + g_regions[i].aligned_size) {
-            r = &g_regions[i];
+        if (addr >= _regions[i].aligned_start &&
+                addr < _regions[i].aligned_start + _regions[i].aligned_size) {
+            r = &_regions[i];
             break;
         }
     }
@@ -223,9 +223,9 @@ Region* BlockPoolAllocator::GetRegion(const void* buf) {
 }
 
 uint32_t BlockPoolAllocator::get_lkey(const void* buf) {
-    // Hold poolMutex so GetRegion cannot race with a concurrent
+    // Hold _pool_mutex so GetRegion cannot race with a concurrent
     // extendRegion() publishing the next region entry.
-    std::lock_guard<std::mutex> lock(poolMutex);
+    std::lock_guard<std::mutex> lock(_pool_mutex);
     Region* r = GetRegion(buf);
     if (!r) {
         LOG(ERROR) << "can not get a region for buf " << buf;
@@ -257,9 +257,9 @@ void* BlockPoolAllocator::AllocateRaw(size_t num_bytes) {
     auto startTime = std::chrono::high_resolution_clock::now();
 #endif
 
-    std::lock_guard<std::mutex> lock(poolMutex);
+    std::lock_guard<std::mutex> lock(_pool_mutex);
 
-    if (!freeList) {
+    if (!_free_list) {
         if (extendRegion() != 0) {
             // Out of regions or registration failed; let the caller handle it.
             errno = ENOMEM;
@@ -267,14 +267,14 @@ void* BlockPoolAllocator::AllocateRaw(size_t num_bytes) {
         }
     }
 
-    BlockHeader* block = freeList;
-    freeList = freeList->next;
+    BlockHeader* block = _free_list;
+    _free_list = _free_list->next;
 
     void* addr = block->addr;
     get_bh_list()->Release(block);
 
-    totalAllocated++;
-    peakUsage = std::max(peakUsage, totalAllocated - totalDeallocated);
+    _total_allocated++;
+    _peak_usage = std::max(_peak_usage, _total_allocated - _total_deallocated);
 
 #ifdef DEBUG
     auto endTime = std::chrono::high_resolution_clock::now();
@@ -291,31 +291,31 @@ void* BlockPoolAllocator::AllocateRaw(size_t num_bytes) {
 void BlockPoolAllocator::DeallocateRaw(void* ptr) {
     if (!ptr) return;
 
-    std::lock_guard<std::mutex> lock(poolMutex);
+    std::lock_guard<std::mutex> lock(_pool_mutex);
 
     BlockHeader* block = get_bh_list()->New();
     block->addr = ptr;
-    block->next = freeList;
-    freeList = block;
+    block->next = _free_list;
+    _free_list = block;
 
-    totalDeallocated++;
+    _total_deallocated++;
 }
 
 void BlockPoolAllocator::printStatistics() const {
     LOG(INFO) << "=== Memory Pool Statistics ===";
-    LOG(INFO) << "Total regions: " << g_region_num
-        << ", Total blocks allocated: " << totalAllocated
-        << ", Total blocks deallocated: " << totalDeallocated
-        << ", Current usage: " << (totalAllocated - totalDeallocated) << " blocks"
-        << ", Peak usage: " << peakUsage << " blocks"
+    LOG(INFO) << "Total regions: " << _region_num
+        << ", Total blocks allocated: " << _total_allocated
+        << ", Total blocks deallocated: " << _total_deallocated
+        << ", Current usage: " << (_total_allocated - _total_deallocated) << " blocks"
+        << ", Peak usage: " << _peak_usage << " blocks"
         << ", Memory efficiency: "
-        << (static_cast<double>(totalAllocated - totalDeallocated) /
-                (g_region_num * (REGION_SIZE / BLOCK_SIZE)) * 100)
+        << (static_cast<double>(_total_allocated - _total_deallocated) /
+                (_region_num * (REGION_SIZE / BLOCK_SIZE)) * 100)
         << "%";
 }
 
 int BlockPoolAllocator::extendRegion() {
-    if (g_region_num == FLAGS_max_gdr_regions) {
+    if (_region_num == FLAGS_max_gdr_regions) {
         LOG(ERROR) << "Gdr Memory pool reaches max regions (" << FLAGS_max_gdr_regions << ")";
         errno = ENOMEM;
         return -1;
@@ -326,14 +326,14 @@ int BlockPoolAllocator::extendRegion() {
     void* aligned_ptr = nullptr;
     int alignment = 4096;
 
-    if (on_gpu) {
-        ptr = get_gpu_mem(gpu_id, REGION_SIZE);
+    if (_on_gpu) {
+        ptr = get_gpu_mem(_gpu_id, REGION_SIZE);
     } else {
-        ptr = get_cpu_mem(gpu_id, REGION_SIZE);
+        ptr = get_cpu_mem(_gpu_id, REGION_SIZE);
     }
     if (ptr == nullptr) {
-        LOG(ERROR) << "Failed to allocate region memory on gpu " << gpu_id
-                   << ", on_gpu " << on_gpu;
+        LOG(ERROR) << "Failed to allocate region memory on gpu " << _gpu_id
+                   << ", _on_gpu " << _on_gpu;
         return -1;
     }
 
@@ -358,13 +358,13 @@ int BlockPoolAllocator::extendRegion() {
 #ifdef IBV_ACCESS_RELAXED_ORDERING
     access_flags |= IBV_ACCESS_RELAXED_ORDERING;
 #endif
-    auto mr = ibv_reg_mr(pd, aligned_ptr, aligned_bytes, access_flags);
+    auto mr = ibv_reg_mr(_pd, aligned_ptr, aligned_bytes, access_flags);
 
     if (!mr) {
         LOG(ERROR) << "Failed to register MR: " << strerror(errno)
-            << ", pd " << pd << ", aligned_ptr:" << aligned_ptr;
+            << ", _pd " << _pd << ", aligned_ptr:" << aligned_ptr;
         // Free the region memory we just allocated so it is not leaked.
-        if (on_gpu) {
+        if (_on_gpu) {
             cudaFree(reinterpret_cast<void*>(ptr));
         } else {
             cudaFreeHost(reinterpret_cast<void*>(ptr));
@@ -372,12 +372,12 @@ int BlockPoolAllocator::extendRegion() {
         return -1;
     } else {
         LOG(INFO) << "Success to register MR: "
-            << ", pd " << pd << ", aligned_ptr:" << aligned_ptr;
+            << ", _pd " << _pd << ", aligned_ptr:" << aligned_ptr;
     }
 
-    LOG(INFO) << "try to init region, g_region_num:" << g_region_num;
+    LOG(INFO) << "try to init region, _region_num:" << _region_num;
     size_t blockCount = aligned_bytes / BLOCK_SIZE;
-    Region* region = &g_regions[g_region_num++];
+    Region* region = &_regions[_region_num++];
     region->start = (uintptr_t)ptr;
     region->aligned_start = (uintptr_t)aligned_ptr;
     region->mr = mr;
@@ -386,7 +386,7 @@ int BlockPoolAllocator::extendRegion() {
     region->blockCount = blockCount;
 
 
-    LOG(INFO) << "try to insert list, freeList:" << freeList << ", blockCount:" << blockCount;
+    LOG(INFO) << "try to insert list, _free_list:" << _free_list << ", blockCount:" << blockCount;
     BlockHeader* lastBlock = nullptr;
     for (size_t i = 0; i < blockCount; ++i) {
         BlockHeader* block = get_bh_list()->New();
@@ -394,7 +394,7 @@ int BlockPoolAllocator::extendRegion() {
         if (lastBlock != nullptr) {
             lastBlock->next = block;
         } else {
-            freeList = block;
+            _free_list = block;
         }
         lastBlock = block;
     }
@@ -406,20 +406,20 @@ int BlockPoolAllocator::extendRegion() {
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime);
 
-    LOG(INFO) << "Extended region #" << g_region_num << ": " << blockCount 
-        << " blocks (" << (REGION_SIZE / (1024 * 1024)) << " MB)" << ", on_gpu " << on_gpu
+    LOG(INFO) << "Extended region #" << _region_num << ": " << blockCount 
+        << " blocks (" << (REGION_SIZE / (1024 * 1024)) << " MB)" << ", _on_gpu " << _on_gpu
         << ", cost " << duration.count()  << " ns";
     return 0;
 }
 
 GPUStreamPool::GPUStreamPool(int gpu_id) :
-                    gpu_id_(gpu_id) {
+                    _gpu_id(gpu_id) {
     CHECK_CUDA(cudaSetDevice(gpu_id));
-    d2d_streams_.resize(kMaxConcurrent);
-    d2h_streams_.resize(kMaxConcurrent);
+    _d2d_streams.resize(kMaxConcurrent);
+    _d2h_streams.resize(kMaxConcurrent);
     for (int i = 0; i < kMaxConcurrent; i++) {
-        CHECK_CUDA(cudaStreamCreate(&d2d_streams_[i]));
-        CHECK_CUDA(cudaStreamCreate(&d2h_streams_[i]));
+        CHECK_CUDA(cudaStreamCreate(&_d2d_streams[i]));
+        CHECK_CUDA(cudaStreamCreate(&_d2h_streams[i]));
     }
     CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -427,8 +427,8 @@ GPUStreamPool::GPUStreamPool(int gpu_id) :
 GPUStreamPool::~GPUStreamPool() {
     CHECK_CUDA(cudaDeviceSynchronize());
     for (int i = 0; i < kMaxConcurrent; i++) {
-        CHECK_CUDA(cudaStreamDestroy(d2d_streams_[i]));
-        CHECK_CUDA(cudaStreamDestroy(d2h_streams_[i]));
+        CHECK_CUDA(cudaStreamDestroy(_d2d_streams[i]));
+        CHECK_CUDA(cudaStreamDestroy(_d2h_streams[i]));
     }
 }
 
@@ -444,21 +444,21 @@ void GPUStreamPool::fast_d2d(std::vector<void*>& src_list,
 
     int stream_idx = 0;
     {
-        std::lock_guard<std::mutex> stream_lb_lock(d2d_lb_lock_);
-        d2d_cnt_.fetch_add(1);
-        stream_idx = d2d_cnt_ % kMaxConcurrent;
+        std::lock_guard<std::mutex> stream_lb_lock(_d2d_lb_lock);
+        _d2d_cnt.fetch_add(1);
+        stream_idx = _d2d_cnt % kMaxConcurrent;
     }
-    std::lock_guard<std::mutex> stream_lock(d2d_locks_[stream_idx]);
-    CHECK_CUDA(cudaStreamSynchronize(d2d_streams_[stream_idx]));
+    std::lock_guard<std::mutex> stream_lock(_d2d_locks[stream_idx]);
+    CHECK_CUDA(cudaStreamSynchronize(_d2d_streams[stream_idx]));
     for (int i = 0; i < segs; i++) {
         if (length_list[i] == 0) {
             continue;
         }
         CHECK_CUDA(cudaMemcpyAsync(static_cast<char*>(dst) + offset, src_list[i], length_list[i],
-                    cudaMemcpyDeviceToDevice, d2d_streams_[stream_idx]));
+                    cudaMemcpyDeviceToDevice, _d2d_streams[stream_idx]));
         offset += length_list[i];
     }
-    CHECK_CUDA(cudaStreamSynchronize(d2d_streams_[stream_idx]));
+    CHECK_CUDA(cudaStreamSynchronize(_d2d_streams[stream_idx]));
 }
 
 void GPUStreamPool::fast_d2h(std::vector<void*>& src_list,
@@ -473,21 +473,21 @@ void GPUStreamPool::fast_d2h(std::vector<void*>& src_list,
 
     int stream_idx = 0;
     {
-        std::lock_guard<std::mutex> stream_lb_lock(d2h_lb_lock_);
-        d2h_cnt_.fetch_add(1);
-        stream_idx = d2h_cnt_ % kMaxConcurrent;
+        std::lock_guard<std::mutex> stream_lb_lock(_d2h_lb_lock);
+        _d2h_cnt.fetch_add(1);
+        stream_idx = _d2h_cnt % kMaxConcurrent;
     }
-    std::lock_guard<std::mutex> stream_lock(d2h_locks_[stream_idx]);
-    CHECK_CUDA(cudaStreamSynchronize(d2h_streams_[stream_idx]));
+    std::lock_guard<std::mutex> stream_lock(_d2h_locks[stream_idx]);
+    CHECK_CUDA(cudaStreamSynchronize(_d2h_streams[stream_idx]));
     for (int i = 0; i < segs; i++) {
         if (length_list[i] == 0) {
             continue;
         }
         CHECK_CUDA(cudaMemcpyAsync(static_cast<char*>(dst) + offset, src_list[i], length_list[i],
-                    cudaMemcpyDeviceToHost, d2h_streams_[stream_idx]));
+                    cudaMemcpyDeviceToHost, _d2h_streams[stream_idx]));
         offset += length_list[i];
     }
-    CHECK_CUDA(cudaStreamSynchronize(d2h_streams_[stream_idx]));
+    CHECK_CUDA(cudaStreamSynchronize(_d2h_streams[stream_idx]));
 }
 
 }

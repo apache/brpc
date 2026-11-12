@@ -62,22 +62,22 @@ struct BlockHeader {
 
 class BlockPoolAllocator {
   private:
-    int gpu_id;
-    bool on_gpu;
-    ibv_pd* pd {nullptr};
+    int _gpu_id;
+    bool _on_gpu;
+    ibv_pd* _pd {nullptr};
 
     const size_t BLOCK_SIZE;
     const size_t REGION_SIZE;
 
-    BlockHeader* freeList;
-    int g_region_num {0};
-    std::vector<Region> g_regions;
-    std::mutex poolMutex;
+    BlockHeader* _free_list;
+    int _region_num {0};
+    std::vector<Region> _regions;
+    std::mutex _pool_mutex;
 
     // stat
-    size_t totalAllocated;
-    size_t totalDeallocated;
-    size_t peakUsage;
+    size_t _total_allocated;
+    size_t _total_deallocated;
+    size_t _peak_usage;
 
   public:
     explicit BlockPoolAllocator(int gpuId,
@@ -93,11 +93,11 @@ class BlockPoolAllocator {
     void printStatistics() const;
 
     int64_t getCurrentUsage() const {
-      return totalAllocated - totalDeallocated;
+      return _total_allocated - _total_deallocated;
     }
 
     int64_t getTotalMemory() const {
-      return g_region_num * REGION_SIZE;
+      return _region_num * REGION_SIZE;
     }
 
     int64_t get_block_size() const {
@@ -130,15 +130,15 @@ public:
 
     static constexpr int kMaxConcurrent = 32;
 private:
-    int gpu_id_ {-1};
-    std::atomic<int64_t> d2h_cnt_ {0};
-    std::atomic<int64_t> d2d_cnt_ {0};
-    std::mutex d2h_locks_[kMaxConcurrent];
-    std::mutex d2d_locks_[kMaxConcurrent];
-    std::mutex d2h_lb_lock_;
-    std::mutex d2d_lb_lock_;
-    std::vector<cudaStream_t> d2h_streams_;
-    std::vector<cudaStream_t> d2d_streams_;
+    int _gpu_id {-1};
+    std::atomic<int64_t> _d2h_cnt {0};
+    std::atomic<int64_t> _d2d_cnt {0};
+    std::mutex _d2h_locks[kMaxConcurrent];
+    std::mutex _d2d_locks[kMaxConcurrent];
+    std::mutex _d2h_lb_lock;
+    std::mutex _d2d_lb_lock;
+    std::vector<cudaStream_t> _d2h_streams;
+    std::vector<cudaStream_t> _d2d_streams;
 };
 
 class BlockPoolAllocators {
@@ -154,24 +154,24 @@ public:
     void init(int gpu_id, ibv_pd* pd);
 
     BlockPoolAllocator* get_gpu_allocator() {
-        return gpu_mem_alloc;
+        return _gpu_mem_alloc;
     }
 
     BlockPoolAllocator* get_cpu_allocator() {
-        return cpu_mem_alloc;
+        return _cpu_mem_alloc;
     }
 
     GPUStreamPool* get_gpu_stream_pool() {
-        return gpu_stream_pool;
+        return _gpu_stream_pool;
     }
 
 private:
     // Allow DefaultSingletonTraits::New() to construct the instance.
     friend struct DefaultSingletonTraits<BlockPoolAllocators>;
 
-    BlockPoolAllocator* gpu_mem_alloc {nullptr};
-    BlockPoolAllocator* cpu_mem_alloc {nullptr};
-    GPUStreamPool*      gpu_stream_pool {nullptr};
+    BlockPoolAllocator* _gpu_mem_alloc {nullptr};
+    BlockPoolAllocator* _cpu_mem_alloc {nullptr};
+    GPUStreamPool*      _gpu_stream_pool {nullptr};
 };
 }
 }
