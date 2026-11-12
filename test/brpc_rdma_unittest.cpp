@@ -560,11 +560,20 @@ TEST_F(RdmaTest, client_close_before_hello_send) {
 
     butil::fd_guard sockfd;
     ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
     sockfd.reset(-1);
+    // The helper's reference keeps the `Socket` alive even after the peer's
+    // close event marks it failed. Recycling must wait until we release it.
+    ASSERT_TRUE(WaitUntil([&s] { return s->Failed(); }));
+    EXPECT_GE(s->fd(), 0);
+    EXPECT_EQ(1u, _server._am->ConnectionCount());
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
+    ASSERT_TRUE(WaitUntil([this] {
+        return _server._am->ConnectionCount() == 0;
+    }));
 
     StopServer();
 }
@@ -574,7 +583,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_magic_str) {
 
     butil::fd_guard sockfd;
     ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
@@ -584,19 +593,20 @@ TEST_F(RdmaTest, client_hello_msg_invalid_magic_str) {
     // Wait for the bytes to show up in the fd stream (baidu_std wants 12B of
     // header, so they stay buffered). Waiting on the state instead would prove
     // nothing: it is already UNINIT before the server has read anything.
-    ASSERT_TRUE(WaitForFdReadBuf(s, 4));
+    ASSERT_TRUE(WaitForFdReadBuf(s.get(), 4));
     // A non-RDMA magic makes ParseRdmaHandshake return TRY_OTHERS and hand the
     // bytes to other protocols. It does not touch the endpoint state, so it
     // stays UNINIT (the old blocking handshake used to set FALLBACK_TCP here).
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
+    s.reset();
     StopServer();
 }
 
 TEST_F(RdmaTest, client_close_during_hello_send) {
     StartServer();
 
-    Socket* s = nullptr;
+    SocketUniquePtr s;
     uint8_t data[8];
 
     butil::fd_guard sockfd1;
@@ -610,9 +620,10 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
     // NOT_ENOUGH_DATA and leaves the endpoint UNINIT (the old blocking
     // handshake used to set S_HELLO_WAIT before reading the magic). Wait for
     // the bytes to be buffered, the state alone would prove nothing.
-    ASSERT_TRUE(WaitForFdReadBuf(s, 2));
+    ASSERT_TRUE(WaitForFdReadBuf(s.get(), 2));
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
     sockfd1.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     butil::fd_guard sockfd2;
@@ -624,6 +635,7 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
     ASSERT_TRUE(WriteAll(sockfd2, data, 4));  // break after magic str
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_HELLO_WAIT, RdmaTransportOf(s));
     sockfd2.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     butil::fd_guard sockfd3;
@@ -640,6 +652,7 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
     ASSERT_TRUE(WriteAll(sockfd3, data, 6));  // magic + `msg_len`, body missing
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_HELLO_WAIT, RdmaTransportOf(s));
     sockfd3.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -648,7 +661,7 @@ TEST_F(RdmaTest, client_close_during_hello_send) {
 TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     StartServer();
 
-    Socket* s = nullptr;
+    SocketUniquePtr s;
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
 
     butil::fd_guard sockfd1;
@@ -661,6 +674,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_HELLO_WAIT, RdmaTransportOf(s));
     memset(data + 4, 0, 36);
     ASSERT_TRUE(WriteAll(sockfd1, data + 4, 36));  // Write invalid length.
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     butil::fd_guard sockfd2;
@@ -675,6 +689,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
     memcpy(data + 4, &len, sizeof(len));
     memset(data + 6, 0, 34);
     ASSERT_TRUE(WriteAll(sockfd2, data + 4, 36));  // write invalid length
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -683,7 +698,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_len) {
 TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     StartServer();
 
-    Socket* s = nullptr;
+    SocketUniquePtr s;
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     uint16_t len = butil::HostToNet16(rdma::HELLO_V2_MSG_LEN_MIN);
     uint16_t ver = butil::HostToNet16(1);
@@ -713,6 +728,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     ASSERT_TRUE(WriteAll(sockfd1, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
     sockfd1.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     butil::fd_guard sockfd2;
@@ -734,6 +750,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
     ASSERT_TRUE(WriteAll(sockfd2, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
     sockfd2.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -742,7 +759,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_version) {
 TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     StartServer();
 
-    Socket* s = nullptr;
+    SocketUniquePtr s;
     uint32_t flags = butil::HostToNet32(0);
     rdma::v2_wire::HelloMessage msg{};
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
@@ -768,6 +785,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     ASSERT_TRUE(WriteAll(sockfd1, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
     sockfd1.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     msg.sq_size = 16;
@@ -788,6 +806,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     ASSERT_TRUE(WriteAll(sockfd2, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
     sockfd2.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     msg.sq_size = 16;
@@ -808,6 +827,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
     ASSERT_TRUE(WriteAll(sockfd3, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
     sockfd3.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -816,7 +836,7 @@ TEST_F(RdmaTest, client_hello_msg_invalid_sq_rq_block_size) {
 TEST_F(RdmaTest, client_close_after_qp_build) {
     StartServer();
 
-    Socket* s = nullptr;
+    SocketUniquePtr s;
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     MakeV2ClientHello(data);
 
@@ -828,6 +848,7 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
     ASSERT_TRUE(WriteAll(sockfd1, data, sizeof(data)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, RdmaTransportOf(s));
     sockfd1.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -836,7 +857,7 @@ TEST_F(RdmaTest, client_close_after_qp_build) {
 TEST_F(RdmaTest, client_close_during_ack_send) {
     StartServer();
 
-    Socket* s = nullptr;
+    SocketUniquePtr s;
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     MakeV2ClientHello(data);
 
@@ -853,6 +874,7 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
     ASSERT_TRUE(WriteAll(sockfd1, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, RdmaTransportOf(s));
     sockfd1.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -861,7 +883,7 @@ TEST_F(RdmaTest, client_close_during_ack_send) {
 TEST_F(RdmaTest, client_close_after_ack_send) {
     StartServer();
 
-    Socket* s = nullptr;
+    SocketUniquePtr s;
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     MakeV2ClientHello(data);
 
@@ -879,6 +901,7 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
     ASSERT_EQ(RdmaTransport::RDMA_OFF, RdmaTransportOf(s)->_rdma_state);
     sockfd1.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     butil::fd_guard sockfd2;
@@ -894,6 +917,7 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
     ASSERT_TRUE(WriteAll(sockfd2, &flags, sizeof(flags)));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, RdmaTransportOf(s));
     sockfd2.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -902,7 +926,7 @@ TEST_F(RdmaTest, client_close_after_ack_send) {
 TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     StartServer();
 
-    Socket* s = nullptr;
+    SocketUniquePtr s;
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
     MakeV2ClientHello(data);
 
@@ -921,6 +945,7 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     // 4 more bytes on a fd that fell back to TCP are not a protocol baidu_std
     // knows, so the connection is dropped.
     ASSERT_TRUE(WriteAll(sockfd1, &flags, sizeof(flags)));
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     butil::fd_guard sockfd2;
@@ -937,6 +962,7 @@ TEST_F(RdmaTest, client_send_data_on_tcp_after_ack_send) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, RdmaTransportOf(s));
     // Once RDMA is on the fd carries no RPC data at all, so this is an error.
     ASSERT_TRUE(WriteAll(sockfd2, &flags, sizeof(flags)));
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -964,7 +990,7 @@ TEST_F(RdmaTest, server_accepts_data_pipelined_behind_fallback_ack) {
 
     butil::fd_guard sockfd;
     ASSERT_NO_FATAL_FAILURE(HandshakeUntilAckWait(&sockfd));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     auto* transport = RdmaTransportOf(s);
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, transport);
@@ -984,9 +1010,10 @@ TEST_F(RdmaTest, server_accepts_data_pipelined_behind_fallback_ack) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, transport);
     ASSERT_EQ(RdmaTransport::RDMA_OFF, transport->_rdma_state);
     ASSERT_TRUE(GetSocketFromServer(0) != nullptr);
-    ASSERT_TRUE(WaitForFdReadBuf(s, 4));
+    ASSERT_TRUE(WaitForFdReadBuf(s.get(), 4));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -999,7 +1026,7 @@ TEST_F(RdmaTest, server_rejects_data_pipelined_behind_rdma_ack) {
 
     butil::fd_guard sockfd;
     ASSERT_NO_FATAL_FAILURE(HandshakeUntilAckWait(&sockfd));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     auto* transport = RdmaTransportOf(s);
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, transport);
@@ -1010,8 +1037,8 @@ TEST_F(RdmaTest, server_rejects_data_pipelined_behind_rdma_ack) {
     memcpy(ack_and_data + rdma::HELLO_ACK_LEN, "PRPC", 4);
     ASSERT_TRUE(WriteAll(sockfd, ack_and_data, sizeof(ack_and_data)));
 
-    // Note that `transport->_rdma_ep` is gone by now: dropping the connection
-    // recycles the Socket, and RdmaTransport::Release() deletes the endpoint.
+    // Release the test's reference so recycling can destroy the endpoint.
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -1023,7 +1050,7 @@ TEST_F(RdmaTest, server_stops_parsing_tcp_fd_once_rdma_is_on) {
 
     butil::fd_guard sockfd;
     ASSERT_NO_FATAL_FAILURE(HandshakeUntilAckWait(&sockfd));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     auto* transport = RdmaTransportOf(s);
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, transport);
@@ -1037,6 +1064,7 @@ TEST_F(RdmaTest, server_stops_parsing_tcp_fd_once_rdma_is_on) {
     ASSERT_TRUE(GetSocketFromServer(0) != nullptr);
 
     ASSERT_TRUE(WriteAll(sockfd, "PRPC", 4));
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -1049,7 +1077,7 @@ TEST_F(RdmaTest, server_parses_qp_stream_after_rdma_is_on) {
 
     butil::fd_guard sockfd;
     ASSERT_NO_FATAL_FAILURE(HandshakeUntilAckWait(&sockfd));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     auto* transport = RdmaTransportOf(s);
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, transport);
@@ -1076,6 +1104,7 @@ TEST_F(RdmaTest, server_parses_qp_stream_after_rdma_is_on) {
     ASSERT_EQ(rdma::RdmaEndpoint::ESTABLISHED, transport->_rdma_ep->_state);
     ASSERT_FALSE(s->Failed());
 
+    s.reset();
     StopServer();
 }
 
@@ -1087,7 +1116,7 @@ TEST_F(RdmaTest, server_declines_handshake_bytes_after_fallback) {
 
     butil::fd_guard sockfd;
     ASSERT_NO_FATAL_FAILURE(HandshakeUntilAckWait(&sockfd));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     auto* transport = RdmaTransportOf(s);
 
@@ -1102,8 +1131,8 @@ TEST_F(RdmaTest, server_declines_handshake_bytes_after_fallback) {
     MakeV2ClientHello(hello);
     ASSERT_TRUE(WriteAll(sockfd, hello, sizeof(hello)));
 
-    // Note that `transport->_rdma_ep` is gone by now: dropping the connection
-    // recycles the Socket, and RdmaTransport::Release() deletes the endpoint.
+    // Release the test's reference so recycling can destroy the endpoint.
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
     uint8_t reply[rdma::HELLO_V2_MSG_LEN_MIN];
     ASSERT_LE(recv(sockfd, reply, sizeof(reply), MSG_DONTWAIT), 0);
@@ -1116,7 +1145,7 @@ TEST_F(RdmaTest, fd_and_qp_input_streams_are_separate) {
 
     butil::fd_guard sockfd;
     ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     auto* transport = RdmaTransportOf(s);
 
@@ -1129,12 +1158,13 @@ TEST_F(RdmaTest, fd_and_qp_input_streams_are_separate) {
     // Two magic bytes are too few to dispatch on, so they stay buffered. In the
     // fd stream, and only there.
     ASSERT_TRUE(WriteAll(sockfd, "RD", 2));
-    ASSERT_TRUE(WaitForFdReadBuf(s, 2));
+    ASSERT_TRUE(WaitForFdReadBuf(s.get(), 2));
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, transport->_rdma_ep->_state);
     ASSERT_EQ(2u, fd_stream.read_buf().size());
     ASSERT_TRUE(qp_stream.read_buf().empty());
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -1720,7 +1750,7 @@ TEST_F(RdmaTest, v2_server_hello_bytes_baseline) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
     // Send a well-formed v2 hello so the server enters S_ACK_WAIT.
@@ -1765,6 +1795,7 @@ TEST_F(RdmaTest, v2_server_hello_bytes_baseline) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -1780,7 +1811,7 @@ TEST_F(RdmaTest, v2_server_drains_tail_then_reads_ack) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
@@ -1811,6 +1842,7 @@ TEST_F(RdmaTest, v2_server_drains_tail_then_reads_ack) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, RdmaTransportOf(s));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -1826,7 +1858,7 @@ TEST_F(RdmaTest, v2_server_rejects_oversized_msg_len) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
@@ -1847,6 +1879,7 @@ TEST_F(RdmaTest, v2_server_rejects_oversized_msg_len) {
     memcpy(buf, "RDMA", 4);
     msg.Serialize(buf + 4);
     ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, write(sockfd, buf, rdma::HELLO_V2_MSG_LEN_MIN));
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     sockfd.reset(-1);
@@ -2032,7 +2065,7 @@ TEST_F(RdmaTest, v3_server_hello_bytes_baseline) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
     // Send a valid v3 hello.
@@ -2071,6 +2104,7 @@ TEST_F(RdmaTest, v3_server_hello_bytes_baseline) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -2086,12 +2120,13 @@ TEST_F(RdmaTest, v3_server_rejects_zero_pb_size) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
     // "RDM3" + `pb_size` = 0 (4B big-endian zero).
     uint8_t buf[8] = {'R', 'D', 'M', '3', 0, 0, 0, 0};
     ASSERT_EQ(8, write(sockfd, buf, 8));
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     sockfd.reset(-1);
@@ -2108,7 +2143,7 @@ TEST_F(RdmaTest, v3_server_rejects_oversized_pb_size) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
     uint8_t buf[8];
@@ -2118,6 +2153,7 @@ TEST_F(RdmaTest, v3_server_rejects_oversized_pb_size) {
         butil::HostToNet32(static_cast<uint32_t>(rdma::HELLO_V3_MAX_PB_SIZE + 1));
     memcpy(buf + 4, &pb_size_be, 4);
     ASSERT_EQ(8, write(sockfd, buf, 8));
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     sockfd.reset(-1);
@@ -2134,7 +2170,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_pb_bytes) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
     // "RDM3" + `pb_size` = 8 + 8 bytes of 0xff (invalid protobuf body).
@@ -2144,6 +2180,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_pb_bytes) {
     memcpy(buf + 4, &pb_size_be, 4);
     memset(buf + 8, 0xff, 8);
     ASSERT_EQ(16, write(sockfd, buf, 16));
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     sockfd.reset(-1);
@@ -2160,7 +2197,7 @@ TEST_F(RdmaTest, v3_server_invalid_sq_size_falls_back) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3Hello();
@@ -2191,6 +2228,7 @@ TEST_F(RdmaTest, v3_server_invalid_sq_size_falls_back) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -2251,7 +2289,7 @@ TEST_F(RdmaTest, v3_srq_profile_is_selected_only_when_enabled) {
         butil::fd_guard fd(socket(AF_INET, SOCK_STREAM, 0));
         ASSERT_GE(fd, 0);
         ASSERT_EQ(0, connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)));
-        Socket* server_socket = WaitForServerSocket();
+        SocketUniquePtr server_socket = WaitForServerSocket();
         ASSERT_NE(nullptr, server_socket);
         auto hello = MakeValidV3Hello();
         hello.set_srq_protocol(1);
@@ -2273,6 +2311,7 @@ TEST_F(RdmaTest, v3_srq_profile_is_selected_only_when_enabled) {
                                         rdma::RdmaEndpoint::FALLBACK_TCP;
         ASSERT_RDMA_STATE(expected, RdmaTransportOf(server_socket));
         fd.reset(-1);
+        server_socket.reset();
         ASSERT_TRUE(WaitForServerSocketGone());
         StopServer();
     }
@@ -2291,7 +2330,7 @@ TEST_F(RdmaTest, v3_server_accepts_client_hello_with_ece) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
@@ -2309,6 +2348,7 @@ TEST_F(RdmaTest, v3_server_accepts_client_hello_with_ece) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
     StopServer();
 }
@@ -2326,7 +2366,7 @@ TEST_F(RdmaTest, v3_server_reply_has_no_ece_when_disabled) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
@@ -2343,6 +2383,7 @@ TEST_F(RdmaTest, v3_server_reply_has_no_ece_when_disabled) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
     StopServer();
 }
@@ -2362,7 +2403,7 @@ TEST_F(RdmaTest, v3_server_reply_has_no_ece_without_hw_negotiation) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3HelloWithEce(0x02c9, 0x1, 0x0);
@@ -2379,6 +2420,7 @@ TEST_F(RdmaTest, v3_server_reply_has_no_ece_without_hw_negotiation) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
     StopServer();
 }
@@ -2442,7 +2484,7 @@ TEST_F(RdmaTest, server_alloc_resource_fail_fallback_tcp) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
+    SocketUniquePtr s = WaitForServerSocket();
     ASSERT_TRUE(s != nullptr);
     ASSERT_EQ(rdma::RdmaEndpoint::UNINIT, RdmaTransportOf(s)->_rdma_ep->_state);
 
@@ -2474,6 +2516,7 @@ TEST_F(RdmaTest, server_alloc_resource_fail_fallback_tcp) {
     ASSERT_FALSE(s->Failed());
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -2498,8 +2541,8 @@ TEST_F(RdmaTest, v3_server_accepts_client_hello_with_mtu) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
-    ASSERT_TRUE(s != NULL);
+    SocketUniquePtr s = WaitForServerSocket();
+    ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3HelloWithMtu(IBV_MTU_4096);
     std::string packet = MakeV3Packet(msg);
@@ -2517,6 +2560,7 @@ TEST_F(RdmaTest, v3_server_accepts_client_hello_with_mtu) {
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FALLBACK_TCP, RdmaTransportOf(s));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
     StopServer();
 }
@@ -2535,8 +2579,8 @@ TEST_F(RdmaTest, v3_server_reply_has_negotiated_mtu) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
-    ASSERT_TRUE(s != NULL);
+    SocketUniquePtr s = WaitForServerSocket();
+    ASSERT_TRUE(s != nullptr);
 
     // Advertise a non-default MTU so we can verify negotiation.
     rdma::RdmaHello msg = MakeValidV3HelloWithMtu(IBV_MTU_4096);
@@ -2563,6 +2607,7 @@ TEST_F(RdmaTest, v3_server_reply_has_negotiated_mtu) {
     ASSERT_EQ((ssize_t)sizeof(flags), write(sockfd, &flags, sizeof(flags)));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
     StopServer();
 }
@@ -2580,8 +2625,8 @@ TEST_F(RdmaTest, v3_server_reply_has_no_mtu_without_client_mtu) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd >= 0);
     ASSERT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
-    ASSERT_TRUE(s != NULL);
+    SocketUniquePtr s = WaitForServerSocket();
+    ASSERT_TRUE(s != nullptr);
 
     // Client hello without MTU field.
     rdma::RdmaHello msg = MakeValidV3Hello();
@@ -2599,6 +2644,7 @@ TEST_F(RdmaTest, v3_server_reply_has_no_mtu_without_client_mtu) {
     ASSERT_EQ((ssize_t)sizeof(flags), write(sockfd, &flags, sizeof(flags)));
 
     sockfd.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
     StopServer();
 }
@@ -2620,8 +2666,8 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
     butil::fd_guard sockfd1(socket(AF_INET, SOCK_STREAM, 0));
     ASSERT_TRUE(sockfd1 >= 0);
     ASSERT_EQ(0, connect(sockfd1, (sockaddr*)&addr, sizeof(sockaddr)));
-    Socket* s = WaitForServerSocket();
-    ASSERT_TRUE(s != NULL);
+    SocketUniquePtr s = WaitForServerSocket();
+    ASSERT_TRUE(s != nullptr);
 
     rdma::RdmaHello msg = MakeValidV3HelloWithMtu(0);
     std::string packet = MakeV3Packet(msg);
@@ -2630,7 +2676,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
 
     // The server rejects the hello but falls back to TCP instead of failing.
     s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, RdmaTransportOf(s));
     ASSERT_EQ(RdmaTransport::RDMA_OFF, RdmaTransportOf(s)->_rdma_state);
     ASSERT_FALSE(s->Failed());
@@ -2647,6 +2693,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
     ASSERT_FALSE(s->Failed());
 
     sockfd1.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     // Test with MTU = 6 (above IBV_MTU_4096).
@@ -2654,7 +2701,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
     ASSERT_TRUE(sockfd2 >= 0);
     ASSERT_EQ(0, connect(sockfd2, (sockaddr*)&addr, sizeof(sockaddr)));
     s = WaitForServerSocket();
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
 
     msg = MakeValidV3HelloWithMtu(6);
     packet = MakeV3Packet(msg);
@@ -2662,7 +2709,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
               write(sockfd2, packet.data(), packet.size()));
 
     s = GetSocketFromServer(0);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::S_ACK_WAIT, RdmaTransportOf(s));
     ASSERT_EQ(RdmaTransport::RDMA_OFF, RdmaTransportOf(s)->_rdma_state);
     ASSERT_FALSE(s->Failed());
@@ -2676,6 +2723,7 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
     ASSERT_FALSE(s->Failed());
 
     sockfd2.reset(-1);
+    s.reset();
     ASSERT_TRUE(WaitForServerSocketGone());
 
     StopServer();
@@ -2894,10 +2942,10 @@ TEST_P(RdmaRpcTest, rdma_client_to_rdma_server) {
     // retaining private RQ when this test is run with `rdma_use_srq`=true.
     SocketUniquePtr client_socket;
     ASSERT_EQ(0, Socket::Address(channel._server_id, &client_socket));
-    Socket* server_socket = GetSocketFromServer(0);
+    SocketUniquePtr server_socket = GetSocketFromServer(0);
     ASSERT_NE(nullptr, server_socket);
     const bool expect_srq = GetParam() == 3 && rdma::FLAGS_rdma_use_srq;
-    for (Socket* socket : {client_socket.get(), server_socket}) {
+    for (Socket* socket : {client_socket.get(), server_socket.get()}) {
         auto* transport = RdmaTransportOf(socket);
         ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, transport);
         ASSERT_EQ(RdmaTransport::RDMA_ON, transport->_rdma_state);
@@ -2934,6 +2982,7 @@ TEST_P(RdmaRpcTest, rdma_client_to_rdma_server) {
         EXPECT_EQ(expected_mtu, static_cast<uint32_t>(attr.path_mtu));
     }
 
+    server_socket.reset();
     StopServer();
 }
 
@@ -3081,8 +3130,8 @@ TEST_P(RdmaRpcTest, send_rpcs_in_one_qp) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
     }
@@ -3101,8 +3150,8 @@ TEST_P(RdmaRpcTest, send_rpcs_in_one_qp) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
     }
@@ -3120,8 +3169,8 @@ TEST_P(RdmaRpcTest, send_rpcs_in_one_qp) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_TRUE(0 == cntl[i].ErrorCode() ||
                     EOVERCROWDED == cntl[i].ErrorCode()) << "req[" << i << "] " << berror(cntl[i].ErrorCode());
@@ -3129,9 +3178,10 @@ TEST_P(RdmaRpcTest, send_rpcs_in_one_qp) {
 
     SocketUniquePtr s;
     ASSERT_EQ(0, Socket::Address(cntl[0]._single_server_id, &s));
-    Socket* m = GetSocketFromServer(0);
-    DumpRdmaEndpointInfo(s.get(), m);
+    SocketUniquePtr m = GetSocketFromServer(0);
+    DumpRdmaEndpointInfo(s.get(), m.get());
 
+    m.reset();
     StopServer();
 }
 
@@ -3236,8 +3286,8 @@ TEST_P(RdmaRpcTest, send_rpcs_as_pooled_connection) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
     }
@@ -3277,8 +3327,8 @@ TEST_P(RdmaRpcTest, send_rpcs_as_short_connection) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
     }

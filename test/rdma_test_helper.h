@@ -140,23 +140,25 @@ protected:
         _server.Join();
     }
 
-    Socket* GetSocketFromServer(size_t index) {
+    // Keep the `Socket` alive while inspecting it. Release the returned reference
+    // before waiting for recycling or calling `StopServer()`.
+    SocketUniquePtr GetSocketFromServer(size_t index) {
         std::vector<SocketId> sids;
         _server._am->ListConnections(&sids);
         if (index >= sids.size()) {
-            return nullptr;
+            return {};
         }
         SocketUniquePtr s;
         if (Socket::Address(sids[index], &s) == 0) {
-            return s.get();
+            return s;
         }
-        return nullptr;
+        return {};
     }
 
     // Accepting the connection happens in the server threads, so poll for it
-    // rather than sleeping. Returns nullptr if it never showed up.
-    Socket* WaitForServerSocket() {
-        Socket* s = nullptr;
+    // rather than sleeping. Returns an empty reference if it never showed up.
+    SocketUniquePtr WaitForServerSocket() {
+        SocketUniquePtr s;
         WaitUntil([this, &s] { return (s = GetSocketFromServer(0)) != nullptr; });
         return s;
     }
