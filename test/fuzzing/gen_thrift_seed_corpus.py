@@ -64,7 +64,16 @@ def i16(value):
 
 
 def i32(value):
+    """Pack a Thrift binary-protocol i32 (signed on the wire)."""
     return struct.pack(">i", value)
+
+
+def i32bits(value):
+    """Pack low 32 bits as a Thrift i32 (two's complement on the wire)."""
+    value &= 0xffffffff
+    if value >= 0x80000000:
+        value -= 0x100000000
+    return i32(value)
 
 
 def i64(value):
@@ -73,16 +82,16 @@ def i64(value):
 
 def tstr(text):
     encoded = text.encode()
-    return struct.pack(">I", len(encoded)) + encoded
+    return i32(len(encoded)) + encoded
 
 
 def tlist(elem_type, elements):
-    return (bytes([elem_type]) + struct.pack(">I", len(elements))
+    return (bytes([elem_type]) + i32(len(elements))
             + b"".join(elements))
 
 
 def tmap(key_type, value_type, pairs):
-    return (bytes([key_type, value_type]) + struct.pack(">I", len(pairs))
+    return (bytes([key_type, value_type]) + i32(len(pairs))
             + b"".join(key + value for key, value in pairs))
 
 
@@ -93,13 +102,13 @@ def tstruct(*fields):
 
 def message_begin(name, mtype, seq_id):
     """Version word + method name + sequence id."""
-    return (struct.pack(">I", (VERSION_1 << 16) | (mtype & 0xFF))
-            + tstr(name) + struct.pack(">I", seq_id))
+    return (i32bits((VERSION_1 << 16) | (mtype & 0xFF))
+            + tstr(name) + i32(seq_id))
 
 
 def frame(payload):
     """Wrap a thrift message in thrift framed's 4-byte size prefix."""
-    return struct.pack(">I", len(payload)) + payload
+    return i32(len(payload)) + payload
 
 
 # -------------------------------------------------------------------- the seeds
@@ -146,16 +155,16 @@ SEEDS["exception"] = frame(
 # so ParseThriftMessage gives up on the stream and the other protocol parsers
 # get to look at it instead.
 _bad_payload = message_begin("ping", CALL, 1) + field(T_I32, 1, i32(42)) + STOP
-SEEDS["bad_version"] = (struct.pack(">I", len(_bad_payload))
-                        + struct.pack(">I", 0x0BAD0001) + _bad_payload[4:])
+SEEDS["bad_version"] = (i32(len(_bad_payload))
+                        + i32bits(0x0BAD0001) + _bad_payload[4:])
 
 # Frame-level truncations.  "short" cuts the input off two bytes into the
 # version word; "truncated_body" completes the 8-byte header but delivers none
 # of the 16 bytes of body it advertises.  ParseThriftMessage must report "not
 # enough data" for both instead of over-reading the buffer.
-SEEDS["short"] = struct.pack(">I", 16) + b"\x80\x01"
-SEEDS["truncated_body"] = (struct.pack(">I", 16)
-                           + struct.pack(">I", (VERSION_1 << 16) | CALL))
+SEEDS["short"] = i32(16) + b"\x80\x01"
+SEEDS["truncated_body"] = (i32(16)
+                           + i32bits((VERSION_1 << 16) | CALL))
 
 
 def main(argv):
