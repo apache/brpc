@@ -99,11 +99,17 @@ ParseResult ParseRpcMessageGpu(butil::IOBuf* source, Socket* socket,
     const int prefetch_d2h_size = GetPrefetchD2HSize(host_allocator);
     prefetch_d2h_data = host_allocator->AllocateRaw(prefetch_d2h_size);
     if (prefetch_d2h_data == NULL) {
-        // Pool exhausted or single-block limit hit: ask the caller to retry
-        // instead of crashing the whole server.
+        // Pool exhausted or single-block limit hit. This is a resource
+        // failure on an already-arrived frame, NOT an incomplete frame:
+        // PARSE_ERROR_NOT_ENOUGH_DATA would exit the parsing loop and only
+        // re-enter on the next receive completion, so the frame could stay
+        // stuck in the receive buffer until the RPC times out even after
+        // memory becomes available (nothing in DeallocateRaw wakes the
+        // parser). Treat it as a terminal error and close the connection
+        // instead; the client will reconnect and retry.
         LOG(ERROR) << "alloc host data for prefetch d2h failed, size="
                    << prefetch_d2h_size;
-        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
+        return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
 
     // n is the bytes we real frefetch, n maybe less than prefetch_d2h_size;
