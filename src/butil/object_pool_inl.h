@@ -380,7 +380,7 @@ public:
                 }
             }
         }
-        info.total_size = info.block_num * info.block_item_num * sizeof(T);
+        info.total_size = info.block_num * info.block_item_num * sizeof(BlockItem);
         return info;
     }
 
