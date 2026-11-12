@@ -260,7 +260,8 @@ protected:
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(expect_type, cntl.http_response().content_type());
         if (brpc::FLAGS_show_hostname_instead_of_ip) {
-            char hostname[256];
+            // Match NameOfPoint's resolver buffer, including port truncation.
+            char hostname[128];
             butil::EndPoint peer;
             ASSERT_EQ(0, str2endpoint(buf, &peer));
             if (butil::endpoint2hostname(peer, hostname, sizeof(hostname)) == 0) {
