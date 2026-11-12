@@ -966,6 +966,39 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         LOG(ERROR) << "Fail to initialize transport context for server, ret=" << ret;
         return -1;
     }
+#if BRPC_WITH_GDR
+    // GDR connections deliver the RPC payload in GPU memory and only the
+    // GPU-aware baidu_std parser (ParseRpcMessageGpu) can consume it; every
+    // other parser (http, h2, ...) would hand the device address to CPU code
+    // (e.g. http_parser_execute) and crash. BuildAcceptor always serves
+    // rdma_handshake (for the GDR handshake) but honors the whitelist for
+    // the payload protocols, so a whitelisted set without baidu_std would
+    // accept GDR connections that have no parser able to read them. Reject
+    // that combination at startup.
+    if (real_opt.socket_mode == SOCKET_MODE_GDR) {
+        bool has_baidu_std = true;
+        if (!real_opt.enabled_protocols.empty()) {
+            has_baidu_std = false;
+            for (butil::StringSplitter sp(real_opt.enabled_protocols.c_str(), ' ');
+                 sp; ++sp) {
+                if (sp.length() == sizeof("baidu_std") - 1 &&
+                    memcmp(sp.field(), "baidu_std", sp.length()) == 0) {
+                    has_baidu_std = true;
+                    break;
+                }
+            }
+        }
+        if (!has_baidu_std) {
+            LOG(ERROR) << "ServerOptions.socket_mode=SOCKET_MODE_GDR requires "
+                          "the baidu_std protocol (the only parser that "
+                          "understands GPU-resident payloads); "
+                          "ServerOptions.enabled_protocols=`"
+                       << real_opt.enabled_protocols
+                       << "' excludes it";
+            return -1;
+        }
+    }
+#endif  // BRPC_WITH_GDR
 
     copy_and_fill_server_options(_options, real_opt);
 
