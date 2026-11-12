@@ -21,6 +21,9 @@
 #include "butil/config.h"
 
 #if BRPC_WITH_FLATBUFFERS
+#if __cplusplus < 201703L
+#error "bRPC FlatBuffers support requires C++17 or later"
+#endif
 #include <cstddef>
 #include <cstdint>
 #include <utility>

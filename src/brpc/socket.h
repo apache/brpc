@@ -23,6 +23,7 @@
 #include <deque>                               // std::deque
 #include <set>                                 // std::set
 #include "butil/atomicops.h"                    // butil::atomic
+#include "butil/containers/optional.h"          // butil::optional
 #include "bthread/types.h"                      // bthread_id_t
 #include "butil/iobuf.h"                        // butil::IOBuf, IOPortal
 #include "butil/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
@@ -317,7 +318,7 @@ struct SocketOptions {
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
+    butil::optional<SocketKeepaliveOptions> keepalive_options;
     // https://github.com/apache/brpc/issues/1154
     // https://github.com/grpc/grpc/pull/16419/files
     // Only linux supports TCP_USER_TIMEOUT.
@@ -690,6 +691,21 @@ public:
     void fail_me_at_server_stop() { _fail_me_at_server_stop = true; }
     bool shall_fail_me_at_server_stop() const { return _fail_me_at_server_stop; }
 
+    // Track references held by deferred responses waiting for peer activity
+    // (such as HTTP/2 WINDOW_UPDATE). Unlike fail_me_at_server_stop(), these
+    // references are allowed to drain gracefully on Server.Stop(), but must
+    // trigger SetFailed() when the socket becomes idle so NotifyOnFailed()
+    // callbacks can clean up buffered state and release the socket.
+    void AddIdleFailRef() {
+        _idle_fail_ref_count.fetch_add(1, butil::memory_order_relaxed);
+    }
+    void ReleaseIdleFailRef() {
+        _idle_fail_ref_count.fetch_sub(1, butil::memory_order_relaxed);
+    }
+    bool shall_fail_me_at_idle_timeout() const {
+        return _idle_fail_ref_count.load(butil::memory_order_relaxed) > 0;
+    }
+
     // Tag the socket so that the response coming back from socket will be
     // parsed progressively. For example: in HTTP, the RPC may end w/o reading
     // the body part fully.
@@ -742,6 +758,9 @@ private:
     // Hold the health-checking-related
     // reference on created.
     void HoldHCRelatedRef();
+
+    // Copy connection configuration for pooled and short sockets.
+    SocketOptions GetSubSocketOptions() const;
 
     static int Status(SocketId, int32_t* nref = nullptr);  // for unit-test.
 
@@ -957,6 +976,13 @@ private:
 
     // Saved context for parsing, reset before trying other protocols.
     butil::atomic<Destroyable*> _parsing_context;
+    // DebugSocket() describes _parsing_context outside the bthread parsing
+    // messages, which may reset or release the context at the same time.
+    // Both hold this mutex, so that the context is not destroyed while
+    // being described. Describe() runs under the mutex and must not reset
+    // the parsing context of the socket. initialize_parsing_context() does
+    // not need it: it never destroys a context set in the socket.
+    butil::Mutex _parsing_context_mutex;
 
     // The stream whose data the handlers are currently cutting.
     butil::atomic<InputMessengerProcessor::StreamType> _parsing_stream_type;
@@ -1013,6 +1039,7 @@ private:
     butil::atomic<bool> _controller_released_socket;
 
     bool _fail_me_at_server_stop;
+    butil::atomic<int32_t> _idle_fail_ref_count;
 
     // Set by SetLogOff
     butil::atomic<bool> _logoff_flag;
@@ -1053,8 +1080,8 @@ private:
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    // non-nullptr means that keepalive is on.
-    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+    // An engaged value means that keepalive is on.
+    butil::optional<SocketKeepaliveOptions> _keepalive_options;
 
     // Only linux supports TCP_USER_TIMEOUT.
     // When the value is greater than 0, it specifies the maximum

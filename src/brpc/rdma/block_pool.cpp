@@ -85,9 +85,9 @@ static bool g_dump_enable = false;
 static butil::Mutex* g_dump_mutex = nullptr;
 
 // Only for default block size
-static __thread IdleNode* tls_idle_list = nullptr;
-static __thread size_t tls_idle_num = 0;
-static __thread bool tls_inited = false;
+static BUTIL_THREAD_LOCAL(IdleNode*, tls_idle_list, nullptr);
+static BUTIL_THREAD_LOCAL(size_t, tls_idle_num, 0);
+static BUTIL_THREAD_LOCAL(bool, tls_inited, false);
 static butil::Mutex* g_tls_info_mutex = nullptr;
 static size_t g_tls_info_cnt = 0;
 static size_t* g_tls_info[1024];
@@ -349,13 +349,13 @@ static void* AllocBlockFrom(int block_type) {
     };
 
     void* ptr = nullptr;
-    if (0 == block_type && nullptr != tls_idle_list) {
-        CHECK(tls_idle_num > 0);
-        IdleNode* n = tls_idle_list;
-        tls_idle_list = n->next;
+    if (0 == block_type && nullptr != tls_idle_list()) {
+        CHECK(tls_idle_num() > 0);
+        IdleNode* n = tls_idle_list();
+        tls_idle_list() = n->next;
         ptr = n->start;
         butil::return_object<IdleNode>(n);
-        tls_idle_num--;
+        tls_idle_num()--;
         return ptr;
     }
 
@@ -399,19 +399,19 @@ static void* AllocBlockFrom(int block_type) {
     // Move more blocks from global list to tls list
     if (block_type == 0) {
         node = g_info->idle_list[0][index];
-        tls_idle_list = node;
+        tls_idle_list() = node;
         IdleNode* last_node = nullptr;
         while (node) {
-            if (tls_idle_num > (uint32_t)FLAGS_rdma_memory_pool_tls_cache_num / 2
+            if (tls_idle_num() > (uint32_t)FLAGS_rdma_memory_pool_tls_cache_num / 2
                     || node->len > g_block_size[0]) {
                 break;
             }
-            tls_idle_num++;
+            tls_idle_num()++;
             last_node = node;
             node = node->next;
         }
-        if (tls_idle_num == 0) {
-            tls_idle_list = nullptr;
+        if (tls_idle_num() == 0) {
+            tls_idle_list() = nullptr;
         } else {
             g_info->idle_list[0][index] = node;
         }
@@ -438,9 +438,9 @@ void* AllocBlock(size_t size) {
 
 void RecycleAll() {
     // Only block_type == 0 needs recycle
-    while (tls_idle_list) {
-        IdleNode* node = tls_idle_list;
-        tls_idle_list = node->next;
+    while (tls_idle_list()) {
+        IdleNode* node = tls_idle_list();
+        tls_idle_list() = node->next;
         Region* r = GetRegion(node->start);
         if (!r) {
             continue;
@@ -450,7 +450,7 @@ void RecycleAll() {
         node->next = g_info->idle_list[0][index];
         g_info->idle_list[0][index] = node;
     }
-    tls_idle_num = 0;
+    tls_idle_num() = 0;
 }
 
 int DeallocBlock(void* buf) {
@@ -488,18 +488,18 @@ int DeallocBlock(void* buf) {
         }
     };
 
-    if (block_type == 0 && tls_idle_num < (uint32_t)FLAGS_rdma_memory_pool_tls_cache_num) {
-        if (!tls_inited) {
-            tls_inited = true;
+    if (block_type == 0 && tls_idle_num() < (uint32_t)FLAGS_rdma_memory_pool_tls_cache_num) {
+        if (!tls_inited()) {
+            tls_inited() = true;
             butil::thread_atexit(RecycleAll);
             BAIDU_SCOPED_LOCK(*g_tls_info_mutex);
             if (g_tls_info_cnt < 1024) {
-                g_tls_info[g_tls_info_cnt++] = &tls_idle_num;
+                g_tls_info[g_tls_info_cnt++] = &tls_idle_num();
             }
         }
-        tls_idle_num++;
-        node->next = tls_idle_list;
-        tls_idle_list = node;
+        tls_idle_num()++;
+        node->next = tls_idle_list();
+        tls_idle_list() = node;
         return 0;
     }
 
@@ -508,7 +508,7 @@ int DeallocBlock(void* buf) {
         size_t len = 0;
         // Recycle half the cached blocks in tls for default block size
         int num = FLAGS_rdma_memory_pool_tls_cache_num / 2;
-        IdleNode* new_head = tls_idle_list;
+        IdleNode* new_head = tls_idle_list();
         IdleNode* recycle_tail = nullptr;
         for (int i = 0; i < num; ++i) {
             recycle_tail = new_head;
@@ -519,11 +519,11 @@ int DeallocBlock(void* buf) {
             BAIDU_SCOPED_LOCK(*g_info->lock[0][index]);
             recycle_tail->next = node;
             node->next = g_info->idle_list[0][index];
-            g_info->idle_list[0][index] = tls_idle_list;
+            g_info->idle_list[0][index] = tls_idle_list();
             g_info->idle_size[0][index] += len;
         }
-        tls_idle_list = new_head;
-        tls_idle_num -= num;
+        tls_idle_list() = new_head;
+        tls_idle_num() -= num;
     } else {
         BAIDU_SCOPED_LOCK(*g_info->lock[block_type][index]);
         node->next = g_info->idle_list[block_type][index];

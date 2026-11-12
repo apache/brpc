@@ -265,11 +265,53 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "brpc_flatbuffers_protocol_unittest",
+    srcs = [
+        "brpc_flatbuffers_protocol_unittest.cpp",
+        ":flatbuffers_test_messages",
+    ],
+    copts = COPTS,
+    includes = ["."],
+    tags = ["exclusive"],
+    target_compatible_with = FLATBUFFERS_COMPATIBILITY,
+    deps = [
+        "//:brpc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Textual inclusion fixes the two implementations' initialization order. Static
+# linking supplies the remaining brpc objects without duplicate flag definitions.
+cc_library(
+    name = "collector_premain_sources",
+    textual_hdrs = [
+        "//:src/bvar/collector.cpp",
+        "//:src/brpc/rpc_dump.cpp",
+    ],
+    deps = ["//:brpc"],
+)
+
+cc_test(
+    name = "brpc_collector_premain_unittest",
+    srcs = ["brpc_collector_premain_unittest.cpp"],
+    copts = COPTS,
+    linkstatic = True,
+    deps = [
+        ":collector_premain_sources",
+        "@com_google_googletest//:gtest_main",
+    ] + TCMALLOC_DEP_UNLESS_ASAN,
+)
+
 generate_unittests(
     name = "brpc_unittests",
     srcs = glob(
         ["brpc_*_unittest.cpp"],
-        exclude = ["brpc_flatbuffers_unittest.cpp"],
+        exclude = [
+            "brpc_collector_premain_unittest.cpp",
+            "brpc_flatbuffers_unittest.cpp",
+            "brpc_flatbuffers_protocol_unittest.cpp",
+        ],
     ),
     deps = [
         ":gperftools_helper",

@@ -216,7 +216,8 @@ if(WITH_URMA AND URMA_USE_MOCK_ENABLED)
     target_compile_features(brpc_build_config INTERFACE cxx_std_17)
 endif()
 target_include_directories(brpc_build_config BEFORE INTERFACE
-    ${CMAKE_CURRENT_BINARY_DIR})
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS})
 target_compile_definitions(brpc_build_config INTERFACE ${BRPC_DEFINITIONS})
 target_include_directories(brpc_build_config INTERFACE ${BRPC_INCLUDE_DIRS})
 
@@ -251,6 +252,8 @@ file(GLOB_RECURSE BRPC_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.
 file(GLOB_RECURSE THRIFT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/thrift*.cpp")
 if(NOT WITH_FLATBUFFERS)
     list(FILTER BRPC_SOURCES EXCLUDE REGEX "/brpc/flatbuffers/.*\\.cpp$")
+    list(REMOVE_ITEM BRPC_SOURCES
+         "${CMAKE_CURRENT_SOURCE_DIR}/policy/flatbuffers_protocol.cpp")
 endif()
 file(GLOB_RECURSE EXCLUDE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/event_dispatcher_*.cpp")
 

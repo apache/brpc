@@ -26,7 +26,14 @@
 #include <gflags/gflags.h>          // DECLARE_int32
 #include "bthread/types.h"
 #include "bthread/context.h"        // bthread_fcontext_t
+#include "butil/build_config.h"
+#include "butil/compiler_specific.h"
 #include "butil/object_pool.h"
+
+// Discarding the continuation would leak ASan's saved fake stack.
+#if defined(OS_LINUX) && !defined(BUTIL_USE_ASAN)
+#define BTHREAD_STACK_TRIM_SUPPORTED
+#endif
 
 namespace bthread {
 
@@ -52,6 +59,13 @@ int allocate_stack_storage(StackStorage* s, int stacksize, int guardsize);
 // Deallocate a piece of stack. Parameters MUST be returned or set by the
 // corresponding allocate_stack_storage() otherwise behavior is undefined.
 void deallocate_stack_storage(StackStorage* s);
+
+#if defined(BTHREAD_STACK_TRIM_SUPPORTED)
+namespace internal {
+// Called from TaskControl::init, never during command-line parsing.
+void init_stack_trimming();
+}
+#endif
 
 enum StackType {
     STACK_TYPE_MAIN = 0,

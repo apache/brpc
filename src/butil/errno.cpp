@@ -25,6 +25,7 @@
 #include <pthread.h>                                   // pthread_mutex_t
 #include <unistd.h>                                    // _exit
 #include "butil/scoped_lock.h"                         // BAIDU_SCOPED_LOCK
+#include "butil/thread_local.h"
 
 namespace butil {
 
@@ -34,7 +35,8 @@ static const char* errno_desc[ERRNO_END - ERRNO_BEGIN] = {};
 static pthread_mutex_t modify_desc_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const size_t ERROR_BUFSIZE = 64;
-__thread char tls_error_buf[ERROR_BUFSIZE];
+using ErrorBuffer = char[ERROR_BUFSIZE];
+static BUTIL_THREAD_LOCAL(ErrorBuffer, tls_error_buf, {});
 
 int DescribeCustomizedErrno(
     int error_code, const char* error_name, const char* description) {
@@ -53,10 +55,10 @@ int DescribeCustomizedErrno(
         }
     } else {
 #if defined(OS_MACOSX)
-        const int rc = strerror_r(error_code, tls_error_buf, ERROR_BUFSIZE);
+        const int rc = strerror_r(error_code, tls_error_buf(), ERROR_BUFSIZE);
         if (rc != EINVAL)
 #else
-        desc = strerror_r(error_code, tls_error_buf, ERROR_BUFSIZE);
+        desc = strerror_r(error_code, tls_error_buf(), ERROR_BUFSIZE);
         if (desc && strncmp(desc, "Unknown error", 13) != 0)
 #endif
         {
@@ -80,20 +82,20 @@ const char* berror(int error_code) {
             return s;
         }
 #if defined(OS_MACOSX)
-        const int rc = strerror_r(error_code, butil::tls_error_buf, butil::ERROR_BUFSIZE);
+        const int rc = strerror_r(error_code, butil::tls_error_buf(), butil::ERROR_BUFSIZE);
         if (rc == 0 || rc == ERANGE/*bufsize is not long enough*/) {
-            return butil::tls_error_buf;
+            return butil::tls_error_buf();
         }
 #else
-        s = strerror_r(error_code, butil::tls_error_buf, butil::ERROR_BUFSIZE);
+        s = strerror_r(error_code, butil::tls_error_buf(), butil::ERROR_BUFSIZE);
         if (s) {
             return s;
         }
 #endif
     }
-    snprintf(butil::tls_error_buf, butil::ERROR_BUFSIZE,
+    snprintf(butil::tls_error_buf(), butil::ERROR_BUFSIZE,
              "Unknown error %d", error_code);
-    return butil::tls_error_buf;
+    return butil::tls_error_buf();
 }
 
 const char* berror() {
