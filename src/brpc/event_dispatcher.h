@@ -20,6 +20,7 @@
 #define BRPC_EVENT_DISPATCHER_H
 
 #include <gflags/gflags_declare.h>          // DECLARE_bool
+#include "butil/atomicops.h"                 // butil::atomic
 #include "butil/macros.h"                     // DISALLOW_COPY_AND_ASSIGN
 #include "bthread/types.h"                   // bthread_t, bthread_attr_t
 #include "brpc/versioned_ref_with_id.h"
@@ -179,8 +180,8 @@ private:
     // The epoll/kqueue fd to watch events.
     int _event_dispatcher_fd;
 
-    // false unless Stop() is called.
-    volatile bool _stop;
+    // False until Stop() publishes shutdown.
+    butil::atomic<bool> _stop;
 
     // identifier of hosting bthread
     bthread_t _tid;
