@@ -768,6 +768,24 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             messages = BaiduProxyPBMessages::Get();
+#if BRPC_WITH_GDR
+            // GDR is not supported on servers with a baidu_master_service:
+            // the master service forwards the raw SerializedRequest to a
+            // backend chosen by GetChannel() without running any user code,
+            // and that backend is usually not GDR-capable, so forwarding
+            // GPU-resident blocks would make writev() send from device
+            // addresses (EFAULT). Reject the request explicitly instead of
+            // copying everything down to host memory (which would silently
+            // negate the zero-copy purpose of GDR). See docs/cn/gdr.md.
+            if (msg->payload.is_gpu_memory()) {
+                cntl->SetFailed(
+                    EREQUEST,
+                    "baidu_master_service is not supported with GDR "
+                    "(GPU Direct RDMA); do not enable GDR on a proxy "
+                    "server with baidu_master_service");
+                break;
+            }
+#endif  // BRPC_WITH_GDR
             msg->payload.cutn(&((SerializedRequest*)messages->Request())->serialized_data(),
                               req_size - meta.attachment_size());
             if (!msg->payload.empty()) {

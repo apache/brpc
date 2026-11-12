@@ -35,6 +35,12 @@ Attachment位于显存上，用户可以调用IOBuf::copy_from_gpu接口将attac
 注意：
 1. 在使用gdr功能时，需要将环境变量MLX5_SCATTER_TO_CQE设置为0. 这是因为gdr要求所有接收到的数据都写入post recv 时指定的 GPU 显存 buffer 中，
 而MLX5_SCATTER_TO_CQE打开时，小消息直接内联写入了内存，破坏了这个要求，从而会引发操作失败。
+2. 不支持在打开GDR的服务上使用baidu master service（代理转发模式）。master service会把请求原样转发给后端，
+而后端通常不支持GDR，转发的GPU显存数据无法通过普通TCP链路写出；因此GDR连接上的请求会被直接拒绝
+（报错"baidu_master_service is not supported with GDR"）。GDR的目标场景是客户端直连GPU服务（如训练/推理服务），
+让数据GPU到GPU直达；需要代理转发的场景请直接使用普通TCP/RDMA链路。
+3. GDR目前不支持rpc dump功能。rpc dump会把请求采样落盘，但落盘的writev无法读取GPU显存地址；
+GDR连接上的GPU请求会被直接跳过采样（打印WARNING日志），不会被录制。
 
 
 # 参数
