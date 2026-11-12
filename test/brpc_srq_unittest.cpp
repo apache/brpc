@@ -1668,7 +1668,7 @@ TEST_F(RdmaSrqPostTest, grant_receipt_does_not_wait_for_post_return) {
     Channel channel, other;
     ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "grant_during_post"));
     auto connection = Connection(channel);
-    Socket* peer_socket = WaitForServerSocket();
+    SocketUniquePtr peer_socket = WaitForServerSocket();
     ASSERT_NE(nullptr, peer_socket);
     auto peer = SrqConnectionOf(peer_socket);
     ASSERT_TRUE(connection);
@@ -1748,7 +1748,7 @@ TEST_F(RdmaSrqPostTest, hard_request_during_post_is_tracked_and_granted) {
     Channel channel, other;
     ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "hard_during_post"));
     auto connection = Connection(channel);
-    Socket* peer_socket = WaitForServerSocket();
+    SocketUniquePtr peer_socket = WaitForServerSocket();
     ASSERT_NE(nullptr, peer_socket);
     auto peer = SrqConnectionOf(peer_socket);
     ASSERT_TRUE(connection);
@@ -1810,7 +1810,7 @@ TEST_F(RdmaSrqPostTest, received_grant_wakes_zero_window_writer) {
     Channel channel;
     ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "grant_wakes_writer"));
     auto connection = Connection(channel);
-    Socket* peer_socket = WaitForServerSocket();
+    SocketUniquePtr peer_socket = WaitForServerSocket();
     ASSERT_NE(nullptr, peer_socket);
     auto peer = SrqConnectionOf(peer_socket);
     ASSERT_TRUE(connection);
