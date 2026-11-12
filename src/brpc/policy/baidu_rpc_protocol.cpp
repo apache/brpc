@@ -168,9 +168,21 @@ bool SerializeRpcMessage(const google::protobuf::Message& message,
             }
             ok = handler->Compress(serializer, buf);
         }
+        if (!ok) {
+            return false;
+        }
+        // The checksum must be computed before the data is sent. A failure
+        // here (e.g. GPU memory read failure with GDR checksummed
+        // attachments) must abort the RPC instead of sending data whose
+        // checksum was never calculated.
         ChecksumIn checksum_in{buf, &cntl, checksum_attachment};
-        ComputeDataChecksum(checksum_in, checksum_type);
-        return ok;
+        if (!ComputeDataChecksum(checksum_in, checksum_type)) {
+            cntl.SetFailed(EREQUEST,
+                           "Fail to compute %s checksum",
+                           ChecksumTypeToCStr(checksum_type));
+            return false;
+        }
+        return true;
     };
 
     if (CONTENT_TYPE_PB == content_type) {

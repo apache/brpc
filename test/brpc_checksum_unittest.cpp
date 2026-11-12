@@ -44,7 +44,7 @@ TEST_F(ChecksumAttachmentTest, verify_succeeds_when_body_only) {
     body.append("request body");
 
     brpc::ChecksumIn compute_in{&body, &cntl, nullptr};
-    brpc::policy::Crc32cCompute(compute_in);
+    ASSERT_TRUE(brpc::policy::Crc32cCompute(compute_in));
 
     brpc::ChecksumIn verify_in{&body, &cntl, nullptr};
     EXPECT_TRUE(brpc::policy::Crc32cVerify(verify_in));
@@ -70,7 +70,7 @@ TEST_F(ChecksumAttachmentTest, verify_succeeds_when_attachment_included) {
     attachment.append("some attachment bytes");
 
     brpc::ChecksumIn compute_in{&body, &cntl, &attachment};
-    brpc::policy::Crc32cCompute(compute_in);
+    ASSERT_TRUE(brpc::policy::Crc32cCompute(compute_in));
 
     brpc::ChecksumIn verify_in{&body, &cntl, &attachment};
     EXPECT_TRUE(brpc::policy::Crc32cVerify(verify_in));
@@ -84,7 +84,7 @@ TEST_F(ChecksumAttachmentTest, verify_fails_when_attachment_corrupted) {
     attachment.append("some attachment bytes");
 
     brpc::ChecksumIn compute_in{&body, &cntl, &attachment};
-    brpc::policy::Crc32cCompute(compute_in);
+    ASSERT_TRUE(brpc::policy::Crc32cCompute(compute_in));
 
     // Attacker/bit-flip changes one byte of the attachment in flight.
     butil::IOBuf corrupted_attachment;
@@ -102,7 +102,7 @@ TEST_F(ChecksumAttachmentTest, verify_fails_when_attachment_dropped) {
 
     // Sender includes the attachment in the checksum...
     brpc::ChecksumIn compute_in{&body, &cntl, &attachment};
-    brpc::policy::Crc32cCompute(compute_in);
+    ASSERT_TRUE(brpc::policy::Crc32cCompute(compute_in));
 
     // ...but receiver (e.g. due to a mismatched
     // request/response_checksum_attachment() setting) verifies body only.
@@ -120,7 +120,7 @@ TEST_F(ChecksumAttachmentTest, verify_fails_when_body_and_attachment_swapped) {
     part_b.append("BBBBBB");
 
     brpc::ChecksumIn compute_in{&part_a, &cntl, &part_b};
-    brpc::policy::Crc32cCompute(compute_in);
+    ASSERT_TRUE(brpc::policy::Crc32cCompute(compute_in));
 
     brpc::ChecksumIn verify_in{&part_b, &cntl, &part_a};
     EXPECT_FALSE(brpc::policy::Crc32cVerify(verify_in));
