@@ -397,6 +397,55 @@ static bool InitFnSpawningChild(void* arg) {
                                     arg) == 0;
 }
 
+struct BthreadInitHandoffArgs {
+    bthread::CountdownEvent init_entered;
+    bthread::CountdownEvent allow_return;
+    butil::atomic<bool> start_finished;
+    brpc::Server* server;
+    brpc::ServerOptions options;
+    int start_result;
+
+    BthreadInitHandoffArgs()
+        : start_finished(false)
+        , server(nullptr)
+        , start_result(-1) {}
+};
+
+static bool InitFnWaitForTest(void* arg) {
+    BthreadInitHandoffArgs* args = static_cast<BthreadInitHandoffArgs*>(arg);
+    args->init_entered.signal();
+    return args->allow_return.wait() == 0;
+}
+
+static void* StartServerWithBthreadInit(void* arg) {
+    BthreadInitHandoffArgs* args = static_cast<BthreadInitHandoffArgs*>(arg);
+    args->start_result = args->server->Start("127.0.0.1:0", &args->options);
+    args->start_finished.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
+// Under TSAN, the barriers deterministically drive the completion and stop
+// handoff between BthreadInitEntry and Server::StartInternal.
+TEST_F(ServerTest, bthread_init_handoff_is_synchronized) {
+    BthreadInitHandoffArgs args;
+    brpc::Server server;
+    args.server = &server;
+    args.options.bthread_init_fn = InitFnWaitForTest;
+    args.options.bthread_init_args = &args;
+    args.options.bthread_init_count = 1;
+
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr,
+                                StartServerWithBthreadInit, &args));
+    ASSERT_EQ(0, args.init_entered.wait());
+    EXPECT_FALSE(args.start_finished.load(butil::memory_order_acquire));
+    args.allow_return.signal();
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+    ASSERT_EQ(0, args.start_result);
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
 TEST_F(ServerTest, failed_start_keeps_keytable_pool_for_init_bthreads) {
     ASSERT_EQ(0, bthread_key_create(&g_init_child_key, nullptr));
     brpc::Server listener;
