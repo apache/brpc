@@ -27,6 +27,7 @@
 #include "butil/atomicops.h"          // butil::atomic
 #include "bthread/types.h"           // bthread_attr_t
 #include "bthread/stack.h"           // ContextualStack
+#include "bthread/task_lifecycle.h"  // TaskLifecycle
 #include "bthread/timer_thread.h"
 #include "butil/thread_local.h"
 
@@ -45,9 +46,10 @@ struct LocalStorage {
     KeyTable* keytable;
     void* assigned_data;
     void* rpcz_parent_span;  // Points to std::weak_ptr<brpc::Span>* (managed by brpc)
+    TaskLifecycle* lifecycle;
 };
 
-#define BTHREAD_LOCAL_STORAGE_INITIALIZER { nullptr, nullptr, nullptr }
+#define BTHREAD_LOCAL_STORAGE_INITIALIZER { nullptr, nullptr, nullptr, nullptr }
 
 const static LocalStorage LOCAL_STORAGE_INIT = BTHREAD_LOCAL_STORAGE_INITIALIZER;
 
@@ -124,6 +126,10 @@ struct TaskMeta {
     // DO NOT use this field directly, use tls_bls instead.
     LocalStorage local_storage{};
 
+    // Optional higher-layer task lifetime. This stays owned by TaskMeta while
+    // the task runs and is released only after TLS cleanup and joiner wakeup.
+    TaskLifecycle lifecycle{};
+
     // Only used when TaskTracer is enabled.
     // Bthread status.
     TaskStatus status{TASK_STATUS_UNKNOWN};
@@ -145,6 +151,7 @@ public:
     }
         
     ~TaskMeta() {
+        CHECK(!lifecycle.valid());
         pthread_mutex_destroy(&trace_lock);
         butex_destroy(version_butex);
         version_butex = nullptr;

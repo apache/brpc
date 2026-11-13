@@ -68,6 +68,8 @@ DECLARE_int32(socket_keepalive_count);
 DECLARE_int32(socket_recv_buffer_size);
 DECLARE_int32(socket_send_buffer_size);
 DECLARE_int32(socket_tcp_user_timeout_ms);
+DECLARE_bool(usercode_in_coroutine);
+DECLARE_bool(usercode_in_pthread);
 }
 
 void EchoProcessHuluRequest(brpc::InputMessageBase* msg_base);
@@ -150,6 +152,187 @@ void ListenOnFreePort(butil::EndPoint* point, butil::fd_guard* listening_fd) {
 void PickUnusedEndPoint(butil::EndPoint* point) {
     butil::fd_guard listening_fd;
     ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(point, &listening_fd));
+}
+
+namespace {
+
+void CountTLSDestruction(void* data) {
+    static_cast<butil::atomic<int>*>(data)->fetch_add(
+        1, butil::memory_order_relaxed);
+}
+
+// Pauses connection recycling after map removal while the event task still
+// owns its KeyTable, exposing the gap between connection and task cleanup.
+class TLSExitBoundaryAcceptor : public brpc::Acceptor {
+public:
+    TLSExitBoundaryAcceptor(bthread_keytable_pool_t* pool, bthread_key_t key,
+                            butil::atomic<int>* destroyed)
+        : brpc::Acceptor(pool), key(key), destroyed(destroyed),
+          request_tid(INVALID_BTHREAD), listener_tid(INVALID_BTHREAD),
+          recycler_tid(INVALID_BTHREAD) {}
+
+    static void ProcessRequest(brpc::InputMessageBase* msg_base) {
+        brpc::DestroyingPtr<brpc::InputMessageBase> msg(msg_base);
+        auto* self = const_cast<TLSExitBoundaryAcceptor*>(
+            static_cast<const TLSExitBoundaryAcceptor*>(msg->arg()));
+        self->request_tid = bthread_self();
+        EXPECT_EQ(0, bthread_setspecific(self->key, self->destroyed));
+        self->request_started.signal();
+        // Keep the event task alive until StopAccept has released the
+        // connection's additional reference and the accept loop has exited.
+        EXPECT_EQ(0, self->finish_request.timed_wait(butil::seconds_from_now(30)));
+    }
+
+    static void* JoinAcceptor(void* arg) {
+        auto* self = static_cast<TLSExitBoundaryAcceptor*>(arg);
+        self->Join();
+        self->join_completed.signal();
+        return nullptr;
+    }
+
+    bthread_key_t key;
+    butil::atomic<int>* destroyed;
+    bthread_t request_tid;
+    bthread_t listener_tid;
+    // Failure cleanup may observe a different recycler task if setup did not
+    // reach the intended ordering; retain its id so that it can also be joined.
+    butil::atomic<bthread_t> recycler_tid;
+    bthread::CountdownEvent request_started;
+    bthread::CountdownEvent finish_request;
+    bthread::CountdownEvent listener_recycled;
+    bthread::CountdownEvent connection_recycled;
+    bthread::CountdownEvent finish_recycle;
+    bthread::CountdownEvent join_completed;
+
+private:
+    void BeforeRecycle(brpc::Socket* socket) override {
+        const bool is_listener = socket->id() == _acception_id;
+        if (!is_listener) {
+            recycler_tid.store(bthread_self(), butil::memory_order_release);
+        }
+        brpc::Acceptor::BeforeRecycle(socket);
+        if (is_listener) {
+            listener_tid = bthread_self();
+            listener_recycled.signal();
+            return;
+        }
+        // The base callback has removed the connection and released its map
+        // lock. Pause this real event task before OnEdge returns and before
+        // TaskGroup can return its KeyTable. No production hook is needed.
+        EXPECT_EQ(request_tid, bthread_self());
+        connection_recycled.signal();
+        EXPECT_EQ(0, finish_recycle.timed_wait(butil::seconds_from_now(30)));
+    }
+};
+
+}  // namespace
+
+TEST_F(SocketTest, acceptor_join_does_not_wait_for_task_keytable_return) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    // Keep the handler on the TCP event bthread so its TLS and the Socket
+    // reference are released along the same task-exit path.
+    brpc::FLAGS_usercode_in_coroutine = false;
+    brpc::FLAGS_usercode_in_pthread = false;
+    butil::atomic<int> destroyed(0);
+    bthread_keytable_pool_t pool;
+    ASSERT_EQ(0, bthread_keytable_pool_init(&pool));
+    bool pool_destroyed = false;
+    bthread_key_t key = INVALID_BTHREAD_KEY;
+    // Scope guards run in reverse declaration order: task cleanup below must
+    // finish before cached TLS values are destroyed or the key is deleted.
+    auto cleanup_tls = butil::MakeScopeGuard([&] {
+        if (!pool_destroyed) {
+            EXPECT_EQ(0, bthread_keytable_pool_destroy(&pool));
+        }
+        if (key != INVALID_BTHREAD_KEY) {
+            EXPECT_EQ(0, bthread_key_delete(key));
+        }
+    });
+    ASSERT_EQ(0, bthread_key_create(&key, CountTLSDestruction));
+    TLSExitBoundaryAcceptor acceptor(&pool, key, &destroyed);
+    bool accepting = false;
+    bool request_released = false;
+    bool recycle_released = false;
+    bthread_t join_tid = INVALID_BTHREAD;
+    // Closing the peer before cleanup could start an additional EOF event
+    // task while the request is paused. Keep it open until tasks are joined.
+    butil::fd_guard client_fd;
+    auto cleanup_tasks = butil::MakeScopeGuard([&] {
+        // Fatal assertions must still unblock and join every task before its
+        // callback state, pool or key goes out of scope.
+        if (!request_released) {
+            acceptor.finish_request.signal();
+        }
+        if (!recycle_released) {
+            acceptor.finish_recycle.signal();
+        }
+        acceptor.StopAccept(0);
+        if (join_tid != INVALID_BTHREAD) {
+            EXPECT_EQ(0, bthread_join(join_tid, nullptr));
+        } else {
+            acceptor.Join();
+        }
+        if (accepting) {
+            EXPECT_EQ(0, acceptor.listener_recycled.wait());
+            if (acceptor.listener_tid != INVALID_BTHREAD) {
+                EXPECT_EQ(0, bthread_join(acceptor.listener_tid, nullptr));
+            }
+        }
+        if (acceptor.request_tid != INVALID_BTHREAD) {
+            EXPECT_EQ(0, bthread_join(acceptor.request_tid, nullptr));
+        }
+        const bthread_t recycler_tid =
+            acceptor.recycler_tid.load(butil::memory_order_acquire);
+        if (recycler_tid != INVALID_BTHREAD &&
+            recycler_tid != acceptor.request_tid) {
+            EXPECT_EQ(0, bthread_join(recycler_tid, nullptr));
+        }
+    });
+    const brpc::InputMessageHandler handler = {
+        brpc::policy::ParseHuluMessage, TLSExitBoundaryAcceptor::ProcessRequest,
+        nullptr, &acceptor, "tls_exit_boundary"
+    };
+    ASSERT_EQ(0, acceptor.AddNonProtocolHandler(handler));
+    butil::EndPoint point;
+    butil::fd_guard listening_fd;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listening_fd));
+    ASSERT_EQ(0, butil::make_non_blocking(listening_fd));
+    ASSERT_EQ(0, acceptor.StartAccept(listening_fd.release(), -1, nullptr, false));
+    accepting = true;
+    client_fd.reset(butil::tcp_connect(point, nullptr));
+    ASSERT_GE(client_fd, 0);
+    // A single complete request runs inline in the TCP event task.
+    const char request[12] = {'H', 'U', 'L', 'U'};
+    ASSERT_EQ(sizeof(request), (size_t)write(client_fd, request, sizeof(request)));
+    ASSERT_EQ(0, acceptor.request_started.timed_wait(butil::seconds_from_now(5)));
+    bthread_attr_t attr;
+    ASSERT_EQ(0, bthread_getattr(acceptor.request_tid, &attr));
+    ASSERT_EQ(&pool, attr.keytable_pool);
+
+    acceptor.StopAccept(0);
+    // This also excludes the accept loop holding the final connection ref.
+    ASSERT_EQ(0, acceptor.listener_recycled.timed_wait(butil::seconds_from_now(5)));
+    acceptor.finish_request.signal();
+    request_released = true;
+    ASSERT_EQ(0, acceptor.connection_recycled.timed_wait(butil::seconds_from_now(5)));
+    ASSERT_EQ(0, bthread_start_background(
+        &join_tid, nullptr, TLSExitBoundaryAcceptor::JoinAcceptor, &acceptor));
+    // Join must complete while BeforeRecycle is still paused. The empty map
+    // and the live task id demonstrate that these are different boundaries.
+    ASSERT_EQ(0, acceptor.join_completed.timed_wait(butil::seconds_from_now(5)));
+    EXPECT_EQ(0UL, acceptor.ConnectionCount());
+    EXPECT_EQ(0, bthread_getattr(acceptor.request_tid, &attr));
+
+    // The connection is gone, but its task still owns the KeyTable. Destroy
+    // only the pool cache, keeping the key valid for the eventual late return.
+    ASSERT_EQ(0, bthread_keytable_pool_destroy(&pool));
+    pool_destroyed = true;
+    EXPECT_EQ(0, destroyed.load(butil::memory_order_relaxed));
+    acceptor.finish_recycle.signal();
+    recycle_released = true;
+    ASSERT_EQ(0, bthread_join(acceptor.request_tid, nullptr));
+    // Unlike Acceptor::Join(), task join observes KeyTable cleanup completion.
+    EXPECT_EQ(1, destroyed.load(butil::memory_order_relaxed));
 }
 
 TEST_F(SocketTest, not_recycle_until_zero_nref) {

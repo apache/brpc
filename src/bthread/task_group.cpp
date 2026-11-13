@@ -21,6 +21,7 @@
 
 #include <sys/types.h>
 #include <stddef.h>                         // size_t
+#include <utility>                          // std::move
 #include <gflags/gflags.h>
 #include "butil/compat.h"                   // OS_MACOSX
 #include "butil/macros.h"                   // ARRAY_SIZE
@@ -275,6 +276,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
         LOG(FATAL) << "Fail to get TaskMeta";
         return -1;
     }
+    CHECK(!m->lifecycle.valid());
     m->sleep_failed = false;
     m->stop = false;
     m->interrupted = false;
@@ -411,6 +413,14 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             m->local_storage.keytable = nullptr; // optional
         }
 
+        // Detach the lifecycle from task-visible state before publishing task
+        // completion. Keep ownership in this exit-local object through the
+        // version store, joiner wake and optional tracer completion below.
+        TaskLifecycle exit_lifecycle(std::move(m->lifecycle));
+        tls_bls_ptr = bthread::tls_bls_ptr();
+        tls_bls_ptr->lifecycle = nullptr;
+        m->local_storage.lifecycle = nullptr;
+
         // During running the function in TaskMeta and deleting the KeyTable in
         // return_KeyTable, the group is probably changed.
         g =  BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
@@ -449,6 +459,11 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         g->_control->_task_tracer.set_status(TASK_STATUS_UNKNOWN, m);
 #endif // BRPC_BTHREAD_TRACER
 
+        // Lifecycle release hooks are required to be non-yielding. Releasing
+        // here proves that the task crossed KeyTable cleanup and completion
+        // publication without reading TaskMeta lifecycle state afterward.
+        exit_lifecycle.Reset();
+
         g->_control->_nbthreads << -1;
         g->_control->tag_nbthreads(g->tag()) << -1;
         g->set_remained(_release_last_context, m);
@@ -462,6 +477,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
 
 void TaskGroup::_release_last_context(void* arg) {
     TaskMeta* m = static_cast<TaskMeta*>(arg);
+    CHECK(!m->lifecycle.valid());
     if (m->stack_type() != STACK_TYPE_PTHREAD) {
         return_stack(m->release_stack()/*may be nullptr*/);
     } else {
@@ -481,12 +497,19 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     }
     const int64_t start_ns = butil::cpuwide_time_ns();
     const bthread_attr_t using_attr = (attr ? *attr : BTHREAD_ATTR_NORMAL);
+    TaskLifecycle lifecycle;
+    const int lifecycle_rc = lifecycle.Acquire(
+        using_attr.keytable_pool, bthread::tls_bls_ptr()->lifecycle);
+    if (lifecycle_rc != 0) {
+        return lifecycle_rc;
+    }
     butil::ResourceId<TaskMeta> slot;
     TaskMeta* m = butil::get_resource(&slot);
     if (BAIDU_UNLIKELY(nullptr == m)) {
         return ENOMEM;
     }
     CHECK(m->current_waiter.load(butil::memory_order_relaxed) == nullptr);
+    CHECK(!m->lifecycle.valid());
     m->sleep_failed = false;
     m->stop = false;
     m->interrupted = false;
@@ -496,6 +519,9 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     CHECK(m->stack == nullptr);
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
+    m->lifecycle = std::move(lifecycle);
+    m->local_storage.lifecycle =
+        m->lifecycle.valid() ? &m->lifecycle : nullptr;
     if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
         if (g_create_bthread_span) {
             m->local_storage.rpcz_parent_span = g_create_bthread_span();
@@ -555,12 +581,19 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     }
     const int64_t start_ns = butil::cpuwide_time_ns();
     const bthread_attr_t using_attr = (attr ? *attr : BTHREAD_ATTR_NORMAL);
+    TaskLifecycle lifecycle;
+    const int lifecycle_rc = lifecycle.Acquire(
+        using_attr.keytable_pool, bthread::tls_bls_ptr()->lifecycle);
+    if (lifecycle_rc != 0) {
+        return lifecycle_rc;
+    }
     butil::ResourceId<TaskMeta> slot;
     TaskMeta* m = butil::get_resource(&slot);
     if (BAIDU_UNLIKELY(nullptr == m)) {
         return ENOMEM;
     }
     CHECK(m->current_waiter.load(butil::memory_order_relaxed) == nullptr);
+    CHECK(!m->lifecycle.valid());
     m->sleep_failed = false;
     m->stop = false;
     m->interrupted = false;
@@ -570,6 +603,9 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     CHECK(m->stack == nullptr);
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
+    m->lifecycle = std::move(lifecycle);
+    m->local_storage.lifecycle =
+        m->lifecycle.valid() ? &m->lifecycle : nullptr;
     if (using_attr.flags & BTHREAD_INHERIT_SPAN) {
         if (g_create_bthread_span) {
             m->local_storage.rpcz_parent_span = g_create_bthread_span();
