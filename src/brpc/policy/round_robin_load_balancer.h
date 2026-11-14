@@ -44,6 +44,8 @@ public:
 private:
     struct Servers {
         std::vector<ServerId> server_list;
+        // Time when server_list[i] was added, for the warm-up ramp.
+        std::vector<int64_t> join_times;
         std::map<ServerId, size_t> server_map;
     };
     struct TLS {
