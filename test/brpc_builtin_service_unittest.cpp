@@ -845,20 +845,31 @@ TEST_F(BuiltinServiceTest, hotspots_profile_filename_escaping) {
         << "unescaped profile filename in html: " << body;
     EXPECT_NE(std::string::npos, body.find(brpc::WebEscape(filename)));
 
-    const butil::FilePath selected_profile_path =
-        profile_dir.Append("selected.cpu");
-    ASSERT_EQ(0, butil::WriteFile(selected_profile_path, "", 0));
-    std::string percent_encoded_path;
-    brpc::PercentEncode(selected_profile_path.value(), &percent_encoded_path);
-    ClosureChecker encoded_done;
-    brpc::Controller encoded_cntl;
-    brpc::HotspotsRequest encoded_req;
-    brpc::HotspotsResponse encoded_res;
-    SetUpController(&encoded_cntl, true);
-    encoded_cntl.http_request().uri().SetQuery(
-        "view", "brpc_pct:" + percent_encoded_path);
-    service.cpu(&encoded_cntl, &encoded_req, &encoded_res, &encoded_done);
-    EXPECT_FALSE(encoded_cntl.Failed()) << encoded_cntl.ErrorText();
+}
+
+TEST_F(BuiltinServiceTest, hotspots_non_responsive_raw_profile_paths) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    butil::ScopedTempDir temp_dir;
+    ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+    brpc::FLAGS_rpc_profiling_dir = temp_dir.path().value();
+    const butil::FilePath profile_dir = temp_dir.path().Append(
+        brpc::GetProgramChecksum());
+    ASSERT_TRUE(butil::CreateDirectory(profile_dir));
+    const butil::FilePath view_path = profile_dir.Append("selected.cpu");
+    const butil::FilePath base_path = profile_dir.Append("base.cpu");
+    ASSERT_EQ(0, butil::WriteFile(view_path, "", 0));
+    ASSERT_EQ(0, butil::WriteFile(base_path, "", 0));
+
+    ClosureChecker done;
+    brpc::Controller cntl;
+    brpc::HotspotsRequest req;
+    brpc::HotspotsResponse res;
+    brpc::HotspotsService service;
+    SetUpController(&cntl, true);
+    cntl.http_request().uri().SetQuery("view", view_path.value());
+    cntl.http_request().uri().SetQuery("base", base_path.value());
+    service.cpu_non_responsive(&cntl, &req, &res, &done);
+    EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
 }
 
 TEST_F(BuiltinServiceTest, path_html_escaping) {
