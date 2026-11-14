@@ -19,7 +19,6 @@
 #if BRPC_WITH_RDMA
 #include <errno.h>
 #include <functional>
-#include <gflags/gflags.h>
 #include <memory>
 #include <poll.h>
 #include <thread>
@@ -34,12 +33,9 @@
 
 namespace brpc {
 namespace rdma {
-DECLARE_int32(rdma_srq_pool_growth_retry_ms);
 extern ibv_mr* (*IbvRegMr)(ibv_pd*, void*, size_t, int);
 extern int (*IbvDeregMr)(ibv_mr*);
 extern void (*IbvAckAsyncEvent)(ibv_async_event*);
-extern butil::atomic<int> SrqGrowthStartErrorForTest;
-extern butil::atomic<int> SrqGrowthStartAttemptsForTest;
 }  // namespace rdma
 }  // namespace brpc
 
@@ -117,14 +113,10 @@ SrqReceivePool::Buffer* AcquireReady(SrqReceivePool* pool) {
         if (buffer != nullptr || errno != EAGAIN) {
             return buffer;
         }
-        // Model an event-mode owner: growth always notifies, while block
-        // returns require arm-and-recheck before sleeping.
-        if (!pool->ArmRecyclingNotification()) {
-            continue;
-        }
-        pollfd fd = {pool->recycle_fd(), POLLIN, 0};
+        // Growth always notifies. Block returns are adopted by the next
+        // `Acquire()` or `Prepare()` without notifying the owner.
+        pollfd fd = {pool->growth_fd(), POLLIN, 0};
         int ready = poll(&fd, 1, 1000);
-        pool->DisarmRecyclingNotification();
         if (ready != 1) {
             return nullptr;
         }
@@ -265,8 +257,8 @@ TEST_F(SrqReceivePoolTest, stalled_registration_does_not_block_acquire_or_recycl
     reused->clear();
     EXPECT_EQ(1, registrations.load());
     registration_paused.store(false, butil::memory_order_release);
-    // A completed growth wakes even an owner that never armed block returns.
-    pollfd fd = {pool->recycle_fd(), POLLIN, 0};
+    // Growth completion always wakes the owner.
+    pollfd fd = {pool->growth_fd(), POLLIN, 0};
     EXPECT_EQ(1, poll(&fd, 1, 1000));
     pool->Prepare();
     EXPECT_EQ(4 * 8192u, SrqReceivePool::RegisteredBytes());
@@ -377,65 +369,6 @@ TEST_F(SrqReceivePoolTest, grows_without_moving_leased_blocks_and_stops_at_limit
     EXPECT_TRUE(WaitFor([] { return deregistrations.load() == 3; }));
 }
 
-TEST_F(SrqReceivePoolTest, growth_start_failure_reuses_blocks_and_backs_off) {
-    GFLAGS_NAMESPACE::FlagSaver flags;
-    brpc::rdma::FLAGS_rdma_srq_pool_growth_retry_ms = 60000;
-    auto* pool = SrqReceivePool::Create(nullptr, 8192, 4, 2);
-    ASSERT_NE(nullptr, pool);
-    int attempts = brpc::rdma::SrqGrowthStartAttemptsForTest.load();
-    brpc::rdma::SrqGrowthStartErrorForTest.store(ENOMEM, butil::memory_order_relaxed);
-    BUTIL_SCOPE_EXIT {
-        brpc::rdma::SrqGrowthStartErrorForTest.store(0, butil::memory_order_relaxed);
-        pool->Release();
-    };
-    auto* first = pool->Acquire();
-    ASSERT_NE(nullptr, first);
-    auto held = first->TakeReceived(16);
-    EXPECT_EQ(1u, pool->available());
-    // Both refill preparation and allocation must keep existing blocks usable.
-    pool->Prepare();
-    EXPECT_EQ(attempts + 1, brpc::rdma::SrqGrowthStartAttemptsForTest.load());
-    auto* second = pool->Acquire();
-    ASSERT_NE(nullptr, second);
-    BUTIL_SCOPE_EXIT { second->clear(); };
-    EXPECT_EQ(0u, pool->available());
-    // Model a worker retaining the second lease for direct reposting.
-    pool->Prepare(1);
-    for (int i = 0; i < 100; ++i) {
-        pool->Prepare();
-        EXPECT_EQ(nullptr, pool->Acquire());
-        EXPECT_EQ(EAGAIN, errno);
-    }
-    EXPECT_EQ(attempts + 1, brpc::rdma::SrqGrowthStartAttemptsForTest.load());
-    EXPECT_EQ(1, registrations.load());
-
-    // Backoff must preserve the return notification and reuse path even when
-    // the pool has run out of ready blocks.
-    EXPECT_TRUE(pool->ArmRecyclingNotification());
-    held.clear();
-    uint64_t events = 0;
-    EXPECT_EQ(static_cast<ssize_t>(sizeof(events)),
-              read(pool->recycle_fd(), &events, sizeof(events)));
-    EXPECT_EQ(1u, events);
-    auto* reused = pool->Acquire();
-    ASSERT_NE(nullptr, reused);
-    BUTIL_SCOPE_EXIT { reused->clear(); };
-    EXPECT_EQ(first, reused);
-    EXPECT_EQ(attempts + 1, brpc::rdma::SrqGrowthStartAttemptsForTest.load());
-
-    // Expire the owner-only deadline explicitly rather than depending on how
-    // quickly this test runs or sleeping through the configured backoff.
-    brpc::rdma::SrqGrowthStartErrorForTest.store(0, butil::memory_order_relaxed);
-    pool->_growth_retry_at_us = 0;
-    pool->Prepare();
-    EXPECT_EQ(attempts + 2, brpc::rdma::SrqGrowthStartAttemptsForTest.load());
-    auto* grown = AcquireReady(pool);
-    ASSERT_NE(nullptr, grown);
-    EXPECT_NE(first->lkey(), grown->lkey());
-    grown->clear();
-    EXPECT_EQ(4 * 8192u, SrqReceivePool::RegisteredBytes());
-}
-
 TEST_F(SrqReceivePoolTest, failed_growth_preserves_old_blocks_and_can_retry) {
     auto* pool = SrqReceivePool::Create(nullptr, 8192, 4, 2);
     ASSERT_NE(nullptr, pool);
@@ -528,10 +461,10 @@ TEST_F(SrqReceivePoolTest, concurrent_region_updates_and_last_block_recycling) {
                     memset(buffer->data(), j, 64);
                     received[j] = buffer->TakeReceived(64);
                 }
-                // The owner releases first, so the last returned block
-                // synchronously removes all pool index entries. Other threads
-                // add/remove independent pools concurrently. Readers must
-                // always find regions still retained by their block references.
+                // The owner releases first. Blocks and a growth task finishing
+                // its notification may still retain the pool. Other threads
+                // add/remove independent pools concurrently. Readers must find
+                // regions still retained by their block references.
                 pool->Release();
                 pool = nullptr;
                 for (int j = 0; j < 4; ++j) {
@@ -545,7 +478,7 @@ TEST_F(SrqReceivePoolTest, concurrent_region_updates_and_last_block_recycling) {
     for (auto& worker : workers) {
         worker.join();
     }
-    EXPECT_EQ(0u, SrqReceivePool::LivePools());
+    EXPECT_TRUE(WaitFor([] { return SrqReceivePool::LivePools() == 0; }));
 }
 
 TEST_F(SrqReceivePoolTest, simultaneous_last_references_are_recycled_without_loss) {
@@ -583,77 +516,23 @@ TEST_F(SrqReceivePoolTest, simultaneous_last_references_are_recycled_without_los
     }
 }
 
-TEST_F(SrqReceivePoolTest, return_notification_is_armed_without_missing_ready_buffers) {
+TEST_F(SrqReceivePoolTest, returned_blocks_wait_for_owner_without_notification) {
     SrqReceivePool* pool = SrqReceivePool::Create(nullptr, 8192, 1);
     ASSERT_NE(nullptr, pool);
     BUTIL_SCOPE_EXIT { pool->Release(); };
     auto* buffer = AcquireReady(pool);
     ASSERT_NE(nullptr, buffer);
-    EXPECT_TRUE(pool->ArmRecyclingNotification());
-    std::thread releaser([buffer] { buffer->clear(); });
-    pollfd pfd = {pool->recycle_fd(), POLLIN, 0};
-    const int polled = poll(&pfd, 1, 1000);
+    auto received = buffer->TakeReceived(1);
+    std::thread releaser([&received] { received.clear(); });
     releaser.join();
-    ASSERT_EQ(1, polled);
-    uint64_t events = 0;
-    ASSERT_EQ(static_cast<ssize_t>(sizeof(events)),
-              read(pool->recycle_fd(), &events, sizeof(events)));
-    EXPECT_EQ(1u, events);
-    EXPECT_FALSE(pool->ArmRecyclingNotification());
-    buffer = AcquireReady(pool);
-    ASSERT_NE(nullptr, buffer);
-    pool->DisarmRecyclingNotification();
-    buffer->clear();
+    pollfd pfd = {pool->growth_fd(), POLLIN, 0};
     EXPECT_EQ(0, poll(&pfd, 1, 0));
-    pool->DrainReturned();
+    EXPECT_EQ(0u, pool->available());
+    pool->Prepare();
     EXPECT_EQ(1u, pool->available());
-    // Local free buffers must not prevent arming for the next return.
-    EXPECT_TRUE(pool->ArmRecyclingNotification());
-}
-
-TEST_F(SrqReceivePoolTest, concurrent_returns_racing_with_arm_never_lose_wakeup) {
-    auto* pool = SrqReceivePool::Create(nullptr, 8192, 2);
-    ASSERT_NE(nullptr, pool);
-    BUTIL_SCOPE_EXIT { pool->Release(); };
-    SrqReceivePool::Buffer* buffers[2] = {};
-    butil::atomic<int> start{0};
-    butil::atomic<int> finished{0};
-    constexpr int rounds = 2000;
-    std::vector<std::thread> returners;
-    for (int i = 0; i < 2; ++i) {
-        returners.emplace_back([&, i] {
-            for (int round = 1; round <= rounds; ++round) {
-                while (start.load(butil::memory_order_acquire) < round) {
-                    std::this_thread::yield();
-                }
-                buffers[i]->clear();
-                finished.fetch_add(1, butil::memory_order_release);
-            }
-        });
-    }
-    for (int round = 1; round <= rounds; ++round) {
-        buffers[0] = pool->Acquire();
-        buffers[1] = pool->Acquire();
-        // No fatal assertions while the threads depend on this producer.
-        CHECK(buffers[0] != nullptr && buffers[1] != nullptr);
-        pool->DisarmRecyclingNotification();
-        uint64_t events;
-        while (read(pool->recycle_fd(), &events, sizeof(events)) == sizeof(events)) {}
-        start.store(round, butil::memory_order_release);
-        bool armed = pool->ArmRecyclingNotification();
-        while (finished.load(butil::memory_order_acquire) != round * 2) {
-            std::this_thread::yield();
-        }
-        if (armed) {
-            pollfd fd = {pool->recycle_fd(), POLLIN, 0};
-            EXPECT_EQ(1, poll(&fd, 1, 0)) << "round=" << round;
-        }
-        pool->DrainReturned();
-        EXPECT_EQ(2u, pool->available());
-    }
-    for (auto& returner : returners) {
-        returner.join();
-    }
+    ReceiveBufferPtr reused(pool->Acquire());
+    ASSERT_NE(nullptr, reused);
+    EXPECT_EQ(buffer, reused.get());
 }
 
 TEST_F(SrqReceivePoolTest, descriptor_can_be_reacquired_while_release_returns) {
