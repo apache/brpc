@@ -25,7 +25,6 @@
 #include <mutex>
 #include <sys/eventfd.h>
 #include <unistd.h>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <gflags/gflags.h>
@@ -69,6 +68,8 @@ extern void (*IbvAckCqEvents)(ibv_cq*, unsigned int);
 int (*IbvPostSrqSend)(ibv_qp*, ibv_send_wr*, ibv_send_wr**) = ibv_post_send;
 int (*IbvPostSrqRecv)(ibv_srq*, ibv_recv_wr*, ibv_recv_wr**) = ibv_post_srq_recv;
 int (*IbvPollSrqCq)(ibv_cq*, int, ibv_wc*) = ibv_poll_cq;
+int (*IbvReqNotifySrqCq)(ibv_cq*, int) = ibv_req_notify_cq;
+
 #if defined(UNIT_TEST)
 // Test-only pause around the exit decision to exercise external Fail and
 // event-ownership handoff races deterministically.
@@ -77,6 +78,13 @@ butil::atomic<void (*)(SrqWorker*, bool, butil::atomic<uint64_t>*, SrqReceivePoo
 // Pause between the first failed try_lock and notification registration to
 // exercise an unlock that precedes registration.
 butil::atomic<void (*)()> SrqPostLockRetryHookForTest{nullptr};
+// Pause deferred notifications independently of CQ progress and endpoint reset.
+butil::atomic<void (*)(bool)> SrqFailureHookForTest{nullptr};
+// Observe software wakeups independently of CQ and async event timing.
+butil::atomic<void (*)(SrqWorker*)> SrqWorkerKickHookForTest{nullptr};
+// Inject task-start failures without exhausting the process scheduler.
+butil::atomic<int (*)(bool, bthread_t*, const bthread_attr_t*,
+                     void* (*)(void*), void*)> SrqStartTaskHookForTest{nullptr};
 #endif
 
 DECLARE_bool(rdma_recv_zerocopy);
@@ -86,7 +94,7 @@ DECLARE_int32(rdma_srq_pool_growth_retry_ms);
 
 DEFINE_bool(rdma_use_srq, false,
             "Enable event-driven shared receive queues with v3 handshake");
-DEFINE_int32(rdma_srq_workers, 1, "SRQ workers per bthread tag in event mode");
+DEFINE_int32(rdma_srq_workers, 4, "SRQ workers per bthread tag in event mode");
 DEFINE_int32(rdma_srq_window, 512, "Initial and restored virtual SRQ credit window");
 DEFINE_int32(rdma_srq_sq_size, 128, "Per-connection SQ depth in SRQ mode");
 DEFINE_int32(rdma_srq_max_sge, 4, "Maximum SGEs per SRQ-mode send");
@@ -103,13 +111,7 @@ using ProgressCallback = std::function<ProgressRound()>;
 using ProgressQueue = butil::MPSCQueue<
     ProgressCallback, butil::ObjectPoolAllocator<ProgressCallback>>;
 
-struct SocketFailure {
-    // Versioned Socket ID prevents a delayed failure from targeting a reused
-    // Socket.
-    SocketId sid;
-    // Error passed to Socket::SetFailed by the deferred task.
-    int error;
-};
+using SocketFailure = std::function<void()>;
 
 constexpr uint32_t kControlSlots = 2;
 constexpr int kBatch = 32;
@@ -118,30 +120,36 @@ butil::atomic<size_t> g_live_workers{0};
 }  // namespace
 
 // Results local to one progress or Stop round. Notifications and delivery run
-// after releasing _progress_mutex. Sets coalesce entries per connection and retain
-// references, so connections need no per-round membership flags.
+// after releasing `_progress_mutex`. Lists retain references through every merge
+// and are deduplicated once outside the lock, without connection membership flags.
 struct ProgressRound {
     // Writers to recheck after TX completion, grants or shared-CQ capacity
     // becomes available.
-    std::unordered_set<ConnectionPtr> writers;
-    // Connections with new input. Each _incoming queue preserves byte order.
-    std::unordered_set<ConnectionPtr> deliveries;
+    std::vector<ConnectionPtr> writers;
+    // Connections with new input. Each `_incoming` queue preserves byte order.
+    std::vector<ConnectionPtr> deliveries;
     // Connections ready for normal retirement after a fresh RX drain. Retained
     // until outside the lock.
     std::vector<ConnectionPtr> retiring;
-    // Callbacks dequeued this round, including pending, executed and cancelled
-    // callbacks. Retains their captured contexts so final references are
-    // released outside _progress_mutex.
+    // Callbacks dequeued this round, including those drained during shutdown.
+    // Retain their captured contexts so final references are released outside
+    // `_progress_mutex`.
     std::vector<ProgressCallback> callbacks;
-    // Failure notifications dequeued under _progress_mutex. RunEvent and Stop
-    // can dispatch their independent batches concurrently after unlocking.
+    // Failure notifications collected under `_progress_mutex` by callbacks or
+    // worker shutdown.
+    // `RunEvent` and `Stop` dispatch their batches after unlocking.
     std::vector<SocketFailure> failures;
     // User payloads transferred by the owner for deferred release after
     // unlocking.
     butil::IOBuf released;
-    // Whether this progress result includes a CQE. RunEvent uses only the
-    // post-arm result when deciding whether another iteration is needed.
-    bool completed{false};
+    // A CQE was processed or a callback published new close work. `RunEvent`
+    // uses only the post-arm result to decide whether another pass is needed.
+    // Requeueing a resource waiter alone must not set this flag.
+    bool progressed{false};
+    // This poll filled its batch, or normal progress filled either CQ batch.
+    // `Append` does not merge this flag. Extra retirement polls must not
+    // influence the normal event loop's decision to skip arming.
+    bool full_batch{false};
 
     ProgressRound() = default;
 
@@ -155,45 +163,37 @@ struct ProgressRound {
         , callbacks(std::move(other.callbacks))
         , failures(std::move(other.failures))
         , released(other.released.movable())
-        , completed(other.completed) {}
+        , progressed(other.progressed)
+        , full_batch(other.full_batch) {}
 
-    // Adopt returned results without releasing their final references under
-    // the owner lock. Swap into empty containers, otherwise move or deduplicate
-    // entries while keeping their contexts alive in the combined result.
+    // Move retained contexts between rounds without copying references or
+    // hashing connections. Deduplication and final releases belong to
+    // `FinishRound()`, after the owner lock has been released.
+    template <typename T>
+    static void AppendValues(std::vector<T>& target, std::vector<T>& source) {
+        if (target.empty()) {
+            target.swap(source);
+        } else {
+            target.insert(target.end(),
+                          std::make_move_iterator(source.begin()),
+                          std::make_move_iterator(source.end()));
+        }
+    }
+
     void Append(ProgressRound other) {
-        if (writers.empty()) {
-            writers.swap(other.writers);
-        } else {
-            writers.insert(other.writers.begin(), other.writers.end());
-        }
-        if (deliveries.empty()) {
-            deliveries.swap(other.deliveries);
-        } else {
-            deliveries.insert(other.deliveries.begin(), other.deliveries.end());
-        }
-        if (retiring.empty()) {
-            retiring.swap(other.retiring);
-        } else {
-            retiring.insert(retiring.end(),
-                std::make_move_iterator(other.retiring.begin()),
-                std::make_move_iterator(other.retiring.end()));
-        }
-        if (callbacks.empty()) {
-            callbacks.swap(other.callbacks);
-        } else {
-            callbacks.insert(callbacks.end(),
-                std::make_move_iterator(other.callbacks.begin()),
-                std::make_move_iterator(other.callbacks.end()));
-        }
-        if (failures.empty()) {
-            failures.swap(other.failures);
-        } else {
-            for (auto& failure : other.failures) {
-                failures.push_back(failure);
-            }
-        }
+        AppendValues(writers, other.writers);
+        AppendValues(deliveries, other.deliveries);
+        AppendValues(retiring, other.retiring);
+        AppendValues(callbacks, other.callbacks);
+        AppendValues(failures, other.failures);
         released.append(other.released.movable());
-        completed = completed || other.completed;
+        progressed = progressed || other.progressed;
+    }
+
+    static void Deduplicate(std::vector<ConnectionPtr>& connections) {
+        std::sort(connections.begin(), connections.end());
+        connections.erase(std::unique(connections.begin(), connections.end()),
+                          connections.end());
     }
 };
 
@@ -224,27 +224,40 @@ struct DeliveryTask {
     butil::IOBuf data;
 };
 
-struct DeferredTask {
-    // Payload references whose user deleters must run outside transport locks.
-    butil::IOBuf released;
-    // Deferred Socket failures. Callbacks may reenter application or transport
-    // code.
-    std::vector<SocketFailure> failures;
-};
-
-void* RunDeferred(void* arg) {
-    std::unique_ptr<DeferredTask> task(static_cast<DeferredTask*>(arg));
-    // User IOBuf deleters, like done callbacks, may block or reenter transport
-    // code. After DMA is safe, run them on a separate bthread so they do not
-    // occupy the CQ progress task.
-    task->released.clear();
-    for (const auto& failure : task->failures) {
-        SocketUniquePtr socket;
-        if (Socket::Address(failure.sid, &socket) == 0) {
-            socket->SetFailed(failure.error, "SRQ connection closed: %s",
-                              berror(failure.error));
-        }
+int StartTask(bool urgent, bthread_t* tid,
+              const bthread_attr_t* attr,
+              void* (*fn)(void*), void* arg) {
+#if defined(UNIT_TEST)
+    auto hook = SrqStartTaskHookForTest.load(butil::memory_order_acquire);
+    if (hook != nullptr) {
+        return hook(urgent, tid, attr, fn, arg);
     }
+#endif
+    return urgent ? bthread_start_urgent(tid, attr, fn, arg) :
+                    bthread_start_background(tid, attr, fn, arg);
+}
+
+void* RunPayloadRelease(void* arg) {
+    // DMA has stopped using these references. Their final deleters may wait
+    // for RPC failures, so release them independently of failure callbacks.
+    std::unique_ptr<butil::IOBuf> released(static_cast<butil::IOBuf*>(arg));
+    return nullptr;
+}
+
+void* RunSocketFailure(void* arg) {
+    std::unique_ptr<SocketFailure> failure(static_cast<SocketFailure*>(arg));
+#if defined(UNIT_TEST)
+    auto hook = SrqFailureHookForTest.load(butil::memory_order_acquire);
+    if (hook != nullptr) {
+        hook(true);
+    }
+#endif
+    (*failure)();
+#if defined(UNIT_TEST)
+    if (hook != nullptr) {
+        hook(false);
+    }
+#endif
     return nullptr;
 }
 }  // namespace
@@ -267,13 +280,6 @@ class SrqWorker : public RdmaAsyncEventContext,
     };
 
 public:
-    struct AsyncFailure {
-        // QP number used to locate a connection in the owner table.
-        uint32_t qpn;
-        // Socket generation checked before applying a delayed failure.
-        SocketId sid;
-    };
-
     explicit SrqWorker(bthread_tag_t tag)
         : _tag(tag) { ++g_live_workers; }
 
@@ -290,15 +296,16 @@ public:
     bool Add(const ConnectionPtr& connection, uint32_t sq_size);
     void Stop();
     void OnEvent(const bthread_attr_t& attr);
-    void NotifyFailure(SocketId sid, int error) {
-        _notifications.Enqueue(SocketFailure{sid, error});
-        Kick();
-    }
-
     // Signal eventfd only. Do not acquire progress ownership or run callbacks
     // inline. OnEvent coalesces the notification into an existing event task or
     // starts one after the previous task has relinquished ownership.
     void Kick() {
+#if defined(UNIT_TEST)
+        auto hook = SrqWorkerKickHookForTest.load(butil::memory_order_acquire);
+        if (hook != nullptr) {
+            hook(this);
+        }
+#endif
         const uint64_t one = 1;
         if (_kick_fd >= 0) {
             butil::ignore_result(write(_kick_fd, &one, sizeof(one)));
@@ -307,9 +314,15 @@ public:
 
     // Callbacks capture and retain their own context and are responsible for
     // requeueing or handing off progress. Each enqueue executes once. Callers
-    // coalesce requests and synchronize publication with close. No publication
-    // is allowed after teardown. Callbacks run under _progress_mutex, leaving
-    // Socket callbacks and user deleters for execution outside the lock.
+    // coalesce requests and synchronize publication with close. Late async
+    // events capture only weak references because teardown may have finished
+    // draining the queue. Callbacks run under `_progress_mutex` and return
+    // Socket notifications and user payloads through `ProgressRound` for
+    // execution or release outside the lock.
+    // External producers must Kick after enqueue has fully published, either
+    // here with `wake` or after a batch of enqueues. `TryDequeue` may return
+    // while a producer is still connecting a node. Worker-side requeues can
+    // omit the wake because their resource event supplies the next attempt.
     void Schedule(ProgressCallback callback, bool wake) {
         _commands.Enqueue(std::move(callback));
         if (wake) {
@@ -337,22 +350,13 @@ public:
     // Availability snapshot only. Actual submission still requires an atomic
     // ReserveTx reservation.
     bool DataTxAvailable() const {
-        return !broken() &&
-            _tx_used.load(butil::memory_order_relaxed) < DataTxLimit();
+        return !broken() && _tx_used.load(butil::memory_order_relaxed) < DataTxLimit();
     }
 
     void ReleaseTx(uint32_t count) {
         if (count != 0) {
             CHECK_GE(_tx_used.fetch_sub(count, butil::memory_order_release), count);
         }
-    }
-
-    void FailConnection(const ConnectionPtr& connection) {
-        // Queue values rather than connection references. A late callback after
-        // teardown must not create a worker -> queue -> connection -> worker
-        // ownership cycle.
-        _failures.Enqueue(AsyncFailure{connection->_qpn, connection->_sid});
-        Kick();
     }
 
     void Fail() {
@@ -363,9 +367,13 @@ public:
         Kick();
     }
 
-    std::function<void()> PrepareAsyncEvent(ibv_event_type) override {
+    std::function<void()> PrepareAsyncEvent(ibv_event_type type) override {
         auto self = shared_from_this();
-        return [self] { self->Fail(); };
+        return [self, type] {
+            LOG(ERROR) << "Fatal RDMA async event for SRQ worker=" << self.get()
+                       << ", event_type=" << type;
+            self->Fail();
+        };
     }
 
     bool broken() const {
@@ -396,8 +404,14 @@ public:
             << (available > refill ? available - refill : 0)
             << connector << "rdma_srq_posted=" << posted;
     }
+
 private:
 friend class SrqConnection;
+#if defined(UNIT_TEST)
+friend bool SrqWorkerIdleForTest(const SrqWorker* worker);
+friend bool InitializeSrqWorkerForTest(const std::shared_ptr<SrqWorker>& worker, ibv_cq* tx,
+                                       ibv_cq* rx, ibv_srq* srq, SrqReceivePool* pool, uint32_t depth);
+#endif
 
     // Mark failure without scheduling another event. Use only when the caller
     // guarantees cleanup through current progress, failed initialization or
@@ -420,9 +434,6 @@ friend class SrqConnection;
     static void* RunEvent(void* arg);
     ProgressRound ProgressLocked();
     void DetachEvents();
-    // Requires _progress_mutex, shared by RunEvent and Stop. Dequeue only
-    // values here, leaving all Socket access and task startup outside the lock.
-    std::vector<SocketFailure> TakeNotificationsLocked();
     // Normal progress, failure exits and Stop transfer their completed result
     // here after unlocking, preserving all wakeups and deferred releases.
     void FinishRound(ProgressRound round);
@@ -433,7 +444,8 @@ friend class SrqConnection;
     // Both progress and Initialize check broken() after refill. Initialization
     // failure is cleaned up synchronously by Stop before returning a worker.
     void Refill();
-    // Drains the CQ on normal return. Publishes failures through broken().
+    // Poll one batch from either CQ so normal progress reaches RX, refill and
+    // callbacks even under continuous TX load. Report failures via `broken()`.
     ProgressRound Poll(bool receive);
     // Dequeue a batch, then invoke each callback once. Callbacks manage their
     // own requeueing.
@@ -448,8 +460,8 @@ friend class SrqConnection;
     void ConsumeEvents();
     // Stop DMA before releasing references even if a broken CQ cannot be
     // polled. Retain the worker and memory after failed verbs destruction for
-    // an explicit retry. The returned round retains notifications and final
-    // references even on failure. retired() reports whether cleanup finished.
+    // an explicit retry. The caller drains pending notification commands even
+    // on failure. `retired()` reports whether cleanup finished.
     ProgressRound DestroyAll();
 
     // Scheduling tag shared by event and deferred tasks.
@@ -460,10 +472,6 @@ friend class SrqConnection;
     // never the reverse. Normal maintenance uses try_lock. Failure teardown may
     // wait, so both are bthread mutexes.
     bthread::Mutex _progress_mutex;
-    // Multiple producers publish Socket failures. RunEvent and Stop dequeue
-    // under _progress_mutex and transfer each batch to their local round for
-    // dispatch outside the lock.
-    butil::MPSCQueue<SocketFailure, butil::ObjectPoolAllocator<SocketFailure>> _notifications;
     // Completion-notification channel shared by both CQs.
     ibv_comp_channel* _channel{nullptr};
     // Send CQ shared by all attached QPs.
@@ -492,16 +500,14 @@ friend class SrqConnection;
     // replacement.
     butil::atomic<State> _state{State::RUNNING};
     // Versioned event-source ID borrowing completion, software-wakeup and
-    // recycle fds.
+    // growth fds.
     VRefId _event_source{INVALID_VREF_ID};
     // Event notification generation. Zero means no task owns the event loop.
     // Coalesces notifications while preserving the handoff to the next owner.
     butil::atomic<uint64_t> _events{0};
-    // Multi-producer callback queue. Each callback captures its own context and
-    // references.
+    // Multi-producer queue for progress, async errors and Socket notifications.
+    // Each callback captures its own context and returns a `ProgressRound`.
     ProgressQueue _commands;
-    // Async QP failures stored by value to avoid connection ownership cycles.
-    butil::MPSCQueue<AsyncFailure, butil::ObjectPoolAllocator<AsyncFailure>> _failures;
     // QPN-to-connection ownership table. Remove entries only after safe QP
     // teardown. Pointers returned by `seek()` stay inside `_progress_mutex`
     // and must not survive a table mutation. Deferred work copies the value.
@@ -517,6 +523,20 @@ friend class SrqConnection;
     // Free indices in _rx_buffers available for the next receive refill.
     std::vector<uint32_t> _rx_free;
 };
+
+#if defined(UNIT_TEST)
+// Exercise connection synchronization without creating verbs resources or
+// attaching an event source. Tests drive delivery and observe software kicks.
+std::shared_ptr<SrqWorker> CreateSrqWorkerForTest() {
+    return std::make_shared<SrqWorker>(BTHREAD_TAG_DEFAULT);
+}
+
+// `FinishRound` publishes writer wakeups before releasing event ownership.
+// Tests use this barrier to exclude notifications left over from warmup RPCs.
+bool SrqWorkerIdleForTest(const SrqWorker* worker) {
+    return worker->_events.load(butil::memory_order_acquire) == 0;
+}
+#endif
 
 namespace {
 // Borrows three worker fds without transferring ownership to Socket. Dispatcher
@@ -687,26 +707,40 @@ bool SrqWorker::Initialize() {
 
     _kick_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (_kick_fd < 0) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create kick eventfd for SRQ worker=" << this;
+        errno = error;
         return false;
     }
 
     _channel = IbvCreateCompChannel(GetRdmaContext());
-    if (!_channel || butil::make_non_blocking(_channel->fd) < 0 ||
+    if (_channel == nullptr || butil::make_non_blocking(_channel->fd) < 0 ||
         butil::make_close_on_exec(_channel->fd) < 0) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create or configure completion channel for SRQ worker";
+        errno = error;
         return false;
     }
 
     auto* context = static_cast<RdmaAsyncEventContext*>(this);
     _tx_cq = IbvCreateCq(GetRdmaContext(), FLAGS_rdma_srq_tx_cq_size,
-                        context, _channel, GetRdmaCompVector());
-    if (!_tx_cq) {
+                         context, _channel, GetRdmaCompVector());
+    if (_tx_cq == nullptr) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create TX CQ for SRQ worker=" << this
+                    << ", capacity=" << FLAGS_rdma_srq_tx_cq_size;
+        errno = error;
         return false;
     }
 
     RegisterRdmaAsyncEventContext(_tx_cq, context);
     _rx_cq = IbvCreateCq(GetRdmaContext(), FLAGS_rdma_srq_depth,
-                        context, _channel, GetRdmaCompVector());
-    if (!_rx_cq) {
+                         context, _channel, GetRdmaCompVector());
+    if (_rx_cq == nullptr) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create RX CQ for SRQ worker=" << this
+                    << ", capacity=" << FLAGS_rdma_srq_depth;
+        errno = error;
         return false;
     }
 
@@ -718,6 +752,10 @@ bool SrqWorker::Initialize() {
     attr.attr.max_sge = 1;
     _srq = IbvCreateSrq(GetRdmaPd(), &attr);
     if (!_srq) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create SRQ for worker=" << this
+                    << ", depth=" << FLAGS_rdma_srq_depth;
+        errno = error;
         return false;
     }
 
@@ -726,8 +764,8 @@ bool SrqWorker::Initialize() {
                            std::min(attr.attr.max_wr,
                                        static_cast<uint32_t>(FLAGS_rdma_srq_depth)));
     uint32_t limit = FLAGS_rdma_srq_pool_blocks;
-    uint32_t grow_blocks = std::min(limit,
-        static_cast<uint32_t>(FLAGS_rdma_srq_pool_grow_blocks));
+    uint32_t grow_blocks = std::min(
+        limit, static_cast<uint32_t>(FLAGS_rdma_srq_pool_grow_blocks));
     // Retain spare blocks beyond the posted depth so the first zero-copy
     // receive need not wait for registration. Initialize with one MR. Runtime
     // growth has its own, smaller granularity.
@@ -736,6 +774,10 @@ bool SrqWorker::Initialize() {
     _pool = SrqReceivePool::Create(GetRdmaPd(), GetRdmaBlockSize(), limit,
                                    grow_blocks, _rx_capacity + spare);
     if (_pool == nullptr) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create receive pool for SRQ worker=" << this
+                    << ", initial_blocks=" << _rx_capacity + spare;
+        errno = error;
         return false;
     }
 
@@ -751,19 +793,99 @@ bool SrqWorker::Initialize() {
     }
 
     if (SrqEventSource::Create(&_event_source, shared_from_this(), _tag) != 0) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create event source for SRQ worker=" << this;
+        errno = error;
         return false;
     }
 
     VersionedRefWithIdUniquePtr<SrqEventSource> source;
     CHECK_EQ(0, SrqEventSource::Address(_event_source, &source));
     if (source->Add(_channel->fd) != 0 || source->Add(_kick_fd) != 0 ||
-        source->Add(_pool->recycle_fd()) != 0) {
+        source->Add(_pool->growth_fd()) != 0) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to register event fds for SRQ worker=" << this;
+        errno = error;
         return false;
     }
 
-    Kick();
+    // `GetWorker()` publishes this worker only after initialization succeeds.
+    // No QP can produce a completion yet, so arm both CQs here and let the
+    // first completion start `RunEvent()` without an initial `Kick()`.
+    ibv_cq* cq = _tx_cq;
+    int rc = IbvReqNotifySrqCq(cq, 0);
+    if (rc == 0) {
+        cq = _rx_cq;
+        rc = IbvReqNotifySrqCq(cq, 0);
+    }
+    if (rc != 0) {
+        LOG(ERROR) << "Fail to arm " << (cq == _tx_cq ? "TX" : "RX")
+                   << " CQ for SRQ worker=" << this << ", rc=" << rc
+                   << ": " << berror(rc);
+        errno = rc;
+        return false;
+    }
     return true;
 }
+
+#if defined(UNIT_TEST)
+// Fake verbs supply resources while the real event loop, command queue, CQ
+// handlers and refill run unchanged. The worker takes ownership of the pool
+// and handles, just as after normal initialization.
+bool InitializeSrqWorkerForTest(const std::shared_ptr<SrqWorker>& worker, ibv_cq* tx,
+                                ibv_cq* rx, ibv_srq* srq, SrqReceivePool* pool, uint32_t depth) {
+    worker->_tx_cq = tx;
+    worker->_rx_cq = rx;
+    worker->_srq = srq;
+    worker->_pool = pool;
+    worker->_tx_capacity = tx->cqe;
+    worker->_rx_capacity = depth;
+    worker->_rx_buffers.resize(depth, nullptr);
+    worker->_rx_free.reserve(depth);
+    worker->_rx_reusable.reserve(depth);
+    for (uint32_t i = 0; i < depth; ++i) {
+        worker->_rx_free.push_back(i);
+    }
+    if (worker->_connections.init(16) != 0) {
+        return false;
+    }
+    worker->Refill();
+    worker->_kick_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (worker->broken() || worker->_kick_fd < 0 ||
+        SrqEventSource::Create(&worker->_event_source, worker, worker->_tag) != 0) {
+        return false;
+    }
+    VersionedRefWithIdUniquePtr<SrqEventSource> source;
+    CHECK_EQ(0, SrqEventSource::Address(worker->_event_source, &source));
+    return source->Add(worker->_kick_fd) == 0 &&
+        IbvReqNotifySrqCq(tx, 0) == 0 && IbvReqNotifySrqCq(rx, 0) == 0;
+}
+
+bool AddSrqConnectionForTest(const std::shared_ptr<SrqWorker>& worker,
+                             const ConnectionPtr& connection, uint32_t sq_size) {
+    return worker->Add(connection, sq_size);
+}
+
+uint32_t ReserveSrqTxForTest(const std::shared_ptr<SrqWorker>& worker, uint32_t count) {
+    return worker->ReserveTx(count, false);
+}
+
+void ScheduleSrqWorkerForTest(const std::shared_ptr<SrqWorker>& worker,
+                              std::function<void()> callback, bool wake) {
+    worker->Schedule([callback = std::move(callback)] {
+        callback();
+        return ProgressRound();
+    }, wake);
+}
+
+void WakeSrqWorkerForTest(const std::shared_ptr<SrqWorker>& worker) {
+    worker->Kick();
+}
+
+void StopSrqWorkerForTest(const std::shared_ptr<SrqWorker>& worker) {
+    worker->Stop();
+}
+#endif
 
 bool SrqWorker::Add(const ConnectionPtr& connection, uint32_t sq_size) {
     std::lock_guard<bthread::Mutex> owner(_progress_mutex);
@@ -787,25 +909,26 @@ bool SrqWorker::Add(const ConnectionPtr& connection, uint32_t sq_size) {
     connection->_qp = IbvCreateQp(GetRdmaPd(), &attr);
     // Inline support is optional. Retry without requesting it if the device
     // rejects the requested size.
-    if (!connection->_qp && attr.cap.max_inline_data) {
+    if (connection->_qp == nullptr && attr.cap.max_inline_data) {
         attr.cap.max_inline_data = 0;
         connection->_qp = IbvCreateQp(GetRdmaPd(), &attr);
     }
-    if (!connection->_qp) {
+    if (connection->_qp == nullptr) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create QP for SRQ worker=" << this
+                    << ", socket_id=" << connection->_sid << ", sq_size=" << sq_size;
+        errno = error;
         return false;
     }
 
-    RegisterRdmaAsyncEventContext(connection->_qp,
-        static_cast<RdmaAsyncEventContext*>(connection.get()));
+    RegisterRdmaAsyncEventContext(connection->_qp, connection.get());
     connection->_qpn = connection->_qp->qp_num;
     connection->_sq_size = std::min(sq_size, attr.cap.max_send_wr);
-    connection->_max_sge = std::min(
-        attr.cap.max_send_sge, static_cast<uint32_t>(FLAGS_rdma_srq_max_sge));
-    connection->_inline_size = std::min(
-        static_cast<uint32_t>(FLAGS_rdma_srq_inline_size),
-        attr.cap.max_inline_data);
-    connection->_records =
-        std::make_unique<SrqConnection::TxRecord[]>(connection->_sq_size);
+    connection->_max_sge = std::min(attr.cap.max_send_sge,
+                                    static_cast<uint32_t>(FLAGS_rdma_srq_max_sge));
+    connection->_inline_size = std::min(static_cast<uint32_t>(FLAGS_rdma_srq_inline_size),
+                                        attr.cap.max_inline_data);
+    connection->_records = std::make_unique<SrqConnection::TxRecord[]>(connection->_sq_size);
     CHECK(_connections.seek(connection->_qpn) == nullptr);
     _connections[connection->_qpn] = connection;
     ++g_live_connections;
@@ -813,11 +936,15 @@ bool SrqWorker::Add(const ConnectionPtr& connection, uint32_t sq_size) {
 }
 
 void SrqWorker::Refill() {
-    if (broken() || !_pool) {
+    if (broken() || _pool == nullptr) {
         return;
     }
 
     _pool->Prepare(_rx_reusable.size());
+    // Initialization reserves enough blocks for all receive slots. Afterwards,
+    // pressure copying in `HandleReceive()` preserves a replacement for every
+    // completed slot, so replenishment never waits for exported blocks to return.
+    DCHECK_GE(uint64_t(_pool->available()) + _rx_reusable.size(), _rx_free.size());
 
     while (!_rx_free.empty()) {
         ibv_recv_wr wr[kBatch] = {};
@@ -835,7 +962,7 @@ void SrqWorker::Refill() {
             if (buffer == nullptr) {
                 break;
             }
-            const uint32_t slot = _rx_free.back();
+            uint32_t slot = _rx_free.back();
             _rx_free.pop_back();
             CHECK(_rx_buffers[slot] == nullptr);
             _rx_buffers[slot] = buffer;
@@ -855,7 +982,7 @@ void SrqWorker::Refill() {
             break;
         }
         ibv_recv_wr* bad = nullptr;
-        const int rc = IbvPostSrqRecv(_srq, wr, &bad);
+        int rc = IbvPostSrqRecv(_srq, wr, &bad);
         int posted = count;
         if (rc != 0) {
             // bad_wr identifies the first unposted WR. Only the preceding
@@ -865,16 +992,20 @@ void SrqWorker::Refill() {
             while (posted < count && bad != &wr[posted]) {
                 ++posted;
             }
+            LOG(ERROR) << "Fail to post SRQ receives, worker=" << this
+                       << ", wr_count=" << count << ", bad_wr=" << bad
+                       << ", bad_wr_index=" << (posted < count ? posted : -1)
+                       << ", rc=" << rc << ": " << berror(rc);
             MarkBroken();
         }
         for (int i = posted; i < count; ++i) {
-            const uint32_t slot = slots[i];
+            uint32_t slot = slots[i];
             auto* buffer = _rx_buffers[slot];
             _rx_buffers[slot] = nullptr;
             _rx_free.push_back(slot);
             buffer->clear();
         }
-        if (rc) {
+        if (rc != 0) {
             break;
         }
     }
@@ -883,6 +1014,9 @@ void SrqWorker::Refill() {
 ConnectionPtr SrqWorker::HandleSend(const ibv_wc& wc, butil::IOBuf& released) {
     auto* connection = _connections.seek(wc.qp_num);
     if (connection == nullptr) {
+        LOG(ERROR) << "SRQ TX completion for unknown QP, worker=" << this
+                   << ", qpn=" << wc.qp_num << ", wr_id=" << wc.wr_id
+                   << ", status=" << wc.status;
         MarkBroken();
         return {};
     }
@@ -896,13 +1030,18 @@ ConnectionPtr SrqWorker::HandleSend(const ibv_wc& wc, butil::IOBuf& released) {
 ReceiveResult SrqWorker::HandleReceive(const ibv_wc& wc) {
     ReceiveResult result;
     if (wc.wr_id == 0 || wc.wr_id > _rx_buffers.size()) {
+        LOG(ERROR) << "Invalid SRQ RX completion slot, worker=" << this
+                   << ", qpn=" << wc.qp_num << ", wr_id=" << wc.wr_id
+                   << ", capacity=" << _rx_buffers.size();
         MarkBroken();
         return result;
     }
 
     uint32_t slot = wc.wr_id - 1;
     auto* buffer = _rx_buffers[slot];
-    if (!buffer) {
+    if (buffer == nullptr) {
+        LOG(ERROR) << "SRQ RX completion without a posted buffer, worker=" << this
+                   << ", qpn=" << wc.qp_num << ", wr_id=" << wc.wr_id;
         MarkBroken();
         return result;
     }
@@ -914,7 +1053,11 @@ ReceiveResult SrqWorker::HandleReceive(const ibv_wc& wc) {
     _rx_buffers[slot] = nullptr;
     _rx_free.push_back(slot);
     auto* found = _connections.seek(wc.qp_num);
-    if (found == nullptr ||
+    // A discarded fragment breaks the byte stream immediately, even while QP
+    // close waits for `_post_mutex`. Reject later input before it can fill the
+    // parser's gap. The owner checks `_pending_close_error` under
+    // `_progress_mutex`, which also covers its handoff to `_closing`.
+    if (found == nullptr || (*found)->_pending_close_error != 0 ||
         (*found)->_closing.load(butil::memory_order_acquire)) {
         _rx_reusable.push_back(buffer);
         return result;
@@ -924,8 +1067,20 @@ ReceiveResult SrqWorker::HandleReceive(const ibv_wc& wc) {
     result.connection = connection;
     if (wc.status != IBV_WC_SUCCESS || (wc.wc_flags & IBV_WC_WITH_IMM) == 0 ||
         wc.byte_len > buffer->capacity()) {
+        if (wc.status != IBV_WC_SUCCESS) {
+            // Failed CQEs guarantee only identity and error fields.
+            LOG(ERROR) << "SRQ RX completion failed, worker=" << this
+                       << ", qpn=" << wc.qp_num << ", socket_id=" << connection->_sid
+                       << ", wr_id=" << wc.wr_id << ", status=" << wc.status
+                       << ", vendor_err=" << wc.vendor_err;
+        } else {
+            LOG(ERROR) << "Invalid SRQ receive, worker=" << this
+                       << ", qpn=" << wc.qp_num << ", socket_id=" << connection->_sid
+                       << ", wr_id=" << wc.wr_id << ", wc_flags=" << wc.wc_flags
+                       << ", byte_len=" << wc.byte_len << ", capacity=" << buffer->capacity();
+        }
         _rx_reusable.push_back(buffer);
-        connection->RequestClose(EPROTO);
+        connection->RequestCloseFromWorker(EPROTO);
         result.wake_writer = true;
         return result;
     }
@@ -933,8 +1088,11 @@ ReceiveResult SrqWorker::HandleReceive(const ibv_wc& wc) {
     uint32_t flags = ntohl(wc.imm_data);
     bool valid = connection->ReceiveControl(flags, wc.byte_len);
     if (!valid) {
+        LOG(ERROR) << "Invalid SRQ flow-control message, worker=" << this
+                   << ", qpn=" << wc.qp_num << ", socket_id=" << connection->_sid
+                   << ", flags=" << flags << ", byte_len=" << wc.byte_len;
         _rx_reusable.push_back(buffer);
-        connection->RequestClose(EPROTO);
+        connection->RequestCloseFromWorker(EPROTO);
         result.wake_writer = true;
         return result;
     }
@@ -947,8 +1105,16 @@ ReceiveResult SrqWorker::HandleReceive(const ibv_wc& wc) {
         return result;
     }
 
+    // Every exported block needs a replacement for its receive slot. `_rx_free`
+    // already includes this completion and earlier CQEs awaiting refill, so
+    // they cannot reserve the same free block twice. Under pressure, copy and
+    // repost this lease even when `rdma_zerocopy_min_size` is zero. Recheck each
+    // completion so zero-copy resumes as returns or growth become available.
+    // Partial messages may retain every exported block until more input
+    // arrives, so RPC timeouts and future returns cannot ensure replenishment.
     bool zero_copy = FLAGS_rdma_recv_zerocopy &&
-        wc.byte_len >= static_cast<uint32_t>(FLAGS_rdma_zerocopy_min_size);
+        wc.byte_len >= static_cast<uint32_t>(FLAGS_rdma_zerocopy_min_size) &&
+        uint64_t(_pool->available()) + _rx_reusable.size() >= _rx_free.size();
     auto received = zero_copy ? buffer->TakeReceived(wc.byte_len) : butil::IOBuf();
     if (!zero_copy) {
         int rc = received.append(buffer->data(), wc.byte_len);
@@ -957,10 +1123,13 @@ ReceiveResult SrqWorker::HandleReceive(const ibv_wc& wc) {
         // and Block reconstruction.
         _rx_reusable.push_back(buffer);
         if (rc != 0) {
+            LOG(ERROR) << "Fail to copy SRQ receive, worker=" << this
+                       << ", qpn=" << wc.qp_num << ", socket_id=" << connection->_sid
+                       << ", byte_len=" << wc.byte_len << ", error=" << ENOMEM;
             // Ordinary registered-pool exhaustion may leave append with only a
             // partial copy. A reliable byte stream cannot deliver that prefix
             // as a complete receive.
-            connection->RequestClose(ENOMEM);
+            connection->RequestCloseFromWorker(ENOMEM);
             result.wake_writer = true;
             return result;
         }
@@ -971,41 +1140,47 @@ ReceiveResult SrqWorker::HandleReceive(const ibv_wc& wc) {
 
 ProgressRound SrqWorker::Poll(bool receive) {
     ProgressRound round;
+    if (broken()) {
+        return round;
+    }
+    // A continuously replenished TX CQ must yield to RX, refill and commands.
+    // Normal progress handles one batch from each CQ. Retirement explicitly
+    // repeats RX polls to reach the CQ tail after observing LAST_WQE.
     ibv_wc wc[kBatch];
-    while (!broken()) {
-        int count = IbvPollSrqCq(receive ? _rx_cq : _tx_cq, kBatch, wc);
-        if (count < 0) {
-            MarkBroken();
-            break;
-        }
-        if (count == 0) {
-            break;
-        }
+    int count = IbvPollSrqCq(receive ? _rx_cq : _tx_cq, kBatch, wc);
+    if (count < 0) {
+        LOG(ERROR) << "Fail to poll " << (receive ? "RX" : "TX")
+                   << " CQ for SRQ worker=" << this << ", rc=" << count;
+        MarkBroken();
+        return round;
+    }
 
-        round.completed = true;
-        uint32_t released = 0;
-        for (int i = 0; i < count; ++i) {
-            if (receive) {
-                auto result = HandleReceive(wc[i]);
-                if (result.wake_writer) {
-                    round.writers.insert(result.connection);
-                }
-                if (result.deliver) {
-                    round.deliveries.insert(result.connection);
-                }
-            } else {
-                auto connection = HandleSend(wc[i], round.released);
-                if (connection != nullptr) {
-                    ++released;
-                    round.writers.insert(std::move(connection));
-                }
+    round.progressed = count != 0;
+    round.full_batch = count == kBatch;
+    uint32_t released = 0;
+    for (int i = 0; i < count; ++i) {
+        if (receive) {
+            auto result = HandleReceive(wc[i]);
+            if (result.wake_writer && result.deliver) {
+                round.writers.push_back(result.connection);
+            }
+            if (result.deliver) {
+                round.deliveries.push_back(std::move(result.connection));
+            } else if (result.wake_writer) {
+                round.writers.push_back(std::move(result.connection));
+            }
+        } else {
+            auto connection = HandleSend(wc[i], round.released);
+            if (connection != nullptr) {
+                ++released;
+                round.writers.push_back(std::move(connection));
             }
         }
-        // SQ records have already been published as reusable individually.
-        // Return CQ reservations once per batch. Delaying this return only
-        // underuses capacity temporarily. It cannot allow CQ overcommit.
-        ReleaseTx(released);
     }
+    // SQ records have already been published as reusable individually.
+    // Return CQ reservations once per batch. Delaying this return only
+    // underuses capacity temporarily. It cannot allow CQ overcommit.
+    ReleaseTx(released);
     return round;
 }
 
@@ -1017,7 +1192,9 @@ ProgressRound SrqWorker::RunPending() {
     // progress. Keep all dequeued callbacks in round so captured contexts are
     // released outside _progress_mutex.
     ProgressCallback callback;
-    while (_commands.Dequeue(callback)) {
+    // A preempted producer must not stop CQ polling or refill. Its Kick after
+    // publication retries any temporarily unavailable command segment.
+    while (_commands.TryDequeue(callback)) {
         round.callbacks.push_back(std::move(callback));
     }
     size_t end = round.callbacks.size();
@@ -1027,27 +1204,39 @@ ProgressRound SrqWorker::RunPending() {
     return round;
 }
 
-ProgressRound SrqWorker::RetireConnections(
-    std::vector<ConnectionPtr> connections) {
+ProgressRound SrqWorker::RetireConnections(std::vector<ConnectionPtr> connections) {
     ProgressRound round;
     round.retiring = std::move(connections);
     if (round.retiring.empty() || broken()) {
         return round;
     }
 
-    // Collect ready candidates before draining RX: an empty poll from before
-    // observing LAST_WQE is not a teardown barrier. Poll handles all
-    // connections and retains normal deliveries in this round. No Refill occurs
-    // during this drain, so the posted receive set is finite and no persistent
-    // refill-pause state is needed.
-    round.Append(Poll(true));
+    // Collect candidates before polling. Only a short poll after observing
+    // LAST_WQE proves that the closing QPs' RX completions have been drained.
+    // They consume no more WQEs, so refill between full batches can preserve
+    // receive depth for healthy peers without weakening that barrier.
+    // Bound replenishment to one SRQ depth. Sustained traffic then drains a
+    // finite posted set, guaranteeing termination without persistent state.
+    uint32_t refill_budget = _rx_capacity;
+    while (!broken()) {
+        auto received = Poll(true);
+        bool full_batch = received.full_batch;
+        round.Append(std::move(received));
+        if (!full_batch) {
+            break;
+        }
+        if (refill_budget >= static_cast<uint32_t>(kBatch)) {
+            refill_budget -= kBatch;
+            Refill();
+        }
+    }
     if (broken()) {
         return round;
     }
     // Each ProgressLocked call passes only its own candidates. Results from
     // earlier progress remain in RunEvent and are never retired twice.
     for (auto& candidate : round.retiring) {
-        auto* connection = candidate.get();
+        auto connection = candidate.get();
         SrqConnection::PostLock lock(connection, std::try_to_lock);
         if (!lock.owns_lock()) {
             // Queries or close may acquire the submit lock after candidate
@@ -1065,11 +1254,14 @@ ProgressRound SrqWorker::RetireConnections(
         _connections.erase(connection->_qpn);
         --g_live_connections;
     }
+    // The retirement drain also consumes receive slots. Replenish them after
+    // all candidates have been processed. `Refill()` skips a broken worker.
+    Refill();
     return round;
 }
 
 void SrqWorker::ConsumeEvents() {
-    if (!_channel) {
+    if (_channel == nullptr) {
         return;
     }
     ibv_cq* cq;
@@ -1095,6 +1287,8 @@ void SrqWorker::ConsumeEvents() {
         IbvAckCqEvents(_rx_cq, rx_events);
     }
     if (error != EAGAIN) {
+        LOG(ERROR) << "Fail to get CQ event for SRQ worker=" << this
+                   << ", errno=" << error << ": " << berror(error);
         MarkBroken();
     }
 }
@@ -1109,24 +1303,24 @@ ProgressRound SrqWorker::ProgressLocked() {
         return DestroyAll();
     }
 
-    AsyncFailure failure;
-    while (_failures.Dequeue(failure)) {
-        auto* connection = _connections.seek(failure.qpn);
-        if (connection != nullptr && (*connection)->_sid == failure.sid) {
-            (*connection)->RequestClose(ERDMA);
-            round.writers.insert(*connection);
-        }
-    }
-    round.Append(Poll(false));
-    round.Append(Poll(true));
+    auto sent = Poll(false);
+    auto received = Poll(true);
+    round.full_batch = sent.full_batch || received.full_batch;
+    round.Append(std::move(sent));
+    round.Append(std::move(received));
+    // Replenish each bounded RX batch before callbacks can submit grants or
+    // retire QPs. Even an empty poll must retry returned blocks or completed
+    // growth. The post-arm recheck keeps the owner running if CQEs remain.
+    Refill();
+
     if (broken()) {
         round.Append(DestroyAll());
         return round;
     }
+
     auto pending = RunPending();
     round.Append(RetireConnections(std::move(pending.retiring)));
     round.Append(std::move(pending));
-    Refill();
     if (broken()) {
         round.Append(DestroyAll());
     }
@@ -1145,12 +1339,13 @@ void SrqWorker::OnEvent(const bthread_attr_t& thread_attr) {
     bthread_attr_t attr = thread_attr;
     attr.tag = _tag;
     bthread_t tid;
-    int rc = EventDispatcherUnsched() ?
-        bthread_start_background(&tid, &attr, RunEvent, task.get()) :
-        bthread_start_urgent(&tid, &attr, RunEvent, task.get());
+    int rc = StartTask(!EventDispatcherUnsched(), &tid, &attr, RunEvent, task.get());
     if (rc != 0) {
-        _events.store(0, butil::memory_order_release);
-        Fail();
+        LOG(ERROR) << "Fail to start event task for SRQ worker=" << this
+                   << ", rc=" << rc << ": " << berror(rc) << ", running inline";
+        // Retain event ownership and let the normal loop perform the exit
+        // handoff, including notifications published during this fallback.
+        RunEvent(task.release());
         return;
     }
     task.release();
@@ -1162,47 +1357,51 @@ void* SrqWorker::RunEvent(void* arg) {
     SrqWorker* worker = task->get();
     for (;;) {
         // Keep per-round results outside the lock scope so early exits also
-        // release references after unlocking. Membership deduplication stays
-        // local. No connection or worker flags need resetting between rounds.
+        // release references after unlocking. Deduplication also runs outside
+        // the lock. No connection or worker flags need resetting between rounds.
         ProgressRound round;
         uint64_t events = worker->_events.load(butil::memory_order_acquire);
         bool more = false;
         bool stopped = false;
         {
             std::lock_guard<bthread::Mutex> owner(worker->_progress_mutex);
+            bool skipped_arm = false;
             if (!worker->retired()) {
                 worker->ConsumeEvents();
                 DrainEventFd(worker->_kick_fd);
-                DrainEventFd(worker->_pool->recycle_fd());
-                worker->_pool->DisarmRecyclingNotification();
-                round.Append(worker->ProgressLocked());
+                DrainEventFd(worker->_pool->growth_fd());
+                auto progress = worker->ProgressLocked();
+                skipped_arm = progress.full_batch;
+                round.Append(std::move(progress));
             }
             if (!worker->broken()) {
-                // Arm before rechecking. CQEs or returned blocks arriving as
-                // the worker prepares to sleep must either be observed by the
-                // recheck or leave a notification.
-                if (ibv_req_notify_cq(worker->_tx_cq, 0) != 0 ||
-                    ibv_req_notify_cq(worker->_rx_cq, 0) != 0) {
+                // Full normal batches keep this owner running. Recheck without
+                // arming, preserving two progress passes per lock hold and the
+                // same unlocked delivery and writer-wakeup cadence.
+                ibv_cq* cq = worker->_tx_cq;
+                int rc = 0;
+                if (!skipped_arm) {
+                    // Arm both CQs before the final recheck. A new CQE must
+                    // either be observed there or leave a notification.
+                    rc = IbvReqNotifySrqCq(cq, 0);
+                    if (rc == 0) {
+                        cq = worker->_rx_cq;
+                        rc = IbvReqNotifySrqCq(cq, 0);
+                    }
+                }
+                if (rc != 0) {
+                    LOG(ERROR) << "Fail to arm " << (cq == worker->_tx_cq ? "TX" : "RX")
+                               << " CQ for SRQ worker=" << worker << ", rc=" << rc
+                               << ": " << berror(rc);
                     worker->MarkBroken();
                     round.Append(worker->ProgressLocked());
                 } else {
-                    // A full SRQ needs no return notification. Blocks can stay
-                    // on the return stack until later CQ progress needs them.
-                    bool recyclable = !worker->_rx_free.empty() &&
-                                      !worker->_pool->ArmRecyclingNotification();
-                    // Pre-arm completions have already been handled and alone
-                    // do not justify another round. An RX drain during the
-                    // recheck still sets completed on its own result,
-                    // preserving any follow-up progress it requires.
                     ProgressRound recheck = worker->ProgressLocked();
-                    if (!worker->broken() && worker->_rx_free.empty()) {
-                        worker->_pool->DisarmRecyclingNotification();
-                        recyclable = false;
-                    }
-                    // RX completions in the recheck may create a shortage
-                    // after we skipped arming. `completed` forces another
-                    // round to subscribe before the worker can sleep.
-                    more = recyclable || recheck.completed;
+                    // Skipping arm forbids sleeping even if this recheck is
+                    // empty. Notifications are one-shot. A burst of exactly
+                    // one full batch must reach an arm-and-recheck iteration
+                    // before releasing ownership, or its next CQE may be lost.
+                    more = skipped_arm || recheck.progressed;
                     round.Append(std::move(recheck));
                 }
             }
@@ -1234,9 +1433,13 @@ void* SrqWorker::RunEvent(void* arg) {
                 // Failed destruction retains resources for Stop to retry.
                 round.Append(worker->DestroyAll());
             }
-            // Include notifications from teardown before releasing ownership.
-            // A later producer calls Kick, preserving the event exit handoff.
-            round.failures = worker->TakeNotificationsLocked();
+            if (stopped) {
+                // Drain commands even when verbs destruction failed. Progress
+                // callbacks observe the stopped worker and return without
+                // requeueing. Notification callbacks still return failures
+                // for dispatch outside the lock.
+                round.Append(worker->RunPending());
+            }
         }
         // Finalize even on failure exits. Never leave the last wakeup or
         // user-reference release inside the owner lock.
@@ -1254,16 +1457,9 @@ void* SrqWorker::RunEvent(void* arg) {
     return nullptr;
 }
 
-std::vector<SocketFailure> SrqWorker::TakeNotificationsLocked() {
-    std::vector<SocketFailure> failures;
-    SocketFailure failure;
-    while (_notifications.Dequeue(failure)) {
-        failures.push_back(failure);
-    }
-    return failures;
-}
-
 void SrqWorker::FinishRound(ProgressRound round) {
+    ProgressRound::Deduplicate(round.writers);
+    ProgressRound::Deduplicate(round.deliveries);
     DispatchNotifications(round.released.movable(), std::move(round.failures));
     for (auto& connection : round.writers) {
         connection->WakeWriter();
@@ -1273,26 +1469,41 @@ void SrqWorker::FinishRound(ProgressRound round) {
     }
 }
 
-void SrqWorker::DispatchNotifications(
-    butil::IOBuf released, std::vector<SocketFailure> failures) {
+void SrqWorker::DispatchNotifications(butil::IOBuf released,
+                                      std::vector<SocketFailure> failures) {
     if (released.empty() && failures.empty()) {
         return;
     }
 
-    auto task = std::make_unique<DeferredTask>();
-    task->released.swap(released);
-    task->failures = std::move(failures);
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     attr.tag = _tag;
     bthread_t tid;
-    // Socket failure may synchronously invoke application done callbacks. No
-    // transport lock is held here, including the synchronous fallback after
-    // bthread creation fails.
-    if (bthread_start_background(&tid, &attr, RunDeferred, task.get()) == 0) {
-        task.release();
-        return;
+    // A Socket failure callback can wait for another Socket's failure or for
+    // payload release. Give each notification its own task, independent of
+    // the release task and the CQ owner. If scheduling fails, run inline as
+    // a last resort, accepting serialized user callbacks in that case.
+    for (auto& failure : failures) {
+        auto task = std::make_unique<SocketFailure>(std::move(failure));
+        int rc = StartTask(false, &tid, &attr, RunSocketFailure, task.get());
+        if (rc != 0) {
+            LOG(ERROR) << "Fail to start SRQ Socket failure task, worker=" << this
+                       << ", rc=" << rc << ": " << berror(rc) << ", running inline";
+            RunSocketFailure(task.release());
+        } else {
+            task.release();
+        }
     }
-    RunDeferred(task.release());
+    if (!released.empty()) {
+        auto task = std::make_unique<butil::IOBuf>(released.movable());
+        int rc = StartTask(false, &tid, &attr, RunPayloadRelease, task.get());
+        if (rc != 0) {
+            LOG(ERROR) << "Fail to start SRQ payload release task, worker=" << this
+                       << ", rc=" << rc << ": " << berror(rc) << ", running inline";
+            RunPayloadRelease(task.release());
+        } else {
+            task.release();
+        }
+    }
 }
 
 void SrqWorker::DetachEvents() {
@@ -1302,12 +1513,12 @@ void SrqWorker::DetachEvents() {
 
     VersionedRefWithIdUniquePtr<SrqEventSource> source;
     if (SrqEventSource::Address(_event_source, &source) == 0) {
-        if (_channel) {
+        if (_channel != nullptr) {
             source->Remove(_channel->fd);
         }
         source->Remove(_kick_fd);
-        if (_pool) {
-            source->Remove(_pool->recycle_fd());
+        if (_pool != nullptr) {
+            source->Remove(_pool->growth_fd());
         }
         source->SetFailed();
     }
@@ -1317,15 +1528,17 @@ void SrqWorker::DetachEvents() {
 ProgressRound SrqWorker::DestroyAll() {
     ProgressRound round;
     // Worker failure/Stop cannot rely on healthy CQs or normal LAST_WQE/TX/RX
-    // progress. The caller holds _progress_mutex. Detach events and stop
+    // progress. The caller holds `_progress_mutex`. Detach events and stop
     // submission on every connection. Destroy QPs, the SRQ and CQs before
     // reclaiming remaining records and receive blocks. This path may block on
-    // _post_mutex to wait for in-flight post_send calls to return.
+    // `_post_mutex` to wait for in-flight post_send calls to return.
     //
     // On any verbs destruction failure, keep State::BROKEN and all remaining
     // DMA references. Successfully destroyed handles stay null for a later
     // Stop retry. Only complete cleanup publishes DESTROYED and permits a new
-    // worker generation. Queued application notifications run outside the lock.
+    // worker generation. Retain failures in this round on every exit. The
+    // caller also drains previously queued commands before dispatching all
+    // application notifications outside the lock.
     if (retired()) {
         return round;
     }
@@ -1336,8 +1549,14 @@ ProgressRound SrqWorker::DestroyAll() {
         connections.push_back(entry.second);
     }
     for (auto& connection : connections) {
-        connection->RequestClose(ERDMA);
-        round.writers.insert(connection);
+        SrqConnection::PostLock lock(connection.get());
+        // Shutdown owns cleanup and a round, so no new progress or failure
+        // command is needed. Preserve notifications even if destruction fails.
+        auto result = connection->RequestCloseLocked(ERDMA);
+        if (result.failure != nullptr) {
+            round.failures.push_back(std::move(result.failure));
+        }
+        round.writers.push_back(connection);
     }
 
     bool stopped = true;
@@ -1356,7 +1575,10 @@ ProgressRound SrqWorker::DestroyAll() {
     // blocks.
     if (_srq != nullptr) {
         UnregisterRdmaAsyncEventContext(_srq);
-        if (IbvDestroySrq(_srq) != 0) {
+        int rc = IbvDestroySrq(_srq);
+        if (rc != 0) {
+            LOG(ERROR) << "Fail to destroy SRQ for worker=" << this
+                       << ", srq=" << _srq << ", rc=" << rc << ": " << berror(rc);
             return round;
         }
         _srq = nullptr;
@@ -1364,20 +1586,29 @@ ProgressRound SrqWorker::DestroyAll() {
     ConsumeEvents();
     if (_tx_cq != nullptr) {
         UnregisterRdmaAsyncEventContext(_tx_cq);
-        if (IbvDestroyCq(_tx_cq) != 0) {
+        int rc = IbvDestroyCq(_tx_cq);
+        if (rc != 0) {
+            LOG(ERROR) << "Fail to destroy TX CQ for SRQ worker=" << this
+                       << ", cq=" << _tx_cq << ", rc=" << rc << ": " << berror(rc);
             return round;
         }
         _tx_cq = nullptr;
     }
     if (_rx_cq != nullptr) {
         UnregisterRdmaAsyncEventContext(_rx_cq);
-        if (IbvDestroyCq(_rx_cq) != 0) {
+        int rc = IbvDestroyCq(_rx_cq);
+        if (rc != 0) {
+            LOG(ERROR) << "Fail to destroy RX CQ for SRQ worker=" << this
+                       << ", cq=" << _rx_cq << ", rc=" << rc << ": " << berror(rc);
             return round;
         }
         _rx_cq = nullptr;
     }
     if (_channel != nullptr) {
-        if (IbvDestroyCompChannel(_channel) != 0) {
+        int rc = IbvDestroyCompChannel(_channel);
+        if (rc != 0) {
+            LOG(ERROR) << "Fail to destroy completion channel for SRQ worker=" << this
+                       << ", channel=" << _channel << ", rc=" << rc << ": " << berror(rc);
             return round;
         }
         _channel = nullptr;
@@ -1391,16 +1622,6 @@ ProgressRound SrqWorker::DestroyAll() {
     for (auto& connection : connections) {
         round.retiring.push_back(std::move(connection));
     }
-    // All QPs are closed and progress registrations cleared, so publishers can
-    // no longer enqueue connection work. Retain cancelled callbacks in round:
-    // releasing their final captured references under _progress_mutex could
-    // reenter transport or application code.
-    ProgressCallback callback;
-    while (_commands.Dequeue(callback)) {
-        round.callbacks.push_back(std::move(callback));
-    }
-    AsyncFailure failure;
-    while (_failures.Dequeue(failure)) {}
     for (auto* buffer : _rx_buffers) {
         if (buffer != nullptr) {
             buffer->clear();
@@ -1436,11 +1657,11 @@ void SrqWorker::Stop() {
             auto& registry = Registry();
             std::lock_guard<bthread::Mutex> lock(registry.mutex);
             registry.quarantine.push_back(shared_from_this());
-            LOG(ERROR) << "Retaining SRQ worker after failed verbs destruction";
+            LOG(ERROR) << "Retaining SRQ worker=" << this << " after failed verbs destruction";
         }
-        // DestroyAll can enqueue failures even when verbs cleanup fails.
-        // Detach them before unlocking, just as the event owner does.
-        round.failures = TakeNotificationsLocked();
+        // Collect any external failures queued before shutdown. Worker-side
+        // failures are already retained by `DestroyAll()` in this round.
+        round.Append(RunPending());
     }
     FinishRound(std::move(round));
 }
@@ -1519,7 +1740,7 @@ SrqConnection::Create(Socket* socket, bthread_tag_t tag, uint32_t sq_size) {
         return {};
     }
     auto worker = GetWorker(tag, butil::fmix32(socket->id()) % count);
-    if (!worker) {
+    if (worker == nullptr) {
         return {};
     }
     ConnectionPtr connection(new SrqConnection(worker, socket, tag));
@@ -1540,7 +1761,7 @@ void SrqConnection::GetLocalInfo(RdmaLocalInfo* info) const {
 
 int SrqConnection::QueryEce(ibv_ece* ece) {
     PostLock lock(this);
-    return _qp && !_closing.load() && IbvQueryEce ?
+    return _qp != nullptr && !_closing.load() && IbvQueryEce ?
         IbvQueryEce(_qp, ece) : ENOTCONN;
 }
 
@@ -1549,7 +1770,7 @@ bool SrqConnection::worker_retired() const { return _worker->retired(); }
 int SrqConnection::Activate(const ParsedHello& peer, bool is_server,
                             butil::optional<ibv_ece>* outgoing_ece) {
     PostLock lock(this);
-    if (!_qp || _closing.load()) {
+    if (_qp == nullptr || _closing.load()) {
         errno = ENOTCONN;
         return -1;
     }
@@ -1576,7 +1797,7 @@ void SrqConnection::ScheduleProgressLocked(bool wake) {
     // false -> true enqueues. Others merge into the existing responsibility.
     // A requested wake is still needed when a callback is already queued but
     // the worker is asleep waiting for a resource or close condition.
-    if (_qp &&
+    if (_qp != nullptr &&
         !_progress_scheduled.exchange(true, butil::memory_order_acq_rel)) {
         EnqueueProgressLocked(wake);
     } else if (wake) {
@@ -1585,19 +1806,33 @@ void SrqConnection::ScheduleProgressLocked(bool wake) {
 }
 
 void SrqConnection::EnqueueProgressLocked(bool wake) {
-    // Capture a connection reference on enqueue. Executed or cancelled
-    // callbacks remain in the round until release outside the lock. The
-    // connection itself stores no callback, avoiding a self-owning shared_ptr
-    // cycle.
+    // Capture a connection reference on enqueue. Dequeued callbacks remain in
+    // the round until release outside the lock. The connection itself stores
+    // no callback, avoiding a self-owning `shared_ptr` cycle.
     auto self = shared_from_this();
     _worker->Schedule([self] { return self->Progress(); }, wake);
 }
 
+void SrqConnection::RequestCloseFromWorker(int error) {
+    // `_progress_mutex` serializes all publishers and `Progress()`. Repeated
+    // errors share one pending code and one registered callback. The QP
+    // transition waits until the submitter releases `_post_mutex`.
+    DCHECK_NE(error, 0);
+    if (_pending_close_error == 0) {
+        _pending_close_error = error;
+    }
+    ScheduleProgressLocked(false);
+}
+
 ProgressRound SrqConnection::Progress() {
     ProgressRound round;
+    // Shutdown drains the same command queue as normal progress. Check before
+    // trying `_post_mutex` so a busy submitter cannot cause a shutdown retry.
+    // `DestroyAll` owns cleanup and clears registration on QP destruction.
+    if (_worker->broken()) {
+        return round;
+    }
     bool keep = false;
-    bool wake = false;
-    int error = 0;
     {
         PostLock lock(this, std::try_to_lock);
         if (!lock.owns_lock()) {
@@ -1610,8 +1845,27 @@ ProgressRound SrqConnection::Progress() {
             return round;
         }
 
-        if (!_qp) {
+        if (_qp == nullptr) {
             _progress_scheduled.store(false, butil::memory_order_release);
+            return round;
+        }
+
+        int error = _pending_close_error;
+        _pending_close_error = 0;
+        if (error == 0 && !_closing.load(butil::memory_order_acquire)) {
+            error = SendPureGrantLocked();
+        }
+        if (error != 0) {
+            // This callback already owns progress and the submit lock. Close
+            // and check retirement below in this pass, retaining the failure
+            // in the current round for dispatch outside transport locks.
+            auto result = RequestCloseLocked(error);
+            if (result.failure != nullptr) {
+                round.failures.push_back(std::move(result.failure));
+            }
+            round.writers.push_back(shared_from_this());
+        }
+        if (_worker->broken()) {
             return round;
         }
 
@@ -1625,16 +1879,15 @@ ProgressRound SrqConnection::Progress() {
             }
             keep = true;
         } else {
-            error = SendPureGrantLocked();
             // TODO: Add fair capacity allocation for shared TX CQ waiters. A
             // wakeup only reports observed availability. It reserves nothing.
             // Resumed connections still compete in ReserveTx(), and losers
             // register again. Strict fairness is not guaranteed.
             if (_waiting_cq && _worker->DataTxAvailable()) {
                 _waiting_cq = false;
-                wake = true;
+                round.writers.push_back(shared_from_this());
             }
-            keep = error || _fc.hard_request_pending() || _waiting_cq;
+            keep = _fc.hard_request_pending() || _waiting_cq;
         }
         // Receive-side publishers hold _progress_mutex and submit-side
         // publishers hold _post_mutex. Holding both here prevents a new
@@ -1649,12 +1902,6 @@ ProgressRound SrqConnection::Progress() {
         } else {
             _progress_scheduled.store(false, butil::memory_order_release);
         }
-    }
-    if (error) {
-        RequestClose(error);
-    }
-    if (wake || error) {
-        round.writers.insert(shared_from_this());
     }
     return round;
 }
@@ -1694,6 +1941,9 @@ bool SrqConnection::CompleteSend(const ibv_wc& wc, butil::IOBuf& released) {
         // WR IDs encode slot index plus one. Validate before indexing records.
         // An inconsistent ID requires stopping the worker before recovering CQ
         // accounting.
+        LOG(ERROR) << "Invalid SRQ TX completion slot, worker=" << _worker.get()
+                   << ", qpn=" << _qpn << ", socket_id=" << _sid
+                   << ", wr_id=" << wc.wr_id << ", sq_size=" << _sq_size;
         _worker->MarkBroken();
         return false;
     }
@@ -1706,6 +1956,9 @@ bool SrqConnection::CompleteSend(const ibv_wc& wc, butil::IOBuf& released) {
     // record visible even when post_send has not returned.
     if (slot != completed % _sq_size ||
         !record->active.load(butil::memory_order_acquire)) {
+        LOG(ERROR) << "SRQ TX completion out of order or for an inactive record, worker="
+                   << _worker.get() << ", qpn=" << _qpn << ", socket_id=" << _sid
+                   << ", wr_id=" << wc.wr_id << ", expected_wr_id=" << completed % _sq_size + 1;
         _worker->MarkBroken();
         return false;
     }
@@ -1721,7 +1974,11 @@ bool SrqConnection::CompleteSend(const ibv_wc& wc, butil::IOBuf& released) {
     _sq_completed.store(completed + 1, butil::memory_order_release);
     if (wc.status != IBV_WC_SUCCESS &&
         !_closing.load(butil::memory_order_acquire)) {
-        RequestClose(ERDMA);
+        LOG(ERROR) << "SRQ TX completion failed, worker=" << _worker.get()
+                   << ", qpn=" << _qpn << ", socket_id=" << _sid
+                   << ", wr_id=" << wc.wr_id << ", status=" << wc.status
+                   << ", vendor_err=" << wc.vendor_err;
+        RequestCloseFromWorker(ERDMA);
     }
     // Do not inspect submit-side wait flags: a writer may register just after
     // capacity is returned. The worker coalesces notifications per connection
@@ -1777,12 +2034,16 @@ bool SrqConnection::ReadyToDestroyLocked() const {
 }
 
 bool SrqConnection::DestroyQpLocked() {
-    if (_qp) {
+    if (_qp != nullptr) {
         // Unregister waits for callback capture, not callback execution. Async
         // callbacks retain their context and only publish state or queue work,
         // so late callbacks need not touch this QP or acquire _post_mutex.
         UnregisterRdmaAsyncEventContext(_qp);
-        if (IbvDestroyQp(_qp) != 0) {
+        int rc = IbvDestroyQp(_qp);
+        if (rc != 0) {
+            LOG(ERROR) << "Fail to destroy SRQ QP, worker=" << _worker.get()
+                       << ", qpn=" << _qpn << ", socket_id=" << _sid
+                       << ", rc=" << rc << ": " << berror(rc);
             return false;
         }
         _qp = nullptr;
@@ -1820,6 +2081,13 @@ int SrqConnection::SendPureGrantLocked() {
     record->active.store(true, butil::memory_order_release);
     ibv_send_wr* bad = nullptr;
     int rc = IbvPostSrqSend(_qp, &wr, &bad);
+    if (rc != 0) {
+        LOG(ERROR) << "Fail to post SRQ pure grant, worker=" << _worker.get()
+                   << ", qpn=" << _qpn << ", socket_id=" << _sid
+                   << ", wr_id=" << wr.wr_id << ", bad_wr=" << bad
+                   << ", definitely_unposted=" << (bad == &wr)
+                   << ", rc=" << rc << ": " << berror(rc);
+    }
     if (rc != 0 && bad == &wr) {
         // This WR was definitely not posted and cannot produce a CQE. Roll back
         // the ring tail and its reservation.
@@ -1919,14 +2187,14 @@ struct SrqConnection::SendPostResult {
 };
 
 int SrqConnection::PrepareSendBatchLocked(SendInput& input, SendBatch& batch,
-                                        butil::IOBuf& unposted) {
+                                          butil::IOBuf& unposted) {
     // Only plan on the snapshot. Preparation must not consume real FC credits
     // or drain received events before the accepted prefix has been accounted.
     auto planned = _fc.Snapshot();
     // Estimate demand from bytes so small messages reserve only what they
     // need. SGE fragmentation may require more WRs in a subsequent batch.
-    uint32_t requested = std::min<size_t>(kBatch,
-        1 + (input.remaining_bytes - 1) / _remote_block_size);
+    uint32_t requested = std::min<size_t>(
+        kBatch, 1 + (input.remaining_bytes - 1) / _remote_block_size);
     requested = std::min(requested, planned.window());
     requested = std::min(requested, DataSqAvailableLocked());
     batch.reserved = requested != 0 ? _worker->ReserveTx(requested, false) : 0;
@@ -1953,6 +2221,9 @@ int SrqConnection::PrepareSendBatchLocked(SendInput& input, SendBatch& batch,
                                     &in_pool, &has_user_data);
             if (n < 0) {
                 int error = errno;
+                LOG(ERROR) << "Fail to prepare SRQ send SGEs, worker=" << _worker.get()
+                           << ", qpn=" << _qpn << ", socket_id=" << _sid
+                           << ", errno=" << error << ": " << berror(error);
                 // This incomplete record is not yet counted in _sq_head.
                 // Keep its payload alive until Send releases _post_mutex,
                 // just like the staged WRs that will be rolled back.
@@ -2008,11 +2279,19 @@ SrqConnection::SendPostResult SrqConnection::PostSendBatchLocked(SendBatch& batc
     result.error = IbvPostSrqSend(_qp, batch.wr, &bad);
     result.posted = batch.prepared;
     if (result.error != 0) {
+        // A recognized `bad_wr` only bounds safe accounting. Prepared input
+        // has already been consumed, so `Send()` closes on any post error.
         result.posted = 0;
         while (result.posted < batch.prepared &&
                bad != &batch.wr[result.posted]) {
             ++result.posted;
         }
+        LOG(ERROR) << "Fail to post SRQ sends, worker=" << _worker.get()
+                   << ", qpn=" << _qpn << ", socket_id=" << _sid
+                   << ", wr_count=" << batch.prepared << ", bad_wr=" << bad
+                   << ", bad_wr_index=" << (result.posted < batch.prepared ?
+                                               static_cast<int>(result.posted) : -1)
+                   << ", rc=" << result.error << ": " << berror(result.error);
         if (result.posted == batch.prepared) {
             // With an unrecognized bad_wr, no suffix is known to be unposted.
             // Leave all prepared records and their reservations to completion
@@ -2080,6 +2359,8 @@ ssize_t SrqConnection::Send(butil::IOBuf** from, size_t count) {
         std::unique_ptr<SendBatch, decltype(return_batch)> batch(
             butil::get_object<SendBatch>(), return_batch);
         if (batch == nullptr) {
+            LOG(ERROR) << "Fail to allocate SRQ send batch, worker=" << _worker.get()
+                       << ", qpn=" << _qpn << ", socket_id=" << _sid;
             errno = ENOMEM;
             return -1;
         }
@@ -2121,56 +2402,86 @@ ssize_t SrqConnection::Send(butil::IOBuf** from, size_t count) {
 }
 
 void SrqConnection::Close(int error) {
-    RequestClose(error);
+    bool changed = false;
+    {
+        PostLock lock(this);
+        auto result = RequestCloseLocked(error);
+        changed = result.changed;
+        if (changed) {
+            ScheduleProgressLocked(false);
+        }
+        if (result.failure != nullptr) {
+            // External close has no current worker round. Queue only the
+            // notification handoff, keeping Socket access outside the locks.
+            _worker->Schedule([failure = std::move(result.failure)]() mutable {
+                ProgressRound round;
+                round.failures.push_back(std::move(failure));
+                return round;
+            }, false);
+        }
+    }
+    // Publish close and failure commands before waking. External callers must
+    // cover the event-loop exit race even if another owner is still running.
+    if (changed) {
+        _worker->Kick();
+    }
     WakeWriter();
 }
 
-void SrqConnection::RequestClose(int error) {
-    // Normal close is a request, not synchronous QP destruction:
-    // 1. Under _post_mutex, publish _closing and move a used QP to ERR.
-    // 2. Keep a progress callback pending until TX completion/flush and
-    //    acknowledged LAST_WQE barriers are satisfied. Do not wait here.
-    // 3. Progress observes both barriers. RetireConnections drains RX again,
-    //    destroys the QP and removes its QPN entry under _progress_mutex.
-    // 4. Release the round's retained references outside transport locks.
-    // Socket notification does not wait for QP destruction: public Close wakes
-    // the writer after RequestClose returns, and errors are reported separately
-    // through the deferred notification queue, also outside transport locks.
-    // A QP that never reached RTR skips the LAST_WQE wait. Worker failure uses
-    // DestroyAll instead, since broken completion queues cannot prove drainage.
-    {
-        PostLock lock(this);
-        // Writes are serialized by _post_mutex. Atomic access also allows
-        // completion, receive and delivery paths to observe close without
-        // taking this lock.
-        if (!_closing.load(butil::memory_order_relaxed)) {
-            _closing.store(true, butil::memory_order_release);
-            // Holding _post_mutex ensures in-flight submissions have returned
-            // and prevents new data or grants after this transition. Move a
-            // used QP to ERR at close entry. The event thread never
-            // waits for this lock. A QP that never reached RTR has no in-flight
-            // I/O and can be destroyed directly. RESET -> ERR is not a valid
-            // transition and must not turn an incomplete handshake into a
-            // worker-wide failure.
-            if (_qp && _activation_stage != QpActivationStage::NONE) {
-                ibv_qp_attr attr = {};
-                attr.qp_state = IBV_QPS_ERR;
-                if (IbvModifyQp(_qp, &attr, IBV_QP_STATE) != 0) {
-                    // RequestClose also runs outside worker progress. Keep the
-                    // wakeup so an external close cannot strand a broken worker.
-                    _worker->Fail();
-                }
+SrqConnection::CloseResult SrqConnection::RequestCloseLocked(int error) {
+    // Serialize the close transition with submissions. A used QP enters ERR,
+    // then worker progress waits for TX flush and acknowledged LAST_WQE before
+    // the final RX drain and destruction. Unactivated QPs skip these barriers.
+    // Socket failures remain deferred until after the owner unlocks.
+    CloseResult result;
+    // Writes are serialized by `_post_mutex`. Atomic access also allows
+    // completion, receive and delivery paths to observe close without
+    // taking this lock.
+    if (!_closing.load(butil::memory_order_relaxed)) {
+        result.changed = true;
+        _closing.store(true, butil::memory_order_release);
+        // Holding `_post_mutex` ensures in-flight submissions have returned
+        // and prevents new data or grants after this transition. Move a used
+        // QP to ERR only after acquiring the submit lock.
+        // A QP that never reached RTR has no in-flight I/O and can be destroyed
+        // directly. RESET -> ERR is not a valid transition and must not turn an
+        // incomplete handshake into a worker-wide failure.
+        if (_qp != nullptr && _activation_stage != QpActivationStage::NONE) {
+            ibv_qp_attr attr = {};
+            attr.qp_state = IBV_QPS_ERR;
+            int rc = IbvModifyQp(_qp, &attr, IBV_QP_STATE);
+            if (rc != 0) {
+                LOG(ERROR) << "Fail to move SRQ QP to ERR, worker=" << _worker.get()
+                           << ", qpn=" << _qpn << ", socket_id=" << _sid
+                           << ", rc=" << rc << ": " << berror(rc);
+                // The current owner handles failure. For external close,
+                // `Close()` wakes it after publishing all commands.
+                _worker->MarkBroken();
             }
-            ScheduleProgressLocked(true);
-        }
-        if (error && !_failure_reported) {
-            _failure_reported = true;
-            _worker->NotifyFailure(_sid, error);
         }
     }
-    // Close never dequeues the MPSC queue. An active delivery task discards
-    // remaining input. If delivery never started, connection destruction
-    // releases the nodes after both producer and consumer have exited.
+    if (error != 0 && !_failure_reported) {
+        result.changed = true;
+        _failure_reported = true;
+        result.failure = [
+            weak = std::weak_ptr<SrqConnection>(shared_from_this()), error] {
+            auto self = weak.lock();
+            if (self == nullptr) {
+                return;
+            }
+            SocketUniquePtr socket;
+            // Acquire a Socket reference before checking the generation.
+            // It prevents health-check reset between this check and
+            // `SetFailed`. `Detach` invalidates old notifications even if
+            // `Revive` makes the same `SocketId` addressable again.
+            if (Socket::Address(self->_sid, &socket) == 0 && !self->detached()) {
+                socket->SetFailed(error, "SRQ connection closed: %s", berror(error));
+            }
+        };
+    }
+    // Close never dequeues the MPSC queue. The sole consumer discards closed
+    // input. Destruction releases any remaining nodes after both sides stop.
+    return result;
 }
 
 std::function<void()> SrqConnection::PrepareAsyncEvent(ibv_event_type type) {
@@ -2182,13 +2493,37 @@ std::function<void()> SrqConnection::PrepareAsyncEvent(ibv_event_type type) {
             // without waiting on this event-reader thread or _post_mutex.
             self->_last_wqe.store(true, butil::memory_order_release);
             self->_worker->Kick();
-        } else if (type == IBV_EVENT_QP_FATAL || type == IBV_EVENT_QP_REQ_ERR ||
+        } else if (type == IBV_EVENT_QP_FATAL ||
+                   type == IBV_EVENT_QP_REQ_ERR ||
                    type == IBV_EVENT_QP_ACCESS_ERR) {
+            LOG(ERROR) << "Fatal RDMA async event for SRQ QP, worker=" << self->_worker.get()
+                       << ", qpn=" << self->_qpn << ", socket_id=" << self->_sid
+                       << ", event_type=" << type;
             // The async event thread must not wait for the QP lock: its holder
             // may be destroying a verbs object and waiting for this thread to
             // acknowledge another event. Queue the failure for worker progress
-            // instead.
-            self->_worker->FailConnection(self);
+            // instead. A late callback may enqueue after shutdown drained the
+            // queue, so it must not retain the connection or worker strongly.
+            self->_worker->Schedule([weak = std::weak_ptr<SrqConnection>(self)] {
+                ProgressRound round;
+                auto connection = weak.lock();
+                if (connection == nullptr) {
+                    return round;
+                }
+                // Keep the upgraded reference until after the owner unlocks,
+                // including when the QP was already retired. Final connection
+                // destruction may release input buffers with user deleters.
+                round.writers.push_back(connection);
+                // `_progress_mutex` protects QP retirement. The weak reference
+                // identifies this connection even if QPN or SocketId is reused.
+                if (!connection->_worker->broken() && connection->_qp != nullptr) {
+                    connection->RequestCloseFromWorker(ERDMA);
+                    // A newly registered close callback enters the next batch.
+                    // The owner must revisit it without another event.
+                    round.progressed = true;
+                }
+                return round;
+            }, true);
         }
     };
 }
@@ -2196,7 +2531,7 @@ std::function<void()> SrqConnection::PrepareAsyncEvent(ibv_event_type type) {
 int SrqConnection::EnableReceive() {
     _delivery_enabled.store(true, butil::memory_order_release);
     // Wake input queued during the handshake even if no new CQE arrives.
-    StartDelivery();
+    StartDelivery(false);
     return 0;
 }
 
@@ -2213,26 +2548,28 @@ bool SrqConnection::StartDelivery(bool urgent) {
     // task, avoiding an empty bthread for a late notification. If delivery is
     // not enabled yet, leave input queued for EnableReceive to notify again.
     uint64_t events = 1;
-    butil::IOBuf data;
+    ReceivedBuffer received;
     while (true) {
         if ((_delivery_enabled.load(butil::memory_order_acquire) ||
-             _closing.load(butil::memory_order_acquire)) && _incoming.Dequeue(data)) {
+             _closing.load(butil::memory_order_acquire)) && _incoming.Dequeue(received)) {
             break;
         }
         // Do not store zero directly: a notification racing with the
         // empty/disabled check must make CAS fail and force a recheck.
-        if (_delivery_events.compare_exchange_strong(
-                events, 0, butil::memory_order_acq_rel, butil::memory_order_acquire)) {
+        if (_delivery_events.compare_exchange_strong(events, 0,
+                                                     butil::memory_order_acq_rel,
+                                                     butil::memory_order_acquire)) {
             return false;
         }
     }
 
+    butil::IOBuf data(received.data.movable());
     SocketUniquePtr socket;
     DeliveryTask* task = nullptr;
     int error = 0;
     bool started = false;
     // The first block is dequeued but this call still owns consumption. On any
-    // task-start failure, close, discard input and release consumer ownership
+    // setup failure, close, discard input and release consumer ownership
     // through one cleanup path. All references are released outside transport
     // locks.
     BUTIL_SCOPE_EXIT {
@@ -2266,6 +2603,8 @@ bool SrqConnection::StartDelivery(bool urgent) {
     }
     task = butil::get_object<DeliveryTask>();
     if (!task) {
+        LOG(ERROR) << "Fail to allocate SRQ delivery task, worker=" << _worker.get()
+                   << ", qpn=" << _qpn << ", socket_id=" << _sid;
         error = ENOMEM;
         return false;
     }
@@ -2273,18 +2612,22 @@ bool SrqConnection::StartDelivery(bool urgent) {
     task->connection = shared_from_this();
     task->socket = std::move(socket);
     task->data.swap(data);
-    bthread_attr_t attr = FLAGS_rdma_disable_bthread ? BTHREAD_ATTR_PTHREAD :
-                                                    BTHREAD_ATTR_NORMAL;
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     attr.tag = _tag;
     attr.keytable_pool = task->socket->keytable_pool();
     bthread_t tid;
-    error = urgent && !EventDispatcherUnsched() ?
-        bthread_start_urgent(&tid, &attr, RunDelivery, task) :
-        bthread_start_background(&tid, &attr, RunDelivery, task);
-    // Success transfers the task and consumer ownership. An urgent task may
-    // already have finished, so do not access task again.
-    started = (error == 0);
-    return started;
+    error = StartTask(urgent, &tid, &attr, RunDelivery, task);
+    // Both scheduled and inline execution take the task and consumer
+    // ownership. An urgent task may already have finished. Disable cleanup
+    // before invoking the fallback, which also releases the task itself.
+    started = true;
+    if (error != 0) {
+        LOG(ERROR) << "Fail to start SRQ delivery task, worker=" << _worker.get()
+                   << ", qpn=" << _qpn << ", socket_id=" << _sid
+                   << ", rc=" << error << ": " << berror(error) << ", running inline";
+        RunDelivery(task);
+    }
+    return true;
 }
 
 void* SrqConnection::RunDelivery(void* arg) {
@@ -2309,10 +2652,9 @@ void SrqConnection::Consume(Socket* socket, butil::IOBuf data) {
         // closed input must not reach the protocol parser.
         if (_delivery_enabled.load(butil::memory_order_acquire) ||
             _closing.load(butil::memory_order_acquire)) {
-            butil::IOBuf received;
+            ReceivedBuffer received;
             while (_incoming.Dequeue(received)) {
-                data.append(received);
-                received.clear();
+                data.append(received.data.movable());
             }
             if (!data.empty() && !_closing.load(butil::memory_order_acquire) &&
                 socket) {

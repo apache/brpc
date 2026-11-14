@@ -61,6 +61,10 @@ extern int (*IbvPollSrqCq)(ibv_cq*, int, ibv_wc*);
 extern butil::atomic<void (*)(SrqWorker*, bool, butil::atomic<uint64_t>*, SrqReceivePool*)>
     SrqWorkerStopHookForTest;
 extern butil::atomic<void (*)()> SrqPostLockRetryHookForTest;
+extern butil::atomic<void (*)(bool)> SrqFailureHookForTest;
+extern butil::atomic<void (*)(SrqWorker*)> SrqWorkerKickHookForTest;
+extern std::shared_ptr<SrqWorker> CreateSrqWorkerForTest();
+extern bool SrqWorkerIdleForTest(const SrqWorker* worker);
 extern int (*IbvQueryDevice)(ibv_context*, ibv_device_attr*);
 extern bool ValidateSrqDevice(ibv_context*);
 extern int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask);
@@ -203,6 +207,37 @@ TEST_F(RdmaSrqDeviceTest, rejects_depths_exceeding_device_limits) {
     EXPECT_TRUE(rdma::ValidateSrqDevice(&_context));
 }
 
+// These synchronization tests run in ordinary CI without a device, QP, server
+// or `--rdma_test_enable`. Only the worker's software state is constructed.
+class RdmaSrqConcurrencyTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        SocketOptions options;
+        SocketId sid;
+        ASSERT_EQ(0, Socket::Create(options, &sid));
+        ASSERT_EQ(0, Socket::Address(sid, &_socket));
+        _connection = CreateConnection(_socket.get());
+    }
+
+    void TearDown() override {
+        if (_connection != nullptr) {
+            _connection->Close();
+            _connection.reset();
+        }
+        if (_socket != nullptr) {
+            _socket->SetFailed();
+        }
+    }
+
+    std::shared_ptr<rdma::SrqConnection> CreateConnection(Socket* socket) {
+        return std::shared_ptr<rdma::SrqConnection>(new rdma::SrqConnection(
+            rdma::CreateSrqWorkerForTest(), socket, BTHREAD_TAG_DEFAULT));
+    }
+
+    SocketUniquePtr _socket;
+    std::shared_ptr<rdma::SrqConnection> _connection;
+};
+
 // A small real registered pool makes overload and recovery observable without
 // allocating gigabytes or mutating options while a worker is using them.
 class RdmaSrqPoolTest : public RdmaTest {
@@ -273,7 +308,16 @@ protected:
         ASSERT_TRUE(connection);
         butil::IOBuf payload;
         ASSERT_EQ(0, payload.resize(64 * 1024, 'h'));
-        for (int i = 0; i < 32; ++i) {
+        // Registered bytes include growth that the owner has not adopted yet.
+        // Count retained SRQ payload instead. This lower bound on occupied
+        // blocks keeps fewer than 32 spare blocks even after all growth and
+        // transient request-buffer returns finish.
+        size_t retained_srq_bytes = 0;
+        size_t pressure_bytes = static_cast<size_t>(rdma::FLAGS_rdma_srq_pool_blocks -
+            rdma::FLAGS_rdma_srq_depth - 32) * rdma::GetRdmaBlockSize();
+        int64_t deadline = butil::gettimeofday_us() + WAIT_TIMEOUT_US;
+        for (int i = 0; ; ++i) {
+            ASSERT_LT(butil::gettimeofday_us(), deadline);
             Controller cntl;
             test::EchoRequest req;
             test::EchoResponse res;
@@ -282,10 +326,14 @@ protected:
             ::test::EchoService::Stub(&channels[i % 4]).Echo(&cntl, &req, &res, nullptr);
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             ASSERT_TRUE(cntl.response_attachment().equals(payload));
+            for (size_t j = 0; j < cntl.response_attachment().backing_block_num(); ++j) {
+                auto block = cntl.response_attachment().backing_block(j);
+                if (rdma::SrqReceivePool::RegionId(block.data()) != 0) {
+                    retained_srq_bytes += block.size();
+                }
+            }
             retained->push_back(cntl.response_attachment());
-            if (rdma::SrqReceivePool::RegisteredBytes() ==
-                    rdma::GetRdmaBlockSize() * rdma::FLAGS_rdma_srq_pool_blocks &&
-                SrqCounter(connection, "rdma_srq_pool_free") < 32) {
+            if (retained_srq_bytes > pressure_bytes) {
                 break;
             }
         }
@@ -359,7 +407,9 @@ TEST_F(RdmaSrqPoolTest, zero_copy_attachment_outlives_worker) {
     rdma::FLAGS_rdma_srq_pool_blocks = 1024;
     butil::IOBuf received;
     butil::IOBuf expected;
-    ASSERT_EQ(0, expected.resize(1048576, 'q'));
+    // Keep both request and reply within the initial spare blocks so this
+    // lifetime check does not depend on background growth beating the reply.
+    ASSERT_EQ(0, expected.resize(64 * 1024, 'q'));
     {
         Channel channel;
         ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "attachment_outlives_worker"));
@@ -410,13 +460,11 @@ TEST_F(RdmaSrqPoolTest, copied_receives_recover_full_posted_capacity) {
     }));
 }
 
-TEST_F(RdmaSrqPoolTest, held_attachments_release_and_resume) {
+TEST_F(RdmaSrqPoolTest, held_attachments_allow_copy_fallback) {
     Channel channels[4], blocked;
     for (int i = 0; i < 4; ++i) {
         ASSERT_NO_FATAL_FAILURE(InitChannel(&channels[i], "pool_hold_" + std::to_string(i)));
     }
-    // Establish the connection first so connection-validation RPCs do not wait
-    // on an exhausted receive pool.
     ASSERT_NO_FATAL_FAILURE(InitChannel(&blocked, "pool_resume"));
     auto connection = Connection(channels[0]);
     ASSERT_TRUE(connection);
@@ -426,25 +474,120 @@ TEST_F(RdmaSrqPoolTest, held_attachments_release_and_resume) {
     EXPECT_GT(rdma::SrqReceivePool::RegisteredBytes(), initial_bytes);
     PendingEcho call;
     ASSERT_NO_FATAL_FAILURE(call.Start(blocked, 512 * 1024));
-    ASSERT_TRUE(WaitUntil([&] {
-        return SrqCounter(connection, "rdma_srq_pool_free") == 0 &&
-            SrqCounter(connection, "rdma_srq_posted") == 0;
-    }));
-    EXPECT_FALSE(call.done.load(butil::memory_order_acquire));
+    // Completion must not depend on returning any of the retained attachments.
+    ASSERT_TRUE(WaitUntil([&] { return call.done.load(butil::memory_order_acquire); }));
+    ASSERT_FALSE(call.cntl.Failed()) << call.cntl.ErrorText();
+    EXPECT_TRUE(call.cntl.response_attachment().equals(call.payload));
+    size_t copied_bytes = 0;
+    for (size_t i = 0; i < call.cntl.response_attachment().backing_block_num(); ++i) {
+        auto block = call.cntl.response_attachment().backing_block(i);
+        if (rdma::SrqReceivePool::RegionId(block.data()) == 0) {
+            copied_bytes += block.size();
+        }
+    }
+    EXPECT_GT(copied_bytes, 0u);
     EXPECT_EQ(0, SrqCounter(connection, "rdma_srq_closing"));
     butil::IOBuf expected;
     ASSERT_EQ(0, expected.resize(64 * 1024, 'h'));
     for (const auto& data : retained) {
         EXPECT_TRUE(data.equals(expected));
     }
-    // With no posted receive WRs left, returning blocks must wake the
-    // worker and refill the SRQ without another incoming CQ event.
     retained.clear();
-    ASSERT_TRUE(WaitUntil([&] { return call.done.load(butil::memory_order_acquire); }));
-    ASSERT_FALSE(call.cntl.Failed()) << call.cntl.ErrorText();
-    EXPECT_TRUE(call.cntl.response_attachment().equals(call.payload));
+    // Returns do not notify the worker. A new receive round absorbs them and
+    // restores zero-copy after pressure goes away without changing any option.
+    ASSERT_EQ(1, SendEchoRpcs(blocked, 1, 0));
+    Controller recovered;
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message("zero-copy after pressure");
+    recovered.request_attachment().append(expected);
+    ::test::EchoService::Stub(&blocked).Echo(&recovered, &req, &res, nullptr);
+    ASSERT_FALSE(recovered.Failed()) << recovered.ErrorText();
+    ASSERT_TRUE(recovered.response_attachment().equals(expected));
+    EXPECT_NE(rdma::SrqReceivePool::RegionId(recovered.response_attachment().fetch1()), 0u);
     ASSERT_TRUE(WaitUntil([&] { return SrqCounter(connection, "rdma_srq_posted") == 32; }));
     EXPECT_FALSE(connection->worker_retired());
+}
+
+TEST_F(RdmaSrqPoolTest, partial_message_larger_than_pool_preserves_receive_progress) {
+    Channel large, neighbor;
+    ASSERT_NO_FATAL_FAILURE(InitChannel(&large, "partial_larger_than_pool"));
+    ASSERT_NO_FATAL_FAILURE(InitChannel(&neighbor, "beside_partial_message"));
+    auto connection = Connection(large);
+    ASSERT_EQ(connection->_worker, Connection(neighbor)->_worker);
+    size_t pool_limit = rdma::GetRdmaBlockSize() * rdma::FLAGS_rdma_srq_pool_blocks;
+    PendingEcho big;
+    ASSERT_GT(4 * 1024 * 1024u, pool_limit);
+    // No application-held attachments exist before this request. Its parser
+    // alone can retain more bytes than the bounded SRQ pool can allocate.
+    ASSERT_NO_FATAL_FAILURE(big.Start(large, 4 * 1024 * 1024));
+    EXPECT_EQ(8, SendEchoRpcs(neighbor, 8, 64));
+    ASSERT_TRUE(WaitUntil([&] { return big.done.load(butil::memory_order_acquire); }));
+    ASSERT_FALSE(big.cntl.Failed()) << big.cntl.ErrorText();
+    EXPECT_TRUE(big.cntl.response_attachment().equals(big.payload));
+    EXPECT_LE(rdma::SrqReceivePool::RegisteredBytes(), pool_limit);
+    // The large reply remains held here, including any zero-copy prefixes.
+    EXPECT_EQ(1, SendEchoRpcs(neighbor, 1, 64));
+    ASSERT_TRUE(WaitUntil([&] { return SrqCounter(connection, "rdma_srq_posted") == 32; }));
+}
+
+namespace {
+butil::atomic<bool> deferred_failure_entered{false};
+butil::atomic<bool> deferred_failure_resume{false};
+butil::atomic<bool> deferred_failure_finished{false};
+
+void PauseDeferredFailure(bool before) {
+    if (before) {
+        deferred_failure_entered.store(true, butil::memory_order_release);
+        while (!deferred_failure_resume.load(butil::memory_order_acquire)) {
+            bthread_usleep(1000);
+        }
+    } else {
+        deferred_failure_finished.store(true, butil::memory_order_release);
+    }
+}
+}  // namespace
+
+TEST_F(RdmaSrqPoolTest, deferred_failure_does_not_fail_revived_socket) {
+    SocketOptions options;
+    options.socket_mode = SOCKET_MODE_RDMA;
+    SocketId sid;
+    ASSERT_EQ(0, Socket::Create(options, &sid));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(sid, &socket));
+    BUTIL_SCOPE_EXIT { socket->SetFailed(); };
+    auto* endpoint = RdmaTransportOf(socket)->GetRdmaEp();
+    auto old = rdma::SrqConnection::Create(socket.get(), BTHREAD_TAG_DEFAULT, 32);
+    ASSERT_NE(nullptr, old);
+    endpoint->_connection = old;
+    deferred_failure_entered.store(false);
+    deferred_failure_resume.store(false);
+    deferred_failure_finished.store(false);
+    rdma::SrqFailureHookForTest.store(PauseDeferredFailure, butil::memory_order_release);
+    BUTIL_SCOPE_EXIT {
+        deferred_failure_resume.store(true, butil::memory_order_release);
+        rdma::SrqFailureHookForTest.store(nullptr, butil::memory_order_release);
+    };
+    old->Close(ERDMA);
+    ASSERT_TRUE(WaitUntil([] { return deferred_failure_entered.load(); }));
+    ASSERT_FALSE(socket->Failed());
+    ASSERT_EQ(0, socket->SetFailed(ECONNRESET, "Simulate independent TCP failure"));
+    endpoint->Reset();
+    socket->Revive(1);
+    auto current = rdma::SrqConnection::Create(socket.get(), BTHREAD_TAG_DEFAULT, 32);
+    ASSERT_NE(nullptr, current);
+    endpoint->_connection = current;
+    ASSERT_TRUE(old->detached());
+    ASSERT_FALSE(socket->Failed());
+
+    deferred_failure_resume.store(true, butil::memory_order_release);
+    ASSERT_TRUE(WaitUntil([] { return deferred_failure_finished.load(); }));
+    EXPECT_FALSE(socket->Failed());
+    EXPECT_TRUE(endpoint->OwnsConnection(current.get()));
+    rdma::SrqFailureHookForTest.store(nullptr, butil::memory_order_release);
+    // Transport close itself must still report errors before endpoint detach.
+    current->Close(ERDMA);
+    ASSERT_TRUE(WaitUntil([&] { return socket->Failed(); }));
 }
 
 TEST_F(RdmaSrqPoolTest, quiet_one_way_send_releases_user_memory) {
@@ -532,10 +675,8 @@ TEST_F(RdmaSrqPoolTest, blocked_callback_does_not_stall_same_connection_or_other
     call.release.store(true, butil::memory_order_release);
 }
 
-TEST_F(RdmaSrqPoolTest, close_leaves_queued_data_to_the_single_consumer) {
-    Channel channel;
-    ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "close_blocked_consumer"));
-    auto connection = Connection(channel);
+TEST_F(RdmaSrqConcurrencyTest, close_leaves_queued_data_to_the_single_consumer) {
+    auto connection = _connection;
     ASSERT_TRUE(connection);
     // Hold consumer ownership without dequeueing. Application callbacks no
     // longer own consumption and cannot be used to block the consumer.
@@ -544,7 +685,9 @@ TEST_F(RdmaSrqPoolTest, close_leaves_queued_data_to_the_single_consumer) {
         return connection->_delivery_events.compare_exchange_strong(
             events, 1, butil::memory_order_acq_rel);
     }));
-    auto consume = butil::MakeScopeGuard([&] { connection->Consume(nullptr); });
+    auto consume = butil::MakeScopeGuard([&] {
+        connection->Consume(nullptr, butil::IOBuf());
+    });
 
     auto released = std::make_shared<butil::atomic<int>>(0);
     butil::IOBuf received;
@@ -556,12 +699,12 @@ TEST_F(RdmaSrqPoolTest, close_leaves_queued_data_to_the_single_consumer) {
     }));
     ASSERT_TRUE(connection->EnqueueReceived(received));
     received.clear();
-    connection->StartDelivery();
+    connection->StartDelivery(false);
     connection->Close();
     // Close stops submission but must not Dequeue concurrently. The current
     // consumer still owns the queue.
     EXPECT_EQ(0, released->load(butil::memory_order_acquire));
-    connection->Consume(nullptr);
+    connection->Consume(nullptr, butil::IOBuf());
     consume.dismiss();
     ASSERT_TRUE(WaitUntil([&] {
         return connection->_delivery_events.load(butil::memory_order_acquire) == 0 &&
@@ -570,7 +713,7 @@ TEST_F(RdmaSrqPoolTest, close_leaves_queued_data_to_the_single_consumer) {
     EXPECT_FALSE(connection->EnqueueReceived(received));
 }
 
-TEST_F(RdmaSrqPoolTest, delivery_early_exit_releases_payloads_and_consumer) {
+TEST_F(RdmaSrqConcurrencyTest, delivery_early_exit_releases_payloads_and_consumer) {
     for (bool socket_failed : {false, true}) {
         SCOPED_TRACE(socket_failed);
         SocketOptions options;
@@ -581,8 +724,7 @@ TEST_F(RdmaSrqPoolTest, delivery_early_exit_releases_payloads_and_consumer) {
         BUTIL_SCOPE_EXIT {
             socket->SetFailed();
         };
-        auto connection = rdma::SrqConnection::Create(
-            socket.get(), BTHREAD_TAG_DEFAULT, rdma::FLAGS_rdma_srq_sq_size);
+        auto connection = CreateConnection(socket.get());
         ASSERT_TRUE(connection);
         ASSERT_EQ(0, connection->EnableReceive());
 
@@ -606,7 +748,7 @@ TEST_F(RdmaSrqPoolTest, delivery_early_exit_releases_payloads_and_consumer) {
         } else {
             connection->Close();
         }
-        EXPECT_FALSE(connection->StartDelivery());
+        EXPECT_FALSE(connection->StartDelivery(false));
         // Cover both the prefetched first block and later queued blocks.
         // Release each once and return consumer ownership.
         EXPECT_EQ(2, released->load(butil::memory_order_acquire));
@@ -618,6 +760,59 @@ TEST_F(RdmaSrqPoolTest, delivery_early_exit_releases_payloads_and_consumer) {
             return connection->qp() == nullptr;
         }));
     }
+}
+
+TEST_F(RdmaSrqConcurrencyTest, enable_and_enqueue_notify_the_existing_consumer) {
+    auto connection = _connection;
+    char bytes[2][8] = {};
+    butil::atomic<int> released{0};
+    butil::atomic<bool> reached{false};
+    butil::atomic<bool> resume{false};
+    butil::IOBuf first;
+    std::thread consumer;
+    BUTIL_SCOPE_EXIT {
+        resume.store(true, butil::memory_order_release);
+        if (consumer.joinable()) {
+            consumer.join();
+        }
+        connection->Close();
+        connection->Consume(nullptr, butil::IOBuf());
+    };
+    ASSERT_EQ(0, first.append_user_data(bytes[0], sizeof(bytes[0]), [&](void*) {
+        reached.store(true, butil::memory_order_release);
+        while (!resume.load(butil::memory_order_acquire)) {
+            bthread_usleep(1000);
+        }
+        released.fetch_add(1, butil::memory_order_release);
+    }));
+    ASSERT_TRUE(connection->EnqueueReceived(first.movable()));
+    // Input arriving during the handshake remains queued without a consumer.
+    EXPECT_FALSE(connection->StartDelivery(false));
+    EXPECT_EQ(0u, connection->_delivery_events.load(butil::memory_order_acquire));
+    EXPECT_EQ(0, released.load(butil::memory_order_acquire));
+
+    // Elect a consumer before enabling delivery. `EnableReceive` must notify
+    // this owner instead of starting another task or leaving the input asleep.
+    connection->_delivery_events.store(1, butil::memory_order_release);
+    ASSERT_EQ(0, connection->EnableReceive());
+    EXPECT_EQ(2u, connection->_delivery_events.load(butil::memory_order_acquire));
+    consumer = std::thread([&] { connection->Consume(nullptr, butil::IOBuf()); });
+    ASSERT_TRUE(WaitUntil([&] { return reached.load(butil::memory_order_acquire); }));
+    // The first queue drain has finished, but its deleter pauses before the
+    // exit CAS. A concurrent notification must force another drain by the same
+    // consumer, without requiring any later receive or timeout.
+    butil::IOBuf second;
+    ASSERT_EQ(0, second.append_user_data(bytes[1], sizeof(bytes[1]), [&](void*) {
+        released.fetch_add(1, butil::memory_order_release);
+    }));
+    ASSERT_TRUE(connection->EnqueueReceived(second.movable()));
+    EXPECT_FALSE(connection->StartDelivery(false));
+    EXPECT_EQ(3u, connection->_delivery_events.load(butil::memory_order_acquire));
+    resume.store(true, butil::memory_order_release);
+    consumer.join();
+    ASSERT_EQ(2, released.load(butil::memory_order_acquire));
+    EXPECT_EQ(0u, connection->_delivery_events.load(butil::memory_order_acquire));
+    EXPECT_FALSE(connection->StartDelivery(false));
 }
 
 // Verify receive delivery and fragmented RPC parsing.
@@ -651,7 +846,7 @@ protected:
             return -1;
         }
         int64_t bytes = RdmaTransportOf(peer)->_rdma_ep->_input_processor.read_buf().size();
-        connection->Consume(peer);
+        connection->Consume(peer, butil::IOBuf());
         return bytes;
     }
 
@@ -713,7 +908,7 @@ TEST_F(RdmaSrqReceiveTest, queued_data_waits_for_enable_receive) {
     int served = g_echo_served.load(butil::memory_order_relaxed);
     ASSERT_TRUE(receiver->EnqueueReceived(header.movable()));
     EXPECT_TRUE(header.empty());
-    EXPECT_FALSE(receiver->StartDelivery());
+    EXPECT_FALSE(receiver->StartDelivery(false));
     ASSERT_TRUE(WaitUntil([&] {
         return receiver->_delivery_events.load(butil::memory_order_acquire) == 0;
     }));
@@ -724,6 +919,38 @@ TEST_F(RdmaSrqReceiveTest, queued_data_waits_for_enable_receive) {
                BufferedBytes(peer.get()) == 0;
     }));
     EXPECT_EQ(0, PeerError(peer.get()));
+}
+
+TEST(RdmaSrqReceiveBufferTest, queue_transfers_blockref_storage) {
+    char bytes[3][16];
+    int released = 0;
+    butil::IOBuf input;
+    for (int i = 0; i < 3; ++i) {
+        memset(bytes[i], 'a' + i, sizeof(bytes[i]));
+        ASSERT_EQ(0, input.append_user_data(bytes[i], sizeof(bytes[i]),
+                                          [&](void*) { ++released; }));
+    }
+    ASSERT_EQ(3u, input.backing_block_num());
+    // A multi-block copy allocates another BlockRef array. Moving through
+    // both queue boundaries must preserve the original storage and payloads.
+    auto* refs = input._bv.refs;
+    using ReceivedBuffer = rdma::SrqConnection::ReceivedBuffer;
+    butil::MPSCQueue<ReceivedBuffer, butil::ObjectPoolAllocator<ReceivedBuffer>> queue;
+    queue.Emplace(input.movable());
+    ASSERT_TRUE(input.empty());
+    ReceivedBuffer received;
+    ASSERT_TRUE(queue.Dequeue(received));
+    EXPECT_EQ(refs, received.data._bv.refs);
+    EXPECT_EQ(0, released);
+    butil::IOBuf data;
+    data.append(received.data.movable());
+    EXPECT_TRUE(received.data.empty());
+    EXPECT_EQ(refs, data._bv.refs);
+    EXPECT_EQ(std::string(16, 'a') + std::string(16, 'b') + std::string(16, 'c'),
+              data.to_string());
+    EXPECT_FALSE(queue.Dequeue(received));
+    data.clear();
+    EXPECT_EQ(3, released);
 }
 
 TEST_F(RdmaSrqReceiveTest, concurrent_enqueue_and_consumer_handoff) {
@@ -746,7 +973,7 @@ TEST_F(RdmaSrqReceiveTest, concurrent_enqueue_and_consumer_handoff) {
                     failed.store(true, butil::memory_order_relaxed);
                     return;
                 }
-                receiver->StartDelivery();
+                receiver->StartDelivery(false);
                 if (j % 8 == 0) {
                     std::this_thread::yield();
                 }
@@ -827,6 +1054,13 @@ struct SrqPostPause {
 butil::atomic<SrqPostPause*> g_send_post_pause{nullptr};
 butil::atomic<uint32_t> g_observe_tx_qpn{0};
 butil::atomic<bool> g_observed_tx{false};
+butil::atomic<uint32_t> g_observe_rx_qpn{0};
+butil::atomic<bool> g_observed_rx{false};
+enum class SrqCloseFault { TX, RX, ASYNC };
+// Replace one real completion's status, keeping its identity and accounting.
+butil::atomic<uint32_t> g_completion_fault_qpn{0};
+butil::atomic<bool> g_completion_fault_receive{false};
+butil::atomic<unsigned> g_completion_fault_hits{0};
 // Pause reads from a selected TX CQ to deterministically exhaust shared-CQ or
 // per-connection SQ capacity.
 butil::atomic<ibv_cq*> g_paused_tx_cq{nullptr};
@@ -859,6 +1093,20 @@ butil::atomic<uint64_t> g_observed_send_wrs{0};
 decltype(rdma::IbvPostSrqSend) g_real_srq_send = nullptr;
 decltype(rdma::IbvPostSrqRecv) g_real_srq_recv = nullptr;
 decltype(rdma::IbvPollSrqCq) g_real_srq_poll = nullptr;
+
+struct SrqRefillObservation {
+    ibv_cq* rx_cq{nullptr};
+    ibv_cq* tx_cq{nullptr};
+    ibv_srq* srq{nullptr};
+    // Both hooks run under the selected worker's `_progress_mutex`.
+    bool refill_pending{false};
+    bool rx_poll_pending{false};
+    butil::atomic<unsigned> received_batches{0};
+    butil::atomic<unsigned> sent_batches{0};
+    butil::atomic<unsigned> polls_before_refill{0};
+    butil::atomic<unsigned> tx_polls_before_rx{0};
+};
+butil::atomic<SrqRefillObservation*> g_srq_refill_observation{nullptr};
 
 // Submit a real prefix to the NIC, then simulate the provider rejecting the
 // suffix. An invalid `bad_wr` exercises the conservative DMA teardown path.
@@ -927,22 +1175,59 @@ int ObservedSrqPoll(ibv_cq* cq, int count, ibv_wc* wc) {
         g_tx_poll_paused.store(true, butil::memory_order_release);
         return 0;
     }
+    auto* observation = g_srq_refill_observation.load(butil::memory_order_acquire);
+    bool observe_rx = observation != nullptr && cq == observation->rx_cq;
+    bool observe_tx = observation != nullptr && cq == observation->tx_cq;
+    if (observe_tx && observation->rx_poll_pending) {
+        observation->tx_polls_before_rx.fetch_add(1, butil::memory_order_relaxed);
+    }
+    if (observe_rx) {
+        observation->rx_poll_pending = false;
+    }
+    if (observe_rx && observation->refill_pending) {
+        observation->polls_before_refill.fetch_add(1, butil::memory_order_relaxed);
+    }
     int n = g_real_srq_poll(cq, count, wc);
+    if (observe_rx && n > 0) {
+        observation->refill_pending = true;
+        observation->received_batches.fetch_add(1, butil::memory_order_relaxed);
+    }
+    if (observe_tx && n > 0) {
+        observation->rx_poll_pending = true;
+        observation->sent_batches.fetch_add(1, butil::memory_order_relaxed);
+    }
     for (int i = 0; i < n; ++i) {
         if (wc[i].status == IBV_WC_SUCCESS && wc[i].opcode == IBV_WC_SEND &&
             wc[i].qp_num == g_observe_tx_qpn.load()) {
             g_observed_tx.store(true, butil::memory_order_release);
+        }
+        if (wc[i].status == IBV_WC_SUCCESS && wc[i].opcode == IBV_WC_RECV &&
+            wc[i].qp_num == g_observe_rx_qpn.load()) {
+            g_observed_rx.store(true, butil::memory_order_release);
+        }
+        uint32_t qpn = g_completion_fault_qpn.load(butil::memory_order_acquire);
+        bool receive = g_completion_fault_receive.load(butil::memory_order_relaxed);
+        if (qpn != 0 && wc[i].qp_num == qpn && wc[i].status == IBV_WC_SUCCESS &&
+            wc[i].opcode == (receive ? IBV_WC_RECV : IBV_WC_SEND) &&
+            g_completion_fault_qpn.compare_exchange_strong(qpn, 0)) {
+            wc[i].status = IBV_WC_LOC_QP_OP_ERR;
+            g_completion_fault_hits.fetch_add(1, butil::memory_order_release);
         }
     }
     return n;
 }
 
 int FaultedSrqRecv(ibv_srq* srq, ibv_recv_wr* wr, ibv_recv_wr** bad) {
-    return InjectSrqPostFailure(srq, wr, bad, g_recv_post_fault, g_real_srq_recv);
+    int rc = InjectSrqPostFailure(srq, wr, bad, g_recv_post_fault, g_real_srq_recv);
+    auto* observation = g_srq_refill_observation.load(butil::memory_order_acquire);
+    if (rc == 0 && observation != nullptr && srq == observation->srq) {
+        observation->refill_pending = false;
+    }
+    return rc;
 }
 }  // namespace
 
-class RdmaSrqPostTest : public RdmaSrqPoolTest {
+class RdmaSrqPostTest : public RdmaSrqReceiveTest {
 protected:
     void SetUp() override {
         RdmaSrqPoolTest::SetUp();
@@ -957,6 +1242,11 @@ protected:
         g_send_post_pause.store(nullptr);
         g_observe_tx_qpn.store(0);
         g_observed_tx.store(false);
+        g_observe_rx_qpn.store(0);
+        g_observed_rx.store(false);
+        g_completion_fault_qpn.store(0);
+        g_completion_fault_receive.store(false);
+        g_completion_fault_hits.store(0);
         g_paused_tx_cq.store(nullptr);
         g_tx_poll_paused.store(false);
         g_real_srq_send = rdma::IbvPostSrqSend;
@@ -973,9 +1263,12 @@ protected:
             g_send_post_fault.after.store(-1);
             g_recv_post_fault.after.store(-1);
             g_paused_tx_cq.store(nullptr);
+            g_completion_fault_qpn.store(0);
         }
         RdmaSrqPoolTest::TearDown();
         if (_hooked) {
+            // The fixture owns the observer until all worker hooks have exited.
+            g_srq_refill_observation.store(nullptr, butil::memory_order_release);
             rdma::IbvPostSrqSend = g_real_srq_send;
             rdma::IbvPostSrqRecv = g_real_srq_recv;
             rdma::IbvPollSrqCq = g_real_srq_poll;
@@ -1011,6 +1304,75 @@ protected:
         // the owner to read CQEs already present.
         rdma::SrqConnection::PostLock lock(connection.get());
         connection->ScheduleProgressLocked(true);
+    }
+
+    void CheckErrorDuringPost(SrqCloseFault fault) {
+        Channel channel, other;
+        std::string group = "error_during_post_" + std::to_string(static_cast<int>(fault));
+        ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, group));
+        ASSERT_NO_FATAL_FAILURE(InitChannel(&other, "beside_" + group));
+        auto connection = Connection(channel);
+        ASSERT_NE(nullptr, connection);
+        ASSERT_EQ(connection->_worker, Connection(other)->_worker);
+        SocketUniquePtr socket;
+        ASSERT_EQ(0, Socket::Address(channel._server_id, &socket));
+        ASSERT_TRUE(WaitUntil([&] {
+            return SrqCounter(connection, "rdma_srq_tx_outstanding") == 0;
+        }));
+
+        uint32_t qpn = ConnectionQpn(*connection);
+        g_completion_fault_hits.store(0);
+        if (fault != SrqCloseFault::ASYNC) {
+            g_completion_fault_receive.store(fault == SrqCloseFault::RX);
+            g_completion_fault_qpn.store(qpn, butil::memory_order_release);
+        }
+        PendingEcho neighbor;
+        SrqPostPause pause;
+        g_send_fault_qpn.store(qpn);
+        g_send_post_pause.store(&pause);
+        pause.submitter = std::thread([&] {
+            // A real response may arrive before the injected close request.
+            // This RPC's outcome is independent of the isolation assertion.
+            SendEchoRpcs(channel, 1, 64);
+        });
+        ASSERT_TRUE(WaitUntil([&] { return pause.reached.load(); }));
+        if (fault == SrqCloseFault::ASYNC) {
+            // Repeat the request while the lock is busy to cover coalescing.
+            auto callback = connection->PrepareAsyncEvent(IBV_EVENT_QP_FATAL);
+            callback();
+            callback();
+        } else {
+            ASSERT_TRUE(WaitUntil([] { return g_completion_fault_hits.load() == 1; }));
+        }
+        ASSERT_TRUE(WaitUntil([&] {
+            return connection->_progress_scheduled.load(butil::memory_order_acquire) &&
+                connection->_post_retry.load(butil::memory_order_acquire);
+        }));
+        EXPECT_FALSE(connection->_closing.load(butil::memory_order_acquire));
+
+        // Require completion before releasing the paused submitter, with a
+        // generous deadline rather than a latency assertion.
+        neighbor.Start(other, 64);
+        bool independent = WaitUntil([&] {
+            return neighbor.done.load(butil::memory_order_acquire);
+        });
+        pause.resume.store(true, butil::memory_order_release);
+        pause.submitter.join();
+        EXPECT_TRUE(independent);
+        ASSERT_TRUE(WaitUntil([&] { return neighbor.done.load(); }));
+        EXPECT_FALSE(neighbor.cntl.Failed()) << neighbor.cntl.ErrorText();
+
+        // No new work is sent to the failed connection. Unlock must resume
+        // close, including the TX/LAST_WQE/RX barriers and QP destruction.
+        ASSERT_TRUE(WaitUntil([&] {
+            rdma::SrqConnection::PostLock lock(connection.get());
+            return connection->qp() == nullptr;
+        }));
+        EXPECT_TRUE(connection->_closing.load(butil::memory_order_acquire));
+        ASSERT_TRUE(WaitUntil([&] { return socket->Failed(); }));
+        EXPECT_EQ(fault == SrqCloseFault::RX ? EPROTO : ERDMA, PeerError(socket.get()));
+        EXPECT_FALSE(connection->worker_retired());
+        EXPECT_EQ(1, SendEchoRpcs(other, 1, 64));
     }
 
     void FailRefill(bool unknown) {
@@ -1077,10 +1439,20 @@ protected:
         ASSERT_TRUE(Connection(recovered));
         ASSERT_EQ(16, SendEchoRpcs(recovered, 16, 8192));
     }
+    SrqRefillObservation _refill_observation;
     bool _hooked = false;
 };
 
 namespace {
+butil::atomic<rdma::SrqWorker*> g_close_kick_worker{nullptr};
+butil::atomic<unsigned int> g_close_kicks{0};
+
+void ObserveCloseKick(rdma::SrqWorker* worker) {
+    if (worker == g_close_kick_worker.load(butil::memory_order_acquire)) {
+        g_close_kicks.fetch_add(1, butil::memory_order_relaxed);
+    }
+}
+
 struct SrqEventExitPause {
     // Fix the target worker and pause point while other workers continue
     // normally.
@@ -1119,8 +1491,93 @@ void PauseSrqEventExit(rdma::SrqWorker* worker, bool after_decision,
 }
 }  // namespace
 
+TEST_F(RdmaSrqPoolTest, close_coalesces_worker_wakeups) {
+    auto check_close = [&](bool from_worker, bool late_error) {
+        SCOPED_TRACE(from_worker);
+        SCOPED_TRACE(late_error);
+        SocketOptions options;
+        SocketId sid;
+        ASSERT_EQ(0, Socket::Create(options, &sid));
+        SocketUniquePtr socket;
+        ASSERT_EQ(0, Socket::Address(sid, &socket));
+        BUTIL_SCOPE_EXIT { socket->SetFailed(); };
+        auto connection = rdma::SrqConnection::Create(
+            socket.get(), BTHREAD_TAG_DEFAULT, rdma::FLAGS_rdma_srq_sq_size);
+        ASSERT_NE(nullptr, connection);
+        BUTIL_SCOPE_EXIT { connection->Close(); };
+        std::function<void()> async_failure;
+        if (from_worker) {
+            async_failure = connection->PrepareAsyncEvent(IBV_EVENT_QP_FATAL);
+        }
+
+        // An inactive QP produces no completion or `LAST_WQE` event to hide a
+        // missing software wakeup. It can be retired in the current round.
+        if (late_error) {
+            connection->Close();
+            ASSERT_TRUE(WaitUntil([&] {
+                return !connection->_progress_scheduled.load(butil::memory_order_acquire);
+            }));
+            EXPECT_FALSE(socket->Failed());
+        }
+        g_close_kicks.store(0, butil::memory_order_relaxed);
+        g_close_kick_worker.store(connection->_worker.get(), butil::memory_order_release);
+        rdma::SrqWorkerKickHookForTest.store(ObserveCloseKick, butil::memory_order_release);
+        BUTIL_SCOPE_EXIT {
+            rdma::SrqWorkerKickHookForTest.store(nullptr, butil::memory_order_release);
+            g_close_kick_worker.store(nullptr, butil::memory_order_release);
+        };
+
+        if (from_worker) {
+            async_failure();
+        } else {
+            connection->Close(ERDMA);
+        }
+        ASSERT_TRUE(WaitUntil([&] { return socket->Failed(); }));
+        {
+            rdma::SrqConnection::PostLock lock(connection.get());
+            EXPECT_EQ(nullptr, connection->qp());
+        }
+        // Only the external close or async failure publication wakes the
+        // worker. Close progress and its Socket notification share that wakeup.
+        EXPECT_EQ(1u, g_close_kicks.load(butil::memory_order_relaxed));
+        EXPECT_FALSE(connection->worker_retired());
+        connection->Close(ERDMA);
+        EXPECT_EQ(1u, g_close_kicks.load(butil::memory_order_relaxed));
+        if (from_worker) {
+            rdma::StopAllSrqWorkers();
+            ASSERT_TRUE(connection->worker_retired());
+            // An event captured before close can publish after the last drain.
+            // Its queued callback must not retain this connection indefinitely.
+            async_failure();
+            async_failure = {};
+            ASSERT_TRUE(WaitUntil([&] { return connection.use_count() == 1; }));
+        }
+    };
+    ASSERT_NO_FATAL_FAILURE(check_close(true, false));
+    ASSERT_NO_FATAL_FAILURE(check_close(false, false));
+    ASSERT_NO_FATAL_FAILURE(check_close(false, true));
+}
+
 class RdmaSrqEventExitTest : public RdmaSrqPostTest {
 protected:
+    void PauseAtExit(const std::shared_ptr<rdma::SrqConnection>& connection) {
+        ASSERT_TRUE(WaitUntil([&] {
+            return rdma::SrqWorkerIdleForTest(connection->_worker.get());
+        }));
+        _pause.connection = connection;
+        _pause.after_decision = true;
+        g_srq_event_exit_pause.store(&_pause, butil::memory_order_release);
+        rdma::SrqWorkerStopHookForTest.store(PauseSrqEventExit,
+                                            butil::memory_order_release);
+        {
+            rdma::SrqConnection::PostLock lock(connection.get());
+            connection->ScheduleProgressLocked(true);
+        }
+        ASSERT_TRUE(WaitUntil([&] {
+            return _pause.reached.load(butil::memory_order_acquire);
+        }));
+    }
+
     void TearDown() override {
         // Even an early assertion exit must release the progress lock before
         // Stop retries failure cleanup.
@@ -1238,7 +1695,7 @@ protected:
             // Queue a failure after the event owner's last progress check.
             // Stop will generate failures for the other connections while
             // both callers may finish their rounds outside the progress lock.
-            _pause.connection->RequestClose(ERDMA);
+            _pause.connection->Close(ERDMA);
             std::thread stopper([] { rdma::StopAllSrqWorkers(); });
             auto join = butil::MakeScopeGuard([&] {
                 _pause.resume.store(true, butil::memory_order_release);
@@ -1269,7 +1726,132 @@ protected:
     SrqEventExitPause _pause;
 };
 
-TEST_F(RdmaSrqEventExitTest, returned_zero_copy_blocks_do_not_notify_full_srq) {
+TEST_F(RdmaSrqEventExitTest, close_after_final_recheck_is_not_lost) {
+    SocketOptions options;
+    SocketId sid;
+    ASSERT_EQ(0, Socket::Create(options, &sid));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(sid, &socket));
+    BUTIL_SCOPE_EXIT { socket->SetFailed(); };
+    auto connection = rdma::SrqConnection::Create(
+        socket.get(), BTHREAD_TAG_DEFAULT, rdma::FLAGS_rdma_srq_sq_size);
+    ASSERT_NE(nullptr, connection);
+    BUTIL_SCOPE_EXIT { connection->Close(); };
+    ASSERT_NO_FATAL_FAILURE(PauseAtExit(connection));
+    // An inactive QP cannot produce a completion or `LAST_WQE` to rescue a
+    // lost close command. Only this close's software notification can do so.
+    connection->Close();
+    ASSERT_TRUE(WaitUntil([&] {
+        return _pause.events->load(butil::memory_order_acquire) > _pause.initial_events;
+    }));
+    _pause.resume.store(true, butil::memory_order_release);
+    ASSERT_TRUE(WaitUntil([&] {
+        rdma::SrqConnection::PostLock lock(connection.get());
+        return connection->qp() == nullptr;
+    }));
+    EXPECT_FALSE(connection->worker_retired());
+}
+
+TEST_F(RdmaSrqEventExitTest, cqe_after_final_recheck_is_not_lost) {
+    Channel channel;
+    SocketUniquePtr peer;
+    ASSERT_NO_FATAL_FAILURE(InitPeer(&channel, &peer));
+    auto sender = Connection(channel);
+    auto receiver = SrqConnectionOf(peer);
+    ASSERT_TRUE(WaitUntil([&] {
+        return SrqCounter(sender, "rdma_srq_tx_outstanding") == 0;
+    }));
+    ASSERT_NO_FATAL_FAILURE(PauseAtExit(sender));
+    butil::IOBuf data = Header(4 * 1024 * 1024);
+    size_t bytes = data.size();
+    butil::IOBuf* ptr = &data;
+    // Publish after both CQs were rechecked. No software callback is scheduled
+    // by this small send, so the armed CQ notification must retain progress.
+    ASSERT_EQ(static_cast<ssize_t>(bytes), sender->Send(&ptr, 1));
+    ASSERT_TRUE(WaitUntil([&] {
+        return _pause.events->load(butil::memory_order_acquire) > _pause.initial_events;
+    }));
+    _pause.resume.store(true, butil::memory_order_release);
+    ASSERT_TRUE(WaitUntil([&] {
+        return BufferedBytes(peer.get()) == static_cast<ssize_t>(bytes);
+    }));
+    ASSERT_TRUE(WaitUntil([&] {
+        return SrqCounter(sender, "rdma_srq_tx_outstanding") == 0;
+    }));
+    EXPECT_FALSE(sender->worker_retired());
+    EXPECT_FALSE(receiver->_closing.load(butil::memory_order_acquire));
+}
+
+TEST_F(RdmaSrqEventExitTest, pending_receive_error_discards_following_fragments) {
+    Channel channel;
+    SocketUniquePtr peer;
+    ASSERT_NO_FATAL_FAILURE(InitPeer(&channel, &peer));
+    auto sender = Connection(channel);
+    auto receiver = SrqConnectionOf(peer);
+    uint32_t qpn = ConnectionQpn(*receiver);
+    butil::IOBuf prefix, body;
+    ASSERT_NO_FATAL_FAILURE(MakeEcho(&prefix, &body));
+    ASSERT_EQ(16u, body.cutn(&prefix, 16));
+    int64_t prefix_size = prefix.size();
+    ASSERT_TRUE(SendBytes(sender, prefix));
+    ASSERT_TRUE(WaitUntil([&] { return BufferedBytes(peer.get()) == prefix_size; }));
+
+    {
+        // Delay the QP close while the owner continues processing receive CQEs.
+        rdma::SrqConnection::PostLock held(receiver.get());
+        g_completion_fault_receive.store(true);
+        g_completion_fault_qpn.store(qpn, butil::memory_order_release);
+        butil::IOBuf discarded;
+        ASSERT_EQ(16u, body.cutn(&discarded, 16));
+        ASSERT_TRUE(SendBytes(sender, discarded));
+        ASSERT_TRUE(WaitUntil([&] {
+            return g_completion_fault_hits.load(butil::memory_order_acquire) == 1 &&
+                receiver->_post_retry.load(butil::memory_order_acquire);
+        }));
+        ASSERT_FALSE(receiver->_closing.load(butil::memory_order_acquire));
+
+        // This successful completion must not fill the gap left by the error.
+        // Keep the RPC incomplete so parser inspection cannot run user code.
+        g_observe_rx_qpn.store(qpn, butil::memory_order_release);
+        butil::IOBuf following;
+        ASSERT_EQ(16u, body.cutn(&following, 16));
+        ASSERT_TRUE(SendBytes(sender, following));
+        ASSERT_TRUE(WaitUntil([] {
+            return g_observed_rx.load(butil::memory_order_acquire);
+        }));
+
+        // The poll hook runs before `HandleReceive`. Pause at the end of an
+        // owner round to ensure the observed CQE has actually been handled.
+        BUTIL_SCOPE_EXIT { _pause.resume.store(true, butil::memory_order_release); };
+        _pause.connection = receiver;
+        g_srq_event_exit_pause.store(&_pause, butil::memory_order_release);
+        rdma::SrqWorkerStopHookForTest.store(PauseSrqEventExit, butil::memory_order_release);
+        receiver->ScheduleProgressLocked(true);
+        ASSERT_TRUE(WaitUntil([&] {
+            return _pause.reached.load(butil::memory_order_acquire);
+        }));
+        EXPECT_EQ(EPROTO, receiver->_pending_close_error);
+        EXPECT_FALSE(receiver->_closing.load(butil::memory_order_acquire));
+        // `BufferedBytes` acquires consumption and drains any queued input.
+        // Inspect again after that drain so a delayed delivery cannot hide it.
+        ASSERT_TRUE(WaitUntil([&] { return BufferedBytes(peer.get()) >= 0; }));
+        EXPECT_EQ(prefix_size, BufferedBytes(peer.get()));
+        EXPECT_EQ(0, PeerError(peer.get()));
+        _pause.resume.store(true, butil::memory_order_release);
+        ASSERT_TRUE(WaitUntil([&] {
+            return _pause.finished.load(butil::memory_order_acquire);
+        }));
+    }
+
+    // Releasing the submit lock must still resume and finish normal retirement.
+    ASSERT_TRUE(WaitUntil([&] {
+        rdma::SrqConnection::PostLock lock(receiver.get());
+        return receiver->qp() == nullptr;
+    }));
+    EXPECT_FALSE(receiver->worker_retired());
+}
+
+TEST_F(RdmaSrqEventExitTest, returned_zero_copy_blocks_do_not_notify_worker) {
     // The initial region reaches the limit, so growth cannot notify this fd.
     rdma::FLAGS_rdma_srq_pool_blocks = 64;
     Channel channel;
@@ -1304,14 +1886,13 @@ TEST_F(RdmaSrqEventExitTest, returned_zero_copy_blocks_do_not_notify_full_srq) {
         return _pause.reached.load(butil::memory_order_acquire);
     }));
     ASSERT_NE(nullptr, _pause.pool);
-    EXPECT_FALSE(_pause.pool->_notify.load(butil::memory_order_acquire));
     held.clear();
     // The parser may release its last reference after the RPC callback returns.
     ASSERT_TRUE(WaitUntil([&] {
         return _pause.pool->_returned.load(butil::memory_order_acquire) != nullptr;
     }));
     uint64_t events;
-    EXPECT_EQ(-1, read(_pause.pool->recycle_fd(), &events, sizeof(events)));
+    EXPECT_EQ(-1, read(_pause.pool->growth_fd(), &events, sizeof(events)));
     EXPECT_EQ(EAGAIN, errno);
 }
 
@@ -1404,11 +1985,11 @@ struct SrqCloseObservation {
     butil::atomic<bool> last_acked{false};
     butil::atomic<bool> resume_last{false};
     butil::atomic<bool> ack_hook_finished{false};
-    // Publish LAST_WQE after an RX poll reports empty but before the worker
+    // Publish LAST_WQE after a short RX poll but before the worker
     // checks close readiness.
-    butil::atomic<bool> publish_last_on_empty{false};
-    butil::atomic<bool> published_on_empty{false};
-    butil::atomic<bool> fresh_rx_empty{false};
+    butil::atomic<bool> publish_last_on_short_poll{false};
+    butil::atomic<bool> published_on_short_poll{false};
+    butil::atomic<bool> fresh_rx_tail{false};
     butil::atomic<bool> destroyed_after_fresh_rx{false};
 };
 butil::atomic<SrqCloseObservation*> g_srq_close_observation{nullptr};
@@ -1433,15 +2014,15 @@ void ObservedCloseAck(ibv_async_event* event) {
 int ObservedClosePoll(ibv_cq* cq, int count, ibv_wc* wc) {
     int n = g_close_real_poll(cq, count, wc);
     auto* observation = g_srq_close_observation.load(butil::memory_order_acquire);
-    if (observation && cq == observation->rx_cq && n == 0) {
-        if (observation->publish_last_on_empty.exchange(false)) {
+    if (observation && cq == observation->rx_cq && n >= 0 && n < count) {
+        if (observation->publish_last_on_short_poll.exchange(false)) {
             observation->resume_last.store(true, butil::memory_order_release);
             bool published = WaitUntil([&] {
                 return observation->connection->_last_wqe.load(butil::memory_order_acquire);
             });
-            observation->published_on_empty.store(published, butil::memory_order_release);
-        } else if (observation->published_on_empty.load(butil::memory_order_acquire)) {
-            observation->fresh_rx_empty.store(true, butil::memory_order_release);
+            observation->published_on_short_poll.store(published, butil::memory_order_release);
+        } else if (observation->published_on_short_poll.load(butil::memory_order_acquire)) {
+            observation->fresh_rx_tail.store(true, butil::memory_order_release);
         }
     }
     return n;
@@ -1451,7 +2032,7 @@ int ObservedCloseDestroy(ibv_qp* qp) {
     auto* observation = g_srq_close_observation.load(butil::memory_order_acquire);
     if (observation && qp->qp_num == observation->qpn) {
         observation->destroyed_after_fresh_rx.store(
-            observation->fresh_rx_empty.load(butil::memory_order_acquire),
+            observation->fresh_rx_tail.load(butil::memory_order_acquire),
             butil::memory_order_release);
     }
     return g_close_real_destroy(qp);
@@ -1478,6 +2059,9 @@ protected:
         // Release the async event thread before destroying the QP, including
         // early assertion exits.
         _observation.resume_last.store(true, butil::memory_order_release);
+        _exit_pause.resume.store(true, butil::memory_order_release);
+        rdma::SrqWorkerStopHookForTest.store(nullptr, butil::memory_order_release);
+        g_srq_event_exit_pause.store(nullptr, butil::memory_order_release);
         RdmaSrqPoolTest::TearDown();
         if (_hooked) {
             if (_observation.last_acked.load(butil::memory_order_acquire)) {
@@ -1492,10 +2076,58 @@ protected:
         }
     }
     SrqCloseObservation _observation;
+    SrqEventExitPause _exit_pause;
     bool _hooked = false;
 };
 
-TEST_F(RdmaSrqCloseTest, last_wqe_after_empty_requires_fresh_rx_poll) {
+TEST_F(RdmaSrqCloseTest, last_wqe_after_final_recheck_is_not_lost) {
+    Channel channel;
+    ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "last_wqe_at_event_exit"));
+    auto connection = Connection(channel);
+    ASSERT_NE(nullptr, connection);
+    ASSERT_TRUE(WaitUntil([&] {
+        return SrqCounter(connection, "rdma_srq_tx_outstanding") == 0;
+    }));
+    _observation.connection = connection;
+    _observation.qpn = ConnectionQpn(*connection);
+    g_srq_close_observation.store(&_observation, butil::memory_order_release);
+    connection->Close();
+    ASSERT_TRUE(WaitUntil([&] {
+        return _observation.last_acked.load(butil::memory_order_acquire);
+    }));
+    // Hold the acknowledged async event until close progress has rechecked
+    // its barrier and is about to release event-loop ownership.
+    ASSERT_TRUE(WaitUntil([&] {
+        return rdma::SrqWorkerIdleForTest(connection->_worker.get());
+    }));
+    _exit_pause.connection = connection;
+    _exit_pause.after_decision = true;
+    g_srq_event_exit_pause.store(&_exit_pause, butil::memory_order_release);
+    rdma::SrqWorkerStopHookForTest.store(PauseSrqEventExit,
+                                        butil::memory_order_release);
+    {
+        rdma::SrqConnection::PostLock lock(connection.get());
+        connection->ScheduleProgressLocked(true);
+    }
+    ASSERT_TRUE(WaitUntil([&] {
+        return _exit_pause.reached.load(butil::memory_order_acquire);
+    }));
+    EXPECT_FALSE(connection->_last_wqe.load(butil::memory_order_acquire));
+    _observation.resume_last.store(true, butil::memory_order_release);
+    ASSERT_TRUE(WaitUntil([&] {
+        return connection->_last_wqe.load(butil::memory_order_acquire) &&
+            _exit_pause.events->load(butil::memory_order_acquire) >
+                _exit_pause.initial_events;
+    }));
+    _exit_pause.resume.store(true, butil::memory_order_release);
+    ASSERT_TRUE(WaitUntil([&] {
+        rdma::SrqConnection::PostLock lock(connection.get());
+        return connection->qp() == nullptr;
+    }));
+    EXPECT_FALSE(connection->worker_retired());
+}
+
+TEST_F(RdmaSrqCloseTest, last_wqe_after_short_poll_requires_fresh_rx_poll) {
     Channel channel;
     ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "last_wqe_after_empty"));
     auto connection = Connection(channel);
@@ -1518,14 +2150,14 @@ TEST_F(RdmaSrqCloseTest, last_wqe_after_empty_requires_fresh_rx_poll) {
         rdma::SrqConnection::PostLock lock(connection.get());
         ASSERT_NE(nullptr, connection->qp());
         EXPECT_FALSE(connection->_last_wqe.load(butil::memory_order_acquire));
-        _observation.publish_last_on_empty.store(true, butil::memory_order_release);
+        _observation.publish_last_on_short_poll.store(true, butil::memory_order_release);
         connection->ScheduleProgressLocked(true);
     }
     ASSERT_TRUE(WaitUntil([&] {
         rdma::SrqConnection::PostLock lock(connection.get());
         return connection->qp() == nullptr;
     }));
-    EXPECT_TRUE(_observation.published_on_empty.load());
+    EXPECT_TRUE(_observation.published_on_short_poll.load());
     EXPECT_TRUE(_observation.destroyed_after_fresh_rx.load());
     EXPECT_FALSE(connection->worker_retired());
     EXPECT_EQ(0, SrqCounter(connection, "rdma_srq_tx_outstanding"));
@@ -1558,6 +2190,49 @@ TEST_F(RdmaSrqPoolTest, unactivated_connection_closes_without_last_wqe) {
     ASSERT_TRUE(WaitUntil([&] { return rdma::SrqLiveConnections() == live; }));
     EXPECT_FALSE(connection->worker_retired());
     EXPECT_EQ(16, SendEchoRpcs(other, 16, 8192));
+}
+
+TEST_F(RdmaSrqPoolTest, closing_connections_preserves_busy_neighbor_progress) {
+    Channel neighbor;
+    ASSERT_NO_FATAL_FAILURE(InitChannel(&neighbor, "busy_during_close"));
+    auto neighbor_connection = Connection(neighbor);
+    ASSERT_NE(nullptr, neighbor_connection);
+    butil::atomic<bool> stop{false};
+    butil::atomic<unsigned> completed{0};
+    butil::atomic<unsigned> failures{0};
+    std::thread traffic([&] {
+        while (!stop.load(butil::memory_order_acquire)) {
+            if (SendEchoRpcs(neighbor, 1, 256 * 1024) == 1) {
+                completed.fetch_add(1, butil::memory_order_release);
+            } else {
+                failures.fetch_add(1, butil::memory_order_release);
+                break;
+            }
+        }
+    });
+    BUTIL_SCOPE_EXIT {
+        stop.store(true, butil::memory_order_release);
+        traffic.join();
+        EXPECT_EQ(0u, failures.load());
+    };
+    ASSERT_TRUE(WaitUntil([&] { return completed.load() != 0; }));
+    for (int i = 0; i < 8; ++i) {
+        Channel closing;
+        ASSERT_NO_FATAL_FAILURE(InitChannel(&closing, "close_under_rx_" + std::to_string(i)));
+        auto connection = Connection(closing);
+        ASSERT_NE(nullptr, connection);
+        ASSERT_EQ(neighbor_connection->_worker, connection->_worker);
+        connection->Close();
+        ASSERT_TRUE(WaitUntil([&] {
+            rdma::SrqConnection::PostLock lock(connection.get());
+            return connection->qp() == nullptr;
+        }));
+        unsigned before = completed.load(butil::memory_order_acquire);
+        ASSERT_TRUE(WaitUntil([&] {
+            return completed.load(butil::memory_order_acquire) > before;
+        }));
+        EXPECT_FALSE(neighbor_connection->worker_retired());
+    }
 }
 
 TEST_F(RdmaSrqPoolTest, late_failure_does_not_reopen_retired_worker) {
@@ -1605,6 +2280,13 @@ TEST_F(RdmaSrqPoolTest, late_failure_does_not_reopen_retired_worker) {
     fail();
     EXPECT_TRUE(connection->worker_retired());
     EXPECT_EQ(16, SendEchoRpcs(recovered, 16, 8192));
+}
+
+TEST_F(RdmaSrqPostTest, connection_errors_do_not_block_shared_worker) {
+    for (auto fault : {SrqCloseFault::TX, SrqCloseFault::RX, SrqCloseFault::ASYNC}) {
+        SCOPED_TRACE(static_cast<int>(fault));
+        ASSERT_NO_FATAL_FAILURE(CheckErrorDuringPost(fault));
+    }
 }
 
 TEST_F(RdmaSrqPostTest, early_completion_does_not_wait_for_post_return) {
@@ -1701,19 +2383,38 @@ TEST_F(RdmaSrqPostTest, grant_receipt_does_not_wait_for_post_return) {
     EXPECT_EQ(connection->_fc.capacity(), connection->_fc.window());
 }
 
-TEST_F(RdmaSrqPostTest, unlock_before_retry_registration_still_acquires) {
-    SocketOptions options;
-    SocketId sid;
-    ASSERT_EQ(0, Socket::Create(options, &sid));
-    SocketUniquePtr socket;
-    ASSERT_EQ(0, Socket::Address(sid, &socket));
-    BUTIL_SCOPE_EXIT { socket->SetFailed(); };
-    // A new, unactivated connection has no CQEs or pending callbacks. The test
-    // thread exclusively simulates its worker try_lock path.
-    auto connection = rdma::SrqConnection::Create(
-        socket.get(), BTHREAD_TAG_DEFAULT, rdma::FLAGS_rdma_srq_sq_size);
-    ASSERT_TRUE(connection);
-    BUTIL_SCOPE_EXIT { connection->Close(); };
+TEST_F(RdmaSrqConcurrencyTest, unlock_after_retry_registration_kicks_once) {
+    auto connection = _connection;
+    g_close_kicks.store(0, butil::memory_order_relaxed);
+    g_close_kick_worker.store(connection->_worker.get(), butil::memory_order_release);
+    rdma::SrqWorkerKickHookForTest.store(ObserveCloseKick, butil::memory_order_release);
+    BUTIL_SCOPE_EXIT {
+        rdma::SrqWorkerKickHookForTest.store(nullptr, butil::memory_order_release);
+        g_close_kick_worker.store(nullptr, butil::memory_order_release);
+    };
+    {
+        rdma::SrqConnection::PostLock holder(connection.get());
+        std::thread progress([&] {
+            for (int i = 0; i < 2; ++i) {
+                rdma::SrqConnection::PostLock retry(connection.get(), std::try_to_lock);
+                EXPECT_FALSE(retry.owns_lock());
+            }
+        });
+        progress.join();
+        EXPECT_TRUE(connection->_post_retry.load(butil::memory_order_acquire));
+        EXPECT_EQ(0u, g_close_kicks.load(butil::memory_order_acquire));
+    }
+    EXPECT_EQ(1u, g_close_kicks.load(butil::memory_order_acquire));
+    EXPECT_FALSE(connection->_post_retry.load(butil::memory_order_acquire));
+    {
+        rdma::SrqConnection::PostLock retry(connection.get(), std::try_to_lock);
+        EXPECT_TRUE(retry.owns_lock());
+    }
+    EXPECT_EQ(1u, g_close_kicks.load(butil::memory_order_acquire));
+}
+
+TEST_F(RdmaSrqConcurrencyTest, unlock_before_retry_registration_still_acquires) {
+    auto connection = _connection;
     rdma::SrqPostLockRetryHookForTest.store(PausePostLockRetry,
                                           butil::memory_order_release);
     BUTIL_SCOPE_EXIT {
@@ -1818,7 +2519,8 @@ TEST_F(RdmaSrqPostTest, received_grant_wakes_zero_window_writer) {
     SocketUniquePtr socket;
     ASSERT_EQ(0, Socket::Address(channel._server_id, &socket));
     ASSERT_TRUE(WaitUntil([&] {
-        return SrqCounter(connection, "rdma_srq_tx_outstanding") == 0;
+        return SrqCounter(connection, "rdma_srq_tx_outstanding") == 0 &&
+            rdma::SrqWorkerIdleForTest(connection->_worker.get());
     }));
     {
         rdma::SrqConnection::PostLock lock(connection.get());
@@ -1835,28 +2537,17 @@ TEST_F(RdmaSrqPostTest, received_grant_wakes_zero_window_writer) {
     uint32_t lengths[] = {htonl(4 * 1024 * 1024), 0};
     ASSERT_EQ(0, data.append("PRPC", 4));
     ASSERT_EQ(0, data.append(lengths, sizeof(lengths)));
-    butil::atomic<bool> entered{false};
-    butil::atomic<bool> finished{false};
-    butil::atomic<bool> writable{false};
-    std::thread waiter([&] {
-        timespec deadline = butil::microseconds_from_now(WAIT_TIMEOUT_US);
-        int64_t until = butil::monotonic_time_us() + WAIT_TIMEOUT_US;
-        entered.store(true, butil::memory_order_release);
-        while (!connection->IsWritable() && butil::monotonic_time_us() < until) {
-            socket->_transport->WaitEpollOut(socket->_epollout_butex, false, deadline);
-        }
-        writable.store(connection->IsWritable(), butil::memory_order_release);
-        finished.store(true, butil::memory_order_release);
-    });
-    // Avoid ASSERT after starting the thread so failure paths still join it.
-    EXPECT_TRUE(WaitUntil([&] { return entered.load(butil::memory_order_acquire); }));
+    // Check the actual writer notification before calling `IsWritable` again.
+    // A timed-out waiter can apply the grant itself and otherwise hide a lost
+    // wakeup. This connection has no outstanding TX to generate another wakeup.
+    int events = socket->_epollout_butex->load(butil::memory_order_acquire);
     butil::IOBuf* ptr = &data;
-    EXPECT_EQ(12, peer->Send(&ptr, 1));
-    EXPECT_TRUE(WaitUntil([&] {
-        return finished.load(butil::memory_order_acquire);
+    ASSERT_EQ(12, peer->Send(&ptr, 1));
+    ASSERT_TRUE(WaitUntil([&] {
+        return socket->_epollout_butex->load(butil::memory_order_acquire) != events;
     }));
-    waiter.join();
-    EXPECT_TRUE(writable.load(butil::memory_order_acquire));
+    EXPECT_FALSE(socket->Failed());
+    EXPECT_TRUE(connection->IsWritable());
 }
 
 TEST_F(RdmaSrqPostTest, partial_post_return_after_prefix_completed) {
@@ -1947,7 +2638,8 @@ TEST_F(RdmaSrqPostTest, shared_cq_budget_blocks_and_recovers) {
         ASSERT_TRUE(connections.back());
     }
     ASSERT_TRUE(WaitUntil([&] {
-        return SrqCounter(connections[0], "rdma_srq_tx_outstanding") == 0;
+        return SrqCounter(connections[0], "rdma_srq_tx_outstanding") == 0 &&
+            rdma::SrqWorkerIdleForTest(connections[0]->_worker.get());
     }));
     butil::IOBuf raw;
     uint32_t lengths[] = {htonl(4 * 1024 * 1024), 0};
@@ -1956,35 +2648,38 @@ TEST_F(RdmaSrqPostTest, shared_cq_budget_blocks_and_recovers) {
     ASSERT_EQ(0, raw.resize(64, 'b'));
     ASSERT_NO_FATAL_FAILURE(PauseTx(connections[0]));
     int64_t posted = 0;
-    std::shared_ptr<rdma::SrqConnection> blocked;
-    butil::IOBuf pending;
-    for (size_t i = 0; i < connections.size() && !blocked; ++i) {
-        for (int n = 0; n < 4; ++n) {
+    for (size_t i = 0; i + 1 < connections.size(); ++i) {
+        for (int n = 0; n < 4 && posted < limit; ++n) {
             butil::IOBuf data = raw;
             butil::IOBuf* ptr = &data;
             ssize_t bytes = connections[i]->Send(&ptr, 1);
-            if (bytes < 0) {
-                ASSERT_EQ(EAGAIN, errno);
-                ASSERT_EQ(raw.size(), data.size());
-                blocked = connections[i];
-                pending.swap(data);
-                break;
-            }
             ASSERT_EQ(static_cast<ssize_t>(raw.size()), bytes);
             ++posted;
         }
     }
-    ASSERT_TRUE(blocked);
-    EXPECT_EQ(limit, posted);
-    EXPECT_EQ(limit, SrqCounter(blocked, "rdma_srq_tx_outstanding"));
-    EXPECT_LT(SrqCounter(blocked, "rdma_srq_sq_outstanding"), 5);
-    EXPECT_GT(SrqCounter(blocked, "rdma_srq_window"), 8);
-    ResumeTx(blocked);
-    ASSERT_TRUE(WaitUntil([&] {
-        return SrqCounter(blocked, "rdma_srq_tx_outstanding") == 0;
-    }));
-    ASSERT_TRUE(blocked->IsWritable());
+    ASSERT_EQ(limit, posted);
+    // Keep the waiter on a separate QP with no outstanding sends. Its own TX
+    // completions must not hide a missing shared-capacity notification.
+    auto blocked = connections.back();
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(channels.back()->_server_id, &socket));
+    int events = socket->_epollout_butex->load(butil::memory_order_acquire);
+    butil::IOBuf pending = raw;
     butil::IOBuf* ptr = &pending;
+    ASSERT_EQ(-1, blocked->Send(&ptr, 1));
+    ASSERT_EQ(EAGAIN, errno);
+    ASSERT_EQ(raw.size(), pending.size());
+    EXPECT_EQ(limit, SrqCounter(blocked, "rdma_srq_tx_outstanding"));
+    EXPECT_EQ(0, SrqCounter(blocked, "rdma_srq_sq_outstanding"));
+    EXPECT_GT(SrqCounter(blocked, "rdma_srq_window"), 8);
+    // Resume polling through another QP. Do not register or kick the blocked
+    // connection here. Real CQEs from the senders return the shared capacity.
+    ResumeTx(connections.front());
+    ASSERT_TRUE(WaitUntil([&] {
+        return socket->_epollout_butex->load(butil::memory_order_acquire) != events;
+    }));
+    EXPECT_FALSE(socket->Failed());
+    ASSERT_TRUE(blocked->IsWritable());
     ASSERT_EQ(static_cast<ssize_t>(raw.size()), blocked->Send(&ptr, 1));
     ASSERT_TRUE(WaitUntil([&] {
         return SrqCounter(blocked, "rdma_srq_tx_outstanding") == 0;
@@ -2109,6 +2804,28 @@ TEST_F(RdmaSrqPostTest, initial_receive_partial_failure_falls_back) {
     Channel recovered;
     ASSERT_NO_FATAL_FAILURE(InitChannel(&recovered, "initial_recv_recovered"));
     ASSERT_TRUE(Connection(recovered));
+}
+
+TEST_F(RdmaSrqPostTest, cq_batches_yield_and_refill_before_next_round) {
+    Channel channel;
+    ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "refill_each_rx_batch"));
+    auto connection = Connection(channel);
+    ASSERT_NE(nullptr, connection);
+    {
+        rdma::SrqConnection::PostLock lock(connection.get());
+        _refill_observation.rx_cq = connection->qp()->recv_cq;
+        _refill_observation.tx_cq = connection->qp()->send_cq;
+        _refill_observation.srq = connection->qp()->srq;
+    }
+    g_srq_refill_observation.store(&_refill_observation, butil::memory_order_release);
+
+    // Multiple flow-control windows require repeated RX progress and grants.
+    // No new RX poll may precede refill, and every TX batch must yield to RX.
+    ASSERT_EQ(4, SendEchoRpcs(channel, 4, 256 * 1024));
+    EXPECT_GT(_refill_observation.received_batches.load(), 1u);
+    EXPECT_GT(_refill_observation.sent_batches.load(), 1u);
+    EXPECT_EQ(0u, _refill_observation.polls_before_refill.load());
+    EXPECT_EQ(0u, _refill_observation.tx_polls_before_rx.load());
 }
 
 TEST_F(RdmaSrqPostTest, receive_refill_failure_preserves_held_data) {
@@ -2299,6 +3016,21 @@ TEST_F(RdmaSrqResourceTest, failed_destruction_retains_memory_until_retry) {
         ASSERT_NO_FATAL_FAILURE(InitChannel(&channel, "destroy_fault_" + std::to_string(fault)));
         auto connection = Connection(channel);
         ASSERT_TRUE(connection);
+        // No TCP peer or RPC timeout can mask a lost deferred notification.
+        SocketUniquePtr failure_socket;
+        BUTIL_SCOPE_EXIT {
+            if (failure_socket != nullptr) {
+                failure_socket->SetFailed();
+            }
+        };
+        SocketOptions options;
+        SocketId sid;
+        ASSERT_EQ(0, Socket::Create(options, &sid));
+        ASSERT_EQ(0, Socket::Address(sid, &failure_socket));
+        auto failure_connection = rdma::SrqConnection::Create(
+            failure_socket.get(), BTHREAD_TAG_DEFAULT, rdma::FLAGS_rdma_srq_sq_size);
+        ASSERT_NE(nullptr, failure_connection);
+        ASSERT_EQ(connection->_worker, failure_connection->_worker);
         butil::IOBuf expected;
         butil::IOBuf retained;
         ASSERT_EQ(0, expected.resize(64 * 1024, 'd'));
@@ -2321,6 +3053,9 @@ TEST_F(RdmaSrqResourceTest, failed_destruction_retains_memory_until_retry) {
         EXPECT_FALSE(connection->worker_retired());
         EXPECT_EQ(bytes, rdma::SrqReceivePool::RegisteredBytes());
         EXPECT_TRUE(retained.equals(expected));
+        // Pending failure commands must run even after failed destruction,
+        // without waiting for the explicit cleanup retry below.
+        ASSERT_TRUE(WaitUntil([&] { return failure_socket->Failed(); }));
         // Retrying shutdown after the provider recovers drains quarantine.
         g_srq_resource_faults.store(0);
         rdma::StopAllSrqWorkers();

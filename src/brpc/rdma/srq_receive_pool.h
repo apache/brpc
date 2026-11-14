@@ -86,15 +86,15 @@ public:
 
     // Never registers memory synchronously. EAGAIN means no blocks are ready
     // and growth is pending or waiting for a retry. ENOMEM means no blocks are
-    // ready and the capacity limit is reached. Both allow retrying after CQ or
-    // recycle events. A failed growth launch does not invalidate existing blocks.
+    // ready and the capacity limit is reached. Returned blocks are adopted on
+    // the next owner pass without waking it. Failed allocation or registration
+    // notifies after backoff.
     Buffer* Acquire();
     // Owner only: absorb returns and completed growth, then prefetch a region
-    // below the low watermark. A failed launch defers growth to later events.
+    // below the low watermark.
     // `reusable` counts unexported leases the worker can repost without `Acquire()`.
     void Prepare(uint32_t reusable = 0);
-    // Owner only: drain the return stack even when no refill is needed, so
-    // rearming notifications can distinguish handled returns from new arrivals.
+    // Owner only: move cross-thread returns into the local free lists.
     void DrainReturned();
     // Owner only: stop requesting growth and drop the worker reference after
     // all DMA has stopped. A running growth task and exported IOBufs keep the
@@ -106,12 +106,7 @@ public:
     uint32_t available() const { return _available; }
     uint32_t block_count() const { return _block_count; }
     size_t block_size() const { return _block_size; }
-    int recycle_fd() const { return _recycle_fd; }
-
-    // Drain eventfd before arming. False means returned blocks are already
-    // pending. The owner must continue progressing instead of sleeping.
-    bool ArmRecyclingNotification();
-    void DisarmRecyclingNotification();
+    int growth_fd() const { return _growth_fd; }
 
     // Consulted when the ordinary IOBuf pool does not recognize an address. The
     // caller must retain a live Block reference or be releasing its final
@@ -138,7 +133,7 @@ friend struct std::default_delete<SrqReceivePool>;
     void AdoptGrowth();
     void RequestGrowth(uint32_t reusable = 0);
     static void* RunGrowth(void* arg);
-    void Notify();
+    void NotifyGrowth();
     void Return(Buffer* buffer);
     void ReleaseReference();
 
@@ -148,8 +143,6 @@ friend struct std::default_delete<SrqReceivePool>;
     // Atomic return stack. Any thread releasing a block can publish a
     // descriptor.
     butil::atomic<Buffer*> _returned{nullptr};
-    // One-shot subscription: the next returner writes to the recycle eventfd.
-    butil::atomic<bool> _notify{false};
     // Fully prepared growth result. A release/acquire handoff transfers region
     // ownership. A null region in the result completes a failed growth attempt.
     butil::atomic<Growth*> _completed_growth{nullptr};
@@ -175,23 +168,20 @@ friend struct std::default_delete<SrqReceivePool>;
     uint32_t _grow_blocks{0};
     // Physical blocks allocated so far. Only the owner modifies this value.
     uint32_t _allocated_blocks{0};
-    // Includes a task that has published its result but has not been adopted.
+    // Includes allocation/registration backoff and a result not yet adopted.
     // This prevents overlapping allocations or exceeding the capacity limit.
     bool _growing{false};
-    // Immutable retry interval shared by launch and allocation/registration
-    // failures. A running task waits before notifying the owner on failure.
+    // Immutable allocation/registration retry interval. A running task waits
+    // before notifying the owner on failure.
     int64_t _growth_retry_us{0};
-    // Owner-only monotonic deadline after a failed launch. CQ or recycle events
-    // retry after this deadline without blocking existing block reuse. Zero
-    // skips the clock read when no launch failure is being backed off.
-    int64_t _growth_retry_at_us{0};
     // Optional THP hint. Failure to obtain huge pages keeps ordinary pages.
     bool _hugepages{false};
     // Registration policy for this pool's PD. Initialization and then the sole
     // growth task access it. Completion publication orders consecutive tasks.
     bool _try_relaxed_order{true};
-    // Nonblocking eventfd for returns from other threads to wake the owner.
-    int _recycle_fd{-1};
+    // Nonblocking eventfd for growth completion, including failure after backoff.
+    // Block returns only publish to `_returned` and never notify the owner.
+    int _growth_fd{-1};
     // Whether this pool has been published and counted as live.
     bool _registered{false};
 };

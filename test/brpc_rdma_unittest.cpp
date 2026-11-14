@@ -318,6 +318,27 @@ TEST_F(RdmaTest, stale_private_rq_async_error_does_not_fail_revived_socket) {
     EXPECT_TRUE(socket->Failed());
 }
 
+TEST_F(RdmaTest, private_rq_async_error_fails_socket) {
+    SocketOptions options;
+    options.socket_mode = SOCKET_MODE_RDMA;
+    SocketId sid;
+    ASSERT_EQ(0, Socket::Create(options, &sid));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(sid, &socket));
+    BUTIL_SCOPE_EXIT { socket->SetFailed(); };
+    auto connection = std::make_shared<rdma::RqConnection>(socket.get());
+    RdmaTransportOf(socket)->GetRdmaEp()->_connection = connection;
+    rdma::RdmaResource resource;
+    resource.connection = connection;
+    resource.socket_id.store(sid, butil::memory_order_release);
+    auto failure = resource.PrepareAsyncEvent(IBV_EVENT_CQ_ERR);
+    ASSERT_TRUE(failure);
+
+    // A fatal CQ event must fail the Socket without another event or CQE.
+    failure();
+    ASSERT_TRUE(WaitUntil([&] { return socket->Failed(); }));
+}
+
 TEST_F(RdmaTest, failed_socket_completes_connect_callback) {
     SocketOptions options;
     options.socket_mode = SOCKET_MODE_RDMA;
@@ -3509,11 +3530,17 @@ TEST_P(RdmaRpcTest, rdma_client_close_during_rpc_repeatedly) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, verbs_error_handling) {
+TEST_P(RdmaRpcTest, private_rq_verbs_error_handling) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
 
+    // An untracked WR is valid only for this private-RQ error test. SRQ tests
+    // inject the status of a tracked CQE in
+    // `RdmaSrqPostTest.connection_errors_do_not_block_shared_worker`, which also
+    // checks that the shared worker survives the connection-local error.
+    GFLAGS_NAMESPACE::FlagSaver flags;
+    rdma::FLAGS_rdma_use_srq = false;
     StartServer();
 
     Channel channel;
@@ -3548,14 +3575,9 @@ TEST_P(RdmaRpcTest, verbs_error_handling) {
     ibv_send_wr* bad = nullptr;
     auto rdma_transport = RdmaTransportOf(s);
     auto connection = rdma_transport->_rdma_ep->_connection;
-    if (auto srq = std::dynamic_pointer_cast<rdma::SrqConnection>(connection)) {
-        rdma::SrqConnection::PostLock lock(srq.get());
-        ibv_post_send(srq->qp(), &wr, &bad);
-    } else {
-        auto rq = std::dynamic_pointer_cast<rdma::RqConnection>(connection);
-        ASSERT_TRUE(rq);
-        ibv_post_send(rq->_resource->qp, &wr, &bad);
-    }
+    auto rq = std::dynamic_pointer_cast<rdma::RqConnection>(connection);
+    ASSERT_TRUE(rq);
+    ibv_post_send(rq->_resource->qp, &wr, &bad);
     bthread_id_join(cntl.call_id());
     ASSERT_EQ(ERDMA, cntl.ErrorCode());
     free(buf);

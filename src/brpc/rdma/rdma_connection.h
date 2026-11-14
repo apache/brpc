@@ -23,6 +23,7 @@
 #include <memory>
 #include <ostream>
 #include <infiniband/verbs.h>
+#include "butil/atomicops.h"
 #include "butil/containers/optional.h"
 #include "butil/iobuf.h"
 #include "bthread/types.h"
@@ -72,6 +73,21 @@ public:
     // Idempotent. Stops new work. Final DMA retirement may be asynchronous.
     virtual void Close(int error = 0) = 0;
     virtual void Debug(std::ostream& out, butil::StringPiece connector = "\n") const = 0;
+
+    // Endpoint reset revokes notifications from this connection before closing
+    // it. Health checks may later revive the same `SocketId` with a new QP.
+    void Detach() {
+        _detached.store(true, butil::memory_order_release);
+        Close();
+    }
+
+    bool detached() const {
+        return _detached.load(butil::memory_order_acquire);
+    }
+
+private:
+    // Separate from transport close, which may itself need to report an error.
+    butil::atomic<bool> _detached{false};
 };
 
 RdmaLocalInfo DefaultRdmaLocalInfo(RdmaQueueMode mode);

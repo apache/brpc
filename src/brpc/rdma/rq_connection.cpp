@@ -116,12 +116,9 @@ std::function<void()> RdmaResource::PrepareAsyncEvent(ibv_event_type type) {
             }
             return nullptr;
         };
-
         bthread_t tid;
-        if (bthread_start_background(&tid, nullptr, fail_socket, task.get()) != 0) {
-            LOG(ERROR) << "Cannot schedule asynchronous RDMA connection failure";
-            return;
-        }
+        CHECK_EQ(bthread_start_background(&tid, nullptr, fail_socket, task.get()), 0)
+            << "Cannot start asynchronous RDMA connection failure task";
         task.release();
     };
 }
@@ -470,7 +467,7 @@ int RqConnection::SendImm(uint32_t imm) {
 }
 
 ssize_t RqConnection::HandleCompletion(ibv_wc& wc) {
-    bool zerocopy = FLAGS_rdma_recv_zerocopy;
+    bool zero_copy = FLAGS_rdma_recv_zerocopy;
     switch (wc.opcode) {
     case IBV_WC_SEND: {  // send completion
         if (wc.wr_id == 0) {
@@ -502,11 +499,11 @@ ssize_t RqConnection::HandleCompletion(ibv_wc& wc) {
         // Please note that only the first wc.byte_len bytes is valid
         if (wc.byte_len > 0) {
             if (wc.byte_len < (uint32_t)FLAGS_rdma_zerocopy_min_size) {
-                zerocopy = false;
+                zero_copy = false;
             }
             CHECK(_receiving_enabled);
             butil::IOBuf& read_buf = _received;
-            if (zerocopy) {
+            if (zero_copy) {
                 _rbuf[_rq_received].cutn(&read_buf, wc.byte_len);
             } else {
                 // Copy data when the receive data is really small
@@ -527,7 +524,7 @@ ssize_t RqConnection::HandleCompletion(ibv_wc& wc) {
             }
         }
         // We must re-post recv WR
-        if (PostRecv(1, zerocopy) < 0) {
+        if (PostRecv(1, zero_copy) < 0) {
             return -1;
         }
         if (wc.byte_len > 0) {
@@ -564,10 +561,10 @@ int RqConnection::DoPostRecv(void* block, size_t block_size) {
     return 0;
 }
 
-int RqConnection::PostRecv(uint32_t num, bool zerocopy) {
+int RqConnection::PostRecv(uint32_t num, bool zero_copy) {
     // We do the post repeatedly from the _rbuf[_rq_received].
     while (num > 0) {
-        if (zerocopy) {
+        if (zero_copy) {
             _rbuf[_rq_received].clear();
             butil::IOBufAsZeroCopyOutputStream os(
                 &_rbuf[_rq_received], g_rdma_recv_block_size + IOBUF_BLOCK_HEADER_LEN);

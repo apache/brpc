@@ -34,7 +34,6 @@
 #include "butil/iobuf_inl.h"
 #include "butil/logging.h"
 #include "butil/scoped_lock.h"
-#include "butil/time.h"
 
 namespace brpc {
 namespace rdma {
@@ -44,16 +43,9 @@ extern int (*IbvDeregMr)(ibv_mr*);
 DEFINE_int32(rdma_srq_pool_grow_blocks, 256,
              "Receive blocks per runtime SRQ pool growth step");
 DEFINE_int32(rdma_srq_pool_growth_retry_ms, 100,
-             "Delay before retrying failed SRQ pool growth launch/allocation/registration");
+             "Delay before retrying failed SRQ pool allocation/registration");
 DEFINE_bool(rdma_srq_pool_hugepages, false,
             "Align SRQ receive regions to 2 MiB and request transparent huge pages");
-
-#if defined(UNIT_TEST)
-// Inject launch failures without exhausting the process-wide bthread allocator.
-butil::atomic<int> SrqGrowthStartErrorForTest{0};
-// Count launch attempts so tests can distinguish backoff from repeated failures.
-butil::atomic<int> SrqGrowthStartAttemptsForTest{0};
-#endif
 
 // Each region owns an MR, page-aligned memory and a descriptor array. Growth
 // adds regions without relocating existing storage, keeping posted receive
@@ -142,7 +134,7 @@ struct PoolRegistry {
 PoolRegistry& Registry() {
     // IOBufs may be released during static destruction. The registry must
     // outlive them.
-    static PoolRegistry* registry = new PoolRegistry;
+    static auto registry = new PoolRegistry;
     return *registry;
 }
 
@@ -173,7 +165,9 @@ SrqReceivePool::Region::~Region() {
         } else {
             // A failed deregistration still owns the pages. Keep accounting
             // and allocation ownership until RetryDeregistrations succeeds.
-            LOG(ERROR) << "Cannot deregister SRQ receive region; retaining its pages";
+            LOG(ERROR) << "Cannot deregister SRQ receive region, mr=" << mr
+                       << ", bytes=" << bytes << ", rc=" << rc << ": " << berror(rc)
+                       << ", retaining its pages";
             registry.retired.push_back({mr, memory, bytes});
             memory = nullptr;
         }
@@ -214,8 +208,11 @@ SrqReceivePool* SrqReceivePool::Create(ibv_pd* pd, size_t block_size, uint32_t b
     pool->_grow_blocks = grow_blocks == 0 ? block_count : grow_blocks;
     pool->_growth_retry_us = int64_t(FLAGS_rdma_srq_pool_growth_retry_ms) * 1000;
     pool->_hugepages = FLAGS_rdma_srq_pool_hugepages;
-    pool->_recycle_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-    if (pool->_recycle_fd < 0) {
+    pool->_growth_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (pool->_growth_fd < 0) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to create SRQ receive pool eventfd, pool=" << pool.get();
+        errno = error;
         return nullptr;
     }
 
@@ -252,6 +249,8 @@ std::unique_ptr<SrqReceivePool::Region> SrqReceivePool::PrepareRegion(uint32_t c
         err = posix_memalign(&region->memory, 4096, region->bytes);
     }
     if (err != 0) {
+        LOG(ERROR) << "Fail to allocate SRQ receive region, pool=" << this
+                   << ", bytes=" << region->bytes << ", rc=" << err << ": " << berror(err);
         errno = err;
         return nullptr;
     }
@@ -274,6 +273,10 @@ std::unique_ptr<SrqReceivePool::Region> SrqReceivePool::PrepareRegion(uint32_t c
         }
     }
     if (region->mr == nullptr) {
+        int error = errno;
+        PLOG(ERROR) << "Fail to register SRQ receive region, pool=" << this
+                    << ", bytes=" << region->bytes << ", blocks=" << count;
+        errno = error;
         return nullptr;
     }
 
@@ -334,36 +337,14 @@ void SrqReceivePool::RequestGrowth(uint32_t reusable) {
         uint64_t(_available) + reusable > std::max(1u, _grow_blocks / 4)) {
         return;
     }
-    if (_growth_retry_at_us != 0 && butil::monotonic_time_us() < _growth_retry_at_us) {
-        return;
-    }
-
     auto growth = std::make_unique<Growth>();
     growth->pool = this;
     growth->count = std::min(_grow_blocks, _block_count - _allocated_blocks);
     _growing = true;
     _references.fetch_add(1, butil::memory_order_relaxed);
     bthread_t tid;
-    int rc = 0;
-#if defined(UNIT_TEST)
-    SrqGrowthStartAttemptsForTest.fetch_add(1, butil::memory_order_relaxed);
-    rc = SrqGrowthStartErrorForTest.load(butil::memory_order_relaxed);
-#endif
-    if (rc == 0) {
-        rc = bthread_start_background(&tid, nullptr, RunGrowth, growth.get());
-    }
-    if (rc != 0) {
-        _growing = false;
-        _growth_retry_at_us = butil::monotonic_time_us() + _growth_retry_us;
-        ReleaseReference();
-        LOG_EVERY_SECOND(ERROR) << "Cannot start SRQ receive pool growth: " << rc;
-        // Exhaustion uses the same CQ/recycle wakeup path as reaching the
-        // capacity limit. The worker arms recycle notifications before its
-        // final recheck, so a returning block cannot be lost while it sleeps.
-        // Back off launches only, keeping existing blocks available for reuse.
-        return;
-    }
-    _growth_retry_at_us = 0;
+    CHECK_EQ(bthread_start_background(&tid, nullptr, RunGrowth, growth.get()), 0)
+        << "Cannot start SRQ receive pool growth";
     growth.release();
 }
 
@@ -379,12 +360,12 @@ void* SrqReceivePool::RunGrowth(void* arg) {
             bthread_usleep(pool->_growth_retry_us);
         }
     }
-    // Publication ends all task access to Growth and Region. The owner may
+    // Publication ends all task access to `Growth` and `Region`. The owner may
     // adopt and delete the result immediately, or release its own reference
     // while registration is running. The task reference keeps eventfd and the
     // pool alive until the unconditional completion notification is finished.
     pool->_completed_growth.store(growth.release(), butil::memory_order_release);
-    pool->Notify();
+    pool->NotifyGrowth();
     pool->ReleaseReference();
     return nullptr;
 }
@@ -409,8 +390,8 @@ SrqReceivePool::~SrqReceivePool() {
         region->published = false;
     }
     _regions.clear();
-    if (_recycle_fd >= 0) {
-        close(_recycle_fd);
+    if (_growth_fd >= 0) {
+        close(_growth_fd);
     }
     if (_registered) {
         // Zero live pools must also exclude growth-task cleanup still using
@@ -534,50 +515,28 @@ void SrqReceivePool::DrainReturned() {
 
 void SrqReceivePool::Return(Buffer* buffer) {
     // Initialize the intrusive link before release publication. After CAS
-    // succeeds the owner may immediately reuse the descriptor: touch neither
-    // buffer nor its Block again. Keep its pool reference through notification
-    // so a concurrent worker shutdown cannot destroy _recycle_fd underneath us.
+    // succeeds, `DrainReturned()` may immediately adopt and reuse the descriptor.
+    // Touch neither `buffer` nor its `Block` again. Drop the outstanding block's
+    // pool reference only after publication, allowing shutdown to reclaim it.
     Buffer* head = _returned.load(butil::memory_order_relaxed);
     do {
         buffer->_next = head;
     } while (!_returned.compare_exchange_weak(head, buffer,
-                                               butil::memory_order_seq_cst,
+                                               butil::memory_order_release,
                                                butil::memory_order_relaxed));
-    // Paired SC publish-then-check sequences with Arm prevent both sides from
-    // missing each other. The common unarmed return avoids a notify RMW.
-    if (_notify.load(butil::memory_order_seq_cst) &&
-        _notify.exchange(false, butil::memory_order_acq_rel)) {
-        Notify();
-    }
     ReleaseReference();
 }
 
-void SrqReceivePool::Notify() {
+void SrqReceivePool::NotifyGrowth() {
     uint64_t value = 1;
     ssize_t written;
     do {
-        written = write(_recycle_fd, &value, sizeof(value));
+        written = write(_growth_fd, &value, sizeof(value));
     } while (written < 0 && errno == EINTR);
-    // EAGAIN means eventfd already has a pending notification. Growth calls
-    // this unconditionally: a sleeping owner may have no CQEs or block returns
-    // to trigger adoption or a retry after allocation failure.
-    PLOG_IF(ERROR, written < 0 && errno != EAGAIN) << "SRQ pool notification";
-}
-
-bool SrqReceivePool::ArmRecyclingNotification() {
-    // In the SC order, either Return observes this subscription or this load
-    // observes its published block. An already-returned block requires another
-    // progress pass instead of sleeping for a notification of a future return.
-    _notify.store(true, butil::memory_order_seq_cst);
-    if (_returned.load(butil::memory_order_seq_cst) != nullptr) {
-        _notify.store(false, butil::memory_order_relaxed);
-        return false;
-    }
-    return true;
-}
-
-void SrqReceivePool::DisarmRecyclingNotification() {
-    _notify.store(false, butil::memory_order_relaxed);
+    // EAGAIN means eventfd already has a pending notification. Always notify
+    // growth completion so a sleeping owner adopts it or retries after backoff
+    // even without further CQEs. Block returns do not wake the owner.
+    PLOG_IF(ERROR, written < 0 && errno != EAGAIN) << "SRQ pool growth notification";
 }
 
 uint32_t SrqReceivePool::RegionId(const void* address) {

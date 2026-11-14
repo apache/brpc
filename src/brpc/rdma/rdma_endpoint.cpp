@@ -749,7 +749,7 @@ void RdmaEndpoint::DeallocateResources() {
     // Detach before Close can release references or schedule late callbacks.
     auto connection = std::move(_connection);
     if (connection) {
-        connection->Close();
+        connection->Detach();
     }
 }
 

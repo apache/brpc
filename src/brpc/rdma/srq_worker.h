@@ -151,17 +151,26 @@ friend class SrqWorker;
     bool ReceiveControl(uint32_t flags, size_t bytes);
     bool EnqueueReceived(butil::IOBuf received);
     // Returns grant, writability and close-progress results for the worker to
-    // accumulate into the current round.
+    // accumulate into the current round. Returns no work after worker failure,
+    // allowing shutdown to drain pending commands without requeueing.
     ProgressRound Progress();
-    // Requests close and schedules further progress. Takes _post_mutex
-    // internally without calling Socket. Worker callers add the writer to the
-    // round. Public Close wakes it after this method returns.
-    void RequestClose(int error);
+    // Worker only, under `_progress_mutex`. Record the first pending error and
+    // let `Progress()` acquire `_post_mutex` without blocking other connections.
+    void RequestCloseFromWorker(int error);
+    struct CloseResult {
+        // Whether close state or the first failure notification changed.
+        bool changed{false};
+        // Socket notification to run after releasing transport locks.
+        std::function<void()> failure;
+    };
 
     // Locked methods below require _post_mutex. Teardown checks and destruction
     // also require _progress_mutex. ReadyToDestroyLocked requires a closing
     // connection with a live QP. Even after it returns true, the worker must
     // drain the RX CQ before destroying the QP.
+    // Publish close, move the QP to ERR and return the first Socket failure.
+    // The caller owns progress scheduling and deferred notification dispatch.
+    CloseResult RequestCloseLocked(int error);
     bool ReadyToDestroyLocked() const;
     // Destroys only the QP, without reclaiming send records. Normal close first
     // reclaims TX and drains RX. Worker failure first stops all DMA, then
@@ -210,15 +219,15 @@ friend class SrqWorker;
 
     // Called after enqueueing and outside _progress_mutex so user callbacks
     // cannot run under transport locks. Only the caller changing the event
-    // count from zero to one may start a consumer. Returns whether a task was
-    // started.
-    bool StartDelivery(bool urgent = false);
+    // count from zero to one may start a consumer. Returns whether delivery
+    // started, including inline execution after task-start failure.
+    bool StartDelivery(bool urgent);
     // The caller must own consumption. A null socket discards input, including
-    // cleanup after task-start failure. data holds the optional first block
+    // cleanup after setup failure. data holds the optional first block
     // dequeued by the starter. Further input comes from the queue. Release
     // consumer ownership after dequeueing/parsing and before running the last
     // message callback.
-    void Consume(Socket* socket, butil::IOBuf data = butil::IOBuf());
+    void Consume(Socket* socket, butil::IOBuf data);
     static void* RunDelivery(void* arg);
 
     // Keeps the shared SRQ/CQ owner alive for this connection lifetime.
@@ -286,6 +295,8 @@ friend class SrqWorker;
     // Submitters set it under _post_mutex and receivers under _progress_mutex.
     // Progress clears it while holding both. Requeueing keeps it set. The
     // generic worker scheduler does not manage this connection state.
+    // After worker failure, `DestroyAll` owns progress until successful QP
+    // destruction clears this registration, including explicit Stop retries.
     butil::atomic<bool> _progress_scheduled{false};
     // The writer is waiting for shared TX CQ capacity. The owner wakes it when
     // capacity is observed.
@@ -299,11 +310,36 @@ friend class SrqWorker;
     // Whether a Socket error was reported, protected by _post_mutex. A normal
     // close still allows a later first error report.
     bool _failure_reported{false};
+    // First worker-side error awaiting the submit lock. Zero means no request.
+    // Only the owner reads or writes it under `_progress_mutex`. Progress
+    // registration and unlock notifications retain responsibility until handled.
+    // A pending error rejects later receives before `_closing` can be published.
+    int _pending_close_error{0};
+
+    // Adapt IOBuf's explicit `movable()` protocol to the queue's standard move
+    // assignment. Both enqueue and dequeue transfer ownership without adding
+    // Block references. This type is only used for receive handoff.
+    struct ReceivedBuffer {
+        ReceivedBuffer() = default;
+        explicit ReceivedBuffer(const butil::IOBuf::Movable& source)
+            : data(source) {}
+
+        ReceivedBuffer(ReceivedBuffer&& other) noexcept
+            : data(other.data.movable()) {}
+
+        ReceivedBuffer& operator=(ReceivedBuffer&& other) noexcept {
+            data = other.data.movable();
+            return *this;
+        }
+
+        // Received bytes owned by this queue node or the sole consumer.
+        butil::IOBuf data;
+    };
 
     // Each node takes ownership of one received IOBuf without copying payload
     // or adding Block references. Only the consumer owner may Dequeue. Close
     // must not become a second consumer.
-    butil::MPSCQueue<butil::IOBuf, butil::ObjectPoolAllocator<butil::IOBuf>> _incoming;
+    butil::MPSCQueue<ReceivedBuffer, butil::ObjectPoolAllocator<ReceivedBuffer>> _incoming;
     // Whether received bytes may enter the RPC parser. Until enabled, input
     // stays in _incoming. After TCP handshake parsing finishes, EnableReceive
     // release-publishes true and notifies the consumer. The delivery task
