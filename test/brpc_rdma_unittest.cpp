@@ -91,6 +91,20 @@ extern bool ShouldPostInline(bool in_pool, size_t len,
 } // namespace rdma
 } // namespace brpc
 
+#if BRPC_WITH_GDR
+#include "butil/gpu/gpu_block_pool.h"
+namespace butil {
+namespace gdr {
+DECLARE_int32(gdr_block_size_kb);
+}  // namespace gdr
+}  // namespace butil
+namespace brpc {
+namespace rdma {
+extern uint32_t g_gdr_recv_block_size;
+} // namespace rdma
+} // namespace brpc
+#endif  // BRPC_WITH_GDR
+
 static std::string g_ip = "127.0.0.1";
 static butil::EndPoint g_ep;
 
@@ -3568,6 +3582,103 @@ TEST(RdmaInlineDataTest, should_post_inline) {
     // A QP granted no inline data inlines nothing.
     EXPECT_FALSE(rdma::ShouldPostInline(true, 1, 0));
 }
+
+// When the RdmaEndpoint allocation fails in RdmaTransport::DoInit() (simulated
+// here through the g_rdma_ep_alloc_fail injection), the connection must fall
+// back to TCP on both sides: the accepted server socket switches to
+// SOCKET_MODE_TCP so the server handshake takes the fallback path (instead of
+// dereferencing the null endpoint), and the client channel falls back to the
+// TCP connection logic (RdmaTransport::Connect() returns nullptr) and the RPC
+// still completes over TCP.
+TEST_F(RdmaTest, endpoint_alloc_fail_falls_back_to_tcp) {
+    // Server side: the accepted socket must be TCP mode with no endpoint.
+    {
+        g_rdma_ep_alloc_fail = true;
+        StartServer();
+
+        butil::fd_guard sockfd;
+        ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
+        Socket* s = WaitForServerSocket();
+        ASSERT_TRUE(s != nullptr);
+        RdmaTransport* t = RdmaTransportOf(s);
+        EXPECT_EQ(nullptr, t->_rdma_ep);
+        EXPECT_EQ(RdmaTransport::RDMA_OFF, t->_rdma_state);
+        EXPECT_EQ(SOCKET_MODE_TCP, s->socket_mode());
+        sockfd.reset(-1);
+        ASSERT_TRUE(WaitForServerSocketGone());
+
+        StopServer();
+        g_rdma_ep_alloc_fail = false;
+    }
+
+    // Client side: the channel must connect over TCP and the RPC must succeed.
+    {
+        StartServer();
+
+        g_rdma_ep_alloc_fail = true;
+        Channel channel;
+        ChannelOptions chan_options;
+        chan_options.socket_mode = SOCKET_MODE_RDMA;
+        ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
+
+        Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message("endpoint_alloc_fail_falls_back_to_tcp");
+        ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, nullptr);
+        EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        // MyEchoService replies with a fixed message; the RPC completing at
+        // all is the point (it went over TCP after the endpoint allocation
+        // failure), not the echoed content.
+        EXPECT_EQ("MyEchoService", res.message());
+
+        g_rdma_ep_alloc_fail = false;
+
+        SocketUniquePtr s;
+        ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
+        EXPECT_EQ(SOCKET_MODE_TCP, s->socket_mode());
+
+        StopServer();
+    }
+}
+
+#if BRPC_WITH_GDR
+// The handshake advertises the receive SGE length (gdr block size minus the
+// 32-byte iobuf block header) and both the V2/V3 hello validators reject
+// block_size < MIN_BLOCK_SIZE (1024), so a --gdr_block_size_kb=1 config would
+// pass GetGdrBlockSize() yet make every GDR handshake fail. GlobalGdrInitialize()
+// must reject it at startup, against the advertised length.
+TEST(RdmaGdrTest, gdr_block_size_boundaries) {
+    const int32_t saved_kb = butil::gdr::FLAGS_gdr_block_size_kb;
+    const uint32_t saved_recv_size = butil::gdr::GetGdrBlockSize() > 32
+        ? butil::gdr::GetGdrBlockSize() - 32 : 0;
+
+    // 1 KB block: 1024 - 32 = 992 < MIN_BLOCK_SIZE -> rejected.
+    butil::gdr::FLAGS_gdr_block_size_kb = 1;
+    EXPECT_GT(butil::gdr::GetGdrBlockSize(), 0u)  // block itself is valid...
+        << "1KB should still pass GetGdrBlockSize()";
+    EXPECT_EQ(-1, brpc::rdma::RdmaEndpoint::GlobalGdrInitialize())
+        << "1KB must be rejected: advertised length would be 992 < 1024";
+    EXPECT_EQ(EINVAL, errno);
+
+    // 2 KB block: 2048 - 32 = 2016 >= MIN_BLOCK_SIZE -> accepted.
+    butil::gdr::FLAGS_gdr_block_size_kb = 2;
+    EXPECT_EQ(0, brpc::rdma::RdmaEndpoint::GlobalGdrInitialize());
+    EXPECT_EQ(2016u, brpc::rdma::g_gdr_recv_block_size);
+
+    // Non-positive values are rejected by GetGdrBlockSize() itself.
+    butil::gdr::FLAGS_gdr_block_size_kb = 0;
+    EXPECT_EQ(0u, butil::gdr::GetGdrBlockSize());
+
+    butil::gdr::FLAGS_gdr_block_size_kb = saved_kb;
+    if (saved_recv_size > 0) {
+        // Restore the real (valid) configuration so later tests are not
+        // affected.
+        EXPECT_EQ(0, brpc::rdma::RdmaEndpoint::GlobalGdrInitialize());
+        EXPECT_EQ(saved_recv_size, brpc::rdma::g_gdr_recv_block_size);
+    }
+}
+#endif  // BRPC_WITH_GDR
 
 #endif  // if BRPC_WITH_RDMA
 

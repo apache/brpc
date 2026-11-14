@@ -87,8 +87,15 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         opt.client_host.empty() &&
         opt.device_name.empty() &&
         opt.connection_group.empty() &&
+        opt.socket_mode == SOCKET_MODE_TCP &&
         opt.hc_option.health_check_path.empty()) {
         // Returning zeroized result by default is more intuitive for users.
+        // NOTE: non-TCP socket modes (RDMA/URMA/GDR) must NOT take this
+        // shortcut: they hash to a non-zero signature below so that a
+        // socket of a different mode is never shared/reused for the same
+        // server address (e.g. reusing a GDR socket for a plain TCP
+        // channel would deliver attachments in GPU memory which the
+        // plain channel cannot consume).
         return ChannelSignature();
     }
     uint32_t seed = 0;
@@ -145,6 +152,8 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
             buf.append("|rdma");
         } else if (opt.socket_mode == SOCKET_MODE_URMA) {
             buf.append("|urma");
+        } else if (opt.socket_mode == SOCKET_MODE_GDR) {
+            buf.append("|gdr");
         }
         butil::MurmurHash3_x64_128_Update(&mm_ctx, buf.data(), buf.size());
         buf.clear();

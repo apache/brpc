@@ -104,6 +104,12 @@ static void SerializeRpcHeaderAndMeta(
 
 ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
                             bool /*read_eof*/, const void*) {
+#if BRPC_WITH_GDR
+    bool is_gpu_memory = source->is_gpu_memory();
+    if (is_gpu_memory) {
+        return ParseRpcMessageGpu(source, socket, false /* not use */, nullptr /* not use */);
+    }
+#endif  // BRPC_WITH_GDR
     char header_buf[12];
     const size_t n = source->copy_to(header_buf, sizeof(header_buf));
     if (n >= 4) {
@@ -162,9 +168,21 @@ bool SerializeRpcMessage(const google::protobuf::Message& message,
             }
             ok = handler->Compress(serializer, buf);
         }
+        if (!ok) {
+            return false;
+        }
+        // The checksum must be computed before the data is sent. A failure
+        // here (e.g. GPU memory read failure with GDR checksummed
+        // attachments) must abort the RPC instead of sending data whose
+        // checksum was never calculated.
         ChecksumIn checksum_in{buf, &cntl, checksum_attachment};
-        ComputeDataChecksum(checksum_in, checksum_type);
-        return ok;
+        if (!ComputeDataChecksum(checksum_in, checksum_type)) {
+            cntl.SetFailed(EREQUEST,
+                           "Fail to compute %s checksum",
+                           ChecksumTypeToCStr(checksum_type));
+            return false;
+        }
+        return true;
     };
 
     if (CONTENT_TYPE_PB == content_type) {
@@ -614,6 +632,19 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     const RpcRequestMeta &request_meta = meta.request();
 
     SampledRequest* sample = AskToBeSampled();
+#if BRPC_WITH_GDR
+    // TODO: GDR is not supported by rpc_dump yet. `msg->payload' holds GPU
+    // blocks that RpcDumpContext would later serialize with regular writev,
+    // which cannot dereference device memory. Until GDR + rpc_dump is
+    // implemented and tested, skip sampling GPU-resident requests instead
+    // of submitting a sample that fails to dump.
+    if (sample && msg->payload.is_gpu_memory()) {
+        LOG(WARNING) << "rpc_dump is not supported on GDR connections; "
+                        "skip sampling this gpu-resident request";
+        delete sample;
+        sample = nullptr;
+    }
+#endif  // BRPC_WITH_GDR
     if (sample) {
         sample->meta.set_service_name(request_meta.service_name());
         sample->meta.set_method_name(request_meta.method_name());
@@ -749,6 +780,24 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             }
 
             messages = BaiduProxyPBMessages::Get();
+#if BRPC_WITH_GDR
+            // GDR is not supported on servers with a baidu_master_service:
+            // the master service forwards the raw SerializedRequest to a
+            // backend chosen by GetChannel() without running any user code,
+            // and that backend is usually not GDR-capable, so forwarding
+            // GPU-resident blocks would make writev() send from device
+            // addresses (EFAULT). Reject the request explicitly instead of
+            // copying everything down to host memory (which would silently
+            // negate the zero-copy purpose of GDR). See docs/cn/gdr.md.
+            if (msg->payload.is_gpu_memory()) {
+                cntl->SetFailed(
+                    EREQUEST,
+                    "baidu_master_service is not supported with GDR "
+                    "(GPU Direct RDMA); do not enable GDR on a proxy "
+                    "server with baidu_master_service");
+                break;
+            }
+#endif  // BRPC_WITH_GDR
             msg->payload.cutn(&((SerializedRequest*)messages->Request())->serialized_data(),
                               req_size - meta.attachment_size());
             if (!msg->payload.empty()) {
@@ -823,8 +872,27 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
             butil::IOBuf req_buf;
             int body_without_attachment_size = req_size - meta.attachment_size();
-            msg->payload.cutn(&req_buf, body_without_attachment_size);
+#if BRPC_WITH_GDR
+            bool is_gpu_memory = msg->payload.is_gpu_memory();
+            if (is_gpu_memory) {
+                if (!FillReqBufGpu(&req_buf, msg.get(), body_without_attachment_size)) {
+                    // GPU -> host copy failed; fail this request instead of
+                    // feeding a corrupt/empty buffer to the service.
+                    cntl->SetFailed(EREQUEST,
+                                    "Fail to copy request from gpu memory");
+                    break;
+                }
+            } else
+#endif  // BRPC_WITH_GDR
+            {
+                msg->payload.cutn(&req_buf, body_without_attachment_size);
+            }
             if (meta.attachment_size() > 0) {
+                // NOTE(BRPC_WITH_GDR): the attachment may still live in GPU
+                // memory. Keep it there even when checksum_with_attachment is
+                // on: the CRC is computed over a temporary host copy inside
+                // ExtendCrc32c (see crc32c_checksum.cpp), so the GPU -> GPU
+                // data path is preserved for GPU-aware services.
                 cntl->request_attachment().swap(msg->payload);
             }
 
@@ -1018,18 +1086,28 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
         butil::IOBuf res_buf;
         const int res_size = msg->payload.length();
         butil::IOBuf* res_buf_ptr = &msg->payload;
-        if (meta.has_attachment_size()) {
-            if (meta.attachment_size() < 0 ||
-                meta.attachment_size() > res_size) {
-                cntl->SetFailed(
-                    ERESPONSE, "Invalid attachment_size=%d (response_size=%d)",
-                    meta.attachment_size(), res_size);
+#if BRPC_WITH_GDR
+        bool is_gpu_memory = msg->payload.is_gpu_memory();
+        if (is_gpu_memory) {
+            if (!FillResBufGpu(&res_buf, msg.get(), meta, &res_buf_ptr, cntl)) {
                 break;
             }
-            int body_without_attachment_size = res_size - meta.attachment_size();
-            msg->payload.cutn(&res_buf, body_without_attachment_size);
-            res_buf_ptr = &res_buf;
-            cntl->response_attachment().swap(msg->payload);
+        } else
+#endif  // BRPC_WITH_GDR
+        {
+            if (meta.has_attachment_size()) {
+                if (meta.attachment_size() < 0 ||
+                    meta.attachment_size() > res_size) {
+                    cntl->SetFailed(
+                        ERESPONSE, "Invalid attachment_size=%d (response_size=%d)",
+                        meta.attachment_size(), res_size);
+                    break;
+                }
+                int body_without_attachment_size = res_size - meta.attachment_size();
+                msg->payload.cutn(&res_buf, body_without_attachment_size);
+                res_buf_ptr = &res_buf;
+                cntl->response_attachment().swap(msg->payload);
+            }
         }
 
         ContentType content_type = meta.content_type();
