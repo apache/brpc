@@ -492,7 +492,7 @@ struct IOBuf::Block {
         }
     }
 
-    Block(char* data_in, uint32_t data_size, UserDataDeleter deleter)
+    Block(char* data_in, uint32_t data_size, UserDataDeleter&& deleter)
         : nshared(1)
         , flags(IOBUF_BLOCK_FLAGS_USER_DATA)
         , abi_check(0)
@@ -500,8 +500,7 @@ struct IOBuf::Block {
         , cap(data_size)
         , u({0})
         , data(data_in) {
-        auto ext = new (get_user_data_extension()) UserDataExtension();
-        ext->deleter = std::move(deleter);
+        new (get_user_data_extension()) UserDataExtension{std::move(deleter)};
         if (is_samplable()) {
             SubmitIOBufSample(this, 1);
         }

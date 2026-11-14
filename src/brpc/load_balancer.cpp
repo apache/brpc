@@ -83,17 +83,17 @@ int SharedLoadBalancer::Init(const char* lb_protocol) {
     std::string lb_name;
     butil::StringPiece lb_params;
     if (!ParseParameters(lb_protocol, &lb_name, &lb_params)) {
-        LOG(FATAL) << "Fail to parse this load balancer protocol '" << lb_protocol << '\'';
+        LOG(ERROR) << "Fail to parse this load balancer protocol '" << lb_protocol << '\'';
         return -1;
     }
     const LoadBalancer* lb = LoadBalancerExtension()->Find(lb_name.c_str());
     if (lb == nullptr) {
-        LOG(FATAL) << "Fail to find LoadBalancer by `" << lb_name << "'";
+        LOG(ERROR) << "Fail to find LoadBalancer by `" << lb_name << "'";
         return -1;
     }
     _lb = lb->New(lb_params);
     if (_lb == nullptr) {
-        LOG(FATAL) << "Fail to new LoadBalancer";
+        LOG(ERROR) << "Fail to new LoadBalancer";
         return -1;
     }
     if (FLAGS_show_lb_in_vars && !_exposed) {

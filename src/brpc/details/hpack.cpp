@@ -748,6 +748,29 @@ void HPacker::Encode(butil::IOBufAppender* out, const Header& header,
     EncodeString<false>(out, header.value, options.encode_value);
 }
 
+void HPacker::EncodeWithoutDynamicTable(butil::IOBufAppender* out,
+                                        const Header& header,
+                                        const HPackOptions& options) {
+    CreateStaticTableOnceOrDie();
+    if (options.index_policy != HPACK_NEVER_INDEX_HEADER) {
+        const HeaderAndHashCode hhc = { HeaderHasher()(header), &header };
+        const int index = s_static_table->GetIndexOfHeader(hhc);
+        if (index > 0) {
+            return EncodeInteger(out, 0x80, 7, index);
+        }
+    }
+    const int name_index = s_static_table->GetIndexOfName(header.name);
+    if (options.index_policy == HPACK_NEVER_INDEX_HEADER) {
+        EncodeInteger(out, 0x10, 4, name_index);
+    } else {
+        EncodeInteger(out, 0x00, 4, name_index);
+    }
+    if (name_index == 0) {
+        EncodeString<true>(out, header.name, options.encode_name);
+    }
+    EncodeString<false>(out, header.value, options.encode_value);
+}
+
 inline const HPacker::Header* HPacker::HeaderAt(int index) const {
     return (index >= _decode_table->start_index())
             ? _decode_table->HeaderAt(index) : s_static_table->HeaderAt(index);
@@ -773,6 +796,15 @@ inline ssize_t HPacker::DecodeWithKnownPrefix(
         name_bytes = DecodeString(iter, &h->name);
         if (name_bytes <= 0) {
             LOG(ERROR) << "Fail to decode name";
+            return -1;
+        }
+        // RFC 7541 requires a literal header name to be non-empty. A
+        // zero-length name consumes one byte on the wire (the 0x00 length
+        // octet), so name_bytes above is 1 and does not reject it. Letting it
+        // through would trip CHECK(!h.name.empty()) in IndexTable::AddHeader()
+        // when the header is indexed.
+        if (h->name.empty()) {
+            LOG(ERROR) << "Empty header name";
             return -1;
         }
         tolower(&h->name);

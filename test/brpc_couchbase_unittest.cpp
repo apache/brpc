@@ -40,6 +40,27 @@ namespace {
 // Unit Tests - No Server Required
 class CouchbaseUnitTest : public testing::Test {};
 
+TEST_F(CouchbaseUnitTest, ManifestJsonNesting) {
+  brpc::CouchbaseManifestManager manager;
+  brpc::CouchbaseManifestManager::CollectionManifest manifest;
+  const std::string prefix = "{\"uid\":\"1\",\"scopes\":[],\"extra\":";
+  auto make_json = [&](size_t depth) {
+    return prefix + std::string(depth, '[') + "0"
+        + std::string(depth, ']') + "}";
+  };
+  // The root object plus 99 arrays reaches the accepted depth of 100.
+  // Keep explicit expectations to independently check this boundary.
+  EXPECT_TRUE(manager.jsonToCollectionManifest(make_json(99), &manifest));
+  EXPECT_FALSE(manager.jsonToCollectionManifest(make_json(100), &manifest));
+  EXPECT_FALSE(manager.jsonToCollectionManifest(make_json(20000), &manifest));
+  EXPECT_TRUE(manager.jsonToCollectionManifest(
+      "{\"uid\":\"1\",\"scopes\":[],\"extra\":\"[\\\"{]\"}", &manifest));
+  std::string with_nul = "{\"uid\":\"1\",\"scopes\":[]}";
+  with_nul.push_back('\0');
+  with_nul += "[]";
+  EXPECT_FALSE(manager.jsonToCollectionManifest(with_nul, &manifest));
+}
+
 TEST_F(CouchbaseUnitTest, RejectOversizedResponseBeforeBufferingBody) {
   GFLAGS_NAMESPACE::FlagSaver flag_saver;
   brpc::FLAGS_max_body_size = 1024;

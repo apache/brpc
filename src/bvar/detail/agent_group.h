@@ -113,10 +113,11 @@ public:
     // We need this function to be as fast as possible.
     inline static Agent* get_tls_agent(AgentId id) {
         if (__builtin_expect(id >= 0, 1)) {
-            if (_s_tls_blocks) {
+            auto* blocks = _s_tls_blocks();
+            if (blocks) {
                 const size_t block_id = (size_t)id / ELEMENTS_PER_BLOCK;
-                if (block_id < _s_tls_blocks->size()) {
-                    ThreadBlock* const tb = (*_s_tls_blocks)[block_id];
+                if (block_id < blocks->size()) {
+                    ThreadBlock* const tb = (*blocks)[block_id];
                     if (tb) {
                         return tb->at(id - block_id * ELEMENTS_PER_BLOCK);
                     }
@@ -132,41 +133,44 @@ public:
             CHECK(false) << "Invalid id=" << id;
             return nullptr;
         }
-        if (_s_tls_blocks == nullptr) {
-            _s_tls_blocks = new (std::nothrow) std::vector<ThreadBlock *>;
-            if (__builtin_expect(_s_tls_blocks == nullptr, 0)) {
+        auto* blocks = _s_tls_blocks();
+        if (blocks == nullptr) {
+            blocks = new (std::nothrow) std::vector<ThreadBlock*>;
+            if (__builtin_expect(blocks == nullptr, 0)) {
                 LOG(FATAL) << "Fail to create vector, " << berror();
                 return nullptr;
             }
+            _s_tls_blocks() = blocks;
             butil::thread_atexit(_destroy_tls_blocks);
         }
         const size_t block_id = (size_t)id / ELEMENTS_PER_BLOCK; 
-        if (block_id >= _s_tls_blocks->size()) {
+        if (block_id >= blocks->size()) {
             // The 32ul avoid pointless small resizes.
-            _s_tls_blocks->resize(std::max(block_id + 1, 32ul));
+            blocks->resize(std::max(block_id + 1, 32ul));
         }
-        ThreadBlock* tb = (*_s_tls_blocks)[block_id];
+        ThreadBlock* tb = (*blocks)[block_id];
         if (tb == nullptr) {
             ThreadBlock *new_block = new (std::nothrow) ThreadBlock;
             if (__builtin_expect(new_block == nullptr, 0)) {
                 return nullptr;
             }
             tb = new_block;
-            (*_s_tls_blocks)[block_id] = new_block;
+            (*blocks)[block_id] = new_block;
         }
         return tb->at(id - block_id * ELEMENTS_PER_BLOCK);
     }
 
 private:
     static void _destroy_tls_blocks() {
-        if (!_s_tls_blocks) {
+        auto* blocks = _s_tls_blocks();
+        if (!blocks) {
             return;
         }
-        for (size_t i = 0; i < _s_tls_blocks->size(); ++i) {
-            delete (*_s_tls_blocks)[i];
+        for (size_t i = 0; i < blocks->size(); ++i) {
+            delete (*blocks)[i];
         }
-        delete _s_tls_blocks;
-        _s_tls_blocks = nullptr;
+        delete blocks;
+        _s_tls_blocks() = nullptr;
     }
 
     inline static std::deque<AgentId> &_get_free_ids() {
@@ -180,7 +184,7 @@ private:
     static pthread_mutex_t                      _s_mutex;
     static AgentId                              _s_agent_kinds;
     static std::deque<AgentId>                  *_s_free_ids;
-    static __thread std::vector<ThreadBlock *>  *_s_tls_blocks;
+    static BUTIL_THREAD_LOCAL(std::vector<ThreadBlock*>*, _s_tls_blocks, nullptr);
 };
 
 template <typename Agent>
@@ -191,10 +195,6 @@ std::deque<AgentId>* AgentGroup<Agent>::_s_free_ids = nullptr;
 
 template <typename Agent>
 AgentId AgentGroup<Agent>::_s_agent_kinds = 0;
-
-template <typename Agent>
-__thread std::vector<typename AgentGroup<Agent>::ThreadBlock *>
-*AgentGroup<Agent>::_s_tls_blocks = nullptr;
 
 }  // namespace detail
 }  // namespace bvar

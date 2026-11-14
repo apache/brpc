@@ -51,10 +51,10 @@ struct LocalStorage {
 
 const static LocalStorage LOCAL_STORAGE_INIT = BTHREAD_LOCAL_STORAGE_INITIALIZER;
 
-EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(LocalStorage, tls_bls);
+LocalStorage& tls_bls();
 
 inline LocalStorage* tls_bls_ptr() {
-    return BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(tls_bls);
+    return &tls_bls();
 }
 
 enum TaskStatus {

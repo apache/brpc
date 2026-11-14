@@ -23,7 +23,9 @@ find_package(Gperftools)
 
 add_library(brpc_test_config INTERFACE)
 target_link_libraries(brpc_test_config INTERFACE brpc_build_config)
-target_include_directories(brpc_test_config INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(brpc_test_config BEFORE INTERFACE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS})
 target_compile_definitions(brpc_test_config INTERFACE
     UNIT_TEST
     BVAR_NOT_LINK_DEFAULT_VARIABLES
@@ -307,19 +309,40 @@ if(WITH_FLATBUFFERS)
                 "${FLATBUFFERS_FLATC_EXECUTABLE}"
         COMMENT "Generating FlatBuffers test messages"
         VERBATIM)
-    add_executable(brpc_flatbuffers_unittest
-        brpc_flatbuffers_unittest.cpp "${FLATBUFFERS_TEST_HEADER}")
-    target_include_directories(brpc_flatbuffers_unittest BEFORE PRIVATE
-        "${BRPC_GTEST_INCLUDE_DIR}")
-    target_link_libraries(brpc_flatbuffers_unittest PRIVATE
-        brpc-static brpc_test_config gtest_main ${DYNAMIC_LIB})
-    add_test(NAME brpc_flatbuffers_unittest COMMAND brpc_flatbuffers_unittest)
+    foreach(FB_TEST brpc_flatbuffers_unittest brpc_flatbuffers_protocol_unittest)
+        add_executable(${FB_TEST} ${FB_TEST}.cpp "${FLATBUFFERS_TEST_HEADER}")
+        target_include_directories(${FB_TEST} BEFORE PRIVATE
+            "${BRPC_GTEST_INCLUDE_DIR}")
+        target_link_libraries(${FB_TEST} PRIVATE
+            brpc-static brpc_test_config gtest_main ${DYNAMIC_LIB})
+        add_test(NAME ${FB_TEST} COMMAND ${FB_TEST})
+    endforeach()
+
+    # The same probe compiled with the OFF configuration must report the same
+    # layout; the ON validation runs both and compares their output.
+    set(WITH_FLATBUFFERS_VAL 0)
+    configure_file("${PROJECT_SOURCE_DIR}/src/butil/config.h.in"
+                   "${CMAKE_CURRENT_BINARY_DIR}/layout_off/butil/config.h" @ONLY)
+    set(WITH_FLATBUFFERS_VAL 1)
+    foreach(FB_LAYOUT on off)
+        add_executable(flatbuffers_layout_probe_${FB_LAYOUT} flatbuffers_layout_probe.cpp)
+        if(FB_LAYOUT STREQUAL "off")
+            target_include_directories(flatbuffers_layout_probe_${FB_LAYOUT} BEFORE PRIVATE
+                "${CMAKE_CURRENT_BINARY_DIR}/layout_off")
+        endif()
+        target_compile_options(flatbuffers_layout_probe_${FB_LAYOUT} PRIVATE
+            -Wno-invalid-offsetof)
+        target_link_libraries(flatbuffers_layout_probe_${FB_LAYOUT} PRIVATE
+            brpc-static brpc_test_config ${DYNAMIC_LIB})
+    endforeach()
 endif()
 
 # brpc tests
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 list(REMOVE_ITEM BRPC_UNITTESTS
-    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_unittest.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_collector_premain_unittest.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_unittest.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_protocol_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
@@ -330,6 +353,13 @@ foreach(BRPC_UT ${BRPC_UNITTESTS})
         ${GPERFTOOLS_LIBRARIES})
     add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
 endforeach()
+
+# This test includes collector.cpp and rpc_dump.cpp to control initialization
+# order. A static archive supplies the other objects without duplicate flags.
+add_executable(brpc_collector_premain_unittest brpc_collector_premain_unittest.cpp)
+target_link_libraries(brpc_collector_premain_unittest PRIVATE
+    brpc-static brpc_test_config gtest_main ${GPERFTOOLS_LIBRARIES})
+add_test(NAME brpc_collector_premain_unittest COMMAND brpc_collector_premain_unittest)
 
 if(BUILD_FUZZ_TESTS)
     add_library(brpc-static-debug STATIC $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>

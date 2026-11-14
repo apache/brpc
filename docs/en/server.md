@@ -589,7 +589,19 @@ Controlled by `ServerOptions.num_threads` , number of cpu cores by default(inclu
 
 NOTE: ServerOptions.num_threads is just a **hint**.
 
-Don't think that Server uses exactly so many workers because all servers and channels in one process share worker pthreads. Total number of threads is the maximum of all ServerOptions.num_threads and bthread_concurrency.  For example, a program has 2 servers with num_threads=24 and 36 respectively, and bthread_concurrency is 16. Then the number of worker pthreads is max (24, 36, 16) = 36, which is different from other RPC implementations which do summations generally.
+Don't think that Server uses exactly so many workers because all servers and channels in one process share worker pthreads. The configured normal concurrency is the maximum of all ServerOptions.num_threads and bthread_concurrency.  For example, a program has 2 servers with num_threads=24 and 36 respectively, and bthread_concurrency is 16. Then the configured normal concurrency is max (24, 36, 16) = 36, which is different from other RPC implementations which do summations generally.
+
+NOTE: the event dispatchers (-event_dispatcher_num of them per tag) and bthread's internal epoll thread run an event loop that never returns: they wait in epoll_wait/kevent when idle and dispatch the events in place otherwise. As bthreads are not preemptible, in neither state does the worker pthread carrying them get to run another bthread, so it is effectively dedicated to them. Each of them therefore reserves one **extra** worker which is not part of the maximum above. There are three concurrency counts:
+
+- **Normal concurrency**: workers available to normal bthreads, configured by `num_threads` / `-bthread_concurrency`.
+- **Reserved concurrency**: extra workers created for blocking loops such as event dispatchers and internal epoll threads.
+- **Total concurrency**: normal concurrency plus reserved concurrency. The bvar `bthread_worker_count` reports the total number of running workers.
+
+With the default eager worker creation, total concurrency is `max(all num_threads, -bthread_concurrency) + reserved concurrency`. When `-bthread_min_concurrency` enables lazy growth, the current normal concurrency may be lower than its configured value. Reserved workers are still created eagerly.
+
+The minimum configurable normal concurrency is `BTHREAD_MIN_CONCURRENCY` (4). The internal epoll thread uses the separate reserved budget and is excluded from this minimum.
+
+Each tag has separate limits of `BTHREAD_MAX_CONCURRENCY` (1024) normal workers and `BTHREAD_MAX_RESERVED_CONCURRENCY` (512) reserved workers, for a total capacity of 1536. Reservations accumulate across calls. Setting normal concurrency to 1024 still leaves room to reserve workers for event dispatchers and the internal epoll thread, regardless of initialization order.
 
 Channel does not have a corresponding option, but user can change number of worker pthreads at client-side by setting gflag -bthread_concurrency.
 

@@ -20,6 +20,12 @@ licenses(["notice"])  # Apache v2
 
 exports_files(["LICENSE"])
 
+# Included by the pre-main shutdown test to control static initialization order.
+exports_files(
+    ["src/bvar/collector.cpp", "src/brpc/rpc_dump.cpp"],
+    visibility = ["//test:__pkg__"],
+)
+
 config_setting(
     name = "brpc_with_flatbuffers",
     define_values = {"BRPC_WITH_FLATBUFFERS": "true"},
@@ -316,7 +322,6 @@ objc_library(
         "src/butil/memory/aligned_memory.h",
         "src/butil/memory/scoped_policy.h",
         "src/butil/memory/scoped_ptr.h",
-        "src/butil/move.h",
         "src/butil/port.h",
         "src/butil/posix/eintr_wrapper.h",
         "src/butil/scoped_generic.h",
@@ -559,7 +564,10 @@ brpc_proto_library(
     visibility = ["//visibility:public"],
 )
 
-FLATBUFFERS_SRC_PATTERNS = ["src/brpc/flatbuffers/*.cpp"]
+FLATBUFFERS_SRC_PATTERNS = [
+    "src/brpc/flatbuffers/*.cpp",
+    "src/brpc/policy/flatbuffers_protocol.cpp",
+]
 
 URMA_SRC_PATTERNS = [
     "src/brpc/urma/*.cpp",

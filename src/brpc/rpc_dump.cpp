@@ -62,6 +62,14 @@ BRPC_VALIDATE_GFLAG(rpc_dump, PassValidate);
 BRPC_VALIDATE_GFLAG(rpc_dump_max_requests_in_one_file, PositiveInteger);
 BRPC_VALIDATE_GFLAG(rpc_dump_max_files, PositiveInteger);
 
+// Declare this after the flags so both collector threads finish before the
+// string flag is destroyed, even if the collector was created before main().
+// This also prevents the first RPC dump from starting during later teardown.
+struct RpcDumpExitGuard {
+    ~RpcDumpExitGuard() { bvar::detail::StopCollector(); }
+};
+static RpcDumpExitGuard g_rpc_dump_exit_guard;
+
 static const size_t UNWRITTEN_BUFSIZE = 1024 * 1024;
 static const int64_t FLUSH_TIMEOUT = 2000000L; // 2s
 

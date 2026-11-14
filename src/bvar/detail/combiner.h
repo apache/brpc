@@ -205,17 +205,30 @@ friend class GlobalValue<self_type>;
         // 
         // NOTE: Only available to non-atomic types.
         template <typename Op>
-        void merge_global(const Op &op, self_shared_type& c) {
-            const self_shared_type& c_ref = nullptr != c ? c : combiner.lock();
-            if (nullptr != c_ref) {
-                GlobalValue<self_type> g(this, c_ref.get());
-                element.merge_global(op, g);
+        void merge_global(const Op &op, const self_shared_type& c) {
+            // The caller keeps c alive during the merge. A conditional
+            // expression mixing c and combiner.lock() would copy c into a
+            // temporary shared_ptr, even when c is non-null.
+            if (c != nullptr) {
+                merge_global_impl(op, c.get());
+                return;
+            }
+            self_shared_type hold = combiner.lock();
+            if (hold != nullptr) {
+                merge_global_impl(op, hold.get());
             }
         }
 
         ElementContainer<ElementTp> element;
     private:
     friend class AgentCombiner<ResultTp, ElementTp, BinaryOp>;
+
+        template <typename Op>
+        void merge_global_impl(const Op& op, self_type* c) {
+            GlobalValue<self_type> g(this, c);
+            element.merge_global(op, g);
+        }
+
         self_weak_type combiner;
     };
 
@@ -325,6 +338,15 @@ friend class GlobalValue<self_type>;
         butil::AutoLock guard(_lock);
         agent->element.exchange(&prev, _element_identity);
         call_op_returning_void(_op, _global_result, prev);
+    }
+
+    AgentId agent_id() const { return _id; }
+
+    // The caller must keep the combiner owning id alive. An allocated TLS
+    // slot may still be unbound, or belong to an expired combiner after reuse.
+    inline static Agent* get_bound_tls_agent(AgentId id) {
+        Agent* agent = AgentGroup::get_tls_agent(id);
+        return agent && !agent->combiner.expired() ? agent : nullptr;
     }
 
     // We need this function to be as fast as possible.

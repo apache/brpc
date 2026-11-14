@@ -20,6 +20,7 @@
 #ifndef BUTIL_THREAD_LOCAL_H
 #define BUTIL_THREAD_LOCAL_H
 
+#include <memory>                   // std::addressof
 #include <new>                      // std::nothrow
 #include "butil/macros.h"
 
@@ -29,6 +30,34 @@
 #define BAIDU_THREAD_LOCAL __thread
 #endif  // _MSC_VER
 
+// Define a pthread-local variable accessed through name():
+//   BUTIL_THREAD_LOCAL(int, counter, 0);
+//   ++counter();
+//   counter() = 10;
+// Prefix with static for internal linkage or a static class member, or inline
+// for a definition in a header. A declaration in another translation unit is
+// simply `type& name();`. Use a type alias for arrays or types containing commas.
+//
+// A bthread can resume on a different pthread. Keep TLS address resolution in
+// a non-inlined function so the compiler cannot hoist it across a suspension.
+// The opaque asm output also prevents interprocedural optimization (including
+// LTO) from treating the returned address as invariant. A memory barrier alone,
+// or an inline function taking &tls as its argument, does not achieve this.
+//
+// The returned reference/pointer is only valid for the current pthread: never
+// retain it across a call that may suspend. In particular, evaluate a possibly
+// suspending RHS before assigning it to name(). Initializers must not suspend.
+// Constant-initialized trivial types have no dynamic initialization/exit hook.
+#define BUTIL_THREAD_LOCAL(type, name, ...)                                  \
+    __attribute__((noinline, unused)) type& name() {                          \
+        static thread_local type tls_value = __VA_ARGS__;                    \
+        type* tls_ptr = std::addressof(tls_value);                            \
+        asm volatile("" : "+r"(tls_ptr) : : "memory");                       \
+        return *tls_ptr;                                                     \
+    }
+
+// Legacy interfaces retained for source compatibility. Prefer BUTIL_THREAD_LOCAL
+// for new code: it hides the storage and needs no separate get/set/ptr macros.
 #define BAIDU_VOLATILE_THREAD_LOCAL(type, var_name, default_value)             \
   BAIDU_THREAD_LOCAL type var_name = default_value;                            \
   __attribute__((noinline, unused)) type get_##var_name(void) {                \
@@ -61,10 +90,8 @@
      var_name = v;                                                              \
    }
 
-#if (defined (__aarch64__) && defined (__GNUC__)) || defined(__clang__)
-// GNU compiler under aarch and Clang compiler is incorrectly caching the 
-// address of thread_local variables across a suspend-point. The following
-// macros used to disable the volatile thread local access optimization.
+// Always use the accessors to prevent TLS address caching across suspension,
+// regardless of compiler or architecture.
 #define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) get_##var_name()
 #define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) get_ptr_##var_name()
 #define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) set_##var_name(value)
@@ -73,13 +100,6 @@
     extern type get_##var_name(void);                                          \
     extern type *get_ptr_##var_name(void);                                     \
     extern void set_##var_name(type v)
-#else
-#define BAIDU_GET_VOLATILE_THREAD_LOCAL(var_name) var_name
-#define BAIDU_GET_PTR_VOLATILE_THREAD_LOCAL(var_name) &var_name
-#define BAIDU_SET_VOLATILE_THREAD_LOCAL(var_name, value) var_name = value
-#define EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(type, var_name)                     \
-    extern BAIDU_THREAD_LOCAL type var_name
-#endif
 
 namespace butil {
 
