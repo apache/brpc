@@ -18,6 +18,8 @@
 #ifndef BRPC_URMA_ENDPOINT_H
 #define BRPC_URMA_ENDPOINT_H
 
+#include "brpc/urma/urma_recovery_policy.h"
+
 #include <cstdint>
 #include <functional>
 #include <ostream>
@@ -100,6 +102,7 @@ struct UrmaResource {
 // windows, and the registered buffer bookkeeping. Cache-line padded to avoid
 // false sharing between connections.
 class BAIDU_CACHELINE_ALIGNMENT UrmaEndpoint : public SocketUser {
+    friend class UrmaRecoveryTestPeer;
     friend class UrmaConnect;
     friend class Socket;
     friend class UrmaTransport;
@@ -259,8 +262,10 @@ private:
     void PollerAddCqSid();
     void PollerRemoveCqSid();
 
-    inline void TryReadOnTcp();
+    void TryReadOnTcp();
+    void DrainEstablishedTcp();
     void FallbackToTcp(UrmaTransport* transport, bool process_tcp);
+    void ReportFailure(UrmaFailureReason reason);
     void FailHandshake(UrmaTransport* transport, int error,
                        const char* reason);
 
@@ -272,11 +277,16 @@ private:
     // Not owned.
     Socket* _socket;
 
+    uint64_t _recovery_epoch{0};
+    butil::atomic<UrmaFailureReason> _runtime_failure{UrmaFailureReason::NONE};
+
     // Handshake state.
     butil::atomic<State> _state{UNINIT};
     int _handshake_version{0};  // 0 = unnegotiated; 2 = v2; 3 = v3
     butil::atomic<int64_t> _pending_received_bytes{0};
     butil::Mutex _dispatch_mutex;
+    // Serialize TCP parsing / EOF checks across event and handshake bthreads.
+    butil::Mutex _tcp_read_mutex;
 
     // The URMA resources (jetty / jfc / jfr / jfce / imported peer objects).
     UrmaResource* _resource{nullptr};
