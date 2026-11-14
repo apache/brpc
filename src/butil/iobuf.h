@@ -534,12 +534,28 @@ public:
     // Returns pointer to the character, nullptr on empty
     const void* fetch1();
 
+    // Peek n bytes without consuming them. Return a pointer into the backing
+    // block when contiguous, otherwise copy into aux_buffer (at least n bytes).
+    // Return nullptr on insufficient data, leaving aux_buffer unchanged.
+    // For n == 0, return aux_buffer without accessing the buffer.
+    const void* fetch(void* aux_buffer, size_t n) const;
+
+    // Access the underlying IOBuf without copying or synchronizing the cursor.
+    // Its front block may still include bytes already consumed by this cutter.
+    const IOBuf& buf() const { return *_buf; }
+
     // Pop n bytes from front side
     // Returns bytes popped.
     size_t pop_front(size_t n);
 
     // Uncut bytes
     size_t remaining_bytes() const;
+
+    // Number of contiguous unread bytes at the current cursor.
+    // May advance the internal cursor to the next reference when the current
+    // one is exhausted, removing the exhausted reference from the underlying IOBuf.
+    // Does not consume unread data; returns 0 on exhausted input.
+    size_t remaining_contiguous_bytes();
 
 private:
     size_t slower_copy_to(void* data, size_t n);
