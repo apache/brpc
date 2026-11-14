@@ -67,6 +67,8 @@ int EventDispatcher::Start(const bthread_attr_t* thread_attr) {
         return -1;
     }
 
+    _use_polling = FLAGS_event_dispatcher_use_polling;
+
     // Set _thread_attr before creating kqueue thread to make sure
     // everyting seems sane to the thread.
     if (thread_attr) {
@@ -85,12 +87,14 @@ int EventDispatcher::Start(const bthread_attr_t* thread_attr) {
     // when the older comlog (e.g. 3.1.85) calls com_openlog_r(). Since this
     // is also a potential issue for consumer threads, using the same attr
     // should be a reasonable solution.
+    bthread_t tid;
     int rc = bthread_start_background(
-        &_tid, &kqueue_thread_attr, RunThis, this);
+        &tid, &kqueue_thread_attr, RunThis, this);
     if (rc) {
         LOG(FATAL) << "Fail to create kqueue thread: " << berror(rc);
         return -1;
     }
+    _tid.store(tid, std::memory_order_release);
     return 0;
 }
 
@@ -99,7 +103,7 @@ bool EventDispatcher::Running() const {
 }
 
 void EventDispatcher::Stop() {
-    _stop = true;
+    _stop.store(true, std::memory_order_release);
 
     if (_event_dispatcher_fd >= 0) {
         struct kevent kqueue_event;
@@ -110,9 +114,10 @@ void EventDispatcher::Stop() {
 }
 
 void EventDispatcher::Join() {
-    if (_tid) {
-        bthread_join(_tid, nullptr);
-        _tid = 0;
+    const bthread_t tid = _tid.load(std::memory_order_acquire);
+    if (tid) {
+        bthread_join(tid, nullptr);
+        _tid.store(0, std::memory_order_release);
     }
 }
 
@@ -191,13 +196,16 @@ void* EventDispatcher::RunThis(void* arg) {
 }
 
 void EventDispatcher::Run() {
-    while (!_stop) {
+    const timespec no_wait = {0, 0};
+    while (!_stop.load(std::memory_order_acquire)) {
+        if (_use_polling && BAIDU_UNLIKELY(
+                _polling_command.load(std::memory_order_relaxed) != nullptr)) {
+            ProcessPollingCommand();
+        }
         struct kevent e[32];
-        int n = kevent(_event_dispatcher_fd, nullptr, 0, e, ARRAY_SIZE(e), nullptr);
-        if (_stop) {
-            // EV_SET/kevent should have some sort of memory fencing
-            // guaranteeing that we(after kevent) see _stop set before
-            // EV_SET
+        int n = kevent(_event_dispatcher_fd, nullptr, 0, e, ARRAY_SIZE(e),
+                       _use_polling ? &no_wait : nullptr);
+        if (_stop.load(std::memory_order_acquire)) {
             break;
         }
         if (n < 0) {
@@ -226,7 +234,11 @@ void EventDispatcher::Run() {
                 (*g_edisp_write_lantency) << (butil::cpuwide_time_us() - start_us);
             }
         }
+        if (_use_polling) {
+            RunPollingCallback();
+        }
     }
+    FinishPolling();
 }
 
 } // namespace brpc
