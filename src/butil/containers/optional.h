@@ -496,7 +496,9 @@ public:
             std::move(**this) : static_cast<T>(std::forward<U>(v));
     }
 
-    void swap(optional& rhs) noexcept {
+    void swap(optional& rhs) noexcept(
+        std::is_nothrow_move_constructible<T>::value &&
+        std::is_nothrow_move_assignable<T>::value) {
         if (_engaged && rhs._engaged) {
             std::swap(**this, *rhs);
         } else if (_engaged) {
@@ -541,7 +543,9 @@ private:
 };
 
 template <typename T>
-void swap(optional<T>& a, optional<T>& b) noexcept { a.swap(b); }
+void swap(optional<T>& a, optional<T>& b) noexcept(noexcept(a.swap(b))) {
+    a.swap(b);
+}
 
 // Creates a non-empty 'optional<T>`.
 template <typename T>

@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <type_traits>
+#include <utility>
 #include "butil/containers/optional.h"
 
 #if defined(BRPC_TEST_OPTIONAL_CXX14) && __cplusplus != 201402L
@@ -354,6 +355,22 @@ TEST(OptionalTest, swap) {
 
     ASSERT_TRUE(noexcept(opt1.swap(opt2)));
     ASSERT_TRUE(noexcept(swap(opt1, opt2)));
+}
+
+struct ThrowingMove {
+    ThrowingMove() = default;
+    ThrowingMove(const ThrowingMove&) = default;
+    ThrowingMove(ThrowingMove&&) noexcept(false) { }
+    ThrowingMove& operator=(const ThrowingMove&) = default;
+    ThrowingMove& operator=(ThrowingMove&&) noexcept(false) { return *this; }
+};
+
+TEST(OptionalTest, swap_noexcept_follows_value_type) {
+    using Optional = butil::optional<ThrowingMove>;
+    static_assert(!noexcept(std::declval<Optional&>().swap(
+                      std::declval<Optional&>())), "");
+    static_assert(!noexcept(swap(std::declval<Optional&>(),
+                                 std::declval<Optional&>())), "");
 }
 
 TEST(OptionalTest, make_optional) {
