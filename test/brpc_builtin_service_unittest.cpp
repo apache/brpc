@@ -22,16 +22,20 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
+#include <sstream>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include "gperftools_helper.h"
+#include "butil/file_util.h"
+#include "butil/files/scoped_temp_dir.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "brpc/socket.h"
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
+#include "brpc/grpc.h"
 #include "brpc/span.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/builtin/version_service.h"
@@ -813,6 +817,60 @@ TEST_F(BuiltinServiceTest, hotspots_query_escaping) {
         EXPECT_EQ(std::string::npos, body.find(payload))
             << "unescaped payload in html: " << body;
     }
+}
+
+TEST_F(BuiltinServiceTest, hotspots_profile_filename_escaping) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    butil::ScopedTempDir temp_dir;
+    ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+    brpc::FLAGS_rpc_profiling_dir = temp_dir.path().value();
+    const butil::FilePath profile_dir = temp_dir.path().Append(
+        brpc::GetProgramChecksum());
+    ASSERT_TRUE(butil::CreateDirectory(profile_dir));
+
+    const std::string filename = "profile'><img src=x onerror=alert(1)>.cpu";
+    const butil::FilePath profile_path = profile_dir.Append(filename);
+    ASSERT_EQ(0, butil::WriteFile(profile_path, "", 0));
+
+    ClosureChecker done;
+    brpc::Controller cntl;
+    brpc::HotspotsRequest req;
+    brpc::HotspotsResponse res;
+    brpc::HotspotsService service;
+    SetUpController(&cntl, true);
+    service.cpu(&cntl, &req, &res, &done);
+
+    const std::string& body = cntl.response_attachment().to_string();
+    EXPECT_EQ(std::string::npos, body.find(filename))
+        << "unescaped profile filename in html: " << body;
+    EXPECT_NE(std::string::npos, body.find(brpc::WebEscape(filename)));
+
+    const butil::FilePath selected_profile_path =
+        profile_dir.Append("selected.cpu");
+    ASSERT_EQ(0, butil::WriteFile(selected_profile_path, "", 0));
+    std::string percent_encoded_path;
+    brpc::PercentEncode(selected_profile_path.value(), &percent_encoded_path);
+    ClosureChecker encoded_done;
+    brpc::Controller encoded_cntl;
+    brpc::HotspotsRequest encoded_req;
+    brpc::HotspotsResponse encoded_res;
+    SetUpController(&encoded_cntl, true);
+    encoded_cntl.http_request().uri().SetQuery(
+        "view", "brpc_pct:" + percent_encoded_path);
+    service.cpu(&encoded_cntl, &encoded_req, &encoded_res, &encoded_done);
+    EXPECT_FALSE(encoded_cntl.Failed()) << encoded_cntl.ErrorText();
+}
+
+TEST_F(BuiltinServiceTest, path_html_escaping) {
+    const std::string payload = "\"'><script>alert(1)</script>&";
+    std::ostringstream html;
+    html << brpc::Path(payload.c_str(), brpc::Path::LOCAL, payload.c_str());
+    EXPECT_EQ(std::string::npos, html.str().find(payload));
+    EXPECT_NE(std::string::npos, html.str().find(brpc::WebEscape(payload)));
+
+    std::ostringstream text;
+    text << brpc::Path(payload.c_str(), nullptr, payload.c_str());
+    EXPECT_EQ(payload, text.str());
 }
 
 TEST_F(BuiltinServiceTest, rpcz_query_escaping) {

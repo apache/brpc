@@ -24,8 +24,10 @@
 #include "butil/popen.h"                         // butil::read_command_output
 #include "butil/fd_guard.h"                      // butil::fd_guard
 #include "butil/iobuf_profiler.h"
+#include "butil/strings/string_util.h"
 #include "brpc/log.h"
 #include "brpc/controller.h"
+#include "brpc/grpc.h"
 #include "brpc/server.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/builtin/pprof_perl.h"
@@ -116,6 +118,38 @@ BRPC_VALIDATE_GFLAG(max_flame_graph_width, PositiveInteger);
 static const char* const PPROF_FILENAME = "pprof.pl";
 static int DEFAULT_PROFILING_SECONDS = 10;
 static size_t CONCURRENT_PROFILING_LIMIT = 256;
+static const char PROFILE_PATH_ENCODING_PREFIX[] = "brpc_pct:";
+
+static bool DecodeProfilePathQuery(const std::string* encoded_path,
+                                   std::string* decoded_path) {
+    if (encoded_path == nullptr) {
+        return true;
+    }
+    const size_t prefix_size = sizeof(PROFILE_PATH_ENCODING_PREFIX) - 1;
+    if (encoded_path->compare(0, prefix_size, PROFILE_PATH_ENCODING_PREFIX) != 0) {
+        *decoded_path = *encoded_path;
+        return true;
+    }
+    const std::string percent_encoded = encoded_path->substr(prefix_size);
+    for (size_t i = 0; i < percent_encoded.size(); ++i) {
+        if (percent_encoded[i] == '%') {
+            if (i + 2 >= percent_encoded.size() ||
+                !IsHexDigit(percent_encoded[i + 1]) ||
+                !IsHexDigit(percent_encoded[i + 2])) {
+                return false;
+            }
+            i += 2;
+        }
+    }
+    PercentDecode(percent_encoded, decoded_path);
+    return decoded_path->find('\0') == std::string::npos;
+}
+
+static std::string EncodeProfilePathQuery(const std::string& path) {
+    std::string percent_encoded;
+    PercentEncode(path, &percent_encoded);
+    return std::string(PROFILE_PATH_ENCODING_PREFIX) + percent_encoded;
+}
 
 struct ProfilingWaiter {
     Controller* cntl;
@@ -627,7 +661,13 @@ static void DoProfiling(ProfilingType type,
         cntl->server()->PrintTabsBody(os, ProfilingType2String(type));
     }
 
-    const std::string* view = cntl->http_request().uri().GetQuery("view");
+    const std::string* encoded_view =
+        cntl->http_request().uri().GetQuery("view");
+    std::string decoded_view;
+    if (!DecodeProfilePathQuery(encoded_view, &decoded_view)) {
+        return cntl->SetFailed(EINVAL, "Invalid query `view'");
+    }
+    const std::string* view = (encoded_view ? &decoded_view : nullptr);
     if (view) {
         if (!ValidProfilePath(*view)) {
             return cntl->SetFailed(EINVAL, "Invalid query `view'");
@@ -895,9 +935,22 @@ static void StartProfiling(ProfilingType type,
     }
 
     const int seconds = ReadSeconds(cntl);
-    const std::string* view = cntl->http_request().uri().GetQuery("view");
+    const std::string* encoded_view =
+        cntl->http_request().uri().GetQuery("view");
+    std::string decoded_view;
+    if (!DecodeProfilePathQuery(encoded_view, &decoded_view)) {
+        return cntl->SetFailed(EINVAL, "Invalid query `view'");
+    }
+    const std::string* view = (encoded_view ? &decoded_view : nullptr);
     const bool show_ccount = cntl->http_request().uri().GetQuery("ccount");
-    const std::string* base_name = cntl->http_request().uri().GetQuery("base");
+    const std::string* encoded_base_name =
+        cntl->http_request().uri().GetQuery("base");
+    std::string decoded_base_name;
+    if (!DecodeProfilePathQuery(encoded_base_name, &decoded_base_name)) {
+        return cntl->SetFailed(EINVAL, "Invalid query `base'");
+    }
+    const std::string* base_name =
+        (encoded_base_name ? &decoded_base_name : nullptr);
     const std::string* display_type_query = cntl->http_request().uri().GetQuery("display_type");
     DisplayType display_type = DisplayType::kDot;
     if (display_type_query) {
@@ -956,10 +1009,10 @@ static void StartProfiling(ProfilingType type,
     os << "  var targetURL = '/hotspots/" << type_str << "';\n"
         "  targetURL += '?display_type=' + display_type;\n"
         "  if (past_prof != '') {\n"
-        "    targetURL += '&view=' + past_prof;\n"
+        "    targetURL += '&view=brpc_pct:' + encodeURIComponent(past_prof);\n"
         "  }\n"
         "  if (base_prof != '') {\n"
-        "    targetURL += '&base=' + base_prof;\n"
+        "    targetURL += '&base=brpc_pct:' + encodeURIComponent(base_prof);\n"
         "  }\n";
     if (type == PROFILING_CONTENTION) {
         os <<
@@ -1025,10 +1078,10 @@ static void StartProfiling(ProfilingType type,
         os << "&ccount";
     }
     if (view) {
-        os << "&view=" << *view;
+        os << "&view=" << EncodeProfilePathQuery(*view);
     }
     if (base_name) {
-        os << "&base=" << *base_name;
+        os << "&base=" << EncodeProfilePathQuery(*base_name);
     }
     os << "\",\n"
         "    type: \"GET\",\n"
@@ -1095,11 +1148,11 @@ static void StartProfiling(ProfilingType type,
         "<select id='view_prof' onchange='onSelectProf()'>";
     os << "<option value=''>&lt;new profile&gt;</option>";
     for (size_t i = 0; i < past_profs.size(); ++i) {
-        os << "<option value='" << past_profs[i] << "' ";
+        os << "<option value='" << WebEscape(past_profs[i]) << "' ";
         if (view != nullptr && past_profs[i] == *view) {
             os << "selected";
         }
-        os << '>' << GetBaseName(&past_profs[i]);
+        os << '>' << WebEscape(GetBaseName(&past_profs[i]));
     }
     os << "</select>";
     os << "<div><pre style='display:inline'>Display: </pre>"
@@ -1120,11 +1173,11 @@ static void StartProfiling(ProfilingType type,
               "<select id='base_prof' onchange='onSelectProf()'>"
               "<option value=''>&lt;none&gt;</option>";
         for (size_t i = 0; i<past_profs.size(); ++i) {
-            os << "<option value='" << past_profs[i] << "' ";
+            os << "<option value='" << WebEscape(past_profs[i]) << "' ";
             if (base_name!=nullptr && past_profs[i]==*base_name) {
                 os << "selected";
             }
-            os << '>' << GetBaseName(&past_profs[i]);
+            os << '>' << WebEscape(GetBaseName(&past_profs[i]));
         }
         os << "</select></div>";
     }
