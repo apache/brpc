@@ -2606,7 +2606,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     }
 #endif
 
-    os << "\nrdma={\n";
+    os << "\ntransport={\n";
     ptr->_transport->Debug(os);
     os << "}\n";
 

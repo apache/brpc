@@ -22,8 +22,7 @@
 #include "brpc/transport.h"
 
 namespace brpc {
-
-// Creates transport instances for a SocketMode.
+// Creates transports and initializes their shared context.
 class TransportFactory {
 public:
     static int ContextInitOrDie(SocketMode mode, bool server_or_not,

@@ -101,6 +101,11 @@ void InputMessageClosure::reset(InputMessageBase* m) {
 }
 
 void InputMessenger::OnNewMessages(Socket* m) {
+    OnNewMessagesUntil(m, nullptr);
+}
+
+void InputMessenger::OnNewMessagesUntil(
+    Socket* m, bool (*stop_reading)(Socket*)) {
     // Notes:
     // - If the socket has only one message, the message will be parsed and
     //   processed in this bthread. nova-pbrpc and http works in this way.
@@ -120,6 +125,9 @@ void InputMessenger::OnNewMessages(Socket* m) {
     InputMessageClosure last_msg;
     bool read_eof = false;
     while (!read_eof) {
+        if (stop_reading != nullptr && stop_reading(m)) {
+            return;
+        }
         const int64_t received_us = butil::cpuwide_time_us();
         const int64_t base_realtime = butil::gettimeofday_us() - received_us;
 

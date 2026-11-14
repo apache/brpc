@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <dlfcn.h>
 #include <time.h>
+#include <memory>
 #include <gflags/gflags.h>
 #include "brpc/ubshm/timer/timer_mgr.h"
 #include "brpc/ubshm/common/thread_lock.h"
@@ -33,6 +34,7 @@
 #include "ubs_mem.h"
 #endif
 #include "shm_ubs.h"
+#include "brpc/reloadable_flags.h"
 
 namespace brpc {
 namespace ubring {
@@ -46,6 +48,7 @@ DEFINE_bool(shm_wr_delay_comp, true, "Indicates whether to enable the write rela
 DEFINE_int32(ub_flying_io_timeout_s, 5,
              "Time in seconds to wait for stopping data sending and receiving "
              "when the link is disconnected.");
+BRPC_VALIDATE_GFLAG(ub_flying_io_timeout_s, brpc::PositiveInteger);
 char g_region_name[MAX_REGION_NAME_DESC_LENGTH] = {0};
 int g_shm_timer_fd = 0;
 ShmList *g_shm_list = nullptr;
@@ -133,66 +136,130 @@ static uint64_t AquireFlagIfWrDelayComp(const uint64_t flag)
     return flag | UBSM_FLAG_WR_DELAY_COMP;
 }
 
-RETURN_CODE UbsShmLocalMalloc(SHM *shm)
-{
-    int ret = ubsmem_shmem_allocate(g_region_name, shm->name, shm->len, SHM_RIGHT_MODE,
-        AquireFlagIfWrDelayComp(UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS));
-do {
-    if (ret == UBSM_ERR_ALREADY_EXIST) {
-        if (ubsmem_shmem_deallocate(shm->name) != UBSM_OK) {
-            LOG(ERROR) << "Ubs create shm name=" << shm->name << " failed, shm exists, ret=" << ret;
-            return SHM_ERR_EXIST;
-        }
-        LOG(INFO) << "Ubs delete shm name=" << shm->name << " success, try to recreate.";
-        ret = ubsmem_shmem_allocate(g_region_name, shm->name, shm->len, SHM_RIGHT_MODE,
-            AquireFlagIfWrDelayComp(UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS));
+// Each task owns a copy of the mapping and its remaining operations.
+static bool TryUbsCleanup(ShmListNode* task) {
+    if (task->unmap) {
+        const int ret = ubsmem_shmem_unmap(task->shm.addr, task->shm.len);
         if (ret != UBSM_OK) {
-            LOG(ERROR) << "Ubs recreate shm name=" << shm->name << " failed, ret=" << ret;
-            return SHM_ERR;
+            LOG_EVERY_SECOND(WARNING) << "Ubs unmap shm=" << task->shm.name
+                                     << " failed, ret=" << ret;
+            return false;
         }
-    } else if (ret != UBSM_OK) {
-        LOG(ERROR) << "Ubs create shm name=" << shm->name << " failed, ret=" << ret;
-        return SHM_ERR;
+        task->unmap = false;
     }
-} while (0);
-
-    ret = ubsmem_shmem_map(nullptr, shm->len, PROT_READ | PROT_WRITE, MAP_SHARED, shm->name, 0, (void**)&(shm->addr));
-    if (ret != UBSM_OK) {
-        LOG(ERROR) << "Ubs map shm=" << shm->name << " failed, ret=" << ret;
-        if (ret == UBSM_ERR_NOT_FOUND) {
-            return SHM_ERR_NOT_FOUND;
+    if (task->deallocate) {
+        const int ret = ubsmem_shmem_deallocate(task->shm.name);
+        if (ret != UBSM_OK && ret != UBSM_ERR_NOT_FOUND) {
+            LOG_EVERY_SECOND(WARNING) << "Ubs deallocate shm=" << task->shm.name
+                                     << " failed, ret=" << ret;
+            return false;
         }
-        ubsmem_shmem_deallocate(shm->name);
-        return SHM_ERR;
+        task->deallocate = false;
     }
+    return true;
+}
 
-    // Obtain memid via MXE
-    shm->memid = 1; // temporarily stubbed
-    LOG(INFO) << "Ubs malloc local shm=" << shm->name << " length=" << shm->len << " memid=" << shm->memid << " success.";
+static RETURN_CODE ReleaseUbsShmLocked(ShmList* list, SHM* shm,
+                                      ShmListNode* task) {
+    if (list != nullptr) {
+        for (ShmListNode* node = list->head; node != nullptr; node = node->next) {
+            if (node->shm.addr == task->shm.addr &&
+                node->shm.len == task->shm.len &&
+                strcmp(node->shm.name, task->shm.name) == 0) {
+                node->deallocate |= task->deallocate;
+                free(task);
+                shm->addr = nullptr;
+                return UBRING_OK;
+            }
+        }
+    }
+    if (TryUbsCleanup(task)) {
+        free(task);
+    } else if (list != nullptr) {
+        task->next = nullptr;
+        task->prev = list->tail;
+        if (list->tail != nullptr) {
+            list->tail->next = task;
+        } else {
+            list->head = task;
+        }
+        list->tail = task;
+        ++list->size;
+    } else {
+        if (!task->unmap) {
+            shm->addr = nullptr;
+        }
+        free(task);
+        return UBRING_ERR;
+    }
+    shm->addr = nullptr;
     return UBRING_OK;
 }
 
-RETURN_CODE UbsShmMunmap(SHM *shm)
-{
-    // unmap
-    if (shm->addr == nullptr) {
-        LOG(ERROR) << "Ubs input shm param is invalid, addr is NULL.";
-        return SHM_ERR_INPUT_INVALID;
+// Success means cleanup completed or its remaining operations were queued.
+static RETURN_CODE ReleaseUbsShm(SHM* shm, bool deallocate) {
+    // Reserve retry storage before changing the SDK mapping.
+    auto* task = static_cast<ShmListNode*>(malloc(sizeof(ShmListNode)));
+    if (task == nullptr) {
+        return UBRING_ERR;
     }
+    task->shm = *shm;
+    task->unmap = shm->addr != nullptr;
+    task->deallocate = deallocate;
+    ShmList* list = g_shm_list;
+    if (list != nullptr) {
+        LOCK_GUARD(list->shm_lock);
+        return ReleaseUbsShmLocked(list, shm, task);
+    }
+    return ReleaseUbsShmLocked(nullptr, shm, task);
+}
 
-    int ret = ubsmem_shmem_unmap(shm->addr, shm->len);
-    if (ret != UBSM_OK) {
-        if (ret == UBSM_ERR_NET) {
-            LOG(ERROR) << "Ubs unmap shm=" << shm->name << " failed, ubsm net err=" << ret;
-            AddShmToList(g_shm_list, shm);
-            return SHM_ERR_UBSM_NET_ERR;
+RETURN_CODE UbsShmLocalMalloc(SHM* shm) {
+    ShmList* list = g_shm_list;
+    if (list == nullptr) {
+        return UBRING_ERR;
+    }
+    LOCK_GUARD(list->shm_lock);
+    for (ShmListNode* task = list->head; task != nullptr; task = task->next) {
+        if (strcmp(task->shm.name, shm->name) == 0) {
+            return SHM_ERR_EXIST;
         }
-        LOG(ERROR) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " failed, ret=" << ret;
+    }
+    // Reserve rollback storage before creating a named SDK resource.
+    std::unique_ptr<ShmListNode, decltype(&free)> rollback(
+        static_cast<ShmListNode*>(malloc(sizeof(ShmListNode))), &free);
+    if (!rollback) {
+        return UBRING_ERR;
+    }
+    const uint64_t flags = AquireFlagIfWrDelayComp(
+        UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS);
+    int ret = ubsmem_shmem_allocate(
+        g_region_name, shm->name, shm->len, SHM_RIGHT_MODE, flags);
+    if (ret == UBSM_ERR_ALREADY_EXIST) {
+        return SHM_ERR_EXIST;
+    }
+    if (ret != UBSM_OK) {
+        LOG(ERROR) << "Ubs allocate shm=" << shm->name << " failed, ret=" << ret;
         return SHM_ERR;
     }
-
-    LOG(INFO) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " success.";
+    shm->addr = nullptr;
+    ret = ubsmem_shmem_map(nullptr, shm->len, PROT_READ | PROT_WRITE,
+                          MAP_SHARED, shm->name, 0,
+                          reinterpret_cast<void**>(&shm->addr));
+    if (ret != UBSM_OK) {
+        LOG(ERROR) << "Ubs map shm=" << shm->name << " failed, ret=" << ret;
+        rollback->shm = *shm;
+        rollback->unmap = false;
+        rollback->deallocate = true;
+        ReleaseUbsShmLocked(list, shm, rollback.release());
+        return ret == UBSM_ERR_NOT_FOUND ? SHM_ERR_NOT_FOUND : SHM_ERR;
+    }
+    shm->memid = 1;
     return UBRING_OK;
+}
+
+RETURN_CODE UbsShmMunmap(SHM *shm) {
+    return ReleaseUbsShm(shm, false);
 }
 
 RETURN_CODE UbsShmFree(SHM *shm)
@@ -220,37 +287,8 @@ RETURN_CODE UbsShmFree(SHM *shm)
     return UBRING_OK;
 }
 
-RETURN_CODE UbsShmLocalFree(SHM *shm)
-{
-    // unmap
-    if (shm->addr == nullptr) {
-        LOG(ERROR) << "Ubs input shm param is invalid, addr is NULL.";
-        return SHM_ERR_INPUT_INVALID;
-    }
-
-    int ret = ubsmem_shmem_unmap(shm->addr, shm->len);
-    if (ret != UBSM_OK) {
-        if (ret == UBSM_ERR_NET) {
-            LOG(ERROR) << "Ubs unmap shm=" << shm->name << " failed, ubsm net err=" << ret;
-            AddShmToList(g_shm_list, shm);
-            return SHM_ERR_UBSM_NET_ERR;
-        }
-        LOG(WARNING) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " failed, ret=" << ret;
-    }
-
-    // free
-    ret = ubsmem_shmem_deallocate(shm->name);
-    if (ret != UBSM_OK) {
-        if (ret == UBSM_ERR_IN_USING) {
-            LOG_EVERY_SECOND(INFO) << "Ubs delete shm=" << shm->name << " failed, resource attached=" << ret;
-            return SHM_ERR_RESOURCE_ATTACHED;
-        }
-        LOG(ERROR) << "Ubs delete shm=" << shm->name << " failed, ret=" << ret;
-        return SHM_ERR;
-    }
-    shm->addr = nullptr;
-    LOG(INFO) << "Ubs free local shm=" << shm->name << " length=" << shm->len << " success.";
-    return UBRING_OK;
+RETURN_CODE UbsShmLocalFree(SHM *shm) {
+    return ReleaseUbsShm(shm, true);
 }
 
 RETURN_CODE UbsShmRemoteMalloc(SHM *shm)
@@ -277,27 +315,8 @@ RETURN_CODE UbsShmLocalMmap(SHM *shm, int prot)
     return UBRING_OK;
 }
 
-RETURN_CODE UbsShmRemoteFree(SHM *shm)
-{
-    // unmap
-    if (shm->addr == nullptr) {
-        LOG(ERROR) << "Ubs input shm param is invalid, addr is NULL.";
-        return SHM_ERR_INPUT_INVALID;
-    }
-
-    int ret = ubsmem_shmem_unmap(shm->addr, shm->len);
-    if (ret != UBSM_OK) {
-        if (ret == UBSM_ERR_NET) {
-            LOG(ERROR) << "Ubs unmap shm=" << shm->name << " failed, ubsm net err=" << ret;
-            AddShmToList(g_shm_list, shm);
-            return SHM_ERR_UBSM_NET_ERR;
-        }
-        LOG(ERROR) << "Ubs unmap shm=" << shm->name << " length=" << shm->len << " failed, ret=" << ret;
-        return SHM_ERR;
-    }
-
-    LOG(INFO) << "Ubs free Remote shm=" << shm->name << " length=" << shm->len << " success.";
-    return UBRING_OK;
+RETURN_CODE UbsShmRemoteFree(SHM *shm) {
+    return ReleaseUbsShm(shm, false);
 }
 
 void UbsMemLoggerPrint(int level, const char *msg)
@@ -375,77 +394,52 @@ RETURN_CODE UbsShmInit(void)
     return UBRING_OK;
 }
 
-RETURN_CODE UbsShmFini(void)
-{
-    int ret = ubsmem_finalize();
+RETURN_CODE UbsShmFini(void) {
+    DeleteTimerSafe(g_shm_timer_fd);
+    g_shm_timer_fd = 0;
+    if (g_shm_list != nullptr) {
+        UbsShmCallback(g_shm_list);
+        if (g_shm_list->size != 0) {
+            UbsShmAddTimer(g_shm_list);
+            return UBRING_ERR;
+        }
+    }
+    const int ret = ubsmem_finalize();
     if (ret != UBSM_OK) {
         LOG(ERROR) << "Ubs shm finalize fail, ret=" << ret;
         return UBRING_ERR;
     }
-
-    if (UNLIKELY(DestroyShmTimer(g_shm_list) != UBRING_OK)) {
-        LOG(ERROR) << "Ubs shm list finalize failed.";
-        return UBRING_ERR;
+    if (g_shm_list != nullptr) {
+        DestroyShmTimer(g_shm_list);
+        g_shm_list = nullptr;
     }
-
-    LOG(INFO) << "Ubs shm finalize success.";
     return UBRING_OK;
 }
 
-static void DeleteShmToList(ShmList* shm_list)
-{
-    if (shm_list == nullptr || shm_list->head == nullptr) {
-        return;
-    }
-
-    ShmListNode *cur_node = shm_list->head;
-    shm_list->head = cur_node->next;
-    if (shm_list->head != nullptr) {
-        shm_list->head->prev = nullptr;
-    } else {
-        shm_list->tail = nullptr;
-    }
-    LOG(INFO) << "Delete shm to list, name=" << cur_node->shm.name << " size=" << shm_list->size;
-    FREE_PTR(cur_node);
-    shm_list->size--;
-}
-
-void *UbsShmCallback(void* args)
-{
-    ShmList *shm_list = (ShmList*)args;
-    if (UNLIKELY(shm_list == nullptr)) {
-        LOG(ERROR) << "Shm list is null.";
+void *UbsShmCallback(void* args) {
+    auto* list = static_cast<ShmList*>(args);
+    if (list == nullptr) {
         return nullptr;
     }
-
-    LOCK_GUARD(shm_list->shm_lock);
-    while (shm_list->head != nullptr) {
-        SHM shm = shm_list->head->shm;
-        if (shm.addr == nullptr) {
-            LOG(ERROR) << "Ubs input shm param is invalid, addr is NULL.";
-            return nullptr;
-        }
-
-        int ret = ubsmem_shmem_unmap(shm.addr, shm.len);
-        if (ret != UBSM_OK) {
-            if (ret == UBSM_ERR_NET) {
-                return nullptr;
+    LOCK_GUARD(list->shm_lock);
+    for (ShmListNode* task = list->head; task != nullptr;) {
+        ShmListNode* next = task->next;
+        if (TryUbsCleanup(task)) {
+            if (task->prev != nullptr) {
+                task->prev->next = next;
+            } else {
+                list->head = next;
             }
-            LOG(ERROR) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " failed, ret=" << ret;
-            return nullptr;
+            if (next != nullptr) {
+                next->prev = task->prev;
+            } else {
+                list->tail = task->prev;
+            }
+            --list->size;
+            free(task);
         }
-        LOG(INFO) << "Ubs unmap shm=" << shm.name << " length=" << shm.len << " success.";
-
-        ret = ubsmem_shmem_deallocate(shm.name);
-        if (ret != UBSM_OK) {
-            DeleteShmToList(shm_list);
-            LOG(ERROR) << "Ubs delete shm=" << shm.name << " failed, ret=" << ret;
-            return nullptr;
-        }
-        DeleteShmToList(shm_list);
-        LOG(INFO) << "Ubs free local shm=" << shm.name << " length=" << shm.len << " success.";
+        task = next;
     }
-
     return nullptr;
 }
 
@@ -485,6 +479,7 @@ RETURN_CODE InitShmTimer(ShmList **shm_list)
 
     if (UbsShmAddTimer(*shm_list) == UBRING_ERR) {
         LOG(ERROR) << "Ubs add timer failed.";
+        pthread_mutex_destroy(&(*shm_list)->shm_lock);
         FREE_PTR(*shm_list);
         return UBRING_ERR;
     }
@@ -494,6 +489,7 @@ RETURN_CODE InitShmTimer(ShmList **shm_list)
 RETURN_CODE DestroyShmTimer(ShmList *shm_list)
 {
     DeleteTimerSafe((uint32_t)g_shm_timer_fd);
+    g_shm_timer_fd = 0;
     if (shm_list == nullptr) {
         LOG(WARNING) << "Shm list is null.";
         return UBRING_ERR;
@@ -511,56 +507,5 @@ RETURN_CODE DestroyShmTimer(ShmList *shm_list)
     return UBRING_OK;
 }
 
-RETURN_CODE IsExistInShmList(ShmList *shm_list, const SHM *shm)
-{
-     if (UNLIKELY(shm_list == nullptr || shm == nullptr)) {
-         LOG(ERROR) << "Shm list or shm is null.";
-         return UBRING_ERR;
-     }
-     LOCK_GUARD(shm_list->shm_lock);
-
-    ShmListNode *cur_node = shm_list->head;
-    while (cur_node != nullptr) {
-        if (strcmp(cur_node->shm.name, shm->name) == 0 && cur_node->shm.len == shm->len) {
-            return UBRING_OK;
-        }
-        cur_node = cur_node->next;
-    }
-    return UBRING_ERR;
-}
-
-RETURN_CODE AddShmToList(ShmList *shm_list, SHM *shm)
-{
-    if (shm_list == nullptr || shm == nullptr) {
-        LOG(ERROR) << "Shm list or shm is null.";
-        return UBRING_ERR;
-    }
-
-    if (IsExistInShmList(shm_list, shm) == UBRING_OK) {
-        LOG(ERROR) << "Shm name=" << shm->name << " is exist in shm list.";
-        return UBRING_ERR;
-    }
-
-    ShmListNode *new_shm_node = (ShmListNode *)malloc(sizeof(ShmListNode));
-    if (new_shm_node == nullptr) {
-        LOG(ERROR) << "Malloc shm node failed.";
-        return UBRING_ERR;
-    }
-
-    memcpy(&new_shm_node->shm, shm, sizeof(SHM));
-    LOCK_GUARD(shm_list->shm_lock);
-    new_shm_node->next = nullptr;
-    new_shm_node->prev = shm_list->tail;
-    if (shm_list->tail) {
-        shm_list->tail->next = new_shm_node;
-        shm_list->tail = new_shm_node;
-    } else {
-        shm_list->head = new_shm_node;
-        shm_list->tail = new_shm_node;
-    }
-    shm_list->size++;
-    LOG(INFO) << "Add shm to list success, shm name=" << shm->name << " size=" << shm_list->size;
-    return UBRING_OK;
-}
 }
 }
