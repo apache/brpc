@@ -38,6 +38,7 @@
 #include "brpc/server.h"
 #include "brpc/controller.h"
 #include "brpc/rtmp.h"
+#include "brpc/ts.h"
 #include "brpc/amf.h"
 
 namespace brpc {
@@ -1138,6 +1139,54 @@ TEST(RtmpTest, flv_reader_rejects_zero_datasize_audio_tag) {
     brpc::RtmpAudioMessage amsg;
     ASSERT_FALSE(reader.Read(&amsg).ok());
     ASSERT_EQ(before, buf.size());
+}
+
+static brpc::RtmpAudioMessage MakeAACMessage(brpc::FlvAACPacketType type,
+                                             const std::string& payload) {
+    brpc::RtmpAudioMessage msg;
+    msg.timestamp = 0;
+    msg.codec = brpc::FLV_AUDIO_AAC;
+    msg.rate = brpc::FLV_SOUND_RATE_44100HZ;
+    msg.bits = brpc::FLV_SOUND_16BIT;
+    msg.type = brpc::FLV_SOUND_STEREO;
+    msg.data.push_back((char)type);
+    msg.data.append(payload);
+    return msg;
+}
+
+// Returns the 13-bit frame_length of the first ADTS header in `ts', or -1.
+static int FindADTSFrameLength(const butil::IOBuf& ts) {
+    const std::string s = ts.to_string();
+    for (size_t i = 0; i + 7 <= s.size(); ++i) {
+        if ((uint8_t)s[i] == 0xff && (uint8_t)s[i + 1] == 0xf9) {
+            return (((uint8_t)s[i + 3] & 0x03) << 11) |
+                ((uint8_t)s[i + 4] << 3) | ((uint8_t)s[i + 5] >> 5);
+        }
+    }
+    return -1;
+}
+
+TEST(RtmpTest, ts_writer_aac_frame_length_fits_adts_header) {
+    butil::IOBuf out;
+    brpc::TsWriter writer(&out);
+    // AudioSpecificConfig: AAC-LC, 44.1kHz, stereo.
+    ASSERT_TRUE(writer.Write(MakeAACMessage(
+        brpc::FLV_AAC_PACKET_SEQUENCE_HEADER, std::string("\x12\x10", 2))).ok());
+
+    // ADTS frame_length is 13 bits and includes the 7-byte header, so the
+    // largest raw AAC frame that can be framed is 8191 - 7 = 8184 bytes.
+    ASSERT_TRUE(writer.Write(MakeAACMessage(
+        brpc::FLV_AAC_PACKET_RAW, std::string(8184, '\0'))).ok());
+    ASSERT_EQ(8191, FindADTSFrameLength(out));
+
+    // One byte more used to wrap frame_length to 0, writing an ADTS header
+    // shorter than itself.
+    out.clear();
+    ASSERT_FALSE(writer.Write(MakeAACMessage(
+        brpc::FLV_AAC_PACKET_RAW, std::string(8185, '\0'))).ok());
+    ASSERT_FALSE(writer.Write(MakeAACMessage(
+        brpc::FLV_AAC_PACKET_RAW, std::string(0x1fff, '\0'))).ok());
+    ASSERT_TRUE(out.empty());
 }
 
 // Abort discards an incomplete message without deleting the chunk stream,
