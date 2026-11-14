@@ -41,6 +41,7 @@
 #include "brpc/retry_policy.h"
 #include "brpc/stream_impl.h"
 #include "brpc/policy/streaming_rpc_protocol.h" // FIXME
+#include "brpc/policy/mysql/mysql.h"
 #include "brpc/rpc_dump.h"
 #include "brpc/details/usercode_backup_pool.h"  // RunUserCode
 #include "brpc/mongo_service_adaptor.h"
@@ -150,6 +151,11 @@ Controller::Controller(const Inheritable& parent_ctx) {
 struct SessionKVFlusher {
     Controller* cntl;
 };
+
+void ControllerPrivateAccessor::set_mysql_statement_stub(MysqlStatementStub* stub) {
+    delete _cntl->_mysql_statement_stub;
+    _cntl->_mysql_statement_stub = stub;
+}
 static std::ostream& operator<<(std::ostream& os, const SessionKVFlusher& f) {
     f.cntl->FlushSessionKV(os);
     return os;
@@ -412,6 +418,7 @@ void Controller::ResetNonPods() {
         _server->_session_local_data_pool->Return(_session_local_data);
     }
     _mongo_session_data.reset();
+    delete _mysql_statement_stub;
     delete _sampled_request;
 
     if (!is_used_by_rpc() && _correlation_id != INVALID_BTHREAD_ID) {
@@ -519,7 +526,7 @@ void Controller::ResetPods() {
     _request_streams.clear();
     _response_streams.clear();
     _remote_stream_settings = nullptr;
-    _session_data = nullptr;
+    _mysql_statement_stub = nullptr;
     _auth_flags = 0;
     _rpc_received_us = 0;
 }

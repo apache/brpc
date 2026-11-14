@@ -113,6 +113,7 @@ class MysqlRequest : public NonreflectableMessage<MysqlRequest> {
 public:
     MysqlRequest();
     MysqlRequest(const MysqlTransaction* tx);
+    // The statement must remain alive until the RPC completes.
     MysqlRequest(MysqlStatement* stmt);
     MysqlRequest(const MysqlTransaction* tx, MysqlStatement* stmt);
     ~MysqlRequest() override;

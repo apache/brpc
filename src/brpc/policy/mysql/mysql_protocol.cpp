@@ -112,7 +112,7 @@ bool PackRequest(butil::IOBuf* buf,
             LOG(ERROR) << "[MYSQL PACK] get sending socket with NULL";
             return false;
         }
-        auto stub = static_cast<MysqlStatementStub*>(accessor.session_data());
+        auto stub = accessor.mysql_statement_stub();
         if (stub == nullptr) {
             LOG(ERROR) << "[MYSQL PACK] get prepare statement with NULL";
             return false;
@@ -296,7 +296,7 @@ ParseError HandlePrepareStatement(const InputResponse* msg,
     butil::Status st;
     MysqlStatementStub* stub = nullptr;
     MysqlStatement* stmt = nullptr;
-    stub = static_cast<MysqlStatementStub*>(ControllerPrivateAccessor(cntl).session_data());
+    stub = ControllerPrivateAccessor(cntl).mysql_statement_stub();
     if (stub == nullptr) {
         LOG(ERROR) << "[MYSQL PACK] get prepare statement with NULL";
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -488,7 +488,7 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     }
     auto st = rr->stmt();
     if (st != nullptr) {
-        accessor.set_session_data(rr->stmt());
+        accessor.set_mysql_statement_stub(new MysqlStatementStub(*st));
         accessor.set_mysql_statement_type(MYSQL_PREPARED_STATEMENT);
     }
     if (FLAGS_mysql_verbose) {
