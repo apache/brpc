@@ -260,6 +260,21 @@ TEST(EndPointTest, ipv6) {
     ASSERT_EQ(-1, butil::str2endpoint("[]:", &ep));
 }
 
+TEST(EndPointTest, ipv6_endpoint2hostname_port) {
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("[::1]:8080", &ep));
+    char host[256];
+    if (butil::endpoint2hostname(ep, host, sizeof(host)) != 0) {
+        GTEST_SKIP() << "::1 can't be resolved to a name on this machine";
+    }
+    // The port should be in host byte order as the one in endpoint2str.
+    ASSERT_TRUE(butil::StringPiece(host).ends_with(":8080")) << host;
+
+    std::string host_str;
+    ASSERT_EQ(0, butil::endpoint2hostname(ep, &host_str));
+    ASSERT_EQ(host, host_str);
+}
+
 TEST(EndPointTest, unix_socket) {
     ::unlink("test.sock");
     test_listen_connect("unix:test.sock", "unix:");
