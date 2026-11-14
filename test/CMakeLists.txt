@@ -338,6 +338,17 @@ if(WITH_FLATBUFFERS)
 endif()
 
 # brpc tests
+if(WITH_URMA AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_library(brpc_urma_send_failure_injector MODULE
+                ../example/urma_performance/send_failure_injector.c)
+    set_target_properties(brpc_urma_send_failure_injector PROPERTIES
+                          C_STANDARD 11 C_STANDARD_REQUIRED ON)
+    target_include_directories(brpc_urma_send_failure_injector PRIVATE
+        $<TARGET_PROPERTY:brpc_build_config,INTERFACE_INCLUDE_DIRECTORIES>)
+    target_link_libraries(brpc_urma_send_failure_injector PRIVATE
+                          ${CMAKE_DL_LIBS} Threads::Threads)
+endif()
+
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 list(REMOVE_ITEM BRPC_UNITTESTS
     "${CMAKE_CURRENT_SOURCE_DIR}/brpc_collector_premain_unittest.cpp"
@@ -351,7 +362,44 @@ foreach(BRPC_UT ${BRPC_UNITTESTS})
         gtest_main
         brpc_test_config
         ${GPERFTOOLS_LIBRARIES})
-    add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
+    if(BRPC_UT_WE STREQUAL "brpc_urma_remote_recovery_unittest" AND
+       TARGET brpc_urma_send_failure_injector)
+        add_dependencies(${BRPC_UT_WE} brpc_urma_send_failure_injector)
+        foreach(version 2 3)
+            foreach(path ctp rtp)
+                foreach(polling false true)
+                    set(remote_test "brpc_urma_remote_recovery_${path}_v${version}_${polling}_unittest")
+                    add_test(NAME ${remote_test} COMMAND ${BRPC_UT_WE}
+                             --urma_tp_type=${path}
+                             --urma_client_handshake_version=${version}
+                             --urma_use_polling=${polling})
+                    set_tests_properties(${remote_test} PROPERTIES
+                        ENVIRONMENT "LD_PRELOAD=$<TARGET_FILE:brpc_urma_send_failure_injector>")
+                endforeach()
+            endforeach()
+        endforeach()
+    else()
+        add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
+    endif()
+    if(WITH_URMA AND BRPC_UT_WE STREQUAL "brpc_urma_qos_unittest")
+        add_test(NAME brpc_urma_qos_rtp_unittest
+                 COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp)
+        add_test(NAME brpc_urma_qos_rtp_polling_unittest
+                 COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp --urma_use_polling=true)
+    endif()
+    if(WITH_URMA AND BRPC_UT_WE STREQUAL "brpc_urma_qos_churn_unittest")
+        add_test(NAME brpc_urma_qos_churn_rtp_unittest
+                 COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp)
+        add_test(NAME brpc_urma_qos_churn_rtp_polling_unittest
+                 COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp --urma_use_polling=true)
+    endif()
+    if(WITH_URMA AND BRPC_UT_WE STREQUAL "brpc_urma_transport_unittest")
+        add_test(NAME brpc_urma_transport_rtp_unittest
+                 COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp)
+        add_test(NAME brpc_urma_transport_rtp_stress_unittest
+                 COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp
+                         --gtest_shuffle --gtest_random_seed=92 --gtest_repeat=20)
+    endif()
 endforeach()
 
 # This test includes collector.cpp and rpc_dump.cpp to control initialization

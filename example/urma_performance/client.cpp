@@ -44,6 +44,9 @@ DEFINE_int32(attachment_size, -1, "Attachment size is used (in Bytes)");
 DEFINE_int32(rpc_timeout_ms, 5000, "Timeout for each RPC in milliseconds");
 DEFINE_bool(echo_attachment, false, "Select whether attachment should be echo");
 DEFINE_bool(use_urma, true, "Use URMA transport (true) or TCP (false)");
+DEFINE_int32(urma_priority, -1,
+             "Outbound URMA priority: -1 automatic, or [0,15]");
+DEFINE_int32(urma_sl, -1, "Outbound URMA SL: -1 unspecified, or [0,255]");
 
 bvar::LatencyRecorder g_latency("client");
 bvar::Adder<int64_t> g_error_count("client_error_count");
@@ -88,6 +91,8 @@ static void* worker(void* arg) {
 int main(int argc, char* argv[]) {
     gflags::ParseCommandLineFlags(&argc, &argv, true);
     brpc::ChannelOptions options;
+    options.urma_qos.priority = FLAGS_urma_priority;
+    options.urma_qos.service_level = FLAGS_urma_sl;
     options.socket_mode = FLAGS_use_urma ? brpc::SOCKET_MODE_URMA
                                           : brpc::SOCKET_MODE_TCP;
     options.connect_timeout_ms = FLAGS_rpc_timeout_ms;
@@ -110,7 +115,9 @@ int main(int argc, char* argv[]) {
     stub.Test(&warmup_cntl, &warmup_req, &warmup_resp, nullptr);
     if (warmup_cntl.Failed()) {
         LOG(ERROR) << "Warm-up RPC failed after timeout_ms="
-                   << FLAGS_rpc_timeout_ms << ": "
+                   << FLAGS_rpc_timeout_ms << " use_urma=" << FLAGS_use_urma
+                   << " urma_priority=" << FLAGS_urma_priority
+                   << " urma_sl=" << FLAGS_urma_sl << ": "
                    << warmup_cntl.ErrorText();
         return -1;
     }
@@ -131,7 +138,8 @@ int main(int argc, char* argv[]) {
     }
     LOG(INFO) << "URMA performance client started (server=" << FLAGS_server
               << ", use_urma=" << FLAGS_use_urma
-              << ", threads=" << thread_num
+              << ", urma_priority=" << FLAGS_urma_priority
+              << ", urma_sl=" << FLAGS_urma_sl << ", threads=" << thread_num
               << ", rpc_timeout_ms=" << FLAGS_rpc_timeout_ms << ")";
     while (!brpc::IsAskedToQuit()) {
         sleep(1);
