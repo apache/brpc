@@ -29,6 +29,14 @@
 
 namespace butil {
 
+#if defined(UNIT_TEST)
+// Pause after publishing the head but before connecting the new node.
+inline atomic<void (*)(const void*)>& MPSCQueueEnqueueHookForTest() {
+    static atomic<void (*)(const void*)> hook{nullptr};
+    return hook;
+}
+#endif
+
 template <typename T>
 struct BAIDU_CACHELINE_ALIGNMENT MPSCQueueNode {
     static MPSCQueueNode* const UNCONNECTED;
@@ -71,18 +79,25 @@ public:
     void Enqueue(typename add_const_reference<T>::type data);
     void Enqueue(T&& data);
 
+    // Construct the element in place before publishing the node.
+    template <typename... Args>
+    void Emplace(Args&&... args);
+
     // Dequeue data from the queue.
     bool Dequeue(T& data);
 
-private:
-    template <typename U>
-    void EnqueueInternal(U&& data);
+    // Never wait for a producer to finish linking a published node. False
+    // means empty or temporarily unavailable, and leaves `data` unchanged.
+    // A caller that sleeps after false needs a notification after publication
+    // completes. Only the single consumer may call either dequeue method.
+    bool TryDequeue(T& data);
 
-    // Reverse the list until old_head.
-    void ReverseList(MPSCQueueNode<T>* old_head);
+private:
+    // With `wait` disabled, check the entire segment before changing links.
+    bool ReverseList(MPSCQueueNode<T>* old_head, bool wait);
 
     void EnqueueImpl(MPSCQueueNode<T>* node);
-    bool DequeueImpl(T* data);
+    bool DequeueImpl(T* data, bool wait);
 
     Alloc _alloc;
     atomic<MPSCQueueNode<T>*> _head;
@@ -92,31 +107,37 @@ private:
 
 template <typename T, typename Alloc>
 MPSCQueue<T, Alloc>::~MPSCQueue() {
-    while (DequeueImpl(nullptr));
+    while (DequeueImpl(nullptr, true));
 }
 
 template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::Enqueue(typename add_const_reference<T>::type data) {
-    EnqueueInternal(data);
+    Emplace(data);
 }
 
 template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::Enqueue(T&& data) {
-    EnqueueInternal(std::move(data));
+    Emplace(std::move(data));
 }
 
 template <typename T, typename Alloc>
-template <typename U>
-void MPSCQueue<T, Alloc>::EnqueueInternal(U&& data) {
-    auto node = new (_alloc.Alloc()) MPSCQueueNode<T>;
+template <typename... Args>
+void MPSCQueue<T, Alloc>::Emplace(Args&&... args) {
+    auto* node = new (_alloc.Alloc()) MPSCQueueNode<T>;
     node->next.store(MPSCQueueNode<T>::UNCONNECTED, memory_order_relaxed);
-    node->data_mem.Init(std::forward<U>(data));
+    node->data_mem.Init(std::forward<Args>(args)...);
     EnqueueImpl(node);
 }
 
 template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::EnqueueImpl(MPSCQueueNode<T>* node) {
     MPSCQueueNode<T>* prev = _head.exchange(node, memory_order_release);
+#if defined(UNIT_TEST)
+    auto hook = MPSCQueueEnqueueHookForTest().load(memory_order_acquire);
+    if (hook != nullptr) {
+        hook(this);
+    }
+#endif
     if (prev) {
         node->next.store(prev, memory_order_release);
         return;
@@ -127,11 +148,16 @@ void MPSCQueue<T, Alloc>::EnqueueImpl(MPSCQueueNode<T>* node) {
 
 template <typename T, typename Alloc>
 bool MPSCQueue<T, Alloc>::Dequeue(T& data) {
-    return DequeueImpl(&data);
+    return DequeueImpl(&data, true);
 }
 
 template <typename T, typename Alloc>
-bool MPSCQueue<T, Alloc>::DequeueImpl(T* data) {
+bool MPSCQueue<T, Alloc>::TryDequeue(T& data) {
+    return DequeueImpl(&data, false);
+}
+
+template <typename T, typename Alloc>
+bool MPSCQueue<T, Alloc>::DequeueImpl(T* data, bool wait) {
     MPSCQueueNode<T>* node;
     if (_cur_dequeue_node) {
         node = _cur_dequeue_node;
@@ -142,33 +168,51 @@ bool MPSCQueue<T, Alloc>::DequeueImpl(T* data) {
         return false;
     }
 
-    if (data) {
-        auto mem = (T* const)node->data_mem.get();
-        *data = std::move(*mem);
+    if (node->next.load(memory_order_relaxed) == nullptr &&
+        !ReverseList(node, wait)) {
+        // The entry may already have been removed from `_cur_enqueue_node`.
+        // Retain it for the next attempt without moving its value or changing
+        // any links. Producers still append to the same published head.
+        _cur_dequeue_node = node;
+        return false;
     }
-    MPSCQueueNode<T>* old_node = node;
-    if (!node->next.load(memory_order_relaxed)) {
-        ReverseList(node);
+    if (data != nullptr) {
+        *data = std::move(*node->data_mem.get());
     }
     _cur_dequeue_node = node->next.load(memory_order_relaxed);
     node->data_mem.Destroy();
-    _alloc.Free(old_node);
+    _alloc.Free(node);
 
     return true;
 }
 
 template <typename T, typename Alloc>
-void MPSCQueue<T, Alloc>::ReverseList(MPSCQueueNode<T>* old_head) {
-    // Try to set _write_head to nullptr to mark that it is done.
+bool MPSCQueue<T, Alloc>::ReverseList(MPSCQueueNode<T>* old_head, bool wait) {
+    // Detach the last node if no producer has extended `_head`.
     MPSCQueueNode<T>* new_head = old_head;
     MPSCQueueNode<T>* desired = nullptr;
     if (_head.compare_exchange_strong(
         new_head, desired, memory_order_acquire)) {
         // No one added new requests.
-        return;
+        return true;
     }
     CHECK_NE(new_head, old_head);
     // Acquire the new head's initialization, including its UNCONNECTED link.
+
+    if (!wait) {
+        // Inspect exactly the snapshot returned by the failed CAS. Producers
+        // may extend `_head`, but never change a connected link in this
+        // segment. Do not reload `_head` between this check and reversal.
+        auto* p = new_head;
+        while (p != old_head) {
+            auto* next = p->next.load(memory_order_acquire);
+            if (next == MPSCQueueNode<T>::UNCONNECTED) {
+                return false;
+            }
+            CHECK(next != nullptr);
+            p = next;
+        }
+    }
 
     // Someone added new requests.
     // Reverse the list until old_head.
@@ -177,6 +221,8 @@ void MPSCQueue<T, Alloc>::ReverseList(MPSCQueueNode<T>* old_head) {
     do {
         MPSCQueueNode<T>* saved_next;
         // The producer connects the link after publishing the node in _head.
+        // `TryDequeue` checked this immutable segment above and never enters
+        // this wait. `Dequeue` retains its original single-pass reversal.
         while ((saved_next = p->next.load(memory_order_acquire)) ==
                MPSCQueueNode<T>::UNCONNECTED) {
             sched_yield();
@@ -189,6 +235,7 @@ void MPSCQueue<T, Alloc>::ReverseList(MPSCQueueNode<T>* old_head) {
 
     // Link old list with new list.
     old_head->next.store(tail, memory_order_relaxed);
+    return true;
 }
 
 }

@@ -27,6 +27,7 @@
 #include "butil/thread_local.h"
 #include "butil/memory/scope_guard.h"
 #include "brpc/rdma/block_pool.h"
+#include "brpc/rdma/srq_receive_pool.h"
 
 namespace brpc {
 namespace rdma {
@@ -127,7 +128,7 @@ static inline Region* GetRegion(const void* buf) {
 uint32_t GetRegionId(const void* buf) {
     Region* r = GetRegion(buf);
     if (!r) {
-        return 0;
+        return SrqReceivePool::RegionId(buf);
     }
     return r->id;
 }
@@ -461,6 +462,9 @@ int DeallocBlock(void* buf) {
 
     Region* r = GetRegion(buf);
     if (!r) {
+        if (SrqReceivePool::Recycle(buf)) {
+            return 0;
+        }
         errno = ERANGE;
         return -1;
     }

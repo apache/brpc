@@ -5,6 +5,8 @@
 #include <utility>
 #include <vector>
 #include "butil/containers/mpsc_queue.h"
+#include "butil/iobuf.h"
+#include "butil/memory/scope_guard.h"
 
 namespace {
 
@@ -124,7 +126,7 @@ TEST(MPSCQueueTest, mpsc_multi_thread) {
 
 }
 
-template <typename Alloc>
+template <typename Alloc, bool try_dequeue = false>
 void CheckConcurrentPublication() {
     const unsigned producer_count = 4;
     const unsigned items_per_producer = 10000;
@@ -145,13 +147,15 @@ void CheckConcurrentPublication() {
         });
     }
     std::vector<bool> seen(total, false);
+    std::vector<unsigned> next_sequence(producer_count, 0);
     unsigned consumed = 0;
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::seconds(30);
     start.store(true, butil::memory_order_release);
     while (consumed < total && std::chrono::steady_clock::now() < deadline) {
         Item item;
-        if (!queue.Dequeue(item)) {
+        bool dequeued = try_dequeue ? queue.TryDequeue(item) : queue.Dequeue(item);
+        if (!dequeued) {
             std::this_thread::yield();
             continue;
         }
@@ -160,6 +164,8 @@ void CheckConcurrentPublication() {
         if (item.first < total) {
             EXPECT_FALSE(seen[item.first]);
             seen[item.first] = true;
+            unsigned producer = item.first / items_per_producer;
+            EXPECT_EQ(next_sequence[producer]++, item.first % items_per_producer);
         }
         ++consumed;
     }
@@ -179,6 +185,106 @@ TEST(MPSCQueueTest, concurrent_publication) {
 TEST(MPSCQueueTest, concurrent_publication_with_object_pool) {
     CheckConcurrentPublication<
         butil::ObjectPoolAllocator<std::pair<unsigned, unsigned>>>();
+}
+
+TEST(MPSCQueueTest, try_dequeue_concurrent_publication) {
+    CheckConcurrentPublication<
+        butil::DefaultAllocator<std::pair<unsigned, unsigned>>, true>();
+    CheckConcurrentPublication<
+        butil::ObjectPoolAllocator<std::pair<unsigned, unsigned>>, true>();
+}
+
+struct PublicationPause {
+    butil::atomic<bool> entered{false};
+    butil::atomic<bool> resume{false};
+};
+
+thread_local PublicationPause* g_publication_pause = nullptr;
+
+void PausePublication(const void*) {
+    auto* pause = g_publication_pause;
+    if (pause == nullptr) {
+        return;
+    }
+    pause->entered.store(true, butil::memory_order_release);
+    while (!pause->resume.load(butil::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+}
+
+bool WaitForPublicationFlag(const butil::atomic<bool>& flag) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!flag.load(butil::memory_order_acquire)) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+            return false;
+        }
+        usleep(1000);
+    }
+    return true;
+}
+
+TEST(MPSCQueueTest, try_dequeue_preserves_unlinked_segments_and_output) {
+    butil::MPSCQueueEnqueueHookForTest().store(PausePublication,
+                                             butil::memory_order_release);
+    BUTIL_SCOPE_EXIT {
+        butil::MPSCQueueEnqueueHookForTest().store(nullptr, butil::memory_order_release);
+    };
+    for (bool first_node : {true, false}) {
+        SCOPED_TRACE(first_node);
+        butil::MPSCQueue<std::unique_ptr<int>> queue;
+        if (!first_node) {
+            queue.Enqueue(std::make_unique<int>(0));
+        }
+        PublicationPause pause;
+        std::thread producer([&] {
+            g_publication_pause = &pause;
+            queue.Enqueue(std::make_unique<int>(1));
+            g_publication_pause = nullptr;
+        });
+        BUTIL_SCOPE_EXIT {
+            pause.resume.store(true, butil::memory_order_release);
+            if (producer.joinable()) {
+                producer.join();
+            }
+        };
+        ASSERT_TRUE(WaitForPublicationFlag(pause.entered));
+        // A connected suffix ahead of the gap catches partial reversal before
+        // failure. More nodes added after failure must remain reachable too.
+        queue.Enqueue(std::make_unique<int>(2));
+        auto output = std::make_unique<int>(-1);
+        int* original = output.get();
+        butil::atomic<bool> attempted{false};
+        bool dequeued = true;
+        std::thread consumer([&] {
+            dequeued = queue.TryDequeue(output);
+            attempted.store(true, butil::memory_order_release);
+        });
+        // Release the publisher even on failure so a regression fails an
+        // assertion instead of leaving a spinning consumer hung in CI.
+        bool returned_before_publication = WaitForPublicationFlag(attempted);
+        EXPECT_TRUE(returned_before_publication);
+        if (returned_before_publication) {
+            EXPECT_FALSE(dequeued);
+            EXPECT_EQ(original, output.get());
+            EXPECT_FALSE(queue.TryDequeue(output));
+            EXPECT_EQ(original, output.get());
+            queue.Enqueue(std::make_unique<int>(3));
+        }
+        pause.resume.store(true, butil::memory_order_release);
+        producer.join();
+        consumer.join();
+        ASSERT_TRUE(returned_before_publication);
+        for (int value = first_node ? 1 : 0; value <= 3; ++value) {
+            ASSERT_TRUE(queue.TryDequeue(output));
+            ASSERT_NE(nullptr, output);
+            EXPECT_EQ(value, *output);
+        }
+        EXPECT_FALSE(queue.TryDequeue(output));
+        queue.Enqueue(std::make_unique<int>(4));
+        ASSERT_TRUE(queue.Dequeue(output));
+        EXPECT_EQ(4, *output);
+        EXPECT_FALSE(queue.TryDequeue(output));
+    }
 }
 
 struct MyObject {};
@@ -226,6 +332,37 @@ TEST(MPSCQueueTest, enqueue_move_only) {
   ASSERT_TRUE(q.Dequeue(out));
   ASSERT_NE(nullptr, out);
   ASSERT_EQ(1, *out);
+}
+
+TEST(MPSCQueueTest, emplace_transfers_iobuf_ownership) {
+    char bytes[3][16] = {"first", "second", "third"};
+    int released = 0;
+    butil::IOBuf input;
+    for (auto& block : bytes) {
+        ASSERT_EQ(0, input.append_user_data(block, sizeof(block), [&](void*) {
+            ++released;
+        }));
+    }
+    auto* refs = input._bv.refs;
+    butil::MPSCQueue<butil::IOBuf, butil::ObjectPoolAllocator<butil::IOBuf>> q;
+    // Three blocks require an external BlockRef array. Copying through a
+    // temporary creates another array even though the source becomes empty.
+    // Inspect the queued value before `Dequeue`, which may itself copy IOBuf.
+    q.Emplace(input.movable());
+    EXPECT_TRUE(input.empty());
+    EXPECT_EQ(0, released);
+    auto* node = q._cur_enqueue_node.load(butil::memory_order_acquire);
+    ASSERT_NE(nullptr, node);
+    EXPECT_EQ(refs, node->data_mem.get()->_bv.refs);
+
+    butil::IOBuf output;
+    ASSERT_TRUE(q.Dequeue(output));
+    EXPECT_EQ(sizeof(bytes), output.size());
+    EXPECT_EQ(static_cast<const void*>(bytes[0]), output.fetch1());
+    EXPECT_EQ(0, released);
+    output.clear();
+    EXPECT_EQ(3, released);
+    EXPECT_FALSE(q.Dequeue(output));
 }
 
 TEST(MPSCQueueTest, mpsc_test_allocator) {
