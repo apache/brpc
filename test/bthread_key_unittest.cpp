@@ -25,6 +25,7 @@
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
+#include "butil/memory/scope_guard.h"
 #include "bthread/bthread.h"
 #include "bthread/countdown_event.h"
 #include "bthread/unstable.h"
@@ -387,6 +388,143 @@ static void pool_dtor(void* tls){
     ASSERT_EQ(nullptr, bthread_getspecific(data->key));
     if (++data->seq < data->end_seq){
         ASSERT_EQ(0, bthread_setspecific(data->key, data));
+    }
+}
+
+// Separate barriers pause the task function and its TLS destructor. This lets
+// the test inspect task liveness after the function returns but before cleanup
+// completes, without relying on sleeps or scheduler timing.
+struct TLSExitBoundaryData {
+    bthread_key_t key = INVALID_BTHREAD_KEY;
+    CountdownEvent function_started;
+    CountdownEvent finish_function;
+    CountdownEvent destructor_started;
+    CountdownEvent finish_destructor;
+    CountdownEvent destructor_completed;
+    butil::atomic<bool> installed{false};
+    butil::atomic<int> destroyed{0};
+};
+
+static void blocking_tls_destructor(void* arg) {
+    auto* data = static_cast<TLSExitBoundaryData*>(arg);
+    data->destructor_started.signal();
+    EXPECT_EQ(0, data->finish_destructor.timed_wait(butil::seconds_from_now(30)));
+    // Joining the task must observe this side effect even though it occurs
+    // after the user function has already returned.
+    data->destroyed.fetch_add(1, butil::memory_order_relaxed);
+    data->destructor_completed.signal();
+}
+
+static void* exit_with_tls(void* arg) {
+    auto* data = static_cast<TLSExitBoundaryData*>(arg);
+    const int rc = bthread_setspecific(data->key, data);
+    EXPECT_EQ(0, rc);
+    // Failure cleanup waits for a destructor only if a value was installed;
+    // a failed setspecific call cannot produce a matching completion signal.
+    data->installed.store(rc == 0, butil::memory_order_release);
+    data->function_started.signal();
+    EXPECT_EQ(0, data->finish_function.timed_wait(butil::seconds_from_now(30)));
+    return nullptr;
+}
+
+static void test_join_waits_for_tls_destructor(bool urgent, bool pthread_stack) {
+    TLSExitBoundaryData data;
+    bthread_keytable_pool_t pool;
+    ASSERT_EQ(0, bthread_keytable_pool_init(&pool));
+    bthread_t tid = INVALID_BTHREAD;
+    bool pool_destroyed = false;
+    bool function_released = false;
+    bool destructor_released = false;
+    auto cleanup = butil::MakeScopeGuard([&] {
+        if (!function_released) {
+            data.finish_function.signal();
+        }
+        if (!destructor_released) {
+            data.finish_destructor.signal();
+        }
+        if (tid != INVALID_BTHREAD) {
+            EXPECT_EQ(0, bthread_join(tid, nullptr));
+        }
+        if (!pool_destroyed) {
+            EXPECT_EQ(0, bthread_keytable_pool_destroy(&pool));
+        }
+        // Keep callback state alive even if a regression publishes task
+        // completion early or the destructor-entry rendezvous times out.
+        if (data.installed.load(butil::memory_order_acquire)) {
+            EXPECT_EQ(0, data.destructor_completed.wait());
+        }
+        if (data.key != INVALID_BTHREAD_KEY) {
+            EXPECT_EQ(0, bthread_key_delete(data.key));
+        }
+        // Pool destruction leaves the lock intact for late table returns.
+        // All task and destructor activity has now finished, so it is safe
+        // to release this stack-allocated pool's synchronization resource.
+        EXPECT_EQ(0, pthread_rwlock_destroy(&pool.rwlock));
+    });
+    ASSERT_EQ(0, bthread_key_create(&data.key, blocking_tls_destructor));
+    bthread_attr_t attr = pthread_stack ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
+    attr.keytable_pool = &pool;
+    if (urgent) {
+        ASSERT_EQ(0, bthread_start_urgent(&tid, &attr, exit_with_tls, &data));
+    } else {
+        ASSERT_EQ(0, bthread_start_background(&tid, &attr, exit_with_tls, &data));
+    }
+    ASSERT_EQ(0, data.function_started.timed_wait(butil::seconds_from_now(5)));
+    // The table remains task-owned. Close the cache first so task exit must
+    // destroy it rather than merely cache it. The key stays valid throughout.
+    ASSERT_EQ(0, bthread_keytable_pool_destroy(&pool));
+    pool_destroyed = true;
+    data.finish_function.signal();
+    function_released = true;
+    ASSERT_EQ(0, data.destructor_started.timed_wait(butil::seconds_from_now(5)));
+    EXPECT_EQ(0, data.destroyed.load(butil::memory_order_relaxed));
+    bthread_attr_t running_attr;
+    // The destructor runs after fn returns. A live tid here establishes that
+    // task completion (and therefore join) has not overtaken TLS cleanup.
+    EXPECT_EQ(0, bthread_getattr(tid, &running_attr));
+    data.finish_destructor.signal();
+    destructor_released = true;
+    ASSERT_EQ(0, bthread_join(tid, nullptr));
+    EXPECT_EQ(1, data.destroyed.load(butil::memory_order_relaxed));
+}
+
+struct TLSExitBoundaryOptions {
+    bool urgent;
+    bool pthread_stack;
+};
+
+static void* run_tls_exit_boundary_test(void* arg) {
+    const auto* options = static_cast<const TLSExitBoundaryOptions*>(arg);
+    test_join_waits_for_tls_destructor(options->urgent, options->pthread_stack);
+    return nullptr;
+}
+
+TEST(KeyTest, task_completion_waits_for_tls_destructor) {
+    // Cover caller location, public start API, and stack type independently.
+    // Pthread-stack bthreads still use TaskGroup's task-exit cleanup path.
+    for (bool bthread_caller : {false, true}) {
+        for (bool urgent : {false, true}) {
+            for (bool pthread_stack : {false, true}) {
+                // GTest trace storage is pthread-local. Keep this scope on the
+                // test pthread instead of inside a migrating bthread.
+                SCOPED_TRACE(testing::Message() << "bthread_caller=" << bthread_caller
+                                               << ", urgent=" << urgent
+                                               << ", pthread_stack=" << pthread_stack);
+                if (bthread_caller) {
+                    TLSExitBoundaryOptions options = {urgent, pthread_stack};
+                    bthread_t driver;
+                    // Exercise foreground and local background creation with
+                    // the TLS-owning task, not just an unpooled driver.
+                    ASSERT_EQ(0, bthread_start_background(
+                        &driver, nullptr, run_tls_exit_boundary_test, &options));
+                    ASSERT_EQ(0, bthread_join(driver, nullptr));
+                } else {
+                    // A non-worker caller routes both public start APIs to
+                    // start_background<true> for the TLS-owning task itself.
+                    test_join_waits_for_tls_destructor(urgent, pthread_stack);
+                }
+            }
+        }
     }
 }
 
