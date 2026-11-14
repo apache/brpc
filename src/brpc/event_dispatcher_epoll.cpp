@@ -94,11 +94,12 @@ int EventDispatcher::Start(const bthread_attr_t* thread_attr) {
 }
 
 bool EventDispatcher::Running() const {
-    return !_stop  && _event_dispatcher_fd >= 0 && _tid != 0;
+    return !_stop.load(butil::memory_order_acquire) &&
+           _event_dispatcher_fd >= 0 && _tid != 0;
 }
 
 void EventDispatcher::Stop() {
-    _stop = true;
+    _stop.store(true, butil::memory_order_release);
 
     if (_event_dispatcher_fd >= 0) {
         epoll_event evt = { EPOLLOUT,  { nullptr } };
@@ -201,7 +202,7 @@ void* EventDispatcher::RunThis(void* arg) {
 }
 
 void EventDispatcher::Run() {
-    while (!_stop) {
+    while (!_stop.load(butil::memory_order_acquire)) {
         epoll_event e[32];
 #ifdef BRPC_ADDITIONAL_EPOLL
         // Performance downgrades in examples.
@@ -212,10 +213,7 @@ void EventDispatcher::Run() {
 #else
         const int n = epoll_wait(_event_dispatcher_fd, e, ARRAY_SIZE(e), -1);
 #endif
-        if (_stop) {
-            // epoll_ctl/epoll_wait should have some sort of memory fencing
-            // guaranteeing that we(after epoll_wait) see _stop set before
-            // epoll_ctl.
+        if (_stop.load(butil::memory_order_acquire)) {
             break;
         }
         if (n < 0) {

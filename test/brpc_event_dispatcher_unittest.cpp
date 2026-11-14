@@ -130,6 +130,67 @@ TEST_F(EventDispatcherTest, has_epollrdhup) {
     LOG(INFO) << brpc::has_epollrdhup;
 }
 
+TEST_F(EventDispatcherTest, start_stop_updates_running_state) {
+    brpc::EventDispatcher dispatcher;
+    ASSERT_EQ(0, dispatcher.Start(nullptr));
+    ASSERT_TRUE(dispatcher.Running());
+    dispatcher.Stop();
+    dispatcher.Join();
+    ASSERT_FALSE(dispatcher.Running());
+}
+
+struct DispatcherStopRaceArgs {
+    brpc::EventDispatcher* dispatcher;
+    butil::atomic<bool> reader_started;
+    butil::atomic<bool> stop_requested;
+    butil::atomic<bool> reader_polling;
+    butil::atomic<bool> stop_completed;
+    butil::atomic<bool> reader_finished;
+
+    DispatcherStopRaceArgs()
+        : dispatcher(nullptr)
+        , reader_started(false)
+        , stop_requested(false)
+        , reader_polling(false)
+        , stop_completed(false)
+        , reader_finished(false) {}
+};
+
+void* poll_dispatcher_running(void* arg) {
+    DispatcherStopRaceArgs* args = static_cast<DispatcherStopRaceArgs*>(arg);
+    args->reader_started.store(true, butil::memory_order_release);
+    while (!args->stop_requested.load(butil::memory_order_acquire)) {
+    }
+    args->reader_polling.store(true, butil::memory_order_release);
+    do {
+        args->dispatcher->Running();
+    } while (!args->stop_completed.load(butil::memory_order_acquire));
+    args->reader_finished.store(true, butil::memory_order_release);
+    return nullptr;
+}
+
+// Under TSAN, this reports the Running()/Stop() race when _stop is volatile.
+TEST_F(EventDispatcherTest, stop_is_safe_with_concurrent_running) {
+    brpc::EventDispatcher dispatcher;
+    ASSERT_EQ(0, dispatcher.Start(nullptr));
+
+    DispatcherStopRaceArgs args;
+    args.dispatcher = &dispatcher;
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr, poll_dispatcher_running,
+                                &args));
+    while (!args.reader_started.load(butil::memory_order_acquire)) {
+    }
+    args.stop_requested.store(true, butil::memory_order_release);
+    while (!args.reader_polling.load(butil::memory_order_acquire)) {
+    }
+    dispatcher.Stop();
+    args.stop_completed.store(true, butil::memory_order_release);
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+    EXPECT_TRUE(args.reader_finished.load(butil::memory_order_acquire));
+    dispatcher.Join();
+}
+
 TEST_F(EventDispatcherTest, versioned_ref) {
     butil::atomic<uint64_t> versioned_ref(2);
     versioned_ref.fetch_add(brpc::MakeVRef(0, -1),
