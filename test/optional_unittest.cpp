@@ -17,13 +17,39 @@
 
 
 #include <gtest/gtest.h>
+#include <memory>
+#include <type_traits>
+#include <utility>
 #include "butil/containers/optional.h"
+
+#if defined(BRPC_TEST_OPTIONAL_CXX14) && __cplusplus != 201402L
+#error "The C++14 optional test must use the C++14 implementation"
+#endif
 
 namespace {
 
 butil::optional<int> empty_optional() {
     return {};
 }
+
+struct LifetimeTracker {
+    static int live;
+    static int constructed;
+    static int destroyed;
+
+    LifetimeTracker() { ++live; ++constructed; }
+    LifetimeTracker(const LifetimeTracker&) { ++live; ++constructed; }
+    LifetimeTracker(LifetimeTracker&&) { ++live; ++constructed; }
+    LifetimeTracker& operator=(const LifetimeTracker&) { return *this; }
+    LifetimeTracker& operator=(LifetimeTracker&&) { return *this; }
+    ~LifetimeTracker() { --live; ++destroyed; }
+
+    static void Reset() { live = constructed = destroyed = 0; }
+};
+
+int LifetimeTracker::live = 0;
+int LifetimeTracker::constructed = 0;
+int LifetimeTracker::destroyed = 0;
 
 TEST(OptionalTest, sanity) {
     {
@@ -86,6 +112,15 @@ TEST(OptionalTest, copy) {
     non_empty = op;
     ASSERT_TRUE(non_empty);
     ASSERT_EQ(10, non_empty);
+
+    const std::string value(128, 'x');
+    butil::optional<std::string> string_source(value);
+    butil::optional<std::string> string_copied(string_source);
+    ASSERT_EQ(value, *string_source);
+    ASSERT_EQ(value, *string_copied);
+
+    string_copied = string_source;
+    ASSERT_EQ(value, *string_copied);
 }
 
 TEST(OptionalTest, move) {
@@ -105,6 +140,102 @@ TEST(OptionalTest, move) {
     butil::optional<int> empty_move_assign;
     empty_move_assign = std::move(empty);
     ASSERT_FALSE(empty_move_assign);
+
+    butil::optional<std::string> string_source(std::string(128, 'x'));
+    butil::optional<std::string> string_moved(std::move(string_source));
+    ASSERT_TRUE(string_source);
+    ASSERT_EQ(std::string(128, 'x'), *string_moved);
+
+    butil::optional<std::string> string_move_source(std::string(128, 'y'));
+    string_moved = std::move(string_move_source);
+    ASSERT_TRUE(string_move_source);
+    ASSERT_TRUE(string_moved);
+    ASSERT_EQ(std::string(128, 'y'), *string_moved);
+}
+
+TEST(OptionalTest, nontrivial_lifetime) {
+    LifetimeTracker::Reset();
+    {
+        butil::optional<LifetimeTracker> source(butil::in_place);
+        butil::optional<LifetimeTracker> copied(source);
+        butil::optional<LifetimeTracker> moved(std::move(source));
+        butil::optional<LifetimeTracker> assigned;
+        assigned = copied;
+        assigned = butil::nullopt;
+    }
+    ASSERT_EQ(0, LifetimeTracker::live);
+    ASSERT_EQ(LifetimeTracker::constructed, LifetimeTracker::destroyed);
+}
+
+TEST(OptionalTest, nontrivial_assignment_states) {
+    const std::string value(128, 'x');
+    butil::optional<std::string> source(value);
+    butil::optional<std::string> empty;
+    butil::optional<std::string> target;
+
+    target = empty;
+    ASSERT_FALSE(target);
+    target = source;
+    ASSERT_EQ(value, *target);
+    target = source;
+    ASSERT_EQ(value, *target);
+    target = empty;
+    ASSERT_FALSE(target);
+
+    target = std::move(empty);
+    ASSERT_FALSE(target);
+    target = std::move(source);
+    ASSERT_EQ(value, *target);
+    source = value;
+    target = std::move(source);
+    ASSERT_EQ(value, *target);
+    target = std::move(empty);
+    ASSERT_FALSE(target);
+}
+
+TEST(OptionalTest, move_only_value) {
+    butil::optional<std::unique_ptr<int>> source(std::unique_ptr<int>(new int(42)));
+    butil::optional<std::unique_ptr<int>> moved(std::move(source));
+    ASSERT_EQ(42, **moved);
+    butil::optional<std::unique_ptr<int>> assigned;
+    assigned = std::move(moved);
+    ASSERT_EQ(42, **assigned);
+}
+
+struct CopyConstructOnly {
+    CopyConstructOnly() = default;
+    CopyConstructOnly(const CopyConstructOnly&) = default;
+    CopyConstructOnly(CopyConstructOnly&&) = delete;
+    CopyConstructOnly& operator=(const CopyConstructOnly&) = delete;
+    CopyConstructOnly& operator=(CopyConstructOnly&&) = delete;
+};
+
+struct AssignOnly {
+    AssignOnly() = default;
+    AssignOnly(const AssignOnly&) = delete;
+    AssignOnly(AssignOnly&&) = delete;
+    AssignOnly& operator=(const AssignOnly&) = default;
+    AssignOnly& operator=(AssignOnly&&) = default;
+};
+
+TEST(OptionalTest, copy_move_traits_follow_value_type) {
+    using MoveOnly = butil::optional<std::unique_ptr<int>>;
+    static_assert(!std::is_copy_constructible<MoveOnly>::value, "");
+    static_assert(!std::is_copy_assignable<MoveOnly>::value, "");
+    static_assert(std::is_move_constructible<MoveOnly>::value, "");
+    static_assert(std::is_move_assignable<MoveOnly>::value, "");
+
+    using CopyOnly = butil::optional<CopyConstructOnly>;
+    static_assert(std::is_copy_constructible<CopyOnly>::value, "");
+    static_assert(std::is_move_constructible<CopyOnly>::value, "");
+    static_assert(!std::is_copy_assignable<CopyOnly>::value, "");
+    static_assert(!std::is_move_assignable<CopyOnly>::value, "");
+
+    using NoConstruction = butil::optional<AssignOnly>;
+    static_assert(!std::is_copy_constructible<NoConstruction>::value, "");
+    static_assert(!std::is_move_constructible<NoConstruction>::value, "");
+    static_assert(!std::is_copy_assignable<NoConstruction>::value, "");
+    static_assert(!std::is_move_assignable<NoConstruction>::value, "");
 }
 
 struct Obj {};
@@ -152,10 +283,12 @@ TEST(OptionalTest, convert) {
         ASSERT_TRUE(opt_copy->default_ctor);
         ASSERT_FALSE(opt_copy->move_ctor);
 
-        butil::optional<Convert> opt_move(butil::optional<Obj>{ butil::in_place });
+        butil::optional<Obj> move_source(butil::in_place);
+        butil::optional<Convert> opt_move(std::move(move_source));
         ASSERT_TRUE(opt_move);
         ASSERT_TRUE(opt_move->default_ctor);
         ASSERT_TRUE(opt_move->move_ctor);
+        ASSERT_TRUE(move_source);
     }
 
     {
@@ -222,6 +355,22 @@ TEST(OptionalTest, swap) {
 
     ASSERT_TRUE(noexcept(opt1.swap(opt2)));
     ASSERT_TRUE(noexcept(swap(opt1, opt2)));
+}
+
+struct ThrowingMove {
+    ThrowingMove() = default;
+    ThrowingMove(const ThrowingMove&) = default;
+    ThrowingMove(ThrowingMove&&) noexcept(false) { }
+    ThrowingMove& operator=(const ThrowingMove&) = default;
+    ThrowingMove& operator=(ThrowingMove&&) noexcept(false) { return *this; }
+};
+
+TEST(OptionalTest, swap_noexcept_follows_value_type) {
+    using Optional = butil::optional<ThrowingMove>;
+    static_assert(!noexcept(std::declval<Optional&>().swap(
+                      std::declval<Optional&>())), "");
+    static_assert(!noexcept(swap(std::declval<Optional&>(),
+                                 std::declval<Optional&>())), "");
 }
 
 TEST(OptionalTest, make_optional) {
