@@ -1065,6 +1065,9 @@ static void StartProfiling(ProfilingType type,
     for (butil::FilePath name = prof_enum.Next(); !name.empty();
          name = prof_enum.Next()) {
         // NOTE: name already includes dir.
+        if (!ValidProfilePath(name.value())) {
+            continue;
+        }
         if (past_profs.empty()) {
             past_profs.reserve(16);
         }

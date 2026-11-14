@@ -843,7 +843,7 @@ TEST_F(BuiltinServiceTest, hotspots_profile_filename_escaping) {
     const std::string& body = cntl.response_attachment().to_string();
     EXPECT_EQ(std::string::npos, body.find(filename))
         << "unescaped profile filename in html: " << body;
-    EXPECT_NE(std::string::npos, body.find(brpc::WebEscape(filename)));
+    EXPECT_EQ(std::string::npos, body.find(brpc::WebEscape(filename)));
 
 }
 
@@ -878,6 +878,11 @@ TEST_F(BuiltinServiceTest, path_html_escaping) {
     html << brpc::Path(payload.c_str(), brpc::Path::LOCAL, payload.c_str());
     EXPECT_EQ(std::string::npos, html.str().find(payload));
     EXPECT_NE(std::string::npos, html.str().find(brpc::WebEscape(payload)));
+
+    std::ostringstream reserved_html;
+    reserved_html << brpc::Path("/dir/a?x#fragment", brpc::Path::LOCAL);
+    EXPECT_NE(std::string::npos,
+              reserved_html.str().find("href=\"/dir/a%3fx%23fragment\""));
 
     std::ostringstream text;
     text << brpc::Path(payload.c_str(), nullptr, payload.c_str());
