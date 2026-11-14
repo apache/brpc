@@ -305,7 +305,6 @@ public:
         if (rhs) {
             _storage.Init(std::move(*rhs));
             _engaged = true;
-            rhs.reset();
         }
     }
 
@@ -318,7 +317,6 @@ public:
         if (rhs) {
             _storage.Init(std::move(*rhs));
             _engaged = true;
-            rhs.reset();
         }
     }
 

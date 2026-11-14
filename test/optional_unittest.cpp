@@ -282,10 +282,12 @@ TEST(OptionalTest, convert) {
         ASSERT_TRUE(opt_copy->default_ctor);
         ASSERT_FALSE(opt_copy->move_ctor);
 
-        butil::optional<Convert> opt_move(butil::optional<Obj>{ butil::in_place });
+        butil::optional<Obj> move_source(butil::in_place);
+        butil::optional<Convert> opt_move(std::move(move_source));
         ASSERT_TRUE(opt_move);
         ASSERT_TRUE(opt_move->default_ctor);
         ASSERT_TRUE(opt_move->move_ctor);
+        ASSERT_TRUE(move_source);
     }
 
     {
