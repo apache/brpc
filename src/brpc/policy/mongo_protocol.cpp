@@ -22,6 +22,7 @@
 #include "butil/iobuf.h"                         // butil::IOBuf
 #include "butil/object_pool.h"
 #include "butil/strings/string_util.h"
+#include "butil/sys_byteorder.h"
 #include "butil/time.h"
 
 #include "brpc/controller.h"               // Controller
@@ -86,11 +87,13 @@ void SendMongoResponse::Run() {
             res.header().response_to(),
             res.header().op_code()
         };
+        header.make_wire_endian();
         res_buf.append(static_cast<const void*>(&header), sizeof(mongo_head_t));
-        int32_t response_flags = res.response_flags();
-        int64_t cursor_id = res.cursor_id();
-        int32_t starting_from = res.starting_from();
-        int32_t number_returned = res.number_returned();
+        // The wire format is little-endian.
+        const uint32_t response_flags = butil::ByteSwapToLE32(res.response_flags());
+        const uint64_t cursor_id = butil::ByteSwapToLE64(res.cursor_id());
+        const uint32_t starting_from = butil::ByteSwapToLE32(res.starting_from());
+        const uint32_t number_returned = butil::ByteSwapToLE32(res.number_returned());
         res_buf.append(&response_flags, sizeof(response_flags));
         res_buf.append(&cursor_id, sizeof(cursor_id));
         res_buf.append(&starting_from, sizeof(starting_from));
@@ -227,7 +230,8 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
 
     char buf[sizeof(mongo_head_t)];
     const char *p = (const char *)msg->meta.fetch(buf, sizeof(buf));
-    const mongo_head_t *header = (const mongo_head_t*)p;
+    mongo_head_t header = *(const mongo_head_t*)p;
+    header.make_host_endian();
 
     const google::protobuf::ServiceDescriptor* srv_des = MongoService::descriptor();
     if (1 != srv_des->method_count()) {
@@ -308,20 +312,20 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
             }
         }
         
-        if (!MongoOp_IsValid(header->op_code)) {
-            mongo_done->cntl.SetFailed(EREQUEST, "Unknown op_code:%d", header->op_code);
+        if (!MongoOp_IsValid(header.op_code)) {
+            mongo_done->cntl.SetFailed(EREQUEST, "Unknown op_code:%d", header.op_code);
             break;
         }
         
-        mongo_done->cntl.set_log_id(header->request_id);
+        mongo_done->cntl.set_log_id(header.request_id);
         const std::string &body_str = msg->payload.to_string();
         mongo_done->req.set_message(body_str.c_str(), body_str.size());
-        mongo_done->req.mutable_header()->set_message_length(header->message_length);
-        mongo_done->req.mutable_header()->set_request_id(header->request_id);
-        mongo_done->req.mutable_header()->set_response_to(header->response_to);
+        mongo_done->req.mutable_header()->set_message_length(header.message_length);
+        mongo_done->req.mutable_header()->set_request_id(header.request_id);
+        mongo_done->req.mutable_header()->set_response_to(header.response_to);
         mongo_done->req.mutable_header()->set_op_code(
-                static_cast<MongoOp>(header->op_code));
-        mongo_done->res.mutable_header()->set_response_to(header->request_id);
+                static_cast<MongoOp>(header.op_code));
+        mongo_done->res.mutable_header()->set_response_to(header.request_id);
         mongo_done->received_us = msg->received_us();
 
         google::protobuf::Service* svc = mp->service;

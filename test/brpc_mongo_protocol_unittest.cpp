@@ -19,6 +19,8 @@
 
 // Date: Thu Oct 15 21:08:31 CST 2015
 
+#include <stdint.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -27,6 +29,7 @@
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/sys_byteorder.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -47,8 +50,32 @@ namespace {
 
 static const std::string EXP_REQUEST = "hello";
 static const std::string EXP_RESPONSE = "world";
+static const int64_t EXP_CURSOR_ID = 0x0102030405060708LL;
+static const int32_t EXP_NUMBER_RETURNED = 1;
+
+// Everything on the wire is little-endian, whatever the host byte order.
+static void AppendHeader(const brpc::mongo_head_t& header, butil::IOBuf* buf) {
+    brpc::mongo_head_t wire = header;
+    wire.make_wire_endian();
+    buf->append(static_cast<const void*>(&wire), sizeof(wire));
+}
+
+static void AppendLE32(int32_t value, butil::IOBuf* buf) {
+    const uint32_t wire = butil::ByteSwapToLE32(value);
+    buf->append(&wire, sizeof(wire));
+}
+
+static void AppendLE64(int64_t value, butil::IOBuf* buf) {
+    const uint64_t wire = butil::ByteSwapToLE64(value);
+    buf->append(&wire, sizeof(wire));
+}
 
 class MyEchoService : public ::brpc::policy::MongoService {
+public:
+    // op_code of the last request, as decoded by brpc.
+    int last_op_code = -1;
+
+private:
     void default_method(::google::protobuf::RpcController*,
                         const ::brpc::policy::MongoRequest* req,
                         ::brpc::policy::MongoResponse* res,
@@ -56,10 +83,13 @@ class MyEchoService : public ::brpc::policy::MongoService {
         brpc::ClosureGuard done_guard(done);
 
         EXPECT_EQ(EXP_REQUEST, req->message());
+        last_op_code = req->header().op_code();
 
         res->mutable_header()->set_message_length(
                 sizeof(brpc::mongo_head_t) + sizeof(int32_t) * 3 +
                 sizeof(int64_t) + EXP_REQUEST.length());
+        res->set_cursor_id(EXP_CURSOR_ID);
+        res->set_number_returned(EXP_NUMBER_RETURNED);
         res->set_message(EXP_RESPONSE);
     }
 };
@@ -81,15 +111,11 @@ public:
             (int32_t)(sizeof(brpc::mongo_head_t) + sizeof(int32_t) * 3 +
                 sizeof(int64_t) + EXP_REQUEST.length()),
             0, 0, 0};
-        out_buf->append(static_cast<const void*>(&header), sizeof(brpc::mongo_head_t));
-        int32_t response_flags = 0;
-        int64_t cursor_id = 0;
-        int32_t starting_from = 0;
-        int32_t number_returned = 0;
-        out_buf->append(&response_flags, sizeof(response_flags));
-        out_buf->append(&cursor_id, sizeof(cursor_id));
-        out_buf->append(&starting_from, sizeof(starting_from));
-        out_buf->append(&number_returned, sizeof(number_returned));
+        AppendHeader(header, out_buf);
+        AppendLE32(0, out_buf);  // response_flags
+        AppendLE64(0, out_buf);  // cursor_id
+        AppendLE32(0, out_buf);  // starting_from
+        AppendLE32(0, out_buf);  // number_returned
         out_buf->append(EXP_RESPONSE);
     }
 
@@ -163,7 +189,7 @@ TEST_F(MongoTest, process_request_logoff) {
     header.op_code = brpc::MONGO_OPCODE_REPLY;
     header.message_length = sizeof(header) + EXP_REQUEST.length();
     butil::IOBuf total_buf;
-    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    AppendHeader(header, &total_buf);
     total_buf.append(EXP_REQUEST);
     brpc::ParseResult req_pr = brpc::policy::ParseMongoMessage(
         &total_buf, _socket.get(), false, &_server);
@@ -178,7 +204,7 @@ TEST_F(MongoTest, process_request_failed_socket) {
     header.op_code = brpc::MONGO_OPCODE_REPLY;
     header.message_length = sizeof(header) + EXP_REQUEST.length();
     butil::IOBuf total_buf;
-    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    AppendHeader(header, &total_buf);
     total_buf.append(EXP_REQUEST);
     brpc::ParseResult req_pr = brpc::policy::ParseMongoMessage(
         &total_buf, _socket.get(), false, &_server);
@@ -200,7 +226,7 @@ TEST_F(MongoTest, process_request_from_internal_port) {
     header.op_code = brpc::MONGO_OPCODE_REPLY;
     header.message_length = sizeof(header) + EXP_REQUEST.length();
     butil::IOBuf total_buf;
-    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    AppendHeader(header, &total_buf);
     total_buf.append(EXP_REQUEST);
     brpc::ParseResult req_pr = brpc::policy::ParseMongoMessage(
         &total_buf, _socket.get(), false, &_server);
@@ -216,7 +242,7 @@ TEST_F(MongoTest, verify_request) {
     header.op_code = brpc::MONGO_OPCODE_REPLY;
     header.message_length = sizeof(header) + EXP_REQUEST.length();
     butil::IOBuf total_buf;
-    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    AppendHeader(header, &total_buf);
     total_buf.append(EXP_REQUEST);
     brpc::ParseResult req_pr = brpc::policy::ParseMongoMessage(
         &total_buf, _socket.get(), false, &_server);
@@ -272,7 +298,8 @@ TEST_F(MongoTest, complete_flow) {
     // Assemble request
     brpc::mongo_head_t header = { 0, 0, 0, 0 };
     header.message_length = sizeof(header) + EXP_REQUEST.length();
-    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    header.request_id = 1234;
+    AppendHeader(header, &total_buf);
     total_buf.append(EXP_REQUEST);
 
     const size_t old_size = total_buf.size();
@@ -285,31 +312,76 @@ TEST_F(MongoTest, complete_flow) {
     ASSERT_EQ(old_size, total_buf.size());
     header.op_code = brpc::MONGO_OPCODE_REPLY;
     total_buf.clear();
-    total_buf.append(static_cast<const void*>(&header), sizeof(header));
+    AppendHeader(header, &total_buf);
     total_buf.append(EXP_REQUEST);
     req_pr = brpc::policy::ParseMongoMessage(&total_buf, _socket.get(), false, &_server);
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     brpc::InputMessageBase* req_msg = req_pr.message();
     ProcessMessage(brpc::policy::ProcessMongoRequest, req_msg, false);
 
-    // Read response from pipe
+    // Read response from pipe; everything on the wire is little-endian.
     butil::IOPortal response_buf;
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
-    char buf[sizeof(brpc::mongo_head_t)];
-    const brpc::mongo_head_t *phead = static_cast<const brpc::mongo_head_t*>(
-            response_buf.fetch(buf, sizeof(buf)));
-    response_buf.cutn(&header, sizeof(header));
-    response_buf.cutn(buf, sizeof(int32_t));
-    response_buf.cutn(buf, sizeof(int64_t));
-    response_buf.cutn(buf, sizeof(int32_t));
-    response_buf.cutn(buf, sizeof(int32_t));
+    brpc::mongo_head_t head;
+    ASSERT_EQ(sizeof(head), response_buf.cutn(&head, sizeof(head)));
+    head.make_host_endian();
+    EXPECT_EQ(header.request_id, head.response_to);
+    uint32_t response_flags = 0;
+    uint64_t cursor_id = 0;
+    uint32_t starting_from = 0;
+    uint32_t number_returned = 0;
+    response_buf.cutn(&response_flags, sizeof(response_flags));
+    response_buf.cutn(&cursor_id, sizeof(cursor_id));
+    response_buf.cutn(&starting_from, sizeof(starting_from));
+    response_buf.cutn(&number_returned, sizeof(number_returned));
+    EXPECT_EQ(EXP_CURSOR_ID, (int64_t)butil::ByteSwapToLE64(cursor_id));
+    EXPECT_EQ(EXP_NUMBER_RETURNED, (int32_t)butil::ByteSwapToLE32(number_returned));
     char msg_buf[200];
-    int msg_length = phead->message_length - sizeof(brpc::mongo_head_t) - sizeof(int32_t) * 3 -
+    int msg_length = head.message_length - sizeof(brpc::mongo_head_t) - sizeof(int32_t) * 3 -
         sizeof(int64_t);
     response_buf.cutn(msg_buf, msg_length);
     msg_buf[msg_length] = '\0';
 
     ASSERT_FALSE(cntl.Failed());
     ASSERT_STREQ(EXP_RESPONSE.c_str(), msg_buf);
+}
+TEST_F(MongoTest, little_endian_wire_format) {
+    // A request header as it appears on the wire, independent of the host
+    // byte order: message_length 21, request_id 7, response_to 0 and
+    // op_code 2004 (OP_QUERY).
+    static const uint8_t REQUEST_HEADER[sizeof(brpc::mongo_head_t)] = {
+        0x15, 0x00, 0x00, 0x00,
+        0x07, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0xd4, 0x07, 0x00, 0x00,
+    };
+    butil::IOBuf total_buf;
+    total_buf.append(REQUEST_HEADER, sizeof(REQUEST_HEADER));
+    total_buf.append(EXP_REQUEST);
+    brpc::ParseResult req_pr =
+            brpc::policy::ParseMongoMessage(&total_buf, _socket.get(), false, &_server);
+    ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
+    ProcessMessage(brpc::policy::ProcessMongoRequest, req_pr.message(), false);
+    EXPECT_EQ((int)brpc::MONGO_OPCODE_QUERY, _svc.last_op_code);
+
+    // The response, byte by byte: header, response_flags, cursor_id,
+    // starting_from, number_returned, message.
+    butil::IOPortal response_buf;
+    response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
+    uint8_t response[sizeof(brpc::mongo_head_t) + sizeof(int32_t) * 3 + sizeof(int64_t)];
+    ASSERT_EQ(sizeof(response), response_buf.cutn(response, sizeof(response)));
+    // message_length = 16 + 12 + 8 + 5 = 41
+    static const uint8_t MESSAGE_LENGTH[4] = { 0x29, 0x00, 0x00, 0x00 };
+    EXPECT_EQ(0, memcmp(MESSAGE_LENGTH, response, 4));
+    // response_to = request_id = 7
+    static const uint8_t RESPONSE_TO[4] = { 0x07, 0x00, 0x00, 0x00 };
+    EXPECT_EQ(0, memcmp(RESPONSE_TO, response + 8, 4));
+    // cursor_id = EXP_CURSOR_ID
+    static const uint8_t CURSOR_ID[8] = { 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01 };
+    EXPECT_EQ(0, memcmp(CURSOR_ID, response + 20, 8));
+    // number_returned = EXP_NUMBER_RETURNED
+    static const uint8_t NUMBER_RETURNED[4] = { 0x01, 0x00, 0x00, 0x00 };
+    EXPECT_EQ(0, memcmp(NUMBER_RETURNED, response + 32, 4));
+    EXPECT_EQ(EXP_RESPONSE, response_buf.to_string());
 }
 } //namespace

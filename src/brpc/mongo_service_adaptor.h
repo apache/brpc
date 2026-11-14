@@ -50,6 +50,8 @@ public:
 
     // Make an error msg when the cntl fails. If cntl fails, we must send mongo client a msg not 
     // only to indicate the error, but also to finish the round trip.
+    // The msg must be in the wire format, which is little-endian on every
+    // host (mongo_head_t::make_wire_endian(), butil::ByteSwapToLE32()).
     virtual void SerializeError(int response_to, butil::IOBuf* out_buf) const = 0;
 
     // Create a custom context which is attached to socket. This func is called only when the first
