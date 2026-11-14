@@ -60,6 +60,11 @@ UbrDataFormat PreferredDataFormatForShmType(SHM_TYPE shm_type);
 UbrDataFormat SelectDataFormat(UbrDataFormat local_format,
                                uint16_t remote_format_id);
 
+// Builds the server-side shared-memory name derived from a peer name.
+// Returns false when the result cannot fit in shm_name.
+bool BuildServerShmName(const char* peer_name,
+                        char (&shm_name)[SHM_MAX_NAME_BUFF_LEN]);
+
 struct HelloMessage {
     void Serialize(void* data) const;
     void Deserialize(void* data);

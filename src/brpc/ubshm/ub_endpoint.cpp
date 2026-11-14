@@ -166,6 +166,17 @@ std::string HelloMessage::toString() const {
     return std::string(buf.data(), static_cast<size_t>(n));
 }
 
+bool BuildServerShmName(const char* peer_name,
+                        char (&shm_name)[SHM_MAX_NAME_BUFF_LEN]) {
+    const int result = snprintf(shm_name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
+                                peer_name, SERVER_SHM_NAME_SUFFIX);
+    if (UNLIKELY(result < 0 || result >= SHM_MAX_NAME_BUFF_LEN)) {
+        LOG(WARNING) << "Build server shared memory name failed, ret=" << result;
+        return false;
+    }
+    return true;
+}
+
 UBShmEndpoint::UBShmEndpoint(Socket* s)
     : _socket(s)
     , _socket_id(s ? s->id() : INVALID_SOCKET_ID)
@@ -617,14 +628,14 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
         if (client_ip_port != nullptr) {
             *client_ip_port = '\0';
         }
-        int result = snprintf(local_trx_shm.name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
-            client_name, SERVER_SHM_NAME_SUFFIX);
-        if (UNLIKELY(result < 0)) {
-            LOG(WARNING) << "Copy client shared memory name failed, ret=" << result;
+        const bool server_name_valid =
+            BuildServerShmName(client_name, local_trx_shm.name);
+        if (!server_name_valid) {
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
         }
-        if (result >= 0 && ep->AllocateServerResources(
-                &remote_trx_shm, &local_trx_shm, local_format) < 0) {
+        if (server_name_valid &&
+            ep->AllocateServerResources(&remote_trx_shm, &local_trx_shm,
+                                        local_format) < 0) {
             LOG(WARNING) << "Fail to allocate ub resources, fallback to tcp:"
                          << s->description();
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
