@@ -60,14 +60,6 @@
 #include "bvar/variable.h"
 #include "flatbuffers_message_generated.h"
 
-#if BRPC_WITH_RDMA
-#include <gflags/gflags.h>
-#include "brpc/global.h"
-#include "brpc/rdma/rdma_endpoint.h"
-#include "brpc/rdma/rdma_helper.h"
-#include "brpc/rdma_transport.h"
-#endif  // BRPC_WITH_RDMA
-
 namespace {
 
 using brpc::flatbuffers::BrpcDescriptorTable;
@@ -80,19 +72,6 @@ using brpc_fbtest::Payload;
 const int kRpcTimeoutMs = 1500;
 const int kWaitTimeoutMs = 5000;
 const size_t kHeaderSize = 12;
-
-#if BRPC_WITH_RDMA
-bool IsRdmaOn(const brpc::Socket* socket) {
-    if (socket == nullptr || socket->socket_mode() != brpc::SOCKET_MODE_RDMA) {
-        return false;
-    }
-    const auto* transport =
-        static_cast<const brpc::RdmaTransport*>(socket->_transport.get());
-    return transport->_rdma_ep->_state.load(butil::memory_order_acquire) ==
-               brpc::rdma::RdmaEndpoint::ESTABLISHED &&
-           transport->_rdma_state == brpc::RdmaTransport::RDMA_ON;
-}
-#endif  // BRPC_WITH_RDMA
 
 // These independent byte-level helpers intentionally do not reuse the codec.
 // Both FRPC header integers are big-endian.
@@ -340,11 +319,6 @@ public:
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
         ++entered;
-#if BRPC_WITH_RDMA
-        if (IsRdmaOn(brpc::ControllerPrivateAccessor(cntl).get_sending_socket())) {
-            ++rdma_calls;
-        }
-#endif  // BRPC_WITH_RDMA
         if (cntl->is_security_mode()) {
             ++security_mode_calls;
         }
@@ -413,9 +387,6 @@ public:
         }
     }
     std::atomic<int> entered{0};
-#if BRPC_WITH_RDMA
-    std::atomic<int> rdma_calls{0};
-#endif  // BRPC_WITH_RDMA
     std::atomic<int> rejected{0};
     std::atomic<int> security_mode_calls{0};
     std::atomic<int> fail_next_code{0};
@@ -462,148 +433,6 @@ protected:
     brpc::Server server;
     brpc::Channel channel;
 };
-
-#if BRPC_WITH_RDMA
-class FlatBuffersRdmaTest : public ::testing::Test {
-protected:
-    void StartServer(brpc::SocketMode mode) {
-        ASSERT_EQ(0, server.AddFlatBuffersService(
-            &service, brpc::SERVER_DOESNT_OWN_SERVICE));
-        brpc::ServerOptions options;
-        options.socket_mode = mode;
-        ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
-    }
-
-    void StartChannel(brpc::SocketMode mode) {
-        brpc::ChannelOptions options;
-        options.protocol = "fb_rpc";
-        options.connection_type = "single";
-        options.socket_mode = mode;
-        options.timeout_ms = 10000;
-        options.connect_timeout_ms = 5000;
-        options.max_retry = 0;
-        ASSERT_EQ(0, channel.Init(server.listen_address(), &options));
-    }
-
-    void TearDown() override {
-        server.Stop(0);
-        server.Join();
-    }
-
-    void CheckTransport(bool expect_rdma) {
-        brpc::SocketUniquePtr socket;
-        ASSERT_EQ(0, brpc::Socket::Address(channel._server_id, &socket));
-        ASSERT_EQ(expect_rdma, IsRdmaOn(socket.get()));
-        if (!expect_rdma && socket->socket_mode() == brpc::SOCKET_MODE_RDMA) {
-            const auto* transport =
-                static_cast<const brpc::RdmaTransport*>(socket->_transport.get());
-            EXPECT_EQ(brpc::rdma::RdmaEndpoint::FALLBACK_TCP,
-                      transport->_rdma_ep->_state.load(butil::memory_order_acquire));
-            EXPECT_EQ(brpc::RdmaTransport::RDMA_OFF, transport->_rdma_state);
-        }
-    }
-
-    void RoundTrips(bool expect_rdma) {
-        const MethodDescriptor* method =
-            service.GetDescriptor()->FindMethodByIndex(41);
-        // The last payload exceeds the RDMA pool's largest block. The tiny
-        // initial builder size also exercises growth, and both peers must
-        // merge multiple receive blocks into an aligned contiguous message.
-        for (size_t size : {0u, 63u, 8193u, 3u * 1024 * 1024 + 17}) {
-            for (bool asynchronous : {false, true}) {
-                SCOPED_TRACE(size);
-                SCOPED_TRACE(asynchronous);
-                const Message request = MakePayload(size, 31, 19);
-                const std::string original = Bytes(request);
-                Message response;
-                brpc::Controller cntl;
-                std::string attachment(std::min<size_t>(size / 3, 131073), '\0');
-                for (size_t i = 0; i < attachment.size(); ++i) {
-                    attachment[i] = static_cast<char>(i % 251);
-                }
-                cntl.request_attachment().append(attachment);
-                Completion done;
-                const int calls_before = service.rdma_calls.load();
-                channel.FBCallMethod(method, &cntl, &request, &response,
-                                     asynchronous ? &done : nullptr);
-                if (asynchronous) {
-                    brpc::Join(cntl.call_id());
-                    EXPECT_EQ(1, done.calls());
-                }
-                ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-                ASSERT_NO_FATAL_FAILURE(CheckTransport(expect_rdma));
-                EXPECT_EQ(calls_before + (expect_rdma ? 1 : 0),
-                          service.rdma_calls.load());
-                ExpectReply(response, request, method);
-                EXPECT_EQ(attachment, cntl.response_attachment().to_string());
-                EXPECT_EQ(original, Bytes(request));
-            }
-        }
-
-        // Error responses have no application payload. They must complete
-        // sync and async calls over the negotiated transport as well.
-        for (bool asynchronous : {false, true}) {
-            SCOPED_TRACE(asynchronous);
-            const Message request = MakePayload();
-            Message response;
-            brpc::Controller cntl;
-            Completion done;
-            service.fail_next_code = EACCES;
-            const int calls_before = service.rdma_calls.load();
-            channel.FBCallMethod(method, &cntl, &request, &response,
-                                 asynchronous ? &done : nullptr);
-            if (asynchronous) {
-                brpc::Join(cntl.call_id());
-                EXPECT_EQ(1, done.calls());
-            }
-            ASSERT_EQ(EACCES, cntl.ErrorCode()) << cntl.ErrorText();
-            EXPECT_EQ(0u, response.size());
-            ASSERT_NO_FATAL_FAILURE(CheckTransport(expect_rdma));
-            EXPECT_EQ(calls_before + (expect_rdma ? 1 : 0),
-                      service.rdma_calls.load());
-        }
-    }
-
-    PayloadService service;
-    brpc::Server server;
-    brpc::Channel channel;
-};
-
-TEST_F(FlatBuffersRdmaTest, ProtocolAdmissionAndChannelOptions) {
-    EXPECT_TRUE(brpc::rdma::SupportedByRdma("fb_rpc"));
-    EXPECT_TRUE(brpc::rdma::SupportedByRdma("baidu_std"));
-    EXPECT_FALSE(brpc::rdma::SupportedByRdma("http"));
-    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_TCP));
-    for (const char* connection_type : {"single", "pooled", "short"}) {
-        SCOPED_TRACE(connection_type);
-        brpc::Channel candidate;
-        brpc::ChannelOptions options;
-        options.protocol = "fb_rpc";
-        options.connection_type = connection_type;
-        options.socket_mode = brpc::SOCKET_MODE_RDMA;
-        ASSERT_EQ(0, candidate.Init(server.listen_address(), &options));
-    }
-}
-
-TEST_F(FlatBuffersRdmaTest, RdmaClientFallsBackToTcpServer) {
-    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_TCP));
-    ASSERT_NO_FATAL_FAILURE(StartChannel(brpc::SOCKET_MODE_RDMA));
-    ASSERT_NO_FATAL_FAILURE(RoundTrips(false));
-}
-
-TEST_F(FlatBuffersRdmaTest, TcpClientCallsRdmaServer) {
-    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_RDMA));
-    ASSERT_NO_FATAL_FAILURE(StartChannel(brpc::SOCKET_MODE_TCP));
-    ASSERT_NO_FATAL_FAILURE(RoundTrips(false));
-}
-
-TEST_F(FlatBuffersRdmaTest, HardwareRdmaRoundTrips) {
-    ASSERT_TRUE(brpc::rdma::IsRdmaAvailable());
-    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_RDMA));
-    ASSERT_NO_FATAL_FAILURE(StartChannel(brpc::SOCKET_MODE_RDMA));
-    ASSERT_NO_FATAL_FAILURE(RoundTrips(true));
-}
-#endif  // BRPC_WITH_RDMA
 
 TEST(FlatBuffersFramingTest, PartialFramesAndInvalidHeadersDoNotConsumeInput) {
     const std::string wire = Frame(std::string(24, 'm'), "payload");
@@ -2488,14 +2317,4 @@ TEST(FlatBuffersProbeOrderTest, ProbedRightAfterBaiduStd) {
 }
 
 }  // namespace
-
-#if BRPC_WITH_RDMA
-int main(int argc, char* argv[]) {
-    testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
-    brpc::GlobalInitializeOrDie();
-    brpc::rdma::GlobalRdmaInitializeOrDie();
-    return RUN_ALL_TESTS();
-}
-#endif  // BRPC_WITH_RDMA
 #endif  // BRPC_WITH_FLATBUFFERS

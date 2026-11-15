@@ -318,6 +318,16 @@ if(WITH_FLATBUFFERS)
         add_test(NAME ${FB_TEST} COMMAND ${FB_TEST})
     endforeach()
 
+    if(WITH_RDMA)
+        # Requires real RDMA hardware; build and run explicitly, outside CTest.
+        add_executable(brpc_flatbuffers_rdma_unittest EXCLUDE_FROM_ALL
+            brpc_flatbuffers_rdma_unittest.cpp "${FLATBUFFERS_TEST_HEADER}")
+        target_include_directories(brpc_flatbuffers_rdma_unittest BEFORE PRIVATE
+            "${BRPC_GTEST_INCLUDE_DIR}")
+        target_link_libraries(brpc_flatbuffers_rdma_unittest PRIVATE
+            brpc-static brpc_test_config gtest ${DYNAMIC_LIB})
+    endif()
+
     # The same probe compiled with the OFF configuration must report the same
     # layout; the ON validation runs both and compares their output.
     set(WITH_FLATBUFFERS_VAL 0)
@@ -342,7 +352,8 @@ file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 list(REMOVE_ITEM BRPC_UNITTESTS
     "${CMAKE_CURRENT_SOURCE_DIR}/brpc_collector_premain_unittest.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_unittest.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_protocol_unittest.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_protocol_unittest.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/brpc_flatbuffers_rdma_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
