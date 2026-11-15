@@ -20,11 +20,65 @@
 #if BRPC_WITH_FLATBUFFERS
 #include <cstring>
 #include <cerrno>
+#include <cstdlib>
 #include "butil/logging.h"
+#if BRPC_WITH_RDMA
+#include "butil/iobuf_inl.h"
+#include "butil/memory/scope_guard.h"
+#include "brpc/rdma/block_pool.h"
+#include "brpc/rdma/rdma_helper.h"
+#endif  // BRPC_WITH_RDMA
 
 namespace brpc {
 namespace flatbuffers {
 namespace {
+
+void* AllocateStorage(butil::SingleIOBuf* storage, uint32_t size) {
+#if BRPC_WITH_RDMA
+    // SingleIOBuf normally uses the registered IOBuf pool. Its largest block
+    // class (type 2) is 2 MiB, including the IOBuf block header. FlatBuffers
+    // requires contiguous storage, so larger buffers need their own MR.
+    if (!rdma::IsRdmaAvailable() ||
+        static_cast<size_t>(size) + sizeof(butil::IOBuf::Block) <= rdma::GetBlockSize(2)) {
+        return storage->allocate(size);
+    }
+
+    void* data = malloc(size);
+    if (data == nullptr) {
+        return nullptr;
+    }
+    uint32_t lkey = rdma::RegisterMemoryForRdma(data, size);
+    if (lkey == 0) {
+        free(data);
+        return nullptr;
+    }
+    auto free_storage = [](void* data) {
+        rdma::DeregisterMemoryForRdma(data);
+        free(data);
+    };
+    butil::IOBuf registered;
+    BUTIL_SCOPE_EXIT {
+        if (registered.empty()) {
+            free_storage(data);
+        } else {
+            // After append, the IOBuf deleter owns the allocation. If
+            // assign fails, dropping this last reference frees it.
+            registered.clear();
+        }
+    };
+    if (registered.append_user_data_with_meta(data, size, free_storage, lkey) != 0) {
+        return nullptr;
+    }
+    // Retain the user-data block, including its lkey and deleter, through
+    // builder growth, Message aliases and outstanding socket writes.
+    if (!storage->assign(registered, size)) {
+        return nullptr;
+    }
+    return data;
+#else
+    return storage->allocate(size);
+#endif  // BRPC_WITH_RDMA
+}
 
 uint8_t* AlignPayload(uint8_t* data) {
     const uintptr_t address = reinterpret_cast<uintptr_t>(data);
@@ -57,7 +111,8 @@ uint8_t* SlabAllocator::allocate(size_t size) {
     butil::SingleIOBuf storage;
     const uint32_t allocation_size = static_cast<uint32_t>(
         size + kDefaultMetaSize + kBufferAlignment - 1);
-    uint8_t* raw = static_cast<uint8_t*>(storage.allocate(allocation_size));
+    uint8_t* raw = static_cast<uint8_t*>(
+        AllocateStorage(&storage, allocation_size));
     RELEASE_ASSERT_VERBOSE(raw != nullptr,
                            "Fail to allocate FlatBuffers storage");
     _data = AlignPayload(raw + kDefaultMetaSize);
@@ -158,8 +213,8 @@ bool Message::parse_msg_from_iobuf(const butil::IOBuf& buf, size_t msg_size,
             return false;
         }
     } else {
-        uint8_t* raw = static_cast<uint8_t*>(storage.allocate(
-            static_cast<uint32_t>(total + kBufferAlignment - 1)));
+        uint8_t* raw = static_cast<uint8_t*>(AllocateStorage(
+            &storage, static_cast<uint32_t>(total + kBufferAlignment - 1)));
         if (!raw) {
             return false;
         }

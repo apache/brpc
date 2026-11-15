@@ -669,10 +669,13 @@ void GlobalDisableRdma() {
 
 bool SupportedByRdma(std::string protocol) {
     if (protocol.compare("baidu_std") == 0) {
-        // Since rdma is used for high performance scenario,
-        // we consider baidu_std for the only protocol to support.
         return true;
     }
+#if BRPC_WITH_FLATBUFFERS
+    if (protocol.compare("fb_rpc") == 0) {
+        return true;
+    }
+#endif // BRPC_WITH_FLATBUFFERS
     return false;
 }
 
