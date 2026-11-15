@@ -22,6 +22,7 @@
 #include <gflags/gflags.h>
 #if BRPC_WITH_RDMA
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
 #include <functional>
@@ -2099,6 +2100,78 @@ TEST_F(RdmaHandshakeRetryTest, failed_socket_stops_handshake_without_deadline) {
     EXPECT_EQ(ECANCELED, _cntl.ErrorCode());
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FAILED, RdmaTransportOf(_socket));
     ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+class RdmaHandshakeFdReplacementTest : public RdmaTest {
+protected:
+    void SetUp() override {
+        int fds[2];
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        butil::fd_guard original(fds[0]);
+        _old_peer.reset(fds[1]);
+        _old_fd = original;
+
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        _new_fd.reset(fds[0]);
+        _new_peer.reset(fds[1]);
+
+        SocketOptions options;
+        options.fd = original.release();
+        options.socket_mode = SOCKET_MODE_RDMA;
+        // Exercise both removal of the old consumer and registration of the
+        // replacement. No peer sends data, so the callback stays idle.
+        options.on_edge_triggered_events = [](Socket*) {};
+        SocketId id;
+        ASSERT_EQ(0, Socket::Create(options, &id));
+        ASSERT_EQ(0, Socket::Address(id, &_socket));
+    }
+
+    void TearDown() override {
+        if (_socket) {
+            _socket->SetFailed(ECANCELED, "Replacement test finished");
+            _socket.reset();
+        }
+        RdmaTest::TearDown();
+    }
+
+    void CheckRejectedReplacement(int expected_error) {
+        int new_fd = _new_fd.release();
+        int rc = RdmaTransportOf(_socket)->GetRdmaEp()->ReplaceHandshakeFd(new_fd);
+        int error = errno;
+        EXPECT_EQ(-1, rc);
+        EXPECT_EQ(expected_error, error);
+        EXPECT_EQ(_old_fd, _socket->fd());
+        EXPECT_NE(-1, fcntl(_old_fd, F_GETFD));
+        EXPECT_EQ(-1, fcntl(new_fd, F_GETFD));
+        EXPECT_EQ(EBADF, errno);
+        char byte;
+        EXPECT_EQ(0, recv(_new_peer, &byte, sizeof(byte), MSG_DONTWAIT));
+
+        // A caller may retain the failed Socket; only the replacement must
+        // close immediately. Recycling must still close the original fd.
+        _socket->SetFailed(ECANCELED, "Replacement test finished");
+        _socket.reset();
+        EXPECT_EQ(0, recv(_old_peer, &byte, sizeof(byte), MSG_DONTWAIT));
+    }
+
+    int _old_fd = -1;
+    butil::fd_guard _old_peer;
+    butil::fd_guard _new_fd;
+    butil::fd_guard _new_peer;
+    SocketUniquePtr _socket;
+};
+
+TEST_F(RdmaHandshakeFdReplacementTest, failed_socket_rejects_replacement) {
+    // Model SetFailed after ReconnectForHandshake's last pre-check and before
+    // fd replacement, without relying on thread scheduling to hit the window.
+    ASSERT_EQ(0, _socket->SetFailed(ECANCELED, "Cancel before replacement"));
+    CheckRejectedReplacement(ECANCELED);
+}
+
+TEST_F(RdmaHandshakeFdReplacementTest, expired_deadline_rejects_replacement) {
+    // The same window also permits the original connection deadline to expire.
+    _socket->_connect_deadline_us = butil::gettimeofday_us() - 1;
+    CheckRejectedReplacement(ETIMEDOUT);
 }
 
 

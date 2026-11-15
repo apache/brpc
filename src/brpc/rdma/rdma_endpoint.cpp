@@ -522,6 +522,12 @@ int RdmaEndpoint::ReconnectForHandshake() {
         GetHandshakeWaitTime(s, s->_connect_deadline_us, &duetime) != 0) {
         return -1;
     }
+    return ReplaceHandshakeFd(new_fd.release());
+}
+
+int RdmaEndpoint::ReplaceHandshakeFd(int fd) {
+    Socket* s = _socket;
+    butil::fd_guard new_fd(fd);
     int old_fd = s->fd();
     if (s->_transport->HasOnEdgeTrigger()) {
         s->_io_event.RemoveConsumer(old_fd);
@@ -530,6 +536,21 @@ int RdmaEndpoint::ReconnectForHandshake() {
         // ResetFileDescriptor clears `_fd` on error. Retain the old fd so normal
         // Socket recycling closes it and balances the connection counter.
         s->_fd.store(old_fd, butil::memory_order_release);
+        return -1;
+    }
+    // SetFailed() can race with the earlier checks or fd setup. Validate
+    // after registration, before committing ownership of the new connection.
+    // The handshake's Socket reference prevents recycling or health-check
+    // reset while we undo the replacement.
+    timespec duetime;
+    if (GetHandshakeWaitTime(s, s->_connect_deadline_us, &duetime) != 0) {
+        int saved_errno = errno;
+        if (s->_transport->HasOnEdgeTrigger()) {
+            s->_io_event.RemoveConsumer(new_fd);
+        }
+        s->_fd.store(old_fd, butil::memory_order_release);
+        new_fd.reset(-1);
+        errno = saved_errno;
         return -1;
     }
     new_fd.release();

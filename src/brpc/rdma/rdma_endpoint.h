@@ -174,6 +174,10 @@ private:
     // is still in RESET and no application data has been sent yet.
     int ReconnectForHandshake();
 
+    // Take ownership of fd and install it for the next hello. Roll back the
+    // replacement if cancellation or the deadline is observed after setup.
+    int ReplaceHandshakeFd(int fd);
+
     static void OnNewDataFromTcpAtClient(Socket* m);
     static void OnNewDataFromTcpAtServer(Socket* m);
 
