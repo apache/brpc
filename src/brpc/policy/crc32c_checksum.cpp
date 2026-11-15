@@ -102,19 +102,22 @@ static bool ComputeCrc32c(const ChecksumIn& in, uint32_t* crc) {
 
 }  // namespace
 
-// Returns false when the crc could not be computed (GPU memory read
-// failure); `in.cntl' is left without a checksum value and the caller must
-// fail the RPC instead of sending unchecked data.
-bool Crc32cCompute(const ChecksumIn& in) {
+// Returns void for API compatibility. When the crc cannot be computed (GPU
+// memory read failure with GDR), the controller is failed and no checksum
+// value is set, so the caller aborts the RPC instead of sending unchecked
+// data (see ChecksumHandler::Compute).
+void Crc32cCompute(const ChecksumIn& in) {
     uint32_t crc;
     if (!ComputeCrc32c(in, &crc)) {
-        return false;
+        in.cntl->SetFailed(EREQUEST,
+                           "Fail to compute crc32c checksum: cannot read the "
+                           "data to checksum");
+        return;
     }
     RPC_VLOG << "Crc32cCompute crc=" << crc;
     crc = butil::HostToNet32(butil::crc32c::Mask(crc));
     ControllerPrivateAccessor(in.cntl).set_checksum_value(
         reinterpret_cast<char*>(&crc), sizeof(crc));
-    return true;
 }
 
 // Returns false on mismatch or when the crc could not be computed.

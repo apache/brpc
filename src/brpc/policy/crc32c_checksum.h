@@ -25,11 +25,12 @@
 namespace brpc {
 namespace policy {
 
-// Compute checksum and store it in the controller. Returns false when the
-// checksum could not be computed (e.g. GPU memory read failure); the
-// controller is left without a checksum value and the caller must fail the
-// RPC instead of sending data whose checksum was never calculated.
-bool Crc32cCompute(const ChecksumIn& in);
+// Compute checksum and store it in the controller. If the checksum cannot be
+// computed (e.g. GPU memory read failure with GDR), the controller is failed
+// and no checksum value is set, so the caller aborts the RPC instead of
+// sending data whose checksum was never calculated. Kept `void' to match the
+// public ChecksumHandler::Compute signature.
+void Crc32cCompute(const ChecksumIn& in);
 
 // Verify checksum. Returns false on mismatch or when the checksum could
 // not be computed.

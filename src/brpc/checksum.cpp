@@ -74,22 +74,20 @@ void ListChecksumHandler(std::vector<ChecksumHandler>* vec) {
     }
 }
 
-// Compute `data' checksum. Returns false when the checksum could not be
-// computed or `checksum_type' has no registered handler; the caller must
-// fail the RPC so unchecked data is never sent.
-bool ComputeDataChecksum(const ChecksumIn& in, ChecksumType checksum_type) {
+// Compute `data' checksum. A handler that cannot compute the checksum
+// reports it by failing the controller (see ChecksumHandler::Compute), so
+// callers must check in.cntl->Failed() afterwards and abort the RPC.
+void ComputeDataChecksum(const ChecksumIn& in, ChecksumType checksum_type) {
     if (checksum_type == CHECKSUM_TYPE_NONE) {
-        return true;
+        return;
     }
     const ChecksumHandler* handler = FindChecksumHandler(checksum_type);
-    if (nullptr == handler) {
-        return false;
+    if (nullptr != handler) {
+        handler->Compute(in);
     }
-    return handler->Compute(in);
 }
 
-// Verify `data' checksum. Returns false on mismatch, on a missing handler,
-// or when the checksum could not be computed.
+// Verify `data' checksum Returns true on success, false otherwise
 bool VerifyDataChecksum(const ChecksumIn& in, ChecksumType checksum_type) {
     if (checksum_type == CHECKSUM_TYPE_NONE) {
         return true;
@@ -98,7 +96,7 @@ bool VerifyDataChecksum(const ChecksumIn& in, ChecksumType checksum_type) {
     if (nullptr != handler) {
         return handler->Verify(in);
     }
-    return false;
+    return true;
 }
 
 }  // namespace brpc
