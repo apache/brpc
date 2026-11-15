@@ -19,6 +19,9 @@
 
 #include <algorithm>                            // std::min
 #include <gflags/gflags.h>
+
+#include <memory>
+#include "butil/fd_guard.h"
 #include "butil/fd_utility.h"
 #include "butil/logging.h"                   // CHECK, LOG
 #include "butil/sys_byteorder.h"             // HostToNet,NetToHost
@@ -211,6 +214,7 @@ void RdmaConnect::StartConnect(const Socket* socket,
     CHECK(rdma_transport->_rdma_ep != nullptr);
     SocketUniquePtr s;
     if (Socket::Address(socket->id(), &s) != 0) {
+        done(EFAILEDSOCKET, data);
         return;
     }
     if (!IsRdmaAvailable()) {
@@ -225,11 +229,12 @@ void RdmaConnect::StartConnect(const Socket* socket,
     bthread_t tid;
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     bthread_attr_set_name(&attr, "RdmaProcessHandshakeAtClient");
-    if (bthread_start_background(&tid, &attr,
-                                 RdmaEndpoint::ProcessHandshakeAtClient,
-                                 rdma_transport->_rdma_ep) < 0) {
-        LOG(FATAL) << "Fail to start handshake bthread";
-        Run();
+    int rc = bthread_start_background(&tid, &attr,
+                                      RdmaEndpoint::ProcessHandshakeAtClient,
+                                      rdma_transport->_rdma_ep);
+    if (rc != 0) {
+        LOG(ERROR) << "Fail to start handshake bthread: " << berror(rc);
+        Run(rc);
     } else {
         s.release();
     }
@@ -237,8 +242,8 @@ void RdmaConnect::StartConnect(const Socket* socket,
 
 void RdmaConnect::StopConnect(Socket* socket) { }
 
-void RdmaConnect::Run() {
-    _done(errno, _data);
+void RdmaConnect::Run(int error_code) {
+    _done(error_code, _data);
 }
 
 void RdmaEndpoint::OnNewDataFromTcp(Socket* s) {
@@ -350,6 +355,25 @@ bool RdmaEndpoint::HandleTcpEventAfterEstablished() {
 
 static const int WAIT_TIMEOUT_MS = 50;
 
+static int GetHandshakeWaitTime(Socket* socket, int64_t deadline_us,
+                                timespec* duetime) {
+    if (socket->Failed()) {
+        errno = ECANCELED;
+        return -1;
+    }
+    int64_t now_us = butil::gettimeofday_us();
+    if (deadline_us >= 0 && now_us >= deadline_us) {
+        errno = ETIMEDOUT;
+        return -1;
+    }
+    int64_t wait_until_us = now_us + WAIT_TIMEOUT_MS * 1000L;
+    if (deadline_us >= 0) {
+        wait_until_us = std::min(wait_until_us, deadline_us);
+    }
+    *duetime = butil::microseconds_to_timespec(wait_until_us);
+    return 0;
+}
+
 // Drive an EAGAIN-aware read loop to completion (exactly `len` bytes).
 // `read_once(offset, remaining)` performs ONE underlying read attempt:
 //   returns > 0  : number of bytes consumed (added to running total);
@@ -366,12 +390,16 @@ static const int WAIT_TIMEOUT_MS = 50;
 // mapped, scatter-vector, etc.) can plug in by passing its own
 // `read_once`.
 template <class ReadOnce>
-static int ReadFromFdLoop(butil::atomic<int>* read_butex,
+static int ReadFromFdLoop(Socket* socket, int64_t deadline_us,
+                          butil::atomic<int>* read_butex,
                           size_t len, ReadOnce&& read_once) {
     size_t received = 0;
     while (received < len) {
-        const int expected_val = read_butex->load(butil::memory_order_acquire);
-        const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
+        int expected_val = read_butex->load(butil::memory_order_acquire);
+        timespec duetime;
+        if (GetHandshakeWaitTime(socket, deadline_us, &duetime) != 0) {
+            return -1;
+        }
         ssize_t nr = read_once(received, len - received);
         if (nr < 0) {
             if (errno == EAGAIN) {
@@ -395,8 +423,8 @@ static int ReadFromFdLoop(butil::atomic<int>* read_butex,
 
 int RdmaEndpoint::ReadFromFd(void* data, size_t len) {
     CHECK(data != nullptr);
-    const int fd = _socket->fd();
-    return ReadFromFdLoop(_read_butex, len,
+    int fd = _socket->fd();
+    return ReadFromFdLoop(_socket, _socket->_connect_deadline_us, _read_butex, len,
         [data, fd](size_t offset, size_t remaining) {
             return read(fd, (uint8_t*)data + offset, remaining);
         });
@@ -404,8 +432,8 @@ int RdmaEndpoint::ReadFromFd(void* data, size_t len) {
 
 int RdmaEndpoint::ReadFromFd(butil::IOPortal* data, size_t len) {
     CHECK(data != nullptr);
-    const int fd = _socket->fd();
-    return ReadFromFdLoop(_read_butex, len,
+    int fd = _socket->fd();
+    return ReadFromFdLoop(_socket, _socket->_connect_deadline_us, _read_butex, len,
         [data, fd](size_t /*offset*/, size_t remaining) {
             return data->append_from_file_descriptor(fd, remaining);
         });
@@ -426,10 +454,14 @@ int RdmaEndpoint::ReadFromFd(butil::IOPortal* data, size_t len) {
 // becomes writable again. It returns 0 on wake-up (or ETIMEDOUT),
 // non-zero on hard failure.
 template <class WriteOnce, class WaitWritable>
-static int WriteToFdLoop(size_t len, WriteOnce&& write_once, WaitWritable&& wait_writable) {
+static int WriteToFdLoop(Socket* socket, int64_t deadline_us, size_t len,
+                         WriteOnce&& write_once, WaitWritable&& wait_writable) {
     size_t written = 0;
     while (written < len) {
-        const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
+        timespec duetime;
+        if (GetHandshakeWaitTime(socket, deadline_us, &duetime) != 0) {
+            return -1;
+        }
         ssize_t nw = write_once(written, len - written);
         if (nw >= 0) {
             written += nw;
@@ -449,27 +481,60 @@ static int WriteToFdLoop(size_t len, WriteOnce&& write_once, WaitWritable&& wait
 int RdmaEndpoint::WriteToFd(void* data, size_t len) {
     CHECK(data != nullptr);
     Socket* s = _socket;
-    const int fd = s->fd();
-    return WriteToFdLoop(len,
+    int fd = s->fd();
+    return WriteToFdLoop(s, s->_connect_deadline_us, len,
         [data, fd](size_t offset, size_t remaining) {
             return write(fd, (uint8_t*)data + offset, remaining);
         },
         [s, fd](const timespec* duetime) {
-            return s->WaitEpollOut(fd, true, duetime) == 0 || errno == ETIMEDOUT;
+            return s->WaitEpollOut(fd, true, duetime, false) == 0 ||
+                   errno == ETIMEDOUT;
         });
 }
 
 int RdmaEndpoint::WriteToFd(butil::IOBuf* data) {
     CHECK(data != nullptr);
     Socket* s = _socket;
-    const int fd = s->fd();
-    return WriteToFdLoop(data->size(),
+    int fd = s->fd();
+    return WriteToFdLoop(s, s->_connect_deadline_us, data->size(),
         [data, fd](size_t /*offset*/, size_t /*remaining*/) {
             return data->cut_into_file_descriptor(fd);
         },
         [s, fd](const timespec* duetime) {
-            return s->WaitEpollOut(fd, true, duetime) == 0 || errno == ETIMEDOUT;
+            return s->WaitEpollOut(fd, true, duetime, false) == 0 ||
+                   errno == ETIMEDOUT;
         });
+}
+
+int RdmaEndpoint::ReconnectForHandshake() {
+    Socket* s = _socket;
+    timespec duetime;
+    if (GetHandshakeWaitTime(s, s->_connect_deadline_us, &duetime) != 0) {
+        return -1;
+    }
+    timespec deadline = butil::microseconds_to_timespec(s->_connect_deadline_us);
+    // Use Socket::Connect to preserve the configured device/local address and
+    // socket options. Keep ownership of the old fd until replacement succeeds.
+    butil::fd_guard new_fd(s->Connect(
+        s->_connect_deadline_us >= 0 ? &deadline : nullptr,
+        nullptr, nullptr, /*check_failed=*/true));
+    if (new_fd < 0 ||
+        GetHandshakeWaitTime(s, s->_connect_deadline_us, &duetime) != 0) {
+        return -1;
+    }
+    int old_fd = s->fd();
+    if (s->_transport->HasOnEdgeTrigger()) {
+        s->_io_event.RemoveConsumer(old_fd);
+    }
+    if (s->ResetFileDescriptor(new_fd) != 0) {
+        // ResetFileDescriptor clears `_fd` on error. Retain the old fd so normal
+        // Socket recycling closes it and balances the connection counter.
+        s->_fd.store(old_fd, butil::memory_order_release);
+        return -1;
+    }
+    new_fd.release();
+    close(old_fd);
+    return 0;
 }
 
 void RdmaEndpoint::ApplyRemoteHello(const ParsedHello& remote) {
@@ -502,14 +567,16 @@ void RdmaEndpoint::ApplyRemoteHello(const ParsedHello& remote) {
 void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     auto ep = static_cast<RdmaEndpoint*>(arg);
     SocketUniquePtr s(ep->_socket);
+    // Let AfterAppConnected record the final error after applying connection
+    // timeout policy. SetFailed() here would prevent that error conversion.
     RdmaConnect::RunGuard rg((RdmaConnect*)s->_app_connect.get());
     auto rdma_transport = static_cast<RdmaTransport*>(s->_transport.get());
 
     LOG_IF(INFO, FLAGS_rdma_trace_verbose)
         << "Start handshake on " << s->description();
 
-    std::unique_ptr<RdmaHandshake> handshake = CreateClientHandshake(ep);
-    CHECK(handshake != nullptr);
+    // Each new connection starts with v3 and retries v2 if the peer rejects it.
+    std::unique_ptr<RdmaHandshake> handshake(new RdmaHandshakeClientV3(ep));
     ep->_handshake_version = handshake->ProtocolVersion();
 
     // First initialize CQ and QP resources.
@@ -517,39 +584,50 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     if (ep->AllocateResources() < 0) {
         PLOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
                       << s->description();
-        errno = 0;
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
         ep->_state.store(FALLBACK_TCP, butil::memory_order_release);
         return nullptr;
     }
 
-    // Send hello message to server
-    ep->_state.store(C_HELLO_SEND, butil::memory_order_relaxed);
-    if (handshake->SendLocalHello() < 0) {
-        int saved_errno = errno;
-        PLOG(WARNING) << "Fail to send hello message to server:"
-                      << s->description();
-        s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
-                     s->description().c_str(), berror(saved_errno));
-        ep->_state.store(FAILED, butil::memory_order_relaxed);
-        return nullptr;
-    }
-
-    // Receive and parse remote hello.
-    ep->_state.store(C_HELLO_WAIT, butil::memory_order_relaxed);
     ParsedHello remote{};
-    const RemoteHelloResult r = handshake->ReceiveAndParseRemoteHello(&remote);
-    if (r == RemoteHelloResult::ERROR) {
-        int saved_errno = errno;
-        PLOG(WARNING) << "Fail to receive hello from server:"
+    RemoteHelloResult result;
+    for (;;) {
+        ep->_state.store(C_HELLO_SEND, butil::memory_order_relaxed);
+        if (handshake->SendLocalHello() < 0) {
+            result = RemoteHelloResult::ERROR;
+            if (handshake->ProtocolVersion() == 3 &&
+                (errno == EPIPE || errno == ECONNRESET)) {
+                result = RemoteHelloResult::RETRY_V2;
+            }
+        } else {
+            ep->_state.store(C_HELLO_WAIT, butil::memory_order_relaxed);
+            result = handshake->ReceiveAndParseRemoteHello(&remote);
+        }
+        if (result != RemoteHelloResult::RETRY_V2) {
+            break;
+        }
+
+        LOG_IF(INFO, FLAGS_rdma_trace_verbose)
+            << "Retry RDMA handshake with v2 on " << s->description();
+        if (ep->ReconnectForHandshake() != 0) {
+            result = RemoteHelloResult::ERROR;
+            break;
+        }
+        // No peer parameters have been applied and the QP is still in RESET.
+        // Reuse it, but discard the ECE advertisement of the v3 attempt.
+        ep->_outgoing_ece.reset();
+        handshake = std::make_unique<RdmaHandshakeClientV2>(ep);
+        ep->_handshake_version = handshake->ProtocolVersion();
+    }
+    if (result == RemoteHelloResult::ERROR) {
+        rg.error_code = errno ? errno : ERDMA;
+        PLOG(WARNING) << "Fail to exchange hello with server:"
                       << s->description();
-        s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
-                     s->description().c_str(), berror(saved_errno));
         ep->_state.store(FAILED, butil::memory_order_relaxed);
         return nullptr;
     }
 
-    if (r != RemoteHelloResult::NEGOTIATED) {
+    if (result != RemoteHelloResult::NEGOTIATED) {
         LOG(WARNING) << "Fail to negotiate with server, fallback to tcp:"
                      << s->description();
         rdma_transport->_rdma_state = RdmaTransport::RDMA_OFF;
@@ -571,11 +649,9 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     uint32_t flags = rdma_on ? HELLO_ACK_RDMA_OK : 0;
     uint32_t flags_be = butil::HostToNet32(flags);
     if (ep->WriteToFd(&flags_be, HELLO_ACK_LEN) < 0) {
-        int saved_errno = errno;
+        rg.error_code = errno ? errno : ERDMA;
         PLOG(WARNING) << "Fail to send Ack Message to server:"
                       << s->description();
-        s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
-                     s->description().c_str(), berror(saved_errno));
         ep->_state.store(FAILED, butil::memory_order_relaxed);
         return nullptr;
     }
@@ -584,10 +660,8 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         ep->_state.store(ESTABLISHED, butil::memory_order_release);
         // The handshake is over, so the QP stream may start parsing now.
         if (ep->StartCqEvents() < 0) {
-            const int saved_errno = errno;
+            rg.error_code = errno ? errno : ERDMA;
             PLOG(WARNING) << "Fail to start cq events on " << s->description();
-            s->SetFailed(saved_errno, "Fail to complete rdma handshake from %s: %s",
-                         s->description().c_str(), berror(saved_errno));
             ep->_state.store(FAILED, butil::memory_order_relaxed);
             return nullptr;
         }
@@ -599,8 +673,6 @@ void* RdmaEndpoint::ProcessHandshakeAtClient(void* arg) {
         LOG_IF(INFO, FLAGS_rdma_trace_verbose)
             << "Client handshake ends (use tcp) on " << s->description();
     }
-
-    errno = 0;
 
     return nullptr;
 }

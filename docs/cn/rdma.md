@@ -35,6 +35,8 @@ RDMA与TCP不同，不使用socket接口进行通信。但是在实现上仍然�
 
 brpc内部使用RDMA RC模式，每个RdmaEndpoint对应一个QP。RDMA连接建立依赖于前置TCP建连，TCP建连后双方交换必要参数，如GID、QPN等，再发起RDMA连接并实现数据传输。这个过程我们称为握手（参见RdmaEndpoint）。因为握手需要TCP连接，因此RdmaEndpoint所在的Socket类中，原本的TCP fd仍然有效。握手过程采用了brpc中已有的AppConnect逻辑。注意，握手用的TCP连接在后续数据传输阶段并不会收发数据，但仍保持为EST状态。一旦TCP连接中断，其上对应的RDMA连接同样会置错。
 
+客户端每次新建逻辑连接都先使用 v3 握手，无需配置版本。如果服务端在返回 v3 标识之前断开或重置连接，或返回 v2 标识，客户端会新建 TCP 连接并用 v2 重试一次。TCP 建连、握手及重连共用原始连接截止时间。已经识别为 v3 的报文损坏、握手超时或 v2 重试失败时，连接失败；服务端正常要求回退 TCP 时，客户端继续使用当前连接。
+
 RdmaEndpoint数据传输逻辑的第一个重要特性是零拷贝。要发送的所有数据默认都存放在IOBuf的Block中，因此所发送的Block需要等到发送CQE触发后才可以释放，这些Block的引用被存放于RdmaEndpoint::_sbuf中。而要实现接收零拷贝，则需要确保接受端所预提交的接收缓冲区必须直接在IOBuf的Block里面，被存放于RdmaEndpoint::_rbuf。注意，接收端预提交的每一段Block，有一个固定的大小（recv_block_size）。发送端发送时，一个请求最多只能有这么大，否则接收端则无法成功接收。
 
 RdmaEndpoint数据传输逻辑的第二个重要特性是滑动窗口流控。这一流控机制是为了避免发送端持续在发送，其速度超过了接收端处理的速度。TCP传输中也有类似的逻辑，但是是由内核协议栈来实现的。RdmaEndpoint内实现了这一流控机制，通过接收端显式回复ACK来确认接收端处理完毕。为了减少ACK本身的开销，让ACK以立即数形式返回，可以被附在数据消息里。
@@ -66,6 +68,7 @@ RDMA支持事件驱动和轮询两种模式，默认是事件驱动模式，通�
 
 可配置参数说明：
 * rdma_trace_verbose: 日志中打印RDMA建连相关信息，默认false。
+* rdma_client_handshake_version: 已废弃，仅为兼容旧启动参数保留。该值不再参与版本选择；客户端始终先尝试 v3，并在对端拒绝 v3 后重连并用 v2 重试一次。
 * rdma_recv_zerocopy: 是否启用接收零拷贝，默认true。
 * rdma_zerocopy_min_size: 接收零拷贝最小的msg大小，默认512B。
 * rdma_recv_block_type: 为接收数据预准备的block类型，分为三类default(8KB)/large(64KB)/huge(2MB)，默认为default。

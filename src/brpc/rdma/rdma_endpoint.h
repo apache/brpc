@@ -67,13 +67,18 @@ public:
             void (*done)(int err, void* data), void* data) override;
     void StopConnect(Socket*) override;
     struct RunGuard {
-        RunGuard(RdmaConnect* rc) { this_rc = rc; }
-        ~RunGuard() { if (this_rc) this_rc->Run(); }
+        explicit RunGuard(RdmaConnect* rc) : this_rc(rc), error_code(0) {}
+        ~RunGuard() {
+            if (this_rc) {
+                this_rc->Run(error_code);
+            }
+        }
         RdmaConnect* this_rc;
+        int error_code;
     };
 
 private:
-    void Run();
+    void Run(int error_code);
     void (*_done)(int, void*){nullptr};
     void* _data{nullptr};
 };
@@ -164,6 +169,10 @@ private:
 
     // Process handshake at the client
     static void* ProcessHandshakeAtClient(void* arg);
+
+    // Replace the TCP connection before retrying the client hello. The QP
+    // is still in RESET and no application data has been sent yet.
+    int ReconnectForHandshake();
 
     static void OnNewDataFromTcpAtClient(Socket* m);
     static void OnNewDataFromTcpAtServer(Socket* m);

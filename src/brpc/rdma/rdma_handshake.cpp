@@ -38,11 +38,9 @@
 namespace brpc {
 namespace rdma {
 
-DEFINE_int32(rdma_client_handshake_version, 2,
-             "RDMA handshake protocol version used by client. "
-             "2 = legacy 'RDMA' magic (default, compatible with all servers); "
-             "3 = new 'RDM3' protobuf-based handshake "
-             "(MUST only be enabled after target servers support v3).");
+DEFINE_int32(rdma_client_handshake_version, 3,
+             "Deprecated and ignored. Retained for command-line compatibility. "
+             "Clients always start with v3 and retry v2 once if the peer rejects v3.");
 DECLARE_bool(rdma_trace_verbose);
 
 extern const uint16_t MIN_QP_SIZE;
@@ -434,10 +432,16 @@ int RdmaHandshakeClientV3::SendLocalHello() {
 RemoteHelloResult RdmaHandshakeClientV3::ReceiveAndParseRemoteHello(ParsedHello* remote) {
     uint8_t magic[HELLO_MAGIC_LEN];
     if (_ep->ReadFromFd(magic, HELLO_MAGIC_LEN) < 0) {
+        if (errno == EEOF || errno == ECONNRESET) {
+            return RemoteHelloResult::RETRY_V2;
+        }
         return RemoteHelloResult::ERROR;
     }
     if (memcmp(magic, HELLO_MAGIC_V3, HELLO_MAGIC_LEN) != 0) {
         errno = EPROTO;
+        if (memcmp(magic, HELLO_MAGIC, HELLO_MAGIC_LEN) == 0) {
+            return RemoteHelloResult::RETRY_V2;
+        }
         return RemoteHelloResult::ERROR;
     }
 
@@ -509,16 +513,6 @@ int RdmaHandshakeServerV3::SendLocalHello() {
         v3_wire::FillLocalRdmaHello(_ep, &local_msg);
     }
     return v3_wire::WriteV3Hello(_ep, local_msg);
-}
-
-std::unique_ptr<RdmaHandshake> CreateClientHandshake(RdmaEndpoint* ep) {
-    switch (FLAGS_rdma_client_handshake_version) {
-    case 3:
-        return std::unique_ptr<RdmaHandshake>(new RdmaHandshakeClientV3(ep));
-    case 2:
-    default:
-        return std::unique_ptr<RdmaHandshake>(new RdmaHandshakeClientV2(ep));
-    }
 }
 
 std::unique_ptr<RdmaHandshake> CreateServerHandshakeByMagic(

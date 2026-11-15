@@ -22,6 +22,7 @@
 #include <gflags/gflags.h>
 #if BRPC_WITH_RDMA
 #include <errno.h>
+#include <poll.h>
 #include <unistd.h>
 #include <functional>
 #include <vector>
@@ -29,6 +30,7 @@
 #include "butil/endpoint.h"
 #include "butil/fd_guard.h"
 #include "butil/iobuf.h"
+#include "butil/memory/scope_guard.h"
 #include "butil/sys_byteorder.h"
 #include "butil/time.h"
 #include "butil/files/temp_file.h"
@@ -49,6 +51,7 @@
 #include "brpc/rdma/rdma_handshake_constants.h"
 #include "brpc/rdma/rdma_handshake.pb.h"
 #include "brpc/rdma/rdma_helper.h"
+#include "brpc/policy/baidu_rpc_meta.pb.h"
 #include "echo.pb.h"
 
 static const int PORT = 8713;
@@ -59,6 +62,7 @@ namespace brpc {
 
 DECLARE_int64(socket_max_unwritten_bytes);
 DECLARE_bool(log_idle_connection_close);
+DECLARE_int32(connect_timeout_as_unreachable);
 DEFINE_bool(rdma_test_enable, false, "Enable tests requring rdma runtime.");
 
 namespace rdma {
@@ -157,6 +161,58 @@ static bool ReadAll(int fd, void* buf, size_t len) {
         done += n;
     }
     return true;
+}
+
+static int AcceptPeer(int listener) {
+    pollfd pfd = {listener, POLLIN, 0};
+    if (poll(&pfd, 1, WAIT_TIMEOUT_US / 1000) != 1) {
+        return -1;
+    }
+    butil::fd_guard fd(accept(listener, nullptr, nullptr));
+    if (fd < 0) {
+        return -1;
+    }
+    timeval tv = {WAIT_TIMEOUT_US / 1000000, 0};
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0) {
+        return -1;
+    }
+    return fd.release();
+}
+
+static void ReadHello(int fd, int version) {
+    char magic[4];
+    ASSERT_TRUE(ReadAll(fd, magic, sizeof(magic)));
+    ASSERT_EQ(0, memcmp(magic, version == 3 ? "RDM3" : "RDMA", 4));
+    if (version == 3) {
+        uint32_t size_be;
+        ASSERT_TRUE(ReadAll(fd, &size_be, sizeof(size_be)));
+        uint32_t size = butil::NetToHost32(size_be);
+        ASSERT_GT(size, 0u);
+        ASSERT_LE(size, rdma::HELLO_V3_MAX_PB_SIZE);
+        std::string body(size, '\0');
+        ASSERT_TRUE(ReadAll(fd, &body[0], body.size()));
+        rdma::RdmaHello hello;
+        ASSERT_TRUE(hello.ParseFromString(body));
+    } else {
+        char body[rdma::HELLO_V2_MSG_LEN_MIN - 4];
+        ASSERT_TRUE(ReadAll(fd, body, sizeof(body)));
+        rdma::v2_wire::HelloMessage hello{};
+        hello.Deserialize(body);
+        ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, hello.msg_len);
+        ASSERT_EQ(rdma::HELLO_V2_VERSION, hello.hello_ver);
+        ASSERT_EQ(rdma::IMPL_V2_VERSION, hello.impl_ver);
+    }
+}
+
+// Simulate an old server rejecting v3, then return the fresh connection on
+// which the client retries v2. Leave its v2 hello for the test to inspect.
+static void AcceptV2Peer(int listener, butil::fd_guard* peer) {
+    butil::fd_guard first(AcceptPeer(listener));
+    ASSERT_GE(first, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(first, 3));
+    first.reset(-1);
+    peer->reset(AcceptPeer(listener));
+    ASSERT_GE(*peer, 0);
 }
 
 // Connect a raw socket to the test server. Note that sin_addr is taken from
@@ -326,28 +382,8 @@ static void MakeV2ClientHello(uint8_t (&data)[rdma::HELLO_V2_MSG_LEN_MIN]) {
     msg.Serialize(data + 4);
 }
 
-// Parameterized fixture used by upper-layer RPC tests that have no
-// dependency on the handshake wire format. The parameter is the
-// client-side handshake protocol version (FLAGS_rdma_client_handshake_version),
-// so every TEST_P below is automatically executed once per supported
-// version. Add a new version to INSTANTIATE_TEST_SUITE_P at the bottom
-// of this file and these RPC tests will gain coverage for free.
-class RdmaRpcTest : public RdmaTest,
-                    public ::testing::WithParamInterface<int> {
-protected:
-    void SetUp() override {
-        RdmaTest::SetUp();
-        _saved_handshake_version = rdma::FLAGS_rdma_client_handshake_version;
-        rdma::FLAGS_rdma_client_handshake_version = GetParam();
-    }
-    void TearDown() override {
-        rdma::FLAGS_rdma_client_handshake_version = _saved_handshake_version;
-        RdmaTest::TearDown();
-    }
-
-private:
-    int _saved_handshake_version = 2;
-};
+// RPC tests use the same automatic handshake selection as production.
+class RdmaRpcTest : public RdmaTest {};
 
 TEST_F(RdmaTest, stale_cq_callback_does_not_poll_new_generation) {
     SocketOptions main_options;
@@ -976,7 +1012,7 @@ TEST_F(RdmaTest, server_miss_before_hello_send) {
     ChannelOptions chan_options;
     chan_options.socket_mode = SOCKET_MODE_RDMA;
     chan_options.connect_timeout_ms = 500;
-    chan_options.timeout_ms = 500;
+    chan_options.timeout_ms = 5000;
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
 
@@ -995,7 +1031,7 @@ TEST_F(RdmaTest, server_miss_before_hello_send) {
     ASSERT_TRUE(acc_fd >= 0);
     bthread_id_join(cntl.call_id());
 
-    ASSERT_EQ(ERPCTIMEDOUT, cntl.ErrorCode());
+    ASSERT_EQ(ETIMEDOUT, cntl.ErrorCode());
 }
 
 TEST_F(RdmaTest, server_close_before_hello_send) {
@@ -1021,11 +1057,11 @@ TEST_F(RdmaTest, server_close_before_hello_send) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
-    close(acc_fd);
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
+    acc_fd.reset(-1);
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FAILED, RdmaTransportOf(s));
     bthread_id_join(cntl.call_id());
 
@@ -1040,7 +1076,7 @@ TEST_F(RdmaTest, server_miss_during_magic_str) {
     ChannelOptions chan_options;
     chan_options.socket_mode = SOCKET_MODE_RDMA;
     chan_options.connect_timeout_ms = 500;
-    chan_options.timeout_ms = 500;
+    chan_options.timeout_ms = 5000;
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
 
@@ -1055,17 +1091,16 @@ TEST_F(RdmaTest, server_miss_during_magic_str) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
     ASSERT_TRUE(WriteAll(acc_fd, "RD", 2));
-    // Half a magic is not enough to decide anything, so the client stays stuck
-    // in the handshake read and the RPC runs into its timeout. Joining below
-    // waits for exactly that, no sleeping needed.
+    // Half a magic is not enough to decide anything. The handshake must stop
+    // at the connection deadline, before the longer RPC timeout.
     bthread_id_join(cntl.call_id());
 
-    ASSERT_EQ(ERPCTIMEDOUT, cntl.ErrorCode());
+    ASSERT_EQ(ETIMEDOUT, cntl.ErrorCode());
 }
 
 TEST_F(RdmaTest, server_close_during_magic_str) {
@@ -1091,10 +1126,10 @@ TEST_F(RdmaTest, server_close_during_magic_str) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
     // Half a magic and then EOF. TCP keeps the order, so the client always sees
     // the two bytes first and then the close, which is what this test is about.
     ASSERT_TRUE(WriteAll(acc_fd, "RD", 2));
@@ -1128,10 +1163,10 @@ TEST_F(RdmaTest, server_hello_invalid_magic_str) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
     ASSERT_EQ(4, write(acc_fd, "ABCD", 4));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FAILED, RdmaTransportOf(s));
     bthread_id_join(cntl.call_id());
@@ -1147,7 +1182,7 @@ TEST_F(RdmaTest, server_miss_during_hello_msg) {
     ChannelOptions chan_options;
     chan_options.socket_mode = SOCKET_MODE_RDMA;
     chan_options.connect_timeout_ms = 500;
-    chan_options.timeout_ms = 500;
+    chan_options.timeout_ms = 5000;
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
 
@@ -1162,15 +1197,15 @@ TEST_F(RdmaTest, server_miss_during_hello_msg) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
     ASSERT_EQ(4, write(acc_fd, "RDMA", 4));
     ASSERT_EQ(2, write(acc_fd, "00", 2));
     bthread_id_join(cntl.call_id());
 
-    ASSERT_EQ(ERPCTIMEDOUT, cntl.ErrorCode());
+    ASSERT_EQ(ETIMEDOUT, cntl.ErrorCode());
 }
 
 TEST_F(RdmaTest, server_close_during_hello_msg) {
@@ -1196,13 +1231,13 @@ TEST_F(RdmaTest, server_close_during_hello_msg) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
     ASSERT_EQ(4, write(acc_fd, "RDMA", 4));
     ASSERT_EQ(2, write(acc_fd, "00", 2));
-    close(acc_fd);
+    acc_fd.reset(-1);
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FAILED, RdmaTransportOf(s));
     bthread_id_join(cntl.call_id());
 
@@ -1232,10 +1267,10 @@ TEST_F(RdmaTest, server_hello_invalid_msg_len) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
     memcpy(data, "RDMA", 4);
     uint16_t len = butil::HostToNet16(35);
     memcpy(data + 4, &len, 2);
@@ -1270,10 +1305,10 @@ TEST_F(RdmaTest, server_hello_invalid_version) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
     memcpy(data, "RDMA", 4);
     uint16_t len = butil::HostToNet16(rdma::HELLO_V2_MSG_LEN_MIN);
     memcpy(data + 4, &len, 2);
@@ -1311,10 +1346,10 @@ TEST_F(RdmaTest, server_hello_invalid_sq_rq_size) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
 
     rdma::v2_wire::HelloMessage msg{};
     msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
@@ -1361,10 +1396,10 @@ TEST_F(RdmaTest, server_miss_after_ack) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
 
     rdma::v2_wire::HelloMessage msg{};
     msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
@@ -1411,10 +1446,10 @@ TEST_F(RdmaTest, server_close_after_ack) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
 
     rdma::v2_wire::HelloMessage msg{};
     msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
@@ -1433,7 +1468,7 @@ TEST_F(RdmaTest, server_close_after_ack) {
     ASSERT_EQ(4, read(acc_fd, data, 4));
     uint32_t* tmp = (uint32_t*)data;
     ASSERT_EQ(1, butil::NetToHost32(*tmp));
-    close(acc_fd);
+    acc_fd.reset(-1);
     bthread_id_join(cntl.call_id());
 
     ASSERT_EQ(EEOF, cntl.ErrorCode());
@@ -1462,10 +1497,10 @@ TEST_F(RdmaTest, server_send_data_on_tcp_after_ack) {
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
     ASSERT_RDMA_STATE(rdma::RdmaEndpoint::C_HELLO_WAIT, RdmaTransportOf(s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
 
     rdma::v2_wire::HelloMessage msg{};
     msg.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
@@ -1510,11 +1545,11 @@ TEST_F(RdmaTest, v2_client_hello_bytes_baseline) {
     SocketUniquePtr s;
     ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &s));
 
-    butil::fd_guard acc_fd(accept(sockfd, nullptr, nullptr));
-    ASSERT_TRUE(acc_fd >= 0);
+    butil::fd_guard acc_fd;
+    ASSERT_NO_FATAL_FAILURE(AcceptV2Peer(sockfd, &acc_fd));
 
     uint8_t data[rdma::HELLO_V2_MSG_LEN_MIN];
-    ASSERT_EQ(rdma::HELLO_V2_MSG_LEN_MIN, read(acc_fd, data, rdma::HELLO_V2_MSG_LEN_MIN));
+    ASSERT_TRUE(ReadAll(acc_fd, data, sizeof(data)));
 
     // [0..4) magic
     ASSERT_EQ(0, memcmp(data, "RDMA", 4));
@@ -1682,22 +1717,6 @@ TEST_F(RdmaTest, v2_server_rejects_oversized_msg_len) {
     StopServer();
 }
 
-// RAII for FLAGS_rdma_client_handshake_version: lets us flip the
-// client-side handshake version for a single test and restore it on
-// scope exit so subsequent tests stay on the v2 default.
-class HandshakeVersionFlag {
-public:
-    explicit HandshakeVersionFlag(int v)
-        : _saved(rdma::FLAGS_rdma_client_handshake_version) {
-        rdma::FLAGS_rdma_client_handshake_version = v;
-    }
-    ~HandshakeVersionFlag() {
-        rdma::FLAGS_rdma_client_handshake_version = _saved;
-    }
-private:
-    int _saved;
-};
-
 // Build a v3 wire packet from an RdmaHello: "RDM3" + pb_size_be + body.
 std::string MakeV3Packet(const rdma::RdmaHello& msg) {
     std::string body;
@@ -1731,10 +1750,359 @@ rdma::RdmaHello MakeValidV3Hello() {
     return msg;
 }
 
+// A raw peer can reject v3 exactly as an old server would, without adding a
+// server-side version flag or requiring RDMA hardware.
+class RdmaHandshakeRetryTest : public RdmaTest {
+protected:
+    RdmaHandshakeRetryTest() : _started(false) {}
+
+    void SetUp() override {
+        _listener.reset(butil::tcp_listen(butil::EndPoint(g_ep.ip, 0)));
+        ASSERT_GE(_listener, 0);
+        ASSERT_EQ(0, butil::get_local_side(_listener, &g_ep));
+    }
+
+    void TearDown() override {
+        if (_socket && !_socket->Failed()) {
+            _socket->SetFailed(ECANCELED, "Handshake test finished");
+        }
+        if (_started) {
+            bthread_id_join(_cntl.call_id());
+        }
+        RdmaTest::TearDown();
+    }
+
+    void StartRpc(int connect_timeout_ms = 2000) {
+        ChannelOptions options;
+        options.socket_mode = SOCKET_MODE_RDMA;
+        options.connection_type = CONNECTION_TYPE_SINGLE;
+        options.connect_timeout_ms = connect_timeout_ms;
+        options.timeout_ms = 5000;
+        options.max_retry = 0;
+        ASSERT_EQ(0, _channel.Init(g_ep, &options));
+        _req.set_message("handshake retry");
+        _started = true;
+        test::EchoService::Stub(&_channel).Echo(&_cntl, &_req, &_res, DoNothing());
+        ASSERT_EQ(0, Socket::Address(_cntl._single_server_id, &_socket));
+    }
+
+    int AcceptPeer() {
+        return ::AcceptPeer(_listener);
+    }
+
+    void ExpectNoConnection() {
+        pollfd pfd = {_listener, POLLIN, 0};
+        ASSERT_EQ(0, poll(&pfd, 1, 0));
+    }
+
+    void ReplyV2(int fd, bool use_rdma) {
+        rdma::v2_wire::HelloMessage hello{};
+        hello.msg_len = rdma::HELLO_V2_MSG_LEN_MIN;
+        hello.hello_ver = use_rdma ? rdma::HELLO_V2_VERSION : 0;
+        hello.impl_ver = rdma::IMPL_V2_VERSION;
+        hello.block_size = 8192;
+        hello.sq_size = 16;
+        hello.rq_size = 16;
+        hello.gid = rdma::GetRdmaGid();
+        char packet[rdma::HELLO_V2_MSG_LEN_MIN];
+        memcpy(packet, "RDMA", 4);
+        hello.Serialize(packet + 4);
+        ASSERT_TRUE(WriteAll(fd, packet, sizeof(packet)));
+    }
+
+    void ReadAck(int fd, bool use_rdma) {
+        uint32_t ack_be;
+        ASSERT_TRUE(ReadAll(fd, &ack_be, sizeof(ack_be)));
+        ASSERT_EQ(use_rdma ? rdma::HELLO_ACK_RDMA_OK : 0,
+                  butil::NetToHost32(ack_be));
+    }
+
+    // Complete the queued RPC over TCP after an unnegotiable v2/v3 hello.
+    // Reading its request proves the retry retained the original WriteRequest.
+    void CompleteRpc(int fd) {
+        uint32_t header[3];
+        ASSERT_TRUE(ReadAll(fd, header, sizeof(header)));
+        ASSERT_EQ(0, memcmp(header, "PRPC", 4));
+        uint32_t body_size = butil::NetToHost32(header[1]);
+        uint32_t meta_size = butil::NetToHost32(header[2]);
+        ASSERT_LE(meta_size, body_size);
+        ASSERT_GT(body_size, 0u);
+        ASSERT_LT(body_size, 1024u * 1024u);
+        std::string body(body_size, '\0');
+        ASSERT_TRUE(ReadAll(fd, &body[0], body.size()));
+        policy::RpcMeta request_meta;
+        ASSERT_TRUE(request_meta.ParseFromArray(body.data(), meta_size));
+        test::EchoRequest request;
+        ASSERT_TRUE(request.ParseFromArray(body.data() + meta_size,
+                                           body_size - meta_size));
+        ASSERT_EQ(_req.message(), request.message());
+
+        policy::RpcMeta response_meta;
+        response_meta.set_correlation_id(request_meta.correlation_id());
+        response_meta.mutable_response()->set_error_code(0);
+        test::EchoResponse response;
+        response.set_message(request.message());
+        std::string meta = response_meta.SerializeAsString();
+        std::string payload = response.SerializeAsString();
+        header[1] = butil::HostToNet32(meta.size() + payload.size());
+        header[2] = butil::HostToNet32(meta.size());
+        ASSERT_TRUE(WriteAll(fd, header, sizeof(header)));
+        ASSERT_TRUE(WriteAll(fd, meta.data(), meta.size()));
+        ASSERT_TRUE(WriteAll(fd, payload.data(), payload.size()));
+        bthread_id_join(_cntl.call_id());
+        ASSERT_FALSE(_cntl.Failed()) << _cntl.ErrorText();
+        ASSERT_EQ(_req.message(), _res.message());
+        ASSERT_EQ(0, _cntl.retried_count());
+    }
+
+    void CheckPooledTimeoutConversion(bool retry_v2) {
+        GFLAGS_NAMESPACE::FlagSaver saved_flags;
+        FLAGS_connect_timeout_as_unreachable = 2;
+        Channel channel;
+        ChannelOptions options;
+        options.socket_mode = SOCKET_MODE_RDMA;
+        options.connection_type = CONNECTION_TYPE_POOLED;
+        options.connect_timeout_ms = 500;
+        options.timeout_ms = 5000;
+        options.max_retry = 0;
+        ASSERT_EQ(0, channel.Init(g_ep, &options));
+        SocketUniquePtr main_socket;
+        for (int i = 0; i < 2; ++i) {
+            Controller cntl;
+            test::EchoRequest req;
+            test::EchoResponse res;
+            req.set_message("pooled handshake timeout");
+            test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, DoNothing());
+            auto join_rpc = butil::MakeScopeGuard([&cntl] {
+                bthread_id_join(cntl.call_id());
+            });
+            if (!main_socket) {
+                ASSERT_EQ(0, Socket::Address(cntl._single_server_id, &main_socket));
+            }
+            butil::fd_guard peer(AcceptPeer());
+            ASSERT_GE(peer, 0);
+            ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+            if (retry_v2) {
+                peer.reset(-1);
+                peer.reset(AcceptPeer());
+                ASSERT_GE(peer, 0);
+                ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 2));
+            }
+            // Leave the hello unanswered until the original connect deadline.
+            bthread_id_join(cntl.call_id());
+            EXPECT_EQ(i == 0 ? ETIMEDOUT : ENETUNREACH, cntl.ErrorCode());
+            EXPECT_EQ(i != 0, main_socket->Failed());
+            EXPECT_EQ(0, cntl.retried_count());
+        }
+    }
+
+    bool _started;
+    butil::fd_guard _listener;
+    Channel _channel;
+    Controller _cntl;
+    test::EchoRequest _req;
+    test::EchoResponse _res;
+    SocketUniquePtr _socket;
+};
+
+TEST_F(RdmaHandshakeRetryTest, eof_retries_v2_rdma) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard first(AcceptPeer());
+    ASSERT_GE(first, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(first, 3));
+    first.reset(-1);
+
+    butil::fd_guard second(AcceptPeer());
+    ASSERT_GE(second, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(second, 2));
+    ASSERT_NO_FATAL_FAILURE(ReplyV2(second, true));
+    ASSERT_NO_FATAL_FAILURE(ReadAck(second, true));
+    ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, RdmaTransportOf(_socket));
+    EXPECT_EQ(2, RdmaTransportOf(_socket)->_rdma_ep->_handshake_version);
+    EXPECT_FALSE(RdmaTransportOf(_socket)->_rdma_ep->_outgoing_ece.has_value());
+    EXPECT_FALSE(_socket->Failed());
+}
+
+TEST_F(RdmaHandshakeRetryTest, reset_retries_v2_and_completes_rpc) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard first(AcceptPeer());
+    ASSERT_GE(first, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(first, 3));
+    linger reset = {1, 0};
+    ASSERT_EQ(0, setsockopt(first, SOL_SOCKET, SO_LINGER, &reset, sizeof(reset)));
+    first.reset(-1);
+
+    butil::fd_guard second(AcceptPeer());
+    ASSERT_GE(second, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(second, 2));
+    ASSERT_NO_FATAL_FAILURE(ReplyV2(second, false));
+    ASSERT_NO_FATAL_FAILURE(ReadAck(second, false));
+    ASSERT_NO_FATAL_FAILURE(CompleteRpc(second));
+    EXPECT_EQ(2, RdmaTransportOf(_socket)->_rdma_ep->_handshake_version);
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, v2_reply_retries_on_new_connection) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard first(AcceptPeer());
+    ASSERT_GE(first, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(first, 3));
+    ASSERT_NO_FATAL_FAILURE(ReplyV2(first, false));
+
+    butil::fd_guard second(AcceptPeer());
+    ASSERT_GE(second, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(second, 2));
+    ASSERT_NO_FATAL_FAILURE(ReplyV2(second, false));
+    ASSERT_NO_FATAL_FAILURE(ReadAck(second, false));
+    ASSERT_NO_FATAL_FAILURE(CompleteRpc(second));
+}
+
+TEST_F(RdmaHandshakeRetryTest, v3_reply_establishes_without_retry) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard peer(AcceptPeer());
+    ASSERT_GE(peer, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+    std::string packet = MakeV3Packet(MakeValidV3Hello());
+    ASSERT_TRUE(WriteAll(peer, packet.data(), packet.size()));
+    ASSERT_NO_FATAL_FAILURE(ReadAck(peer, true));
+    ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, RdmaTransportOf(_socket));
+    EXPECT_EQ(3, RdmaTransportOf(_socket)->_rdma_ep->_handshake_version);
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, deprecated_version_flag_does_not_select_v2) {
+    GFLAGS_NAMESPACE::FlagSaver saved_flags;
+    ASSERT_FALSE(GFLAGS_NAMESPACE::SetCommandLineOption(
+        "rdma_client_handshake_version", "2").empty());
+    ASSERT_EQ(2, rdma::FLAGS_rdma_client_handshake_version);
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard peer(AcceptPeer());
+    ASSERT_GE(peer, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+    std::string packet = MakeV3Packet(MakeValidV3Hello());
+    ASSERT_TRUE(WriteAll(peer, packet.data(), packet.size()));
+    ASSERT_NO_FATAL_FAILURE(ReadAck(peer, true));
+    ASSERT_RDMA_STATE(rdma::RdmaEndpoint::ESTABLISHED, RdmaTransportOf(_socket));
+    EXPECT_EQ(3, RdmaTransportOf(_socket)->_rdma_ep->_handshake_version);
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, v3_tcp_fallback_does_not_retry) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard peer(AcceptPeer());
+    ASSERT_GE(peer, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+    rdma::RdmaHello hello = MakeValidV3Hello();
+    hello.set_block_size(0);
+    std::string packet = MakeV3Packet(hello);
+    ASSERT_TRUE(WriteAll(peer, packet.data(), packet.size()));
+    ASSERT_NO_FATAL_FAILURE(ReadAck(peer, false));
+    ASSERT_NO_FATAL_FAILURE(CompleteRpc(peer));
+    EXPECT_EQ(3, RdmaTransportOf(_socket)->_rdma_ep->_handshake_version);
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, malformed_v3_reply_is_not_retried) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard peer(AcceptPeer());
+    ASSERT_GE(peer, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+    ASSERT_TRUE(WriteAll(peer, "RDM3\0\0\0\0", 8));
+    bthread_id_join(_cntl.call_id());
+    EXPECT_EQ(EPROTO, _cntl.ErrorCode());
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, truncated_v3_reply_is_not_retried) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard peer(AcceptPeer());
+    ASSERT_GE(peer, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+    ASSERT_TRUE(WriteAll(peer, "RDM3", 4));
+    peer.reset(-1);
+    bthread_id_join(_cntl.call_id());
+    EXPECT_EQ(EEOF, _cntl.ErrorCode());
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, reconnect_failure_finishes_rpc) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard peer(AcceptPeer());
+    ASSERT_GE(peer, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+    _listener.reset(-1);
+    peer.reset(-1);
+    bthread_id_join(_cntl.call_id());
+    EXPECT_EQ(ECONNREFUSED, _cntl.ErrorCode());
+    ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FAILED, RdmaTransportOf(_socket));
+}
+
+TEST_F(RdmaHandshakeRetryTest, v2_failure_finishes_without_another_retry) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc());
+    butil::fd_guard first(AcceptPeer());
+    ASSERT_GE(first, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(first, 3));
+    first.reset(-1);
+    butil::fd_guard second(AcceptPeer());
+    ASSERT_GE(second, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(second, 2));
+    second.reset(-1);
+    bthread_id_join(_cntl.call_id());
+    EXPECT_EQ(EEOF, _cntl.ErrorCode());
+    EXPECT_EQ(0, _cntl.retried_count());
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, retry_keeps_original_deadline) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc(500));
+    butil::fd_guard first(AcceptPeer());
+    ASSERT_GE(first, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(first, 3));
+    int64_t deadline_us = _socket->_connect_deadline_us;
+    bthread_usleep(100000);
+    first.reset(-1);
+    butil::fd_guard second(AcceptPeer());
+    ASSERT_GE(second, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(second, 2));
+    EXPECT_EQ(deadline_us, _socket->_connect_deadline_us);
+    bthread_id_join(_cntl.call_id());
+    EXPECT_EQ(ETIMEDOUT, _cntl.ErrorCode());
+    ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FAILED, RdmaTransportOf(_socket));
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, silent_v3_peer_obeys_connect_timeout) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc(200));
+    butil::fd_guard peer(AcceptPeer());
+    ASSERT_GE(peer, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+    bthread_id_join(_cntl.call_id());
+    EXPECT_EQ(ETIMEDOUT, _cntl.ErrorCode());
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
+TEST_F(RdmaHandshakeRetryTest, pooled_handshake_timeout_marks_main_unreachable) {
+    ASSERT_NO_FATAL_FAILURE(CheckPooledTimeoutConversion(false));
+}
+
+TEST_F(RdmaHandshakeRetryTest, pooled_retry_timeout_marks_main_unreachable) {
+    ASSERT_NO_FATAL_FAILURE(CheckPooledTimeoutConversion(true));
+}
+
+TEST_F(RdmaHandshakeRetryTest, failed_socket_stops_handshake_without_deadline) {
+    ASSERT_NO_FATAL_FAILURE(StartRpc(0));
+    butil::fd_guard peer(AcceptPeer());
+    ASSERT_GE(peer, 0);
+    ASSERT_NO_FATAL_FAILURE(ReadHello(peer, 3));
+    _socket->SetFailed(ECANCELED, "Cancel during handshake");
+    bthread_id_join(_cntl.call_id());
+    EXPECT_EQ(ECANCELED, _cntl.ErrorCode());
+    ASSERT_RDMA_STATE(rdma::RdmaEndpoint::FAILED, RdmaTransportOf(_socket));
+    ASSERT_NO_FATAL_FAILURE(ExpectNoConnection());
+}
+
 
 TEST_F(RdmaTest, v3_client_hello_bytes_baseline) {
-    HandshakeVersionFlag _hsv(3);
-
     butil::fd_guard sockfd(butil::tcp_listen(g_ep));
     EXPECT_TRUE(sockfd >= 0);
 
@@ -2408,8 +2776,6 @@ TEST_F(RdmaTest, v3_server_rejects_invalid_mtu) {
 
 // Verify the client includes its local MTU in the v3 hello.
 TEST_F(RdmaTest, v3_client_hello_includes_mtu) {
-    HandshakeVersionFlag _hsv(3);
-
     butil::fd_guard sockfd(butil::tcp_listen(g_ep));
     EXPECT_TRUE(sockfd >= 0);
 
@@ -2640,7 +3006,7 @@ static void SendEchoRpcsInRounds(Channel& channel) {
     }
 }
 
-TEST_P(RdmaRpcTest, rdma_client_to_rdma_server) {
+TEST_F(RdmaRpcTest, rdma_client_to_rdma_server) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -2659,7 +3025,7 @@ TEST_P(RdmaRpcTest, rdma_client_to_rdma_server) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, tcp_client_to_tcp_server) {
+TEST_F(RdmaRpcTest, tcp_client_to_tcp_server) {
     StartServer(false);
 
     Channel channel;
@@ -2673,7 +3039,7 @@ TEST_P(RdmaRpcTest, tcp_client_to_tcp_server) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, tcp_client_to_rdma_server) {
+TEST_F(RdmaRpcTest, tcp_client_to_rdma_server) {
     StartServer();
 
     Channel channel;
@@ -2687,7 +3053,7 @@ TEST_P(RdmaRpcTest, tcp_client_to_rdma_server) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, rdma_client_to_tcp_server) {
+TEST_F(RdmaRpcTest, rdma_client_to_tcp_server) {
     StartServer(false);
 
     Channel channel;
@@ -2702,7 +3068,7 @@ TEST_P(RdmaRpcTest, rdma_client_to_tcp_server) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, tcp_client_to_rdma_server_short_connection) {
+TEST_F(RdmaRpcTest, tcp_client_to_rdma_server_short_connection) {
     StartServer();
 
     Channel channel;
@@ -2725,7 +3091,7 @@ static const int CHURN_ROUND_NUM = 16;
 static const int CHURN_RPC_NUM = 64;
 static const size_t CHURN_ATTACH_SIZE = 32 * 1024;
 
-TEST_P(RdmaRpcTest, rdma_server_survives_connection_churn) {
+TEST_F(RdmaRpcTest, rdma_server_survives_connection_churn) {
     StartServer();
 
     ChannelOptions chan_options;
@@ -2774,7 +3140,7 @@ void DumpRdmaEndpointInfo(Socket* client, Socket* server) {
     static_cast<RdmaTransport*>(server->_transport.get())->_rdma_ep->DebugInfo(std::cout);
 }
 
-TEST_P(RdmaRpcTest, send_rpcs_in_one_qp) {
+TEST_F(RdmaRpcTest, send_rpcs_in_one_qp) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -2857,7 +3223,7 @@ TEST_P(RdmaRpcTest, send_rpcs_in_one_qp) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, send_rpc_in_many_qp) {
+TEST_F(RdmaRpcTest, send_rpc_in_many_qp) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -2926,7 +3292,7 @@ TEST_P(RdmaRpcTest, send_rpc_in_many_qp) {
     }
 }
 
-TEST_P(RdmaRpcTest, send_rpcs_as_pooled_connection) {
+TEST_F(RdmaRpcTest, send_rpcs_as_pooled_connection) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -2967,7 +3333,7 @@ TEST_P(RdmaRpcTest, send_rpcs_as_pooled_connection) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, send_rpcs_as_short_connection) {
+TEST_F(RdmaRpcTest, send_rpcs_as_short_connection) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3008,7 +3374,7 @@ TEST_P(RdmaRpcTest, send_rpcs_as_short_connection) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, server_stop_during_rpc) {
+TEST_F(RdmaRpcTest, server_stop_during_rpc) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3046,7 +3412,7 @@ TEST_P(RdmaRpcTest, server_stop_during_rpc) {
     }
 }
 
-TEST_P(RdmaRpcTest, server_close_during_rpc) {
+TEST_F(RdmaRpcTest, server_close_during_rpc) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3088,7 +3454,7 @@ TEST_P(RdmaRpcTest, server_close_during_rpc) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, client_close_during_rpc) {
+TEST_F(RdmaRpcTest, client_close_during_rpc) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3128,7 +3494,7 @@ TEST_P(RdmaRpcTest, client_close_during_rpc) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, rdma_client_close_during_rpc_repeatedly) {
+TEST_F(RdmaRpcTest, rdma_client_close_during_rpc_repeatedly) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3168,7 +3534,7 @@ TEST_P(RdmaRpcTest, rdma_client_close_during_rpc_repeatedly) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, verbs_error_handling) {
+TEST_F(RdmaRpcTest, verbs_error_handling) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3214,7 +3580,7 @@ TEST_P(RdmaRpcTest, verbs_error_handling) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, rdma_use_parallel_channel) {
+TEST_F(RdmaRpcTest, rdma_use_parallel_channel) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3246,7 +3612,7 @@ TEST_P(RdmaRpcTest, rdma_use_parallel_channel) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, rdma_use_selective_channel) {
+TEST_F(RdmaRpcTest, rdma_use_selective_channel) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3278,7 +3644,7 @@ TEST_P(RdmaRpcTest, rdma_use_selective_channel) {
 
 static void MockFree(void* buf) { }
 
-TEST_P(RdmaRpcTest, send_rpcs_with_user_defined_iobuf) {
+TEST_F(RdmaRpcTest, send_rpcs_with_user_defined_iobuf) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3342,7 +3708,7 @@ TEST_P(RdmaRpcTest, send_rpcs_with_user_defined_iobuf) {
     StopServer();
 }
 
-TEST_P(RdmaRpcTest, try_memory_pool_empty) {
+TEST_F(RdmaRpcTest, try_memory_pool_empty) {
     if (!FLAGS_rdma_test_enable) {
         return;
     }
@@ -3380,19 +3746,6 @@ TEST_P(RdmaRpcTest, try_memory_pool_empty) {
 
     StopServer();
 }
-
-// Run every TEST_P(RdmaRpcTest, ...) above twice: once with the
-// client-side handshake forced to v2 ("RDMA" magic + fixed-layout
-// HelloMessage), once with v3 ("RDM3" magic + protobuf RdmaHello).
-// The server always accepts both via magic-byte dispatch, so this
-// proves the upper-layer RPC paths behave identically under either
-// wire format.
-INSTANTIATE_TEST_SUITE_P(
-    HandshakeVersion, RdmaRpcTest,
-    ::testing::Values(2, 3),
-    [](const ::testing::TestParamInfo<int>& info) {
-        return std::string("v") + std::to_string(info.param);
-    });
 
 static const uint32_t MELLANOX = 0x02c9;
 static const uint32_t INTEL = 0x8086;
