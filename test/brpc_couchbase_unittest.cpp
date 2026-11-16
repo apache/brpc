@@ -70,6 +70,7 @@ TEST_F(CouchbaseUnitTest, RejectOversizedResponseBeforeBufferingBody) {
   ASSERT_EQ(0, brpc::Socket::Create(options, &id));
   brpc::SocketUniquePtr socket;
   ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+  ASSERT_EQ(0, socket->ReleaseAdditionalReference());
 
   brpc::policy::CouchbaseResponseHeader couchbase_header = {};
   couchbase_header.magic = brpc::policy::CB_MAGIC_RESPONSE;
@@ -80,6 +81,8 @@ TEST_F(CouchbaseUnitTest, RejectOversizedResponseBeforeBufferingBody) {
             brpc::policy::ParseCouchbaseMessage(
                 &couchbase_buf, socket.get(), false, nullptr).error());
 
+  socket.reset();
+  EXPECT_EQ(-1, brpc::Socket::Status(id));
 }
 
 TEST_F(CouchbaseUnitTest, RequestBuilders) {
