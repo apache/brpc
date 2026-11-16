@@ -40,6 +40,12 @@
 #include "brpc/socket.h"
 #include "flatbuffers_message_generated.h"
 
+namespace brpc {
+namespace rdma {
+extern ibv_mr* (*IbvRegMr)(ibv_pd*, void*, size_t, int);
+}  // namespace rdma
+}  // namespace brpc
+
 namespace {
 
 using brpc::flatbuffers::Message;
@@ -47,6 +53,45 @@ using brpc::flatbuffers::MessageBuilder;
 using brpc::flatbuffers::MethodDescriptor;
 using brpc::flatbuffers::ServiceDescriptor;
 using brpc_fbtest::Payload;
+
+thread_local bool g_fail_pool_allocation = false;
+thread_local bool g_fail_registration = false;
+
+class ScopedAllocationFailures {
+public:
+    ScopedAllocationFailures(bool pool, bool registration) {
+        g_fail_pool_allocation = pool;
+        g_fail_registration = registration;
+    }
+    ~ScopedAllocationFailures() {
+        g_fail_pool_allocation = false;
+        g_fail_registration = false;
+    }
+private:
+    DISALLOW_COPY_AND_ASSIGN(ScopedAllocationFailures);
+};
+
+void InstallAllocationHooks() {
+    // Install once before the tests. Only the allocating test thread injects
+    // failures; background RPC threads continue to use the real allocators.
+    static auto allocate_block = butil::iobuf::blockmem_allocate;
+    butil::iobuf::blockmem_allocate = [](size_t size) -> void* {
+        if (g_fail_pool_allocation) {
+            errno = ENOMEM;
+            return nullptr;
+        }
+        return allocate_block(size);
+    };
+    static auto register_memory = brpc::rdma::IbvRegMr;
+    brpc::rdma::IbvRegMr = [](ibv_pd* pd, void* data, size_t size,
+                            int access) -> ibv_mr* {
+        if (g_fail_registration) {
+            errno = ENOMEM;
+            return nullptr;
+        }
+        return register_memory(pd, data, size, access);
+    };
+}
 
 bool IsRdmaOn(const brpc::Socket* socket) {
     if (socket == nullptr || socket->socket_mode() != brpc::SOCKET_MODE_RDMA) {
@@ -261,6 +306,108 @@ protected:
     brpc::Channel channel;
 };
 
+TEST_F(FlatBuffersRdmaTest, PoolExhaustionFallsBackToRegisteredStorage) {
+    Message request;
+    {
+        ScopedAllocationFailures failures(true, false);
+        request = MakePayload(256 * 1024);
+    }
+    ASSERT_TRUE(request.Verify<Payload>());
+    const auto* block = request._iobuf.get_cur_ref().block;
+    ASSERT_TRUE(block->is_user_data());
+    void* data = block->data;
+    const uint32_t lkey = brpc::rdma::GetLKey(data);
+    ASSERT_NE(0u, lkey);
+    butil::IOBuf wire;
+    ASSERT_TRUE(request.append_msg_to_iobuf(wire));
+    EXPECT_EQ(lkey, wire.get_first_data_meta());
+
+    Message alias;
+    alias.CopyFrom(request);
+    request.Clear();
+    EXPECT_TRUE(alias.Verify<Payload>());
+    EXPECT_EQ(lkey, brpc::rdma::GetLKey(data));
+    alias.Clear();
+    EXPECT_EQ(lkey, brpc::rdma::GetLKey(data));
+    wire.clear();
+    EXPECT_EQ(0u, brpc::rdma::GetLKey(data));
+}
+
+TEST_F(FlatBuffersRdmaTest, RegistrationFailureStillSupportsTcp) {
+    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_TCP));
+    ASSERT_NO_FATAL_FAILURE(StartChannel(brpc::SOCKET_MODE_TCP));
+    const MethodDescriptor* method =
+        service.GetDescriptor()->FindMethodByIndex(41);
+    for (size_t size : {256u * 1024, 3u * 1024 * 1024}) {
+        SCOPED_TRACE(size);
+        Message request;
+        {
+            ScopedAllocationFailures failures(true, true);
+            request = MakePayload(size);
+        }
+        ASSERT_TRUE(request.Verify<Payload>());
+        const auto* block = request._iobuf.get_cur_ref().block;
+        ASSERT_TRUE(block->is_user_data());
+        EXPECT_EQ(0u, brpc::rdma::GetLKey(block->data));
+        butil::IOBuf wire;
+        ASSERT_TRUE(request.append_msg_to_iobuf(wire));
+        EXPECT_EQ(0u, wire.get_first_data_meta());
+
+        // Receive-side reassembly must also tolerate pool and MR failures.
+        const std::string original = Bytes(request);
+        butil::IOBuf fragmented;
+        ASSERT_EQ(0, fragmented.append(request.data(), request.size()));
+        ASSERT_GT(fragmented.backing_block_num(), 1u);
+        Message parsed;
+        {
+            ScopedAllocationFailures failures(true, true);
+            ASSERT_TRUE(parsed.parse_msg_from_iobuf(
+                fragmented, request.size(), 0));
+        }
+        ASSERT_EQ(original, Bytes(parsed));
+        ASSERT_TRUE(parsed._iobuf.get_cur_ref().block->is_user_data());
+        EXPECT_EQ(0u, brpc::rdma::GetLKey(
+            parsed._iobuf.get_cur_ref().block->data));
+        request.Clear();
+        wire.clear();
+
+        Message response;
+        brpc::Controller cntl;
+        channel.FBCallMethod(method, &cntl, &parsed, &response, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_NO_FATAL_FAILURE(CheckTransport(false));
+        ExpectReply(response, parsed, method);
+        EXPECT_EQ(original, Bytes(parsed));
+    }
+}
+
+TEST_F(FlatBuffersRdmaTest, RegistrationFailureReturnsRdmaMemoryError) {
+    ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_RDMA));
+    ASSERT_NO_FATAL_FAILURE(StartChannel(brpc::SOCKET_MODE_RDMA));
+    const MethodDescriptor* method =
+        service.GetDescriptor()->FindMethodByIndex(41);
+    const Message warmup = MakePayload();
+    Message response;
+    brpc::Controller cntl;
+    channel.FBCallMethod(method, &cntl, &warmup, &response, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_NO_FATAL_FAILURE(CheckTransport(true));
+
+    Message request;
+    {
+        ScopedAllocationFailures failures(true, true);
+        request = MakePayload(256 * 1024);
+    }
+    ASSERT_TRUE(request.Verify<Payload>());
+    const int calls_before = service.rdma_calls.load();
+    cntl.Reset();
+    response.Clear();
+    channel.FBCallMethod(method, &cntl, &request, &response, nullptr);
+    EXPECT_EQ(brpc::ERDMAMEM, cntl.ErrorCode()) << cntl.ErrorText();
+    EXPECT_EQ(calls_before, service.rdma_calls.load());
+    EXPECT_TRUE(request.Verify<Payload>());
+}
+
 TEST_F(FlatBuffersRdmaTest, ProtocolAdmissionAndChannelOptions) {
     EXPECT_TRUE(brpc::rdma::SupportedByRdma("fb_rpc"));
     EXPECT_TRUE(brpc::rdma::SupportedByRdma("baidu_std"));
@@ -304,6 +451,7 @@ int main(int argc, char* argv[]) {
     // RDMA must initialize before any test allocates IOBuf storage.
     brpc::GlobalInitializeOrDie();
     brpc::rdma::GlobalRdmaInitializeOrDie();
+    InstallAllocationHooks();
     return RUN_ALL_TESTS();
 }
 #endif  // BRPC_WITH_RDMA

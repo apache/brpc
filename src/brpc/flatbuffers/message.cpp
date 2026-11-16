@@ -35,43 +35,48 @@ namespace {
 
 void* AllocateStorage(butil::SingleIOBuf* storage, uint32_t size) {
 #if BRPC_WITH_RDMA
-    // SingleIOBuf normally uses the registered IOBuf pool. Its largest block
-    // class (type 2) is 2 MiB, including the IOBuf block header. FlatBuffers
-    // requires contiguous storage, so larger buffers need their own MR.
-    if (!rdma::IsRdmaAvailable() ||
-        static_cast<size_t>(size) + sizeof(butil::IOBuf::Block) <= rdma::GetBlockSize(2)) {
+    if (!rdma::IsRdmaAvailable()) {
         return storage->allocate(size);
+    }
+    // SingleIOBuf normally uses the registered IOBuf pool. Its largest block
+    // class (type 2) is 2 MiB, including the IOBuf block header. Larger buffers
+    // and failed pool allocations fall back to separately registered storage.
+    if (static_cast<size_t>(size) + sizeof(butil::IOBuf::Block) <= rdma::GetBlockSize(2)) {
+        void* data = storage->allocate(size);
+        if (data != nullptr) {
+            return data;
+        }
     }
 
     void* data = malloc(size);
     if (data == nullptr) {
         return nullptr;
     }
-    uint32_t lkey = rdma::RegisterMemoryForRdma(data, size);
-    if (lkey == 0) {
-        free(data);
-        return nullptr;
-    }
-    auto free_storage = [](void* data) {
-        rdma::DeregisterMemoryForRdma(data);
+    // Registration failure must not prevent TCP use in an RDMA-enabled
+    // process. An RDMA send of this unregistered buffer will fail with ERDMAMEM.
+    const uint32_t lkey = rdma::RegisterMemoryForRdma(data, size);
+    auto free_storage = [lkey](void* data) {
+        if (lkey != 0) {
+            rdma::DeregisterMemoryForRdma(data);
+        }
         free(data);
     };
-    butil::IOBuf registered;
+    butil::IOBuf buffer;
     BUTIL_SCOPE_EXIT {
-        if (registered.empty()) {
+        if (buffer.empty()) {
             free_storage(data);
         } else {
             // After append, the IOBuf deleter owns the allocation. If
             // assign fails, dropping this last reference frees it.
-            registered.clear();
+            buffer.clear();
         }
     };
-    if (registered.append_user_data_with_meta(data, size, free_storage, lkey) != 0) {
+    if (buffer.append_user_data_with_meta(data, size, free_storage, lkey) != 0) {
         return nullptr;
     }
     // Retain the user-data block, including its lkey and deleter, through
     // builder growth, Message aliases and outstanding socket writes.
-    if (!storage->assign(registered, size)) {
+    if (!storage->assign(buffer, size)) {
         return nullptr;
     }
     return data;
