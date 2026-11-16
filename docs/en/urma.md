@@ -282,8 +282,10 @@ failure logs report direction, send slot and registered segment range.
 
 ## Business SL and priority
 
-Set `ChannelOptions.urma_qos` for outgoing requests and
-`ServerOptions.urma_qos` for outgoing responses:
+A process can serve latency-sensitive RPCs alongside bulk transfers. Configure
+their outgoing priorities independently and leave other traffic on the process
+default. Set `ChannelOptions.urma_qos` for outgoing requests and
+`ServerOptions.urma_qos` for outgoing responses.
 
 ```cpp
 brpc::ChannelOptions client_options;
@@ -305,17 +307,23 @@ priority 6 for auto/CTP and priority 0 for RTP.
 | `service_level` | -1 | 0–255 | Select the first priority mapping to this SL on the selected path |
 | `priority` | -1 | 0–15 | Select a priority supported by the selected path |
 
-Both fields at -1 select the device default. When both are explicit, they must
-match the same device mapping. Channel initialization and Server startup reject
-unsupported or conflicting settings and report supported priority:SL pairs.
-For example, RTP priority 0 mapping to SL 2 resolves `service_level=2` to priority 0.
-The platform configures mappings and scheduling; brpc uses the initialization snapshot.
+Both fields at -1 select the process default. When both are explicit, they must
+match the same device mapping. Each device exposes up to 16 priority/SL mappings
+on the selected path, depending on its capabilities. Channel initialization and
+Server startup reject unsupported or conflicting settings and log the available
+mappings. The platform configures mappings and scheduling. brpc uses the
+initialization snapshot.
 
-Different configurations use separate connections; equal configurations share
-connections. Naming services, pooled and short connections, accepted sockets and
-rebuilt Jettys inherit the configuration. The prepared pool serves the default
-priority; other priorities allocate Jettys on demand. Both v2/v3 handshakes carry
-the selected path.
+The client connection signature includes the configured QoS values. If RTP
+priority 0 is the first mapping for SL 2, a channel that sets only
+`service_level=2` uses a separate connection from one that also sets
+`priority=0`. Naming services, pooled and short connections, accepted sockets
+and rebuilt Jettys inherit the configuration.
+
+Each active URMA connection uses one Jetty at each end. Connections with the
+default priority and a compatible queue size can use a Jetty from the prepared
+pool. Other connections allocate Jettys on demand. Both v2 and v3 use the
+selected path.
 
 ### Functional validation
 

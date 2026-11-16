@@ -259,7 +259,9 @@ URMA 恢复及 64 KiB 附件回显。正常短连接关闭也在同一测试中�
 
 ## 业务 SL 与优先级
 
-`ChannelOptions.urma_qos` 控制请求发送方向，`ServerOptions.urma_qos` 控制响应发送方向：
+同一进程可以同时运行对延迟敏感的 RPC 和批量传输。两类业务可以分别设置发送优先级，
+未显式配置的业务继承进程默认值。`ChannelOptions.urma_qos` 控制请求发送方向，
+`ServerOptions.urma_qos` 控制响应发送方向。
 
 ```cpp
 brpc::ChannelOptions client_options;
@@ -280,14 +282,17 @@ rtp 使用 priority 0。
 | `service_level` | -1 | 0–255 | 选择当前路径下首个映射到该 SL 的 priority |
 | `priority` | -1 | 0–15 | 指定当前路径支持的 priority |
 
-两项均为 -1 时使用设备默认 priority；同时指定时须匹配同一设备映射。
-不支持或冲突时，Channel 初始化、Server 启动报错，并列出当前路径支持的 priority:SL。
-例如 RTP priority 0→SL 2 时配置 `service_level=2`，Jetty 使用 priority 0。
+两项均为 -1 时使用进程默认 priority。同时指定时，两项须匹配同一设备映射。
+每个设备在所选路径下最多提供 16 个 priority/SL 映射，实际可用项取决于设备能力。
+显式配置不受支持或发生冲突时，Channel 初始化或 Server 启动失败，日志会列出当前路径支持的映射。
 平台配置设备映射与调度策略，brpc 使用进程初始化时的映射快照。
 
-不同配置使用独立连接，相同配置共享连接。配置随服务发现、连接池、短连接和
-服务端 accept 传递，Jetty 重建时重新应用。预建池服务于默认 priority，
-其他 priority 按需创建。v2/v3 握手使用所选路径。
+客户端连接签名包含原始 QoS 设置。即使 RTP 的 priority 0 是 SL 2 的首个匹配项，
+只填 `service_level=2` 和同时填 `priority=0` 的两个 Channel 也会分别建连。
+配置随服务发现、连接池、短连接和服务端 accept 传递，Jetty 重建时重新应用。
+
+活跃的 URMA 连接在每端各占用一个 Jetty。匹配默认 priority 和队列大小的连接可以使用
+预建池中的 Jetty，其他连接按需创建 Jetty。v2/v3 握手使用所选路径。
 
 ### 功能验证
 
