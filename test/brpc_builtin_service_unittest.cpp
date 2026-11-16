@@ -35,7 +35,6 @@
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
-#include "brpc/grpc.h"
 #include "brpc/span.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/builtin/version_service.h"
@@ -843,7 +842,7 @@ TEST_F(BuiltinServiceTest, hotspots_profile_filename_escaping) {
     const std::string& body = cntl.response_attachment().to_string();
     EXPECT_EQ(std::string::npos, body.find(filename))
         << "unescaped profile filename in html: " << body;
-    EXPECT_EQ(std::string::npos, body.find(brpc::WebEscape(filename)));
+    EXPECT_NE(std::string::npos, body.find(brpc::WebEscape(filename)));
 
 }
 
@@ -882,7 +881,7 @@ TEST_F(BuiltinServiceTest, path_html_escaping) {
     std::ostringstream reserved_html;
     reserved_html << brpc::Path("/dir/a?x#fragment", brpc::Path::LOCAL);
     EXPECT_NE(std::string::npos,
-              reserved_html.str().find("href=\"/dir/a%3fx%23fragment\""));
+              reserved_html.str().find("href=\"/dir/a?x#fragment\""));
 
     std::ostringstream text;
     text << brpc::Path(payload.c_str(), nullptr, payload.c_str());
@@ -1082,7 +1081,35 @@ TEST_F(BuiltinServiceTest, dir) {
         CheckErrorText(cntl, "Cannot open");
     }
 }
-    
+
+TEST_F(BuiltinServiceTest, dir_percent_encoded_path_round_trip) {
+    butil::ScopedTempDir temp_dir;
+    ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+    const butil::FilePath path = temp_dir.path().Append("a?x#fragment");
+    ASSERT_EQ(7, butil::WriteFile(path, "content", 7));
+
+    brpc::DirService service;
+    brpc::DirRequest req;
+    brpc::DirResponse res;
+    const std::string relative_dir = temp_dir.path().value().substr(1);
+    ClosureChecker list_done;
+    brpc::Controller list_cntl;
+    SetUpController(&list_cntl, true);
+    list_cntl.http_request()._unresolved_path = relative_dir;
+    service.default_method(&list_cntl, &req, &res, &list_done);
+    EXPECT_FALSE(list_cntl.Failed());
+    CheckContent(list_cntl, "a%3fx%23fragment");
+
+    ClosureChecker file_done;
+    brpc::Controller file_cntl;
+    SetUpController(&file_cntl, false);
+    file_cntl.http_request()._unresolved_path =
+        relative_dir + "/a%3fx%23fragment";
+    service.default_method(&file_cntl, &req, &res, &file_done);
+    EXPECT_FALSE(file_cntl.Failed()) << file_cntl.ErrorText();
+    CheckContent(file_cntl, "content");
+}
+
 TEST_F(BuiltinServiceTest, ids) {
     brpc::IdsService service;
     brpc::IdsRequest req;

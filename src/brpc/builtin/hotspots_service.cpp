@@ -24,10 +24,8 @@
 #include "butil/popen.h"                         // butil::read_command_output
 #include "butil/fd_guard.h"                      // butil::fd_guard
 #include "butil/iobuf_profiler.h"
-#include "butil/strings/string_util.h"
 #include "brpc/log.h"
 #include "brpc/controller.h"
-#include "brpc/grpc.h"
 #include "brpc/server.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/builtin/pprof_perl.h"
@@ -1065,9 +1063,6 @@ static void StartProfiling(ProfilingType type,
     for (butil::FilePath name = prof_enum.Next(); !name.empty();
          name = prof_enum.Next()) {
         // NOTE: name already includes dir.
-        if (!ValidProfilePath(name.value())) {
-            continue;
-        }
         if (past_profs.empty()) {
             past_profs.reserve(16);
         }

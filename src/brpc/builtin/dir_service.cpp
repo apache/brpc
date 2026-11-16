@@ -21,14 +21,59 @@
 #include <fcntl.h>                     // O_RDONLY
 #include "butil/fd_guard.h"
 #include "butil/fd_utility.h"
+#include "butil/strings/string_util.h"
 
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/controller.h"           // Controller
+#include "brpc/grpc.h"                 // PercentEncode
 #include "brpc/builtin/common.h"
 #include "brpc/builtin/dir_service.h"
 
 
 namespace brpc {
+
+// Decode URI path components emitted by EncodeDirPath. Keep encoded slashes
+// encoded so a request cannot introduce a new path separator.
+static bool DecodeDirPath(const std::string& encoded_path,
+                          std::string* decoded_path) {
+    decoded_path->clear();
+    decoded_path->reserve(encoded_path.size());
+    for (size_t i = 0; i < encoded_path.size(); ++i) {
+        if (encoded_path[i] != '%') {
+            decoded_path->push_back(encoded_path[i]);
+            continue;
+        }
+        if (i + 2 >= encoded_path.size() ||
+            !IsHexDigit(encoded_path[i + 1]) ||
+            !IsHexDigit(encoded_path[i + 2])) {
+            return false;
+        }
+        const char decoded = static_cast<char>(
+            (HexDigitToInt(encoded_path[i + 1]) << 4) |
+            HexDigitToInt(encoded_path[i + 2]));
+        if (decoded == '\0') {
+            return false;
+        }
+        if (decoded == '/') {
+            decoded_path->append(encoded_path, i, 3);
+        } else {
+            decoded_path->push_back(decoded);
+        }
+        i += 2;
+    }
+    return true;
+}
+
+static std::string EncodeDirPath(const std::string& path) {
+    std::string encoded;
+    PercentEncode(path, &encoded);
+    size_t pos = 0;
+    while ((pos = encoded.find("%2f", pos)) != std::string::npos) {
+        encoded.replace(pos, 3, "/");
+        ++pos;
+    }
+    return encoded;
+}
 
 void DirService::default_method(::google::protobuf::RpcController* cntl_base,
                                 const ::brpc::DirRequest*,
@@ -38,8 +83,13 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
     Controller *cntl = static_cast<Controller*>(cntl_base);
     std::string open_path;
     
-    const std::string& path_str =
+    const std::string& encoded_path =
         cntl->http_request().unresolved_path();
+    std::string path_str;
+    if (!DecodeDirPath(encoded_path, &path_str)) {
+        cntl->SetFailed(EINVAL, "Invalid path");
+        return;
+    }
     if (!path_str.empty()) {
         open_path.reserve(path_str.size() + 2);
         open_path.push_back('/');
@@ -114,7 +164,7 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
                 str1 = open_path;
                 AppendFileName(&str1, files[i]);
                 str2 = "/dir";
-                str2.append(str1);
+                str2.append(EncodeDirPath(str1));
                 os << Path(str2.c_str(), html_addr, files[i].c_str()) << '\n';
             }
         }
