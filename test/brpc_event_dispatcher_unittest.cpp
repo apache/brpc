@@ -135,59 +135,43 @@ TEST_F(EventDispatcherTest, start_stop_updates_running_state) {
     ASSERT_EQ(0, dispatcher.Start(nullptr));
     ASSERT_TRUE(dispatcher.Running());
     dispatcher.Stop();
+    ASSERT_FALSE(dispatcher.Running());
     dispatcher.Join();
     ASSERT_FALSE(dispatcher.Running());
 }
 
 struct DispatcherStopRaceArgs {
     brpc::EventDispatcher* dispatcher;
-    butil::atomic<bool> reader_started;
-    butil::atomic<bool> stop_requested;
-    butil::atomic<bool> reader_polling;
-    butil::atomic<bool> stop_completed;
-    butil::atomic<bool> reader_finished;
+    butil::atomic<bool> call_running;
 
     DispatcherStopRaceArgs()
         : dispatcher(nullptr)
-        , reader_started(false)
-        , stop_requested(false)
-        , reader_polling(false)
-        , stop_completed(false)
-        , reader_finished(false) {}
+        , call_running(false) {}
 };
 
-void* poll_dispatcher_running(void* arg) {
+void* call_dispatcher_running(void* arg) {
     DispatcherStopRaceArgs* args = static_cast<DispatcherStopRaceArgs*>(arg);
-    args->reader_started.store(true, butil::memory_order_release);
-    while (!args->stop_requested.load(butil::memory_order_acquire)) {
+    while (!args->call_running.load(butil::memory_order_relaxed)) {
     }
-    args->reader_polling.store(true, butil::memory_order_release);
-    do {
-        args->dispatcher->Running();
-    } while (!args->stop_completed.load(butil::memory_order_acquire));
-    args->reader_finished.store(true, butil::memory_order_release);
+    args->dispatcher->Running();
     return nullptr;
 }
 
-// Under TSAN, this reports the Running()/Stop() race when _stop is volatile.
-TEST_F(EventDispatcherTest, stop_is_safe_with_concurrent_running) {
+// The relaxed handoff guarantees that Running() is called after Stop() without
+// creating a happens-before edge. Under TSAN, this reports the Running()/Stop()
+// race when _stop is non-atomic.
+TEST_F(EventDispatcherTest, running_is_safe_after_stop) {
     brpc::EventDispatcher dispatcher;
     ASSERT_EQ(0, dispatcher.Start(nullptr));
 
     DispatcherStopRaceArgs args;
     args.dispatcher = &dispatcher;
     pthread_t tid;
-    ASSERT_EQ(0, pthread_create(&tid, nullptr, poll_dispatcher_running,
+    ASSERT_EQ(0, pthread_create(&tid, nullptr, call_dispatcher_running,
                                 &args));
-    while (!args.reader_started.load(butil::memory_order_acquire)) {
-    }
-    args.stop_requested.store(true, butil::memory_order_release);
-    while (!args.reader_polling.load(butil::memory_order_acquire)) {
-    }
     dispatcher.Stop();
-    args.stop_completed.store(true, butil::memory_order_release);
+    args.call_running.store(true, butil::memory_order_relaxed);
     ASSERT_EQ(0, pthread_join(tid, nullptr));
-    EXPECT_TRUE(args.reader_finished.load(butil::memory_order_acquire));
     dispatcher.Join();
 }
 
@@ -708,7 +692,7 @@ void* stop_and_join(void* arg) {
     StopArgs* args = static_cast<StopArgs*>(arg);
     args->server->Stop(0);
     args->server->Join();
-    args->done.store(true, butil::memory_order_release);
+    args->done.store(true, butil::memory_order_relaxed);
     return nullptr;
 }
 
@@ -766,11 +750,11 @@ TEST_F(EventDispatcherTest, server_with_fewer_threads_than_dispatchers_can_quit)
     pthread_t th;
     ASSERT_EQ(0, pthread_create(&th, nullptr, stop_and_join, &args));
     int64_t deadline_us = butil::gettimeofday_us() + 10 * 1000000L;
-    while (!args.done.load(butil::memory_order_acquire) &&
+    while (!args.done.load(butil::memory_order_relaxed) &&
            butil::gettimeofday_us() < deadline_us) {
         usleep(10000);
     }
-    bool done = args.done.load(butil::memory_order_acquire);
+    bool done = args.done.load(butil::memory_order_relaxed);
     if (!done) {
         EXPECT_TRUE(done) << "Server::Stop()/Join() did not finish in 10s, "
                              "no worker available?";

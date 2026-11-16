@@ -95,12 +95,12 @@ int EventDispatcher::Start(const bthread_attr_t* thread_attr) {
 }
 
 bool EventDispatcher::Running() const {
-    return !_stop.load(butil::memory_order_acquire) &&
+    return !_stop.load(butil::memory_order_relaxed) &&
            _event_dispatcher_fd >= 0 && _tid != 0;
 }
 
 void EventDispatcher::Stop() {
-    _stop.store(true, butil::memory_order_release);
+    _stop.store(true, butil::memory_order_relaxed);
 
     if (_event_dispatcher_fd >= 0) {
         struct kevent kqueue_event;
@@ -192,10 +192,10 @@ void* EventDispatcher::RunThis(void* arg) {
 }
 
 void EventDispatcher::Run() {
-    while (!_stop.load(butil::memory_order_acquire)) {
+    while (!_stop.load(butil::memory_order_relaxed)) {
         struct kevent e[32];
         int n = kevent(_event_dispatcher_fd, nullptr, 0, e, ARRAY_SIZE(e), nullptr);
-        if (_stop.load(butil::memory_order_acquire)) {
+        if (_stop.load(butil::memory_order_relaxed)) {
             break;
         }
         if (n < 0) {

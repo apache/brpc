@@ -180,7 +180,7 @@ private:
     // The epoll/kqueue fd to watch events.
     int _event_dispatcher_fd;
 
-    // False until Stop() publishes shutdown.
+    // Set by Stop() to request shutdown.
     butil::atomic<bool> _stop;
 
     // identifier of hosting bthread
