@@ -408,14 +408,6 @@ TEST_F(HttpTest, reject_oversized_chunked_http_body) {
     EXPECT_NE(std::string::npos, response.to_string().find(" 413 "));
 }
 
-int AllocateFreePortOrDie() {
-    butil::fd_guard fd(tcp_listen(butil::EndPoint(butil::my_ip(), 0)));
-    EXPECT_GE(fd, 0);
-    butil::EndPoint point;
-    EXPECT_EQ(0, butil::get_local_side(fd, &point));
-    return point.port;
-}
-
 TEST_F(HttpTest, indenting_ostream) {
     std::ostringstream os1;
     brpc::IndentingOStream is1(os1, 2);
@@ -516,7 +508,7 @@ TEST_F(HttpTest, verify_builtin_request_on_internal_port) {
 }
 
 TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
-    const int saved_max_connection_pool_size = brpc::FLAGS_max_connection_pool_size;
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
     brpc::FLAGS_max_connection_pool_size = 1;
 
     butil::EndPoint ep;
@@ -527,11 +519,23 @@ TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
     MyAuthenticator auth;
     brpc::ServerOptions options;
     options.auth = &auth;
-    options.internal_port = AllocateFreePortOrDie();
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+
+    butil::EndPoint internal_ep = ep;
+    {
+        // Reserve both ports on the server's address at the same time so the
+        // kernel cannot reuse the internal port for the public listener.
+        butil::fd_guard public_fd(tcp_listen(ep));
+        ASSERT_GE(public_fd, 0);
+        butil::fd_guard internal_fd(tcp_listen(internal_ep));
+        ASSERT_GE(internal_fd, 0);
+        ASSERT_EQ(0, butil::get_local_side(public_fd, &ep));
+        ASSERT_EQ(0, butil::get_local_side(internal_fd, &internal_ep));
+        ASSERT_NE(ep.port, internal_ep.port);
+    }
+    options.internal_port = internal_ep.port;
     ASSERT_EQ(0, server.Start(ep, &options));
     ep = server.listen_address();
-    const butil::EndPoint internal_ep(ep.ip, options.internal_port);
 
     {
         brpc::Channel chan;
@@ -618,7 +622,6 @@ TEST_F(HttpTest, builtin_auth_policy_on_public_and_internal_port) {
 
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
-    brpc::FLAGS_max_connection_pool_size = saved_max_connection_pool_size;
 }
 
 TEST_F(HttpTest, process_request_failed_socket) {
