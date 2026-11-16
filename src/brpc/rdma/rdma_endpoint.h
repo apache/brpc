@@ -123,12 +123,14 @@ public:
     // Real handshake for RDMA-mode sockets.
     static ParseResult ExecuteServerHandshake(butil::IOBuf* source, Socket* socket);
 
-    // Initialize polling mode
+    // Initialize polling mode for this tag. Creation failures are permanent.
+    // Success means all poller threads were created, not that init_fn finished.
     static int PollingModeInitialize(bthread_tag_t tag,
                                      std::function<void(void)> callback,
                                      std::function<void(void)> init_fn,
                                      std::function<void(void)> release_fn);
 
+    // Final shutdown, called outside poller callbacks. This tag cannot restart.
     static void PollingModeRelease(bthread_tag_t tag);
 
 private:
