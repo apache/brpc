@@ -30,6 +30,7 @@
 #include "butil/macros.h"
 #include "butil/containers/mpsc_queue.h"
 #include "butil/containers/optional.h"
+#include "bthread/mutex.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/rdma_handshake_server.h"
 
@@ -136,12 +137,14 @@ public:
     // Real handshake for RDMA-mode sockets.
     static ParseResult ExecuteServerHandshake(butil::IOBuf* source, Socket* socket);
 
-    // Initialize polling mode
+    // Initialize polling mode for this tag. Creation failures are permanent.
+    // Success means all poller threads were created, not that init_fn finished.
     static int PollingModeInitialize(bthread_tag_t tag,
                                      std::function<void(void)> callback,
                                      std::function<void(void)> init_fn,
                                      std::function<void(void)> release_fn);
 
+    // Final shutdown, called outside poller callbacks. This tag cannot restart.
     static void PollingModeRelease(bthread_tag_t tag);
 
 private:
@@ -399,9 +402,20 @@ private:
     };
     // Poller group
     struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {
-        PollerGroup() : pollers(FLAGS_rdma_poller_num), running(false) {}
+        enum State { UNINITIALIZED, STARTED, FAILED, RELEASED };
+        enum StartupResult { PENDING, SUCCEEDED, ABORTED };
+
+        PollerGroup();
+        ~PollerGroup();
         std::vector<Poller> pollers;
+        // Serialize initialization, rollback and final shutdown for this tag.
+        bthread::Mutex lifecycle_mutex;
+        State state;
+        int error;
         std::atomic<bool> running;
+        // Separate from running: successful batches must execute all init_fn
+        // callbacks even if shutdown begins before a poller is scheduled.
+        butil::atomic<int>* startup_result;
     };
     static std::vector<PollerGroup> _poller_groups;
 };
