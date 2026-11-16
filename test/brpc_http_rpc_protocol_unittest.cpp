@@ -2297,13 +2297,15 @@ TEST(Http2FlowControlTest, oversized_body_returns_connection_window) {
         int fds[2];
         ASSERT_EQ(0, pipe(fds));
         butil::fd_guard read_fd(fds[0]);
+        butil::fd_guard write_fd(fds[1]);
         brpc::SocketOptions options;
-        options.fd = fds[1];
+        options.fd = write_fd;
         if (client_side) {
             options.user = brpc::get_client_side_messenger();
         }
         brpc::SocketId id;
         ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+        write_fd.release();  // Socket owns the fd after successful creation.
         brpc::SocketUniquePtr socket;
         ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
         ASSERT_EQ(0, socket->ReleaseAdditionalReference());
