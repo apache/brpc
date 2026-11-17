@@ -211,4 +211,124 @@ TEST(BaiduTimeTest, timer_auto_start) {
     printf("Cost %" PRId64 "us\n", t.u_elapsed());
 }
 
+TEST(BaiduTimeTest, clock_cycles_monotonic_and_serialized) {
+    uint64_t prev = butil::detail::clock_cycles();
+    ASSERT_GT(prev, static_cast<uint64_t>(0));
+    for (int i = 0; i < 10000; ++i) {
+        const uint64_t cur = butil::detail::clock_cycles();
+        ASSERT_GE(cur, prev) << "Non-monotonic clock_cycles at iteration " << i;
+        prev = cur;
+    }
+}
+
+TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
+    uint64_t zero_mult = 1;
+    uint32_t zero_shift = 1;
+    butil::detail::compute_cpu_frequency_scale(0, &zero_mult, &zero_shift);
+    ASSERT_EQ(static_cast<uint64_t>(0), zero_mult);
+    ASSERT_EQ(0U, zero_shift);
+    butil::detail::compute_cpu_frequency_scale(-100, &zero_mult, &zero_shift);
+    ASSERT_EQ(static_cast<uint64_t>(0), zero_mult);
+    ASSERT_EQ(0U, zero_shift);
+
+    const int64_t freqs[] = {
+        19200000LL,    // 19.2 MHz (Qualcomm / ARM generic timer)
+        24000000LL,    // 24 MHz (Apple Silicon / ARM generic timer)
+        25000000LL,    // 25 MHz (AWS Graviton)
+        100000000LL,   // 100 MHz (Ampere Altra)
+        1000000000LL,  // 1 GHz (ARMv8.6+ Neoverse)
+        2400000000LL,  // 2.4 GHz (x86_64 Xeon)
+        3591590000LL,  // ~3.59 GHz (non-round x86_64 TSC)
+    };
+
+    for (size_t f_idx = 0; f_idx < arraysize(freqs); ++f_idx) {
+        const int64_t freq = freqs[f_idx];
+        uint64_t mult = 0;
+        uint32_t shift = 0;
+        butil::detail::compute_cpu_frequency_scale(freq, &mult, &shift);
+        ASSERT_GT(mult, static_cast<uint64_t>(0)) << "freq=" << freq;
+        ASSERT_LE(shift, 63U) << "freq=" << freq;
+
+        // 1. Small tick counts [0..10000] + strict monotonicity
+        int64_t prev_ns = 0;
+        for (uint64_t tsc = 0; tsc <= 10000; ++tsc) {
+            const int64_t actual = butil::detail::cycles_to_ns(tsc, mult, shift);
+            const int64_t expected = static_cast<int64_t>(
+                (static_cast<__uint128_t>(tsc) * 1000000000ULL) / static_cast<uint64_t>(freq));
+            ASSERT_NEAR(expected, actual, 1) << "freq=" << freq << " tsc=" << tsc;
+            ASSERT_GE(actual, prev_ns) << "freq=" << freq << " tsc=" << tsc;
+            prev_ns = actual;
+        }
+
+        // 2. 1-second boundary and multi-year uptimes (up to 10^8 seconds ~ 3.17 years)
+        const uint64_t sec_anchors[] = {
+            1ULL, 60ULL, 3600ULL, 86400ULL, 10000000ULL, 100000000ULL
+        };
+        for (size_t s_idx = 0; s_idx < arraysize(sec_anchors); ++s_idx) {
+            const uint64_t base_tsc = sec_anchors[s_idx] * static_cast<uint64_t>(freq);
+            int64_t local_prev = butil::detail::cycles_to_ns(base_tsc - 100, mult, shift);
+            for (int64_t offset = -99; offset <= 100; ++offset) {
+                const uint64_t tsc = static_cast<uint64_t>(static_cast<int64_t>(base_tsc) + offset);
+                const int64_t actual = butil::detail::cycles_to_ns(tsc, mult, shift);
+                const int64_t expected = static_cast<int64_t>(
+                    (static_cast<__uint128_t>(tsc) * 1000000000ULL) / static_cast<uint64_t>(freq));
+                ASSERT_NEAR(expected, actual, 1) << "freq=" << freq << " tsc=" << tsc;
+                ASSERT_GE(actual, local_prev) << "freq=" << freq << " tsc=" << tsc;
+                local_prev = actual;
+            }
+        }
+    }
+}
+
+TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
+#if BUTIL_USE_CPU_FREQUENCY
+    if (butil::detail::invariant_cpu_freq > 0) {
+        ASSERT_GT(butil::detail::invariant_cpu_freq_mult, static_cast<uint64_t>(0));
+    }
+#endif
+    int64_t prev = butil::cpuwide_time_ns();
+    for (int i = 0; i < 10000; ++i) {
+        const int64_t cur = butil::cpuwide_time_ns();
+        ASSERT_GE(cur, prev);
+        prev = cur;
+    }
+
+    const int64_t mono_start = butil::monotonic_time_ns();
+    const int64_t cpu_start = butil::cpuwide_time_ns();
+    usleep(20000);  // 20ms
+    const int64_t mono_elapsed = butil::monotonic_time_ns() - mono_start;
+    const int64_t cpu_elapsed = butil::cpuwide_time_ns() - cpu_start;
+    // Allow reasonable scheduling jitter around the 20ms sleep, but both clocks must agree closely.
+    ASSERT_NEAR(mono_elapsed, cpu_elapsed, 5000000L);  // within 5ms
+
+    // Microbenchmark cycles_to_ns vs dual-division over 200,000 iterations.
+    const int64_t freq = (butil::detail::invariant_cpu_freq > 0)
+                             ? butil::detail::invariant_cpu_freq
+                             : 24000000LL;
+    uint64_t mult = 0;
+    uint32_t shift = 0;
+    butil::detail::compute_cpu_frequency_scale(freq, &mult, &shift);
+
+    const size_t N = 200000;
+    uint64_t sink = 0;
+    butil::Timer t_div, t_mul;
+    t_div.start();
+    for (size_t i = 0; i < N; ++i) {
+        const uint64_t tsc = butil::detail::clock_cycles() + i;
+        const uint64_t sec = tsc / static_cast<uint64_t>(freq);
+        const uint64_t remain = tsc % static_cast<uint64_t>(freq);
+        sink += remain * 1000000000ULL / static_cast<uint64_t>(freq) + sec * 1000000000ULL;
+    }
+    t_div.stop();
+
+    t_mul.start();
+    for (size_t i = 0; i < N; ++i) {
+        const uint64_t tsc = butil::detail::clock_cycles() + i;
+        sink += static_cast<uint64_t>(butil::detail::cycles_to_ns(tsc, mult, shift));
+    }
+    t_mul.stop();
+    printf("clock_cycles + dual-div takes %" PRId64 "ns, clock_cycles + mul-shift takes %" PRId64 "ns (sink=%" PRIu64 ")\n",
+           t_div.n_elapsed() / N, t_mul.n_elapsed() / N, sink);
+}
+
 } // namespace
