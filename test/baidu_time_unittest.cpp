@@ -212,6 +212,7 @@ TEST(BaiduTimeTest, timer_auto_start) {
 }
 
 TEST(BaiduTimeTest, clock_cycles_monotonic_and_serialized) {
+#if defined(__aarch64__) || defined(__x86_64__) || defined(__amd64__) || defined(__loongarch64)
     uint64_t prev = butil::detail::clock_cycles();
     ASSERT_GT(prev, static_cast<uint64_t>(0));
     for (int i = 0; i < 10000; ++i) {
@@ -219,6 +220,7 @@ TEST(BaiduTimeTest, clock_cycles_monotonic_and_serialized) {
         ASSERT_GE(cur, prev) << "Non-monotonic clock_cycles at iteration " << i;
         prev = cur;
     }
+#endif
 }
 
 TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
@@ -231,6 +233,7 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
     ASSERT_EQ(static_cast<uint64_t>(0), zero_mult);
     ASSERT_EQ(0U, zero_shift);
 
+#if defined(__SIZEOF_INT128__)
     const int64_t freqs[] = {
         19200000LL,    // 19.2 MHz (Qualcomm / ARM generic timer)
         24000000LL,    // 24 MHz (Apple Silicon / ARM generic timer)
@@ -278,6 +281,7 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
             }
         }
     }
+#endif
 }
 
 TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
@@ -328,7 +332,8 @@ TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
     }
     t_mul.stop();
     printf("clock_cycles + dual-div takes %" PRId64 "ns, clock_cycles + mul-shift takes %" PRId64 "ns (sink=%" PRIu64 ")\n",
-           t_div.n_elapsed() / N, t_mul.n_elapsed() / N, sink);
+           t_div.n_elapsed() / static_cast<int64_t>(N),
+           t_mul.n_elapsed() / static_cast<int64_t>(N), sink);
 }
 
 } // namespace
