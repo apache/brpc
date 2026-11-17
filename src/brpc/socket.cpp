@@ -459,6 +459,7 @@ Socket::Socket(Forbidden f)
     , _need_on_edge_trigger(false)
     , _user(nullptr)
     , _conn(nullptr)
+    , _connect_deadline_us(-1)
     , _preferred_index(-1)
     , _hc_count(0)
     , _last_readtime_us(0)
@@ -746,6 +747,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _user = options.user;
     _conn = options.conn;
     _app_connect = _transport->Connect();
+    _connect_deadline_us = -1;
     _preferred_index = -1;
     _hc_count = 0;
     CHECK(_fd_input_processor.read_buf().empty());
@@ -928,7 +930,7 @@ void Socket::OnFailed(int error_code, const std::string& error_text) {
         StartHealthCheck(id(), GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
     }
     // Wake up all threads waiting on EPOLLOUT when closing fd
-    _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
+    _epollout_butex->fetch_add(1, butil::memory_order_release);
     bthread::butex_wake_all(_epollout_butex);
 
     // Wake up all unresponded RPC.
@@ -1256,19 +1258,24 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
     return false;
 }
 
-int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
+int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime, bool check_failed) {
     if (!ValidFileDescriptor(fd)) {
         return 0;
     }
-    // Do not need to check addressable since it will be called by
-    // health checker which called `SetFailed' before
-    const int expected_val = _epollout_butex->load(butil::memory_order_relaxed);
+    // Snapshot before checking Failed(): an earlier cancellation is visible
+    // through the release in OnFailed(), while a later one changes the value
+    // or wakes butex_wait. Health checks deliberately skip this check.
+    int expected_val = _epollout_butex->load(butil::memory_order_acquire);
+    if (check_failed && Failed()) {
+        errno = ECANCELED;
+        return -1;
+    }
     if (_io_event.RegisterEvent(fd, pollin) != 0) {
         return -1;
     }
 
     int rc = bthread::butex_wait(_epollout_butex, expected_val, abstime);
-    const int saved_errno = errno;
+    int saved_errno = errno;
     if (rc < 0 && errno == EWOULDBLOCK) {
         // Could be writable or spurious wakeup
         rc = 0;
@@ -1276,13 +1283,18 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     // Ignore return value since `fd' might have been removed
     // by `RemoveConsumer' in `SetFailed'
     butil::ignore_result(_io_event.UnregisterEvent(fd, pollin));
+    if (check_failed && Failed()) {
+        errno = ECANCELED;
+        return -1;
+    }
     errno = saved_errno;
     // Could be writable or spurious wakeup (by former epollout)
     return rc;
 }
 
 int Socket::Connect(const timespec* abstime,
-                    int (*on_connect)(int, int, void*), void* data) {
+                    int (*on_connect)(int, int, void*), void* data,
+                    bool check_failed) {
     if (_ssl_ctx) {
         _ssl_state = SSL_CONNECTING;
     } else {
@@ -1387,7 +1399,7 @@ int Socket::Connect(const timespec* abstime,
         }
         
     } else {
-        if (WaitEpollOut(sockfd, false, abstime) != 0) {
+        if (WaitEpollOut(sockfd, false, abstime, check_failed) != 0) {
             PLOG(WARNING) << "Fail to wait EPOLLOUT of fd=" << sockfd;
             return -1;
         }
@@ -1439,6 +1451,7 @@ int Socket::ConnectIfNot(const timespec* abstime, WriteRequest* req) {
     if (_fd.load(butil::memory_order_consume) >= 0) {
        return 0;
     }
+    _connect_deadline_us = abstime ? butil::timespec_to_microseconds(*abstime) : -1;
     // Set tag for client side socket
     _io_event.set_bthread_tag(bthread_self_tag());
     // Have to hold a reference for `req'

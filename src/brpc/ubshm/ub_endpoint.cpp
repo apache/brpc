@@ -198,6 +198,7 @@ void UBConnect::StartConnect(const Socket* socket,
     CHECK(ub_transport->_ub_ep != nullptr);
     SocketUniquePtr s;
     if (Socket::Address(socket->id(), &s) != 0) {
+        done(EFAILEDSOCKET, data);
         return;
     }
     if (!IsUBAvailable()) {
@@ -211,10 +212,12 @@ void UBConnect::StartConnect(const Socket* socket,
     bthread_t tid;
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     bthread_attr_set_name(&attr, "UBProcessHandshakeAtClient");
-    if (bthread_start_background(&tid, &attr,
-                UBShmEndpoint::ProcessHandshakeAtClient, ub_transport->_ub_ep) < 0) {
-        LOG(FATAL) << "Fail to start handshake bthread";
-        Run();
+    int rc = bthread_start_background(&tid, &attr,
+                                     UBShmEndpoint::ProcessHandshakeAtClient,
+                                     ub_transport->_ub_ep);
+    if (rc != 0) {
+        LOG(ERROR) << "Fail to start handshake bthread: " << berror(rc);
+        _done(rc, _data);
     } else {
         s.release();
     }
@@ -349,7 +352,7 @@ int UBShmEndpoint::WriteToFd(void* data, size_t len) {
         nw = write(_socket->fd(), (uint8_t*)data + written, len - written);
         if (nw < 0) {
             if (errno == EAGAIN) {
-                if (_socket->WaitEpollOut(_socket->fd(), true, &duetime) < 0) {
+                if (_socket->WaitEpollOut(_socket->fd(), true, &duetime, false) < 0) {
                     if (errno != ETIMEDOUT) {
                         return -1;
                     }

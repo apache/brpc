@@ -71,6 +71,9 @@ enum class RemoteHelloResult {
     FALLBACK,
     // (server only) Not enough data yet.
     NEED_MORE,
+    // (v3 client only) The peer closed before identifying itself as v3, or
+    // replied with v2 magic. Retry v2 on a new TCP connection (errno set).
+    RETRY_V2,
     // IO/protocol error (errno set).
     ERROR,
 };
@@ -168,15 +171,6 @@ public:
     int SendLocalHello() override;
     RemoteHelloResult ReceiveAndParseRemoteHello(ParsedHello* remote) override;
 };
-
-// Factory methods
-//
-// Pick the client-side handshake based on
-// FLAGS_rdma_client_handshake_version:
-//   2 (default) -> RdmaHandshakeClientV2
-//   3           -> RdmaHandshakeClientV3
-// Other values fall back to V2.
-std::unique_ptr<RdmaHandshake> CreateClientHandshake(RdmaEndpoint* ep);
 
 // Pick the server-side handshake based on the 4B magic already read.
 // Returns nullptr if `magic` is not a recognized RDMA magic

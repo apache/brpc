@@ -237,7 +237,7 @@ int UrmaEndpoint::WriteToFd(void* data, size_t len) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             return -1;
         }
-        if (_socket->WaitEpollOut(fd, true, &duetime) != 0 && errno != ETIMEDOUT) {
+        if (_socket->WaitEpollOut(fd, true, &duetime, false) != 0 && errno != ETIMEDOUT) {
             return -1;
         }
     }
@@ -336,7 +336,7 @@ int UrmaEndpoint::WriteToFd(butil::IOBuf& data) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             return -1;
         }
-        if (_socket->WaitEpollOut(fd, true, &duetime) != 0 && errno != ETIMEDOUT) {
+        if (_socket->WaitEpollOut(fd, true, &duetime, false) != 0 && errno != ETIMEDOUT) {
             return -1;
         }
     }
@@ -1485,6 +1485,7 @@ void UrmaConnect::StartConnect(const Socket* socket,
                                void (*done)(int, void*), void* data) {
     SocketUniquePtr s;
     if (Socket::Address(socket->id(), &s) != 0) {
+        done(EFAILEDSOCKET, data);
         return;
     }
     _done = done;
