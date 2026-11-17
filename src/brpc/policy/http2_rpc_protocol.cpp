@@ -931,6 +931,12 @@ H2ParseResult H2StreamContext::OnData(
     butil::IOBuf data;
     it.append_and_forward(&data, frag_size);
     it.forward(pad_length);
+    // Account for the full DATA payload, including padding, before OnBody()
+    // can reject it. Stream cleanup must return this frame's connection credit
+    // even when the body exceeds max_body_size.
+    int64_t acc = frame_head.payload_size +
+        _deferred_window_update.fetch_add(
+            frame_head.payload_size, butil::memory_order_relaxed);
     for (size_t i = 0; i < data.backing_block_num(); ++i) {
         const butil::StringPiece blk = data.backing_block(i);
         if (OnBody(blk.data(), blk.size()) != 0) {
@@ -942,8 +948,6 @@ H2ParseResult H2StreamContext::OnData(
         }
     }
 
-    int64_t acc = frag_size +
-        _deferred_window_update.fetch_add(frag_size, butil::memory_order_relaxed);
     int64_t quota = static_cast<int64_t>(
         _conn_ctx->local_settings().stream_window_size /
         (_conn_ctx->VolatilePendingStreamSize() + 1));

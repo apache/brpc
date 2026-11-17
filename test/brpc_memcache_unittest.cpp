@@ -50,6 +50,7 @@ TEST(MemcacheParserTest, RejectOversizedResponseBeforeBufferingBody) {
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
     brpc::SocketUniquePtr socket;
     ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+    ASSERT_EQ(0, socket->ReleaseAdditionalReference());
 
     brpc::policy::MemcacheResponseHeader header = {};
     header.magic = brpc::policy::MC_MAGIC_RESPONSE;
@@ -60,6 +61,8 @@ TEST(MemcacheParserTest, RejectOversizedResponseBeforeBufferingBody) {
               brpc::policy::ParseMemcacheMessage(
                   &buf, socket.get(), false, nullptr).error());
 
+    socket.reset();
+    EXPECT_EQ(-1, brpc::Socket::Status(id));
 }
 
 TEST(MemcacheParserTest, PopStoreRejectsNegativeValueSize) {
