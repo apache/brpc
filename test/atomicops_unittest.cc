@@ -323,7 +323,7 @@ static void TestMultiThreadedContention() {
   EXPECT_EQ(kExpected, protected_counter);
 }
 
-#if defined(ARCH_CPU_ARM64)
+#if defined(ARCH_CPU_ARM64) && defined(COMPILER_GCC) && !defined(THREAD_SANITIZER)
 TEST(AtomicOpsTest, UsesArm64GccInternalsHeader) {
 #if !defined(BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_)
   FAIL() << "Expected BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_ to be included on ARCH_CPU_ARM64";
