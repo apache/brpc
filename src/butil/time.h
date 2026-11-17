@@ -226,7 +226,11 @@ inline uint64_t clock_cycles() {
     return ((uint64_t)hi << 32) | lo;
 #elif defined(__aarch64__)
     uint64_t virtual_timer_value;
-    asm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
+    asm volatile("isb\n\t"
+                 "mrs %0, cntvct_el0"
+                 : "=r"(virtual_timer_value)
+                 :
+                 : "memory");
     return virtual_timer_value;
 #elif defined(__ARM_ARCH)
   #if (__ARM_ARCH >= 6)
@@ -266,12 +270,43 @@ inline uint64_t clock_cycles() {
 #endif
 }
 
+// Precompute fixed-point multiplier and right-shift so that
+// cycles_to_ns(cycles, mult, shift) == (cycles * 10^9) / freq without runtime
+// 64-bit integer divisions.
+inline void compute_cpu_frequency_scale(int64_t freq, uint64_t* mult, uint32_t* shift) {
+    if (freq <= 0) {
+        *mult = 0;
+        *shift = 0;
+        return;
+    }
+    const uint64_t ufreq = static_cast<uint64_t>(freq);
+    uint32_t s = 63;
+    while (s > 0) {
+        __uint128_t num = (static_cast<__uint128_t>(1000000000ULL) << s) + (ufreq - 1);
+        __uint128_t m = num / ufreq;
+        if (m <= UINT64_MAX) {
+            *mult = static_cast<uint64_t>(m);
+            *shift = s;
+            return;
+        }
+        --s;
+    }
+    *mult = (1000000000ULL + ufreq - 1) / ufreq;
+    *shift = 0;
+}
+
+inline int64_t cycles_to_ns(uint64_t cycles, uint64_t mult, uint32_t shift) {
+    return static_cast<int64_t>((static_cast<__uint128_t>(cycles) * mult) >> shift);
+}
+
 // Be positive iff:
 // 1 Intel x86_64 CPU (multiple cores) supporting constant_tsc and
 // nonstop_tsc(check flags in /proc/cpuinfo)
 // 2 aarch64, where the counter frequency is read from CNTFRQ_EL0.
 // Only computed when BUTIL_USE_CPU_FREQUENCY is enabled.
 extern int64_t invariant_cpu_freq;
+extern uint64_t invariant_cpu_freq_mult;
+extern uint32_t invariant_cpu_freq_shift;
 }  // namespace detail
 
 // ---------------------------------------------------------------
@@ -295,11 +330,8 @@ inline int64_t cpuwide_time_ns() {
     int64_t cpu_freq = detail::invariant_cpu_freq;
     if (cpu_freq > 0) {
         const uint64_t tsc = detail::clock_cycles();
-        //Try to avoid overflow
-        const uint64_t sec = tsc / cpu_freq;
-        const uint64_t remain = tsc % cpu_freq;
-        // TODO: should be OK until CPU's frequency exceeds 16GHz.
-        return remain * 1000000000L / cpu_freq + sec * 1000000000L;
+        return detail::cycles_to_ns(tsc, detail::invariant_cpu_freq_mult,
+                                    detail::invariant_cpu_freq_shift);
     } else {
         // Lack of necessary features, return system-wide monotonic time instead.
         return monotonic_time_ns();

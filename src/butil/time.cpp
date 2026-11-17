@@ -142,6 +142,9 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
     return result;
 }
 
+uint64_t invariant_cpu_freq_mult = 0;
+uint32_t invariant_cpu_freq_shift = 0;
+
 // Return value must be >= 0
 static int64_t read_invariant_cpu_frequency() {
     bool invariant_tsc = false;
@@ -154,7 +157,11 @@ static int64_t read_invariant_cpu_frequency() {
         return 0;
     }
 #endif
-
+    if (freq <= 0) {
+        return 0;
+    }
+    compute_cpu_frequency_scale(freq, &invariant_cpu_freq_mult,
+                                &invariant_cpu_freq_shift);
     return freq;
 }
 
