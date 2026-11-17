@@ -17,6 +17,17 @@
 #ifdef __SSE4_2__
 #include <nmmintrin.h>
 #endif
+#if defined(__aarch64__)
+#include <arm_acle.h>
+#include <arm_neon.h>
+#if defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#undef ALIGN
+#endif
+#endif
 #include "butil/build_config.h"
 
 namespace butil {
@@ -812,6 +823,235 @@ static bool isSSE42() {
 }
 #endif
 
+#if defined(__aarch64__)
+#if defined(__clang__)
+#define BUTIL_CRC32_TARGET_CRC __attribute__((target("crc")))
+#define BUTIL_CRC32_TARGET_CRC_PMULL __attribute__((target("crc,aes")))
+#elif defined(__GNUC__)
+#define BUTIL_CRC32_TARGET_CRC __attribute__((target("+crc")))
+#define BUTIL_CRC32_TARGET_CRC_PMULL __attribute__((target("+crc+crypto")))
+#else
+#define BUTIL_CRC32_TARGET_CRC
+#define BUTIL_CRC32_TARGET_CRC_PMULL
+#endif
+
+static bool isArmCrc32() {
+  static const bool supported = []() {
+#if defined(__linux__)
+#ifndef HWCAP_CRC32
+#define HWCAP_CRC32 (1 << 7)
+#endif
+    return (getauxval(AT_HWCAP) & HWCAP_CRC32) != 0;
+#elif defined(__APPLE__)
+    int val = 0;
+    size_t len = sizeof(val);
+    if (sysctlbyname("hw.optional.armv8_crc32", &val, &len, nullptr, 0) == 0) {
+      return val != 0;
+    }
+    return true;
+#else
+    return false;
+#endif
+  }();
+  return supported;
+}
+
+static bool isArmPmull() {
+  static const bool supported = []() {
+#if defined(__linux__)
+#ifndef HWCAP_PMULL
+#define HWCAP_PMULL (1 << 4)
+#endif
+    return (getauxval(AT_HWCAP) & HWCAP_PMULL) != 0;
+#elif defined(__APPLE__)
+    int val = 0;
+    size_t len = sizeof(val);
+    if (sysctlbyname("hw.optional.arm.FEAT_PMULL", &val, &len, nullptr, 0) == 0) {
+      return val != 0;
+    }
+    return true;
+#else
+    return false;
+#endif
+  }();
+  return supported;
+}
+
+// Compute the 32-bit reflected remainder of x^(8 * bytes - 64) mod P(x)
+// so that __crc32cd(0, vmull_p64(crc, k)) shifts `crc` forward by `bytes`
+// zero bytes in reflected CRC32C (Castagnoli polynomial 0x82f63b78).
+static constexpr uint32_t ComputeCrc32cShiftConst(size_t bytes) {
+  uint32_t c = 1U;
+  for (size_t i = 0; i < 8 * bytes - 64; ++i) {
+    c = (c >> 1) ^ ((c & 1U) ? 0x82f63b78U : 0U);
+  }
+  return c;
+}
+
+BUTIL_CRC32_TARGET_CRC
+static uint32_t Arm64ExtendCrc32(uint32_t crc, const char* buf, size_t size) {
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(buf);
+  uint32_t c = crc ^ 0xffffffffU;
+
+  if (size >= 8 && (reinterpret_cast<uintptr_t>(p) & 7) != 0) {
+    if (reinterpret_cast<uintptr_t>(p) & 1) {
+      c = __crc32cb(c, *p++);
+      --size;
+    }
+    if (reinterpret_cast<uintptr_t>(p) & 2) {
+      uint16_t v;
+      memcpy(&v, p, sizeof(v));
+      c = __crc32ch(c, v);
+      p += 2;
+      size -= 2;
+    }
+    if (reinterpret_cast<uintptr_t>(p) & 4) {
+      c = __crc32cw(c, DecodeFixed32(reinterpret_cast<const char*>(p)));
+      p += 4;
+      size -= 4;
+    }
+  }
+
+  while (size >= 32) {
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p)));
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 8)));
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 16)));
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 24)));
+    p += 32;
+    size -= 32;
+  }
+  while (size >= 8) {
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p)));
+    p += 8;
+    size -= 8;
+  }
+  if (size & 4) {
+    c = __crc32cw(c, DecodeFixed32(reinterpret_cast<const char*>(p)));
+    p += 4;
+  }
+  if (size & 2) {
+    uint16_t v;
+    memcpy(&v, p, sizeof(v));
+    c = __crc32ch(c, v);
+    p += 2;
+  }
+  if (size & 1) {
+    c = __crc32cb(c, *p);
+  }
+  return c ^ 0xffffffffU;
+}
+
+BUTIL_CRC32_TARGET_CRC_PMULL
+static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf, size_t size) {
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(buf);
+  uint32_t c = crc ^ 0xffffffffU;
+
+  if (size >= 8 && (reinterpret_cast<uintptr_t>(p) & 7) != 0) {
+    if (reinterpret_cast<uintptr_t>(p) & 1) {
+      c = __crc32cb(c, *p++);
+      --size;
+    }
+    if (reinterpret_cast<uintptr_t>(p) & 2) {
+      uint16_t v;
+      memcpy(&v, p, sizeof(v));
+      c = __crc32ch(c, v);
+      p += 2;
+      size -= 2;
+    }
+    if (reinterpret_cast<uintptr_t>(p) & 4) {
+      c = __crc32cw(c, DecodeFixed32(reinterpret_cast<const char*>(p)));
+      p += 4;
+      size -= 4;
+    }
+  }
+
+  static constexpr size_t kLargeStripeBytes = 336;
+  static constexpr size_t kLargeBlockBytes = 3 * kLargeStripeBytes;  // 1008
+  static constexpr uint32_t kShift672 = ComputeCrc32cShiftConst(2 * kLargeStripeBytes);
+  static constexpr uint32_t kShift336 = ComputeCrc32cShiftConst(kLargeStripeBytes);
+
+  while (size >= kLargeBlockBytes) {
+    uint32_t crc0 = c;
+    uint32_t crc1 = 0;
+    uint32_t crc2 = 0;
+    const uint8_t* p0 = p;
+    const uint8_t* p1 = p + kLargeStripeBytes;
+    const uint8_t* p2 = p + 2 * kLargeStripeBytes;
+    for (size_t i = 0; i < kLargeStripeBytes / 8; ++i) {
+      crc0 = __crc32cd(crc0, DecodeFixed64(reinterpret_cast<const char*>(p0)));
+      crc1 = __crc32cd(crc1, DecodeFixed64(reinterpret_cast<const char*>(p1)));
+      crc2 = __crc32cd(crc2, DecodeFixed64(reinterpret_cast<const char*>(p2)));
+      p0 += 8;
+      p1 += 8;
+      p2 += 8;
+    }
+    const uint64_t t0 = static_cast<uint64_t>(vmull_p64(crc0, kShift672));
+    const uint64_t t1 = static_cast<uint64_t>(vmull_p64(crc1, kShift336));
+    c = crc2 ^ static_cast<uint32_t>(__crc32cd(0, t0 ^ t1));
+    p += kLargeBlockBytes;
+    size -= kLargeBlockBytes;
+  }
+
+  static constexpr size_t kSmallStripeBytes = 64;
+  static constexpr size_t kSmallBlockBytes = 3 * kSmallStripeBytes;  // 192
+  static constexpr uint32_t kShift128 = ComputeCrc32cShiftConst(2 * kSmallStripeBytes);
+  static constexpr uint32_t kShift64 = ComputeCrc32cShiftConst(kSmallStripeBytes);
+
+  while (size >= kSmallBlockBytes) {
+    uint32_t crc0 = c;
+    uint32_t crc1 = 0;
+    uint32_t crc2 = 0;
+    const uint8_t* p0 = p;
+    const uint8_t* p1 = p + kSmallStripeBytes;
+    const uint8_t* p2 = p + 2 * kSmallStripeBytes;
+    for (size_t i = 0; i < kSmallStripeBytes / 8; ++i) {
+      crc0 = __crc32cd(crc0, DecodeFixed64(reinterpret_cast<const char*>(p0)));
+      crc1 = __crc32cd(crc1, DecodeFixed64(reinterpret_cast<const char*>(p1)));
+      crc2 = __crc32cd(crc2, DecodeFixed64(reinterpret_cast<const char*>(p2)));
+      p0 += 8;
+      p1 += 8;
+      p2 += 8;
+    }
+    const uint64_t t0 = static_cast<uint64_t>(vmull_p64(crc0, kShift128));
+    const uint64_t t1 = static_cast<uint64_t>(vmull_p64(crc1, kShift64));
+    c = crc2 ^ static_cast<uint32_t>(__crc32cd(0, t0 ^ t1));
+    p += kSmallBlockBytes;
+    size -= kSmallBlockBytes;
+  }
+
+  while (size >= 32) {
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p)));
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 8)));
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 16)));
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 24)));
+    p += 32;
+    size -= 32;
+  }
+  while (size >= 8) {
+    c = __crc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p)));
+    p += 8;
+    size -= 8;
+  }
+  if (size & 4) {
+    c = __crc32cw(c, DecodeFixed32(reinterpret_cast<const char*>(p)));
+    p += 4;
+  }
+  if (size & 2) {
+    uint16_t v;
+    memcpy(&v, p, sizeof(v));
+    c = __crc32ch(c, v);
+    p += 2;
+  }
+  if (size & 1) {
+    c = __crc32cb(c, *p);
+  }
+  return c ^ 0xffffffffU;
+}
+
+#undef BUTIL_CRC32_TARGET_CRC
+#undef BUTIL_CRC32_TARGET_CRC_PMULL
+#endif  // defined(__aarch64__)
+
 typedef uint32_t (*Function)(uint32_t, const char*, size_t);
 
 #if defined(__riscv) && (__riscv_xlen == 64) && defined(__riscv_zbc) && defined(__riscv_zvbc)
@@ -827,6 +1067,14 @@ static inline Function Choose_Extend() {
 #ifdef __SSE4_2__
   if (isSSE42()) {
     return (Function)ExtendImpl<FastCRC32Functor>;
+  }
+#endif
+#if defined(__aarch64__)
+  if (isArmCrc32()) {
+    if (isArmPmull()) {
+      return (Function)Arm64ExtendCrc32Pmull;
+    }
+    return (Function)Arm64ExtendCrc32;
   }
 #endif
 #if defined(__riscv) && (__riscv_xlen == 64) && (defined(__riscv_zbc) || defined(__riscv_zvbc))
@@ -860,6 +1108,9 @@ static inline Function Choose_Extend() {
 bool IsFastCrc32Supported() {
 #ifdef __SSE4_2__
   if (isSSE42()) return true;
+#endif
+#if defined(__aarch64__)
+  if (isArmCrc32()) return true;
 #endif
 #if defined(__riscv) && (__riscv_xlen == 64) && (defined(__riscv_zbc) || defined(__riscv_zvbc))
 #if defined(__riscv_zvbc)
