@@ -543,97 +543,82 @@ urma_status_t urma_modify_jetty(urma_jetty_t *jetty, urma_jetty_attr_t *attr) {
 
 urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
                                       urma_jfs_wr_t **bad_wr) {
-    std::shared_lock<std::shared_mutex> read_lock(g_rw_mutex);
-    auto local_it = jetty_map.find(jetty);
-    auto local_jfc_it =
-        jetty ? jfc_state_map.find(jetty->jetty_cfg.jfs_cfg.jfc)
-              : jfc_state_map.end();
-    if (!jetty || !wr || local_it == jetty_map.end() ||
-        local_jfc_it == jfc_state_map.end()) {
+    // Protect the target, pending receive buffer and both completion queues
+    // from teardown until delivery and notification are complete.
+    std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
+    if (!jetty || !wr || jetty_map.find(jetty) == jetty_map.end()) {
         if (bad_wr) {
             *bad_wr = wr;
         }
         return URMA_EINVAL;
     }
-    JfcState* local_state = local_jfc_it->second;
-    read_lock.unlock();
+    urma_jfc_t* local_jfc = jetty->jetty_cfg.jfs_cfg.jfc;
+    const auto local_state = jfc_state_map.find(local_jfc);
+    if (local_state == jfc_state_map.end()) {
+        if (bad_wr) {
+            *bad_wr = wr;
+        }
+        return URMA_EINVAL;
+    }
 
     for (urma_jfs_wr_t* current = wr; current; current = current->next) {
-        if (!current->tjetty) {
-            if (bad_wr) {
-                *bad_wr = current;
-            }
+        if (bad_wr) {
+            *bad_wr = current;
+        }
+        if (target_jetty_map.find(current->tjetty) == target_jetty_map.end()) {
             return URMA_EINVAL;
         }
-
-        auto complete_send = [&] {
-            if (current->flag.bs.complete_enable) {
-                urma_cr_t send_cr{};
-                send_cr.status = URMA_CR_SUCCESS;
-                send_cr.user_ctx = current->user_ctx;
-                send_cr.flag.bs.s_r = 0;
-                PushCompletion(jetty->jetty_cfg.jfs_cfg.jfc,
-                               local_state, send_cr);
-            }
-        };
-
-        PendingRecv recv{};
-        urma_jfc_t* remote_jfc = nullptr;
-        {
-            std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
-            auto remote_it = jetty_id_map.find(current->tjetty->id.id);
-            if (remote_it == jetty_id_map.end()) {
-                complete_send();
-                continue;
-            }
-            urma_jfr_t* remote_jfr =
-                remote_it->second->jetty_cfg.shared.jfr;
-            auto recv_it = jfr_recv_map.find(remote_jfr);
-            auto jfc_it = jfr_jfc_map.find(remote_jfr);
-            if (recv_it == jfr_recv_map.end() || recv_it->second.empty() ||
-                jfc_it == jfr_jfc_map.end()) {
-                complete_send();
-                continue;
-            }
-            recv = recv_it->second.front();
-            recv_it->second.pop_front();
-            remote_jfc = jfc_it->second;
+        const auto remote = jetty_id_map.find(current->tjetty->id.id);
+        if (remote == jetty_id_map.end()) {
+            return URMA_FAIL;
         }
+        urma_jfr_t* jfr = remote->second->jetty_cfg.shared.jfr;
+        const auto pending = jfr_recv_map.find(jfr);
+        const auto cq = jfr_jfc_map.find(jfr);
+        if (pending == jfr_recv_map.end() || cq == jfr_jfc_map.end()) {
+            return URMA_FAIL;
+        }
+        const auto remote_state = jfc_state_map.find(cq->second);
+        if (remote_state == jfc_state_map.end()) {
+            return URMA_FAIL;
+        }
+        if (pending->second.empty()) {
+            return URMA_EAGAIN;
+        }
+        const PendingRecv recv = pending->second.front();
+        const auto& src = current->send.src;
+        uint64_t length = 0;
+        for (uint32_t i = 0; i < src.num_sge; ++i) {
+            length += src.sge[i].len;
+        }
+        if (length > recv.len) {
+            return URMA_EINVAL;
+        }
+        pending->second.pop_front();
 
         uint32_t copied = 0;
-        for (uint32_t i = 0;
-             i < current->send.src.num_sge && copied < recv.len; ++i) {
-            const urma_sge_t& sge = current->send.src.sge[i];
-            const uint32_t n = std::min(sge.len, recv.len - copied);
+        for (uint32_t i = 0; i < src.num_sge; ++i) {
+            const auto& sge = src.sge[i];
             std::memcpy(reinterpret_cast<void*>(recv.addr + copied),
-                        reinterpret_cast<const void*>(sge.addr), n);
-            copied += n;
+                        reinterpret_cast<const void*>(sge.addr), sge.len);
+            copied += sge.len;
         }
-
-        JfcState* remote_state = nullptr;
-        {
-            std::shared_lock<std::shared_mutex> lock(g_rw_mutex);
-            auto state_it = jfc_state_map.find(remote_jfc);
-            if (state_it != jfc_state_map.end()) {
-                remote_state = state_it->second;
-            }
+        urma_cr_t recv_cr{};
+        recv_cr.status = URMA_CR_SUCCESS;
+        recv_cr.user_ctx = recv.user_ctx;
+        recv_cr.flag.bs.s_r = 1;
+        recv_cr.completion_len = copied;
+        recv_cr.opcode = current->opcode == URMA_OPC_SEND_IMM
+                             ? URMA_CR_OPC_SEND_WITH_IMM
+                             : URMA_CR_OPC_SEND;
+        recv_cr.imm_data = current->send.imm_data;
+        PushCompletion(cq->second, remote_state->second, recv_cr);
+        if (current->flag.bs.complete_enable) {
+            urma_cr_t send_cr{};
+            send_cr.status = URMA_CR_SUCCESS;
+            send_cr.user_ctx = current->user_ctx;
+            PushCompletion(local_jfc, local_state->second, send_cr);
         }
-        if (remote_state) {
-            urma_cr_t recv_cr{};
-            recv_cr.status = URMA_CR_SUCCESS;
-            recv_cr.user_ctx = recv.user_ctx;
-            recv_cr.flag.bs.s_r = 1;
-            recv_cr.completion_len = copied;
-            recv_cr.opcode =
-                current->opcode == URMA_OPC_SEND_IMM
-                    ? URMA_CR_OPC_SEND_WITH_IMM
-                    : URMA_CR_OPC_SEND;
-            recv_cr.imm_data = current->send.imm_data;
-            PushCompletion(remote_jfc, remote_state, recv_cr);
-        }
-        // A SEND completion lets the consumer release its source buffers.
-        // Finish copying the payload before publishing that completion.
-        complete_send();
     }
     if (bad_wr) {
         *bad_wr = nullptr;

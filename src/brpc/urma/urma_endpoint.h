@@ -147,7 +147,7 @@ public:
     static void OnNewDataFromTcp(Socket* m);
 
     // CQ completion poller: the edge-triggered callback for the CQ socket
-    // (whose user is this endpoint). Drains urma_poll_jfc and feeds the
+    // (whose user holds the owning socket ID). Drains urma_poll_jfc and feeds the
     // completions into HandleCompletion, then calls InputMessenger. Event mode
     // also drains the aggregated JFCE until urma_wait_jfc reports no event,
     // then calls Socket::MoreReadEvents so later JFCE edges can start the
@@ -214,6 +214,8 @@ private:
     // Jetty, plus the CQ socket). Returns 0 on success.
     int AllocateResources();
     void DeallocateResources();
+    bool AllowNewUrmaConnection(const char* peer);
+    void DrainCq(Socket* carrier, SocketUniquePtr& owner);
 
     // Import the peer's jetty and buffer-pool segment. CRITICAL:
     // urma_import_seg is called BEFORE urma_import_jetty, otherwise the kernel
@@ -277,7 +279,7 @@ private:
     // Not owned.
     Socket* _socket;
 
-    uint64_t _recovery_epoch{0};
+    butil::atomic<uint64_t> _recovery_epoch{0};
     butil::atomic<UrmaFailureReason> _runtime_failure{UrmaFailureReason::NONE};
 
     // Handshake state.
@@ -293,6 +295,8 @@ private:
 
     // The SocketId wrapping the JFCE fd (event mode) or a synthetic carrier
     // (polling mode). PollCq is the edge-triggered callback on this socket.
+    // Serializes provider CQ operations with carrier registration and teardown.
+    butil::Mutex _cq_mutex;
     SocketId _cq_sid{INVALID_SOCKET_ID};
 
     // ---- Send / recv window bookkeeping ----
