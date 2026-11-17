@@ -775,6 +775,12 @@ H2ParseResult H2StreamContext::OnHeaders(
     // counter; it stays cumulative across the CONTINUATION frames that finish
     // this same block.
     _decoded_header_list_size = 0;
+    // Responses keep merging their trailers, the client reads grpc-status
+    // and grpc-message from there.
+    if (_conn_ctx->is_server_side()) {
+        _in_trailer_section = _header_section_received;
+        _header_section_received = true;
+    }
     butil::IOBufBytesIterator it2(it, frag_size);
     if (ConsumeHeaders(it2) < 0) {
         LOG(ERROR) << "Invalid header, frag_size=" << frag_size
@@ -1409,6 +1415,8 @@ H2StreamContext::H2StreamContext(bool read_body_progressively)
     , _remote_ended(false)
     , _response_committed(false)
     , _rst_received(false)
+    , _header_section_received(false)
+    , _in_trailer_section(false)
     , _rst_error(H2_NO_ERROR)
     , _remote_window_left(0)
     , _deferred_window_update(0)
@@ -1500,6 +1508,22 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
             // memory on fields nobody is going to read. A peer that keeps
             // piling them up still runs into max_header_list_size above, which
             // escalates to a connection error as it has to.
+            continue;
+        }
+        if (_in_trailer_section) {
+            // RFC 9110 section 6.5.1: a trailer field must not be combined
+            // into the header section. A front-end only rewrites the header
+            // section of a request, so a field merged from the trailers
+            // (Authorization, X-Forwarded-For, Cookie...) would be smuggled
+            // past it. Request trailers have no reader in bRPC, drop them as
+            // HttpMessage does for HTTP/1 chunked trailers.
+            if (pair.name[0] == ':') {
+                // RFC 9113 section 8.1: trailers must not include
+                // pseudo-header fields.
+                LOG(ERROR) << "Pseudo-header=`" << pair.name
+                           << "' in trailers, stream_id=" << _stream_id;
+                _rejected_error = H2_PROTOCOL_ERROR;
+            }
             continue;
         }
         const char* const name = pair.name.c_str();

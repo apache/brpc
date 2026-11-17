@@ -2834,6 +2834,82 @@ TEST_F(HttpTest, h2_oversized_single_headers_block_rejected) {
     delete sctx;
 }
 
+void AppendH2Frame(butil::IOBuf* out, brpc::policy::H2FrameType type,
+                   uint8_t flags, int stream_id, const butil::IOBuf& payload) {
+    char headbuf[brpc::policy::FRAME_HEAD_SIZE];
+    brpc::policy::SerializeFrameHead(headbuf, payload.size(), type, flags,
+                                     stream_id);
+    out->append(headbuf, sizeof(headbuf));
+    out->append(payload);
+}
+
+// HEADERS without END_STREAM, then DATA, then the trailer section in a
+// HEADERS frame with END_STREAM.
+void MakeH2RequestWithTrailers(butil::IOBuf* out, int stream_id,
+                               const butil::IOBuf& trailers) {
+    const uint8_t END_STREAM = 0x1;
+    const uint8_t END_HEADERS = 0x4;
+    butil::IOBuf headers;
+    AppendLiteralHeader(&headers, ":method", "POST");
+    AppendLiteralHeader(&headers, ":scheme", "http");
+    AppendLiteralHeader(&headers, ":path", "/EchoService/Echo");
+    AppendLiteralHeader(&headers, ":authority", "127.0.0.1");
+    AppendLiteralHeader(&headers, "content-type", "application/json");
+    AppendLiteralHeader(&headers, "x-forwarded-for", "10.0.0.1");
+    AppendH2Frame(out, brpc::policy::H2_FRAME_HEADERS, END_HEADERS,
+                  stream_id, headers);
+    butil::IOBuf body;
+    body.append("{\"message\":\"hello\"}");
+    AppendH2Frame(out, brpc::policy::H2_FRAME_DATA, 0, stream_id, body);
+    AppendH2Frame(out, brpc::policy::H2_FRAME_HEADERS,
+                  END_HEADERS | END_STREAM, stream_id, trailers);
+}
+
+// RFC 9110 section 6.5.1: a trailer field must not be merged into the header
+// section. A front-end only rewrites the header section of a request, so a
+// field taken from the trailers would be smuggled past it, the same way as
+// HTTP/1 chunked trailers before they were dropped. RFC 9113 section 8.1:
+// trailers must not carry pseudo-header fields.
+TEST_F(HttpTest, h2_request_trailers_not_merged_into_header) {
+    brpc::policy::H2Context* ctx =
+        new brpc::policy::H2Context(_socket.get(), &_server);
+    ASSERT_EQ(0, ctx->Init());
+    _socket->initialize_parsing_context(&ctx);
+    ASSERT_TRUE(ctx->is_server_side());
+    ctx->_conn_state = brpc::policy::H2_CONNECTION_READY;
+
+    butil::IOBuf trailers;
+    AppendLiteralHeader(&trailers, "x-forwarded-for", "6.6.6.6");
+    AppendLiteralHeader(&trailers, "authorization", "Bearer smuggled");
+    butil::IOBuf frames;
+    MakeH2RequestWithTrailers(&frames, 1, trailers);
+    brpc::ParseResult pr = brpc::policy::ParseH2Message(
+        &frames, _socket.get(), false, &_server);
+    ASSERT_TRUE(pr.is_ok());
+    ASSERT_TRUE(frames.empty());
+    brpc::policy::H2StreamContext* msg =
+        static_cast<brpc::policy::H2StreamContext*>(pr.message());
+    ASSERT_TRUE(msg != nullptr);
+    const std::string* xff = msg->header().GetHeader("x-forwarded-for");
+    ASSERT_TRUE(xff != nullptr);
+    EXPECT_EQ("10.0.0.1", *xff);
+    EXPECT_TRUE(msg->header().GetHeader("authorization") == nullptr);
+    EXPECT_EQ("/EchoService/Echo", msg->header().uri().path());
+    EXPECT_EQ("{\"message\":\"hello\"}", msg->body().to_string());
+    msg->Destroy();
+
+    // A pseudo-header in the trailers makes the request malformed. It must
+    // not be applied to the request either.
+    trailers.clear();
+    AppendLiteralHeader(&trailers, ":path", "/status");
+    frames.clear();
+    MakeH2RequestWithTrailers(&frames, 3, trailers);
+    pr = brpc::policy::ParseH2Message(&frames, _socket.get(), false, &_server);
+    ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
+    ASSERT_TRUE(frames.empty());
+    ASSERT_TRUE(ctx->FindStream(3) == nullptr);
+}
+
 TEST_F(HttpTest, http2_server_enforces_max_concurrent_streams) {
     // The server advertises SETTINGS_MAX_CONCURRENT_STREAMS but never
     // enforced it: every odd stream id was accepted, so a peer could pin an
