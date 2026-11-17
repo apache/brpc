@@ -143,14 +143,14 @@ Atomic64 Release_Load(volatile const Atomic64* ptr);
 #include "butil/atomicops_internals_tsan.h"
 #elif defined(OS_WIN) && defined(COMPILER_MSVC) && defined(ARCH_CPU_X86_FAMILY)
 #include "butil/atomicops_internals_x86_msvc.h"
+#elif defined(COMPILER_GCC) && defined(ARCH_CPU_ARM64)
+#include "butil/atomicops_internals_arm64_gcc.h"
 #elif defined(OS_MACOSX)
 #include "butil/atomicops_internals_mac.h"
 #elif defined(OS_NACL)
 #include "butil/atomicops_internals_gcc.h"
 #elif defined(COMPILER_GCC) && defined(ARCH_CPU_ARMEL)
 #include "butil/atomicops_internals_arm_gcc.h"
-#elif defined(COMPILER_GCC) && defined(ARCH_CPU_ARM64)
-#include "butil/atomicops_internals_arm64_gcc.h"
 #elif defined(COMPILER_GCC) && defined(ARCH_CPU_X86_FAMILY)
 #include "butil/atomicops_internals_x86_gcc.h"
 #elif defined(COMPILER_GCC) && defined(ARCH_CPU_MIPS_FAMILY)
