@@ -7,6 +7,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <thread>
+#include <vector>
+
 #include <gtest/gtest.h>
 
 template <class AtomicType>
@@ -76,6 +79,31 @@ static void TestAtomicIncrement() {
   EXPECT_EQ(s.count, 0);
   EXPECT_EQ(s.prev_word, prev_word_value);
   EXPECT_EQ(s.next_word, next_word_value);
+
+  EXPECT_EQ(butil::subtle::Barrier_AtomicIncrement(&s.count, 1), 1);
+  EXPECT_EQ(s.count, 1);
+  EXPECT_EQ(s.prev_word, prev_word_value);
+  EXPECT_EQ(s.next_word, next_word_value);
+
+  EXPECT_EQ(butil::subtle::Barrier_AtomicIncrement(&s.count, 2), 3);
+  EXPECT_EQ(s.count, 3);
+  EXPECT_EQ(s.prev_word, prev_word_value);
+  EXPECT_EQ(s.next_word, next_word_value);
+
+  EXPECT_EQ(butil::subtle::Barrier_AtomicIncrement(&s.count, -3), 0);
+  EXPECT_EQ(s.count, 0);
+  EXPECT_EQ(s.prev_word, prev_word_value);
+  EXPECT_EQ(s.next_word, next_word_value);
+
+  EXPECT_EQ(butil::subtle::Barrier_AtomicIncrement(&s.count, -5), -5);
+  EXPECT_EQ(s.count, -5);
+  EXPECT_EQ(s.prev_word, prev_word_value);
+  EXPECT_EQ(s.next_word, next_word_value);
+
+  EXPECT_EQ(butil::subtle::Barrier_AtomicIncrement(&s.count, 5), 0);
+  EXPECT_EQ(s.count, 0);
+  EXPECT_EQ(s.prev_word, prev_word_value);
+  EXPECT_EQ(s.next_word, next_word_value);
 }
 
 
@@ -101,6 +129,28 @@ static void TestCompareAndSwap() {
   value = k_test_val;
   prev = butil::subtle::NoBarrier_CompareAndSwap(&value, k_test_val, 5);
   EXPECT_EQ(5, value);
+  EXPECT_EQ(k_test_val, prev);
+
+  // Acquire_CompareAndSwap: failure and success paths.
+  value = k_test_val;
+  prev = butil::subtle::Acquire_CompareAndSwap(&value, 0, 7);
+  EXPECT_EQ(k_test_val, value);
+  EXPECT_EQ(k_test_val, prev);
+
+  value = k_test_val;
+  prev = butil::subtle::Acquire_CompareAndSwap(&value, k_test_val, 7);
+  EXPECT_EQ(7, value);
+  EXPECT_EQ(k_test_val, prev);
+
+  // Release_CompareAndSwap: failure and success paths.
+  value = k_test_val;
+  prev = butil::subtle::Release_CompareAndSwap(&value, 0, 9);
+  EXPECT_EQ(k_test_val, value);
+  EXPECT_EQ(k_test_val, prev);
+
+  value = k_test_val;
+  prev = butil::subtle::Release_CompareAndSwap(&value, k_test_val, 9);
+  EXPECT_EQ(9, value);
   EXPECT_EQ(k_test_val, prev);
 }
 
@@ -210,32 +260,129 @@ static void TestLoad() {
   EXPECT_EQ(kVal2, butil::subtle::Release_Load(&value));
 }
 
+template <class AtomicType>
+static void TestMultiThreadedContention() {
+  constexpr int kNumThreads = 8;
+  constexpr int kIterations = 2000;
+
+  volatile AtomicType nobarrier_inc = 0;
+  volatile AtomicType barrier_inc = 0;
+  volatile AtomicType acq_cas_counter = 0;
+  volatile AtomicType rel_cas_counter = 0;
+  volatile AtomicType spinlock = 0;
+  AtomicType protected_counter = 0;
+
+  std::vector<std::thread> threads;
+  threads.reserve(kNumThreads);
+  for (int t = 0; t < kNumThreads; ++t) {
+    threads.emplace_back([&]() {
+      for (int i = 0; i < kIterations; ++i) {
+        butil::subtle::NoBarrier_AtomicIncrement(&nobarrier_inc, 1);
+        butil::subtle::Barrier_AtomicIncrement(&barrier_inc, 1);
+
+        // Contended Acquire_CompareAndSwap loop.
+        AtomicType old_val = butil::subtle::NoBarrier_Load(&acq_cas_counter);
+        while (true) {
+          AtomicType prev = butil::subtle::Acquire_CompareAndSwap(
+              &acq_cas_counter, old_val, old_val + 1);
+          if (prev == old_val) {
+            break;
+          }
+          old_val = prev;
+        }
+
+        // Contended Release_CompareAndSwap loop.
+        old_val = butil::subtle::NoBarrier_Load(&rel_cas_counter);
+        while (true) {
+          AtomicType prev = butil::subtle::Release_CompareAndSwap(
+              &rel_cas_counter, old_val, old_val + 1);
+          if (prev == old_val) {
+            break;
+          }
+          old_val = prev;
+        }
+
+        // Acquire_CompareAndSwap / Release_Store spinlock protecting non-atomic data.
+        while (butil::subtle::Acquire_CompareAndSwap(&spinlock, 0, 1) != 0) {
+        }
+        ++protected_counter;
+        butil::subtle::Release_Store(&spinlock, 0);
+      }
+    });
+  }
+
+  for (auto& th : threads) {
+    th.join();
+  }
+
+  const AtomicType kExpected = kNumThreads * kIterations;
+  EXPECT_EQ(kExpected, butil::subtle::NoBarrier_Load(&nobarrier_inc));
+  EXPECT_EQ(kExpected, butil::subtle::Acquire_Load(&barrier_inc));
+  EXPECT_EQ(kExpected, butil::subtle::Acquire_Load(&acq_cas_counter));
+  EXPECT_EQ(kExpected, butil::subtle::Acquire_Load(&rel_cas_counter));
+  EXPECT_EQ(kExpected, protected_counter);
+}
+
+#if defined(ARCH_CPU_ARM64)
+TEST(AtomicOpsTest, UsesArm64GccInternalsHeader) {
+#if !defined(BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_)
+  FAIL() << "Expected BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_ to be included on ARCH_CPU_ARM64";
+#endif
+}
+#endif
+
 TEST(AtomicOpsTest, Inc) {
   TestAtomicIncrement<butil::subtle::Atomic32>();
   TestAtomicIncrement<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestAtomicIncrement<butil::subtle::Atomic64>();
+#endif
 }
 
 TEST(AtomicOpsTest, CompareAndSwap) {
   TestCompareAndSwap<butil::subtle::Atomic32>();
   TestCompareAndSwap<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestCompareAndSwap<butil::subtle::Atomic64>();
+#endif
 }
 
 TEST(AtomicOpsTest, Exchange) {
   TestAtomicExchange<butil::subtle::Atomic32>();
   TestAtomicExchange<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestAtomicExchange<butil::subtle::Atomic64>();
+#endif
 }
 
 TEST(AtomicOpsTest, IncrementBounds) {
   TestAtomicIncrementBounds<butil::subtle::Atomic32>();
   TestAtomicIncrementBounds<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestAtomicIncrementBounds<butil::subtle::Atomic64>();
+#endif
 }
 
 TEST(AtomicOpsTest, Store) {
   TestStore<butil::subtle::Atomic32>();
   TestStore<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestStore<butil::subtle::Atomic64>();
+#endif
 }
 
 TEST(AtomicOpsTest, Load) {
   TestLoad<butil::subtle::Atomic32>();
   TestLoad<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestLoad<butil::subtle::Atomic64>();
+#endif
+}
+
+TEST(AtomicOpsTest, MultiThreadedContention) {
+  TestMultiThreadedContention<butil::subtle::Atomic32>();
+  TestMultiThreadedContention<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestMultiThreadedContention<butil::subtle::Atomic64>();
+#endif
 }
