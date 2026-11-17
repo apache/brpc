@@ -80,7 +80,10 @@ int UrmaTransport::Reset(int32_t /*expected_nref*/) {
 }
 
 std::shared_ptr<AppConnect> UrmaTransport::Connect() {
-    if (_default_connect == nullptr) {
+    // Child sockets inherit AppConnect options. The built-in handshake
+    // stores a pending callback and therefore belongs to one socket only.
+    if (!_default_connect ||
+        dynamic_cast<urma::UrmaConnect*>(_default_connect.get())) {
         return std::make_shared<urma::UrmaConnect>();
     }
     return _default_connect;

@@ -25,6 +25,35 @@
 
 #if BRPC_WITH_URMA
 #include "urma_api.h"
+#include "brpc/urma/urma_endpoint.h"
+#include "brpc/urma/urma_helper.h"
+
+namespace brpc {
+namespace urma {
+
+class UrmaRecoveryTestPeer {
+public:
+    static ssize_t Send(Socket* socket, urma_jetty_t* jetty,
+                        urma_target_jetty_t* target, butil::IOBuf** buffers) {
+        UrmaEndpoint endpoint(socket);
+        UrmaResource resource;
+        resource.jetty = jetty;
+        resource.remote_jetty = target;
+        endpoint._resource = &resource;
+        endpoint._sbuf.resize(2);
+        endpoint._sq_window_size.store(4, butil::memory_order_relaxed);
+        endpoint._remote_rq_window_size.store(4, butil::memory_order_relaxed);
+        endpoint._remote_recv_block_size = 4;
+        const ssize_t sent = endpoint.CutFromIOBufList(buffers, 2);
+        endpoint._resource = nullptr;
+        resource.jetty = nullptr;
+        resource.remote_jetty = nullptr;
+        return sent;
+    }
+};
+
+}  // namespace urma
+}  // namespace brpc
 
 namespace {
 
@@ -93,6 +122,75 @@ class UrmaMockCompletionTest : public testing::Test {
     urma_jetty_t* _receiver = nullptr;
     urma_target_jetty_t* _target = nullptr;
 };
+
+TEST_F(UrmaMockCompletionTest, undeliverable_send_has_no_success_completion) {
+    urma_jfs_wr_t send{};
+    send.opcode = URMA_OPC_SEND;
+    send.flag.bs.complete_enable = 1;
+    send.tjetty = _target;
+    urma_jfs_wr_t* bad = nullptr;
+    urma_cr_t cr{};
+
+    EXPECT_EQ(URMA_EAGAIN, urma_post_jetty_send_wr(_sender, &send, &bad));
+    EXPECT_EQ(&send, bad);
+    EXPECT_EQ(0, urma_poll_jfc(_send_cq, 1, &cr));
+
+    ASSERT_EQ(URMA_SUCCESS, urma_delete_jfc(_recv_cq));
+    _recv_cq = nullptr;
+    bad = nullptr;
+    EXPECT_NE(URMA_SUCCESS, urma_post_jetty_send_wr(_sender, &send, &bad));
+    EXPECT_EQ(&send, bad);
+    EXPECT_EQ(0, urma_poll_jfc(_send_cq, 1, &cr));
+
+    ASSERT_EQ(URMA_SUCCESS, urma_delete_jetty(_receiver));
+    _receiver = nullptr;
+    bad = nullptr;
+    EXPECT_NE(URMA_SUCCESS, urma_post_jetty_send_wr(_sender, &send, &bad));
+    EXPECT_EQ(&send, bad);
+    EXPECT_EQ(0, urma_poll_jfc(_send_cq, 1, &cr));
+}
+
+TEST_F(UrmaMockCompletionTest, provider_backpressure_keeps_unsent_suffix) {
+    brpc::SocketId sid;
+    ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sid));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(sid, &socket));
+
+    char payload[] = "abcdefghijk";
+    urma_target_seg_t segment{};
+    segment.urma_ctx = brpc::urma::GetUrmaContext();
+    segment.seg.ubva.va = reinterpret_cast<uint64_t>(payload);
+    segment.seg.len = sizeof(payload) - 1;
+    const auto meta = reinterpret_cast<uint64_t>(&segment);
+    butil::IOBuf head;
+    butil::IOBuf tail;
+    ASSERT_EQ(0, head.append_user_data_with_meta(payload, 6, [](void*) {}, meta));
+    ASSERT_EQ(0, tail.append_user_data_with_meta(payload + 6, 5,
+                                                [](void*) {}, meta));
+    butil::IOBuf* buffers[] = {&head, &tail};
+
+    char received[4]{};
+    urma_sge_t sge{};
+    sge.addr = reinterpret_cast<uint64_t>(received);
+    sge.len = sizeof(received);
+    urma_jfr_wr_t recv{};
+    recv.src.sge = &sge;
+    recv.src.num_sge = 1;
+    urma_jfr_wr_t* bad = nullptr;
+    ASSERT_EQ(URMA_SUCCESS, urma_post_jfr_wr(_recv_queue, &recv, &bad));
+
+    EXPECT_EQ(4, brpc::urma::UrmaRecoveryTestPeer::Send(
+                     socket.get(), _sender, _target, buffers));
+    EXPECT_EQ("abcd", std::string(received, sizeof(received)));
+    EXPECT_EQ("ef", head.to_string());
+    EXPECT_EQ("ghijk", tail.to_string());
+    EXPECT_EQ(-1, brpc::urma::UrmaRecoveryTestPeer::Send(
+                      socket.get(), _sender, _target, buffers));
+    EXPECT_EQ(EAGAIN, errno);
+    EXPECT_EQ("ef", head.to_string());
+    EXPECT_EQ("ghijk", tail.to_string());
+    socket->SetFailed();
+}
 
 TEST_F(UrmaMockCompletionTest, send_completion_follows_payload_delivery) {
     // Keep the copy large enough for a concurrent CQ consumer to run while

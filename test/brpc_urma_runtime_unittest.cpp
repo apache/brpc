@@ -242,6 +242,9 @@ TEST(UrmaRuntimeHelperTest, copied_send_failure_preserves_source_payload) {
         urma::CopyUrmaSendBuffer(&buffer, &sge, RejectCopyTestSegment));
     EXPECT_EQ(ERDMAMEM, errno);
     EXPECT_EQ("unchanged", buffer.to_string());
+    EXPECT_FALSE(urma::CopyUrmaSendBuffer(&buffer, &sge, nullptr));
+    EXPECT_EQ(EINVAL, errno);
+    EXPECT_EQ("unchanged", buffer.to_string());
     const std::string large(urma::GetUrmaRecvBlockSize(), 'y');
     buffer.clear();
     buffer.append(large);
@@ -299,7 +302,9 @@ public:
         return ep->ImportPeer(peer);
     }
     static void Establish(UrmaEndpoint* ep) {
-        GlobalUrmaRecoveryPolicy().AllowNewConnection("", &ep->_recovery_epoch);
+        uint64_t epoch = 0;
+        GlobalUrmaRecoveryPolicy().AllowNewConnection("", &epoch);
+        ep->_recovery_epoch.store(epoch, butil::memory_order_relaxed);
         ep->_state = UrmaEndpoint::ESTABLISHED;
     }
     static ssize_t Complete(UrmaEndpoint* ep, urma_cr_status_t status) {
@@ -316,14 +321,18 @@ public:
         resource.jfc = &invalid_jfc;
         ep->_resource = &resource;
         SocketOptions options;
-        options.user = ep;
         SocketId sid;
         if (Socket::Create(options, &sid) == 0) {
             SocketUniquePtr carrier;
             if (Socket::Address(sid, &carrier) == 0) {
                 const bool polling = FLAGS_urma_use_polling;
                 FLAGS_urma_use_polling = true;
-                UrmaEndpoint::PollCq(carrier.get());
+                SocketUniquePtr owner;
+                if (Socket::Address(ep->_socket->id(), &owner) == 0) {
+                    ep->_cq_sid = sid;
+                    ep->DrainCq(carrier.get(), owner);
+                    ep->_cq_sid = INVALID_SOCKET_ID;
+                }
                 FLAGS_urma_use_polling = polling;
                 carrier->SetFailed();
             }

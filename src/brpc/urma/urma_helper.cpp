@@ -446,6 +446,10 @@ bool InitUrmaLocalSge(urma_sge_t* sge, uint64_t address, size_t length,
 
 bool CopyUrmaSendBuffer(butil::IOBuf* buffer, urma_sge_t* sge,
                         urma_target_seg_t* (*lookup)(void*)) {
+    if (!buffer || !sge || !lookup) {
+        errno = EINVAL;
+        return false;
+    }
     const size_t length = buffer->size();
     const size_t capacity = GetUrmaRecvBlockSize();
     if (length == 0 || capacity < URMA_SEND_BUFFER_ALIGNMENT ||

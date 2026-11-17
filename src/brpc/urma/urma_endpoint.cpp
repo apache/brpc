@@ -19,6 +19,7 @@
 
 #if BRPC_WITH_URMA
 
+#include <fcntl.h>
 #include <sys/resource.h>
 #include <unistd.h>
 
@@ -35,6 +36,7 @@
 #include <gflags/gflags.h>
 
 #include "butil/atomicops.h"
+#include "butil/fd_guard.h"
 #include "butil/iobuf.h"
 #include "butil/logging.h"
 #include "butil/macros.h"
@@ -97,11 +99,12 @@ static int PreparedJettyCount() {
     }
 
     // In event mode each prepared JFCE consumes a file descriptor. Keep room
-    // for one TCP fd per future URMA connection and for brpc/system internals.
+    // for a TCP fd and a CQ carrier fd per future URMA connection, plus
+    // descriptors used by brpc/system internals.
     static const rlim_t kReservedFdCount = 64;
     const rlim_t max_prepared =
         nofile.rlim_cur > kReservedFdCount
-            ? (nofile.rlim_cur - kReservedFdCount) / 2
+            ? (nofile.rlim_cur - kReservedFdCount) / 3
             : 0;
     if (max_prepared >= static_cast<rlim_t>(requested)) {
         return requested;
@@ -185,9 +188,6 @@ void UrmaEndpoint::Reset() {
     _rq_received = 0;
     _pending_received_bytes.store(0, butil::memory_order_relaxed);
     _input_processor.Reset();
-    _sbuf.clear();
-    _rbuf.clear();
-    _rbuf_data.clear();
     _read_butex->store(0, butil::memory_order_relaxed);
 }
 
@@ -390,7 +390,21 @@ int UrmaEndpoint::ReadAndParseHelloV3(ParsedHello* out, bool* negotiated) {
 // Allocate / deallocate per-connection resources.
 // ============================================================================
 
+namespace {
+
+class UrmaCqSocketUser : public SocketUser {
+public:
+    explicit UrmaCqSocketUser(SocketId owner) : owner_id(owner) {}
+
+    void BeforeRecycle(Socket*) override { delete this; }
+
+    const SocketId owner_id;
+};
+
+}  // namespace
+
 int UrmaEndpoint::AllocateResources() {
+    std::unique_lock<butil::Mutex> lock(_cq_mutex);
     if (_resource) {
         return 0;
     }
@@ -479,7 +493,9 @@ int UrmaEndpoint::AllocateResources() {
     _rbuf.resize(_rq_size);
     _rbuf_data.resize(_rq_size, nullptr);
 
-    // Wrap the JFCE fd in a brpc Socket so PollCq is driven by epoll.
+    // The provider owns the original JFCE fd. Give the carrier its own
+    // descriptor so its lifetime does not depend on provider teardown.
+    butil::fd_guard event_fd;
     if (!FLAGS_urma_use_polling) {
         if (!_resource->jfce || _resource->jfce->fd < 0) {
             LOG(ERROR) << "Prepared URMA resource has no usable JFCE";
@@ -489,58 +505,59 @@ int UrmaEndpoint::AllocateResources() {
         if (ReqNotifyCq() != 0) {
             return -1;
         }
-        SocketOptions options;
-        options.user = this;
-        options.keytable_pool = _socket->keytable_pool();
-        options.fd = _resource->jfce->fd;
-        options.on_edge_triggered_events = PollCq;
-        if (Socket::Create(options, &_cq_sid) < 0) {
-            PLOG(ERROR) << "Fail to create CQ socket";
+        event_fd.reset(fcntl(_resource->jfce->fd, F_DUPFD_CLOEXEC, 0));
+        if (event_fd < 0) {
             return -1;
         }
+    }
+    std::unique_ptr<UrmaCqSocketUser> user(
+        new (std::nothrow) UrmaCqSocketUser(_socket->id()));
+    if (!user) {
+        errno = ENOMEM;
+        return -1;
+    }
+    SocketOptions options;
+    options.keytable_pool = _socket->keytable_pool();
+    options.on_edge_triggered_events = PollCq;
+    if (Socket::Create(options, &_cq_sid) != 0) {
+        PLOG(ERROR) << "Fail to create CQ socket";
+        return -1;
+    }
+    // Install the owner before publishing the carrier to epoll or the poller.
+    SocketUniquePtr carrier;
+    CHECK_EQ(0, Socket::Address(_cq_sid, &carrier));
+    carrier->_user = user.release();
+    if (event_fd >= 0) {
+        if (carrier->ResetFileDescriptor(event_fd) != 0) {
+            return -1;
+        }
+        event_fd.release();
     } else {
-        // Polling mode: synthetic carrier socket (no fd).
-        SocketOptions options;
-        options.user = this;
-        options.keytable_pool = _socket->keytable_pool();
-        options.on_edge_triggered_events = PollCq;
-        if (Socket::Create(options, &_cq_sid) < 0) {
-            PLOG(ERROR) << "Fail to create CQ socket (polling)";
-            return -1;
-        }
         PollerAddCqSid();
     }
+    _effective_priority.store(priority, butil::memory_order_relaxed);
     return 0;
 }
 
 void UrmaEndpoint::DeallocateResources() {
-    if (!_resource) {
-        return;
-    }
-
+    std::unique_lock<butil::Mutex> lock(_cq_mutex);
     if (FLAGS_urma_use_polling) {
         PollerRemoveCqSid();
     }
 
-    // Tear down the CQ socket so the EventDispatcher stops calling PollCq.
     if (_cq_sid != INVALID_SOCKET_ID) {
-        SocketUniquePtr s;
-        if (Socket::Address(_cq_sid, &s) == 0) {
-            if (s->fd() >= 0) {
-                s->_io_event.RemoveConsumer(s->_fd);
-            }
-            s->_user = nullptr;  // Do not release user (this UrmaEndpoint).
-            s->_fd = -1;  // Already removed fd from epoll.
-            s->SetFailed();
-        }
+        Socket::SetFailed(_cq_sid);
         _cq_sid = INVALID_SOCKET_ID;
     }
 
-    // Reusing a Jetty requires a driver-supported RESET plus a complete JFC
-    // drain. Until that lifecycle is implemented, prepared resources are
-    // one-shot: they accelerate connection setup but are destroyed on close.
+    // Prepared resources are one-shot. Destroy provider handles before
+    // releasing buffers referenced by outstanding work requests.
+    _effective_priority.store(-1, butil::memory_order_relaxed);
     delete _resource;
     _resource = nullptr;
+    _sbuf.clear();
+    _rbuf.clear();
+    _rbuf_data.clear();
 }
 
 // ============================================================================
@@ -640,29 +657,20 @@ int UrmaEndpoint::ImportPeer(const ParsedHello& peer) {
 class UrmaIOBuf : private butil::IOBuf {
     friend class ::brpc::urma::UrmaEndpoint;
 public:
-    using butil::IOBuf::_ref_num;
-    using butil::IOBuf::_ref_at;
-    using butil::IOBuf::fetch1;
-    using butil::IOBuf::get_first_data_meta;
-    using butil::IOBuf::cutn;
-    // Build the SGE for the current head block.
-    // Returns bytes added, or -1 (errno set).
-    ssize_t cut_into_sglist(urma_sge_t* sglist, size_t* sge_index,
-                            butil::IOBuf* to, size_t max_sge,
-                            size_t max_len) {
+    // Describe the prefix without consuming it. The writer commits only
+    // after the provider accepts the WR.
+    ssize_t DescribePrefix(urma_sge_t* sglist, size_t* sge_index,
+                           size_t max_sge, size_t max_len) const {
         size_t len = 0;
-        while (*sge_index < max_sge && len < max_len && _ref_num() != 0) {
-            butil::IOBuf::BlockRef const& r = _ref_at(0);
-            const void* start = fetch1();
+        for (size_t i = 0;
+             i < _ref_num() && *sge_index < max_sge && len < max_len; ++i) {
+            const butil::IOBuf::BlockRef& r = _ref_at(i);
+            void* start = r.block->data + r.offset;
             urma_target_seg_t* tseg =
-                GetPoolSegFor(const_cast<void*>(start));
-            if (!tseg) {
-                // User-registered memory: look up the seg handle.
-                uint64_t meta = get_first_data_meta();
-                if (meta != 0) {
-                    tseg = reinterpret_cast<urma_target_seg_t*>(
-                        static_cast<uintptr_t>(meta));
-                }
+                GetPoolSegFor(start);
+            if (!tseg && r.block->is_user_data()) {
+                tseg = reinterpret_cast<urma_target_seg_t*>(
+                    static_cast<uintptr_t>(r.block->u.data_meta));
             }
             if (!tseg) {
                 errno = ERDMAMEM;
@@ -684,7 +692,6 @@ public:
                            << (tseg->urma_ctx == GetUrmaContext());
                 return -1;
             }
-            cutn(to, this_len);
             len += this_len;
             (*sge_index)++;
         }
@@ -714,7 +721,7 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
     ssize_t total_len = 0;
     while (current < ndata) {
         uint16_t remote_wnd = _remote_rq_window_size.load(butil::memory_order_relaxed);
-        uint16_t sq_wnd = _sq_window_size.load(butil::memory_order_relaxed);
+        uint16_t sq_wnd = _sq_window_size.load(butil::memory_order_acquire);
         if (remote_wnd == 0 || sq_wnd == 0) {
             if (total_len > 0) {
                 break;
@@ -732,24 +739,23 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             max_len = std::min(max_len, GetUrmaRecvBlockSize() -
                                             (URMA_SEND_BUFFER_ALIGNMENT - 1));
         }
-        while (sge_index < static_cast<size_t>(max_sge) &&
-               this_len < max_len && current < ndata) {
-            auto* data = reinterpret_cast<UrmaIOBuf*>(from[current]);
-            if (data->empty()) {
-                ++current;
-                continue;
-            }
-            ssize_t n =
-                copy_send
-                    ? static_cast<ssize_t>(data->cutn(to, max_len - this_len))
-                    : data->cut_into_sglist(sglist, &sge_index, to, max_sge,
-                                            max_len - this_len);
+        for (size_t i = current;
+             i < ndata && this_len < max_len &&
+             sge_index < static_cast<size_t>(max_sge); ++i) {
+            const auto* data = reinterpret_cast<const UrmaIOBuf*>(from[i]);
+            const ssize_t n =
+                copy_send ? static_cast<ssize_t>(
+                                std::min(from[i]->size(), max_len - this_len))
+                          : data->DescribePrefix(sglist, &sge_index, max_sge,
+                                                 max_len - this_len);
             if (n < 0) {
+                to->clear();
                 if (errno == ERDMAMEM) {
                     ReportFailure(UrmaFailureReason::ACCESS_ERROR);
                 }
                 return -1;
             }
+            from[i]->append_to(to, n);
             this_len += n;
         }
         if (this_len == 0) {
@@ -760,6 +766,7 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
                 LOG(ERROR)
                     << "Fail to prepare aligned URMA send buffer: length="
                     << this_len << " errno=" << errno;
+                to->clear();
                 ReportFailure(UrmaFailureReason::ACCESS_ERROR);
                 return -1;
             }
@@ -797,6 +804,11 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             const int provider_errno = errno;
             _remote_rq_window_size.fetch_add(1, butil::memory_order_relaxed);
             _sq_window_size.fetch_add(1, butil::memory_order_relaxed);
+            to->clear();
+            if (rc == URMA_EAGAIN) {
+                errno = EAGAIN;
+                return total_len ? total_len : -1;
+            }
             LOG(WARNING) << "urma_post_jetty_send_wr failed: " << rc
                          << ", provider_errno=" << provider_errno
                          << " (" << berror(provider_errno) << ')'
@@ -815,6 +827,13 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             ReportFailure(UrmaFailureReason::SEND_POST);
             errno = rc;
             return -1;
+        }
+        // Commit the accepted prefix across the original write requests.
+        for (size_t remaining = this_len; remaining > 0;) {
+            remaining -= from[current]->pop_front(remaining);
+            if (from[current]->empty()) {
+                ++current;
+            }
         }
         _sq_current = (_sq_current + 1) % (_sq_size - RESERVED_WR_NUM);
         total_len += static_cast<ssize_t>(this_len);
@@ -1061,31 +1080,19 @@ ssize_t UrmaEndpoint::HandleCompletion(const urma_cr_t& cr) {
             _sq_imm_window_size += 1;
             return SendAck(0);
         }
-        uint16_t wnd = 1;  // We signal every WR (complete_enable=1).
-        uint16_t old =
-            _sq_window_size.load(butil::memory_order_relaxed);
-        while (true) {
-            if (old >= _local_window_capacity) {
-                LOG(WARNING)
-                    << "URMA send completion exceeds SQ window: old=" << old
-                    << " increment=" << wnd
-                    << " capacity=" << _local_window_capacity
-                    << " user_ctx=" << cr.user_ctx
-                    << " on " << _socket->description();
-                errno = EPROTO;
-                return -1;
-            }
-            if (_sq_window_size.compare_exchange_weak(
-                    old, static_cast<uint16_t>(old + wnd),
-                    butil::memory_order_relaxed)) {
-                break;
-            }
+        const uint16_t old = _sq_window_size.load(butil::memory_order_relaxed);
+        if (old >= _local_window_capacity) {
+            LOG(WARNING) << "URMA send completion exceeds SQ window: old=" << old
+                         << " capacity=" << _local_window_capacity
+                         << " user_ctx=" << cr.user_ctx
+                         << " on " << _socket->description();
+            errno = EPROTO;
+            return -1;
         }
-        for (uint16_t i = 0; i < wnd; ++i) {
-            _sbuf[_sq_sent].clear();
-            _sq_sent = (_sq_sent + 1) % (_sq_size - RESERVED_WR_NUM);
-        }
-        butil::subtle::MemoryBarrier();
+        // Reclaim the buffer before making its slot available to the writer.
+        _sbuf[_sq_sent].clear();
+        _sq_sent = (_sq_sent + 1) % (_sq_size - RESERVED_WR_NUM);
+        _sq_window_size.fetch_add(1, butil::memory_order_release);
         if (_remote_rq_window_size.load(butil::memory_order_relaxed) >=
             _local_window_capacity / 8) {
             _socket->WakeAsEpollOut();
@@ -1192,24 +1199,31 @@ void UrmaEndpoint::DispatchReceivedBytes(SocketUniquePtr& s, ssize_t bytes) {
 }
 
 void UrmaEndpoint::PollCq(Socket* m) {
-    auto* ep = static_cast<UrmaEndpoint*>(m->user());
-    if (!ep || !ep->_resource || !ep->_resource->jfc) {
+    // Acquire the fd published by ResetFileDescriptor in event mode.
+    if (!FLAGS_urma_use_polling &&
+        m->_fd.load(butil::memory_order_acquire) < 0) {
         return;
     }
-    SocketUniquePtr s;
-    if (Socket::Address(ep->_socket->id(), &s) != 0) {
+    const auto* user = static_cast<const UrmaCqSocketUser*>(m->user());
+    SocketUniquePtr owner;
+    if (!user || Socket::Address(user->owner_id, &owner) != 0) {
         return;
     }
-    if (s->Failed()) {
-        return;
-    }
+    auto* transport = static_cast<UrmaTransport*>(owner->_transport.get());
+    transport->_urma_ep->DrainCq(m, owner);
+}
 
+void UrmaEndpoint::DrainCq(Socket* m, SocketUniquePtr& s) {
     const bool event_mode = !FLAGS_urma_use_polling;
     int progress = Socket::PROGRESS_INIT;
     while (true) {
+        std::unique_lock<butil::Mutex> lock(_cq_mutex);
+        if (m->id() != _cq_sid || !_resource || !_resource->jfc || s->Failed()) {
+            return;
+        }
         urma_jfc_t* event_jfc = nullptr;
         if (event_mode) {
-            const int event_count = ep->WaitCqEvent(s, &event_jfc);
+            const int event_count = WaitCqEvent(s, &event_jfc);
             if (event_count < 0) {
                 return;
             }
@@ -1228,9 +1242,9 @@ void UrmaEndpoint::PollCq(Socket* m) {
                     std::max(1, std::min<int>(FLAGS_urma_cqe_poll_once, 32));
                 urma_cr_t crs[32];
                 const int cnt =
-                    urma_poll_jfc(ep->_resource->jfc, n, crs);
+                    urma_poll_jfc(_resource->jfc, n, crs);
                 if (cnt < 0) {
-                    ep->ReportFailure(UrmaFailureReason::CQ_POLL);
+                    ReportFailure(UrmaFailureReason::CQ_POLL);
                     return EIO;
                 }
                 if (cnt == 0) {
@@ -1240,7 +1254,7 @@ void UrmaEndpoint::PollCq(Socket* m) {
                     if (s->Failed()) {
                         return ECANCELED;
                     }
-                    const ssize_t nr = ep->HandleCompletion(crs[i]);
+                    const ssize_t nr = HandleCompletion(crs[i]);
                     if (nr < 0) {
                         return errno ? errno : EIO;
                     }
@@ -1258,7 +1272,7 @@ void UrmaEndpoint::PollCq(Socket* m) {
             uint32_t nevents = 1;
             urma_ack_jfc(&event_jfc, &nevents, 1);
             if (completion_error == 0) {
-                if (ep->ReqNotifyCq() != 0) {
+                if (ReqNotifyCq() != 0) {
                     return;
                 }
 
@@ -1276,7 +1290,8 @@ void UrmaEndpoint::PollCq(Socket* m) {
             }
             return;
         }
-        ep->DispatchReceivedBytes(s, bytes);
+        lock.unlock();
+        DispatchReceivedBytes(s, bytes);
 
         if (!event_mode) {
             return;
@@ -1438,6 +1453,17 @@ void UrmaEndpoint::FallbackToTcp(UrmaTransport* transport, bool process_tcp) {
     }
 }
 
+bool UrmaEndpoint::AllowNewUrmaConnection(const char* peer) {
+    if (!IsUrmaAvailable()) {
+        return false;
+    }
+    uint64_t epoch = 0;
+    const bool allowed =
+        GlobalUrmaRecoveryPolicy().AllowNewConnection(peer, &epoch);
+    _recovery_epoch.store(epoch, butil::memory_order_relaxed);
+    return allowed;
+}
+
 void UrmaEndpoint::ReportFailure(UrmaFailureReason reason) {
     if (_state.load(butil::memory_order_acquire) != ESTABLISHED) {
         return;
@@ -1451,7 +1477,7 @@ void UrmaEndpoint::ReportFailure(UrmaFailureReason reason) {
         _socket->CreatedByConnect()
             ? butil::endpoint2str(_socket->remote_side()).c_str()
             : "",
-        _recovery_epoch, reason);
+        _recovery_epoch.load(butil::memory_order_relaxed), reason);
 }
 
 void UrmaEndpoint::FailHandshake(UrmaTransport* transport, int error,
@@ -1480,9 +1506,8 @@ void* UrmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     SocketUniquePtr s(ep->_socket);
     auto* tp = static_cast<UrmaTransport*>(s->_transport.get());
     UrmaConnect::RunGuard guard(static_cast<UrmaConnect*>(s->_app_connect.get()));
-    if (!IsUrmaAvailable() || !GlobalUrmaRecoveryPolicy().AllowNewConnection(
-                                  butil::endpoint2str(s->remote_side()).c_str(),
-                                  &ep->_recovery_epoch)) {
+    if (!ep->AllowNewUrmaConnection(
+            butil::endpoint2str(s->remote_side()).c_str())) {
         ep->FallbackToTcp(tp, true);
         return nullptr;
     }
@@ -1534,7 +1559,8 @@ void* UrmaEndpoint::ProcessHandshakeAtClient(void* arg) {
     }
     tp->_urma_state = UrmaTransport::URMA_ON;
     ep->_state = ESTABLISHED;
-    GlobalUrmaRecoveryPolicy().RecordNegotiatedConnection(ep->_recovery_epoch);
+    GlobalUrmaRecoveryPolicy().RecordNegotiatedConnection(
+        ep->_recovery_epoch.load(butil::memory_order_relaxed));
     ep->DispatchReceivedBytes(s, 0);
     ep->DrainEstablishedTcp();
     return nullptr;
@@ -1571,8 +1597,7 @@ void* UrmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         ep->FailHandshake(tp, EPROTO, "invalid client hello");
         return nullptr;
     }
-    if (!IsUrmaAvailable() || !GlobalUrmaRecoveryPolicy().AllowNewConnection(
-                                  "", &ep->_recovery_epoch)) {
+    if (!ep->AllowNewUrmaConnection("")) {
         tp->_urma_state = UrmaTransport::URMA_OFF;
         if (hs->SendLocalHello() < 0) {
             ep->FailHandshake(tp, errno ? errno : EIO,
@@ -1633,7 +1658,7 @@ void* UrmaEndpoint::ProcessHandshakeAtServer(void* arg) {
         tp->_urma_state = UrmaTransport::URMA_ON;
         ep->_state = ESTABLISHED;
         GlobalUrmaRecoveryPolicy().RecordNegotiatedConnection(
-            ep->_recovery_epoch);
+            ep->_recovery_epoch.load(butil::memory_order_relaxed));
         ep->DispatchReceivedBytes(s, 0);
         ep->DrainEstablishedTcp();
     } else {
@@ -1720,6 +1745,7 @@ std::string UrmaEndpoint::GetStateStr() const {
 }
 
 void UrmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece) const {
+    const int priority = _effective_priority.load(butil::memory_order_relaxed);
     os << "state=" << GetStateStr() << " sq_size=" << _sq_size
        << " rq_size=" << _rq_size
        << " remote_recv_block_size=" << _remote_recv_block_size
@@ -1728,16 +1754,9 @@ void UrmaEndpoint::DebugInfo(std::ostream& os, butil::StringPiece) const {
        << _remote_rq_window_size.load(butil::memory_order_relaxed)
        << " urma_priority=" << _socket->urma_qos().priority
        << " urma_sl=" << _socket->urma_qos().service_level
-       << " urma_effective_priority="
-       << (_resource && _resource->jetty
-               ? static_cast<int>(_resource->jetty->jetty_cfg.jfs_cfg.priority)
-               : -1)
-       << " urma_effective_sl="
-       << (_resource && _resource->jetty
-               ? GetUrmaServiceLevelForPriority(
-                     _resource->jetty->jetty_cfg.jfs_cfg.priority)
-               : -1)
-       << " recovery_epoch=" << _recovery_epoch
+       << " urma_effective_priority=" << priority
+       << " urma_effective_sl=" << GetUrmaServiceLevelForPriority(priority)
+       << " recovery_epoch=" << _recovery_epoch.load(butil::memory_order_relaxed)
        << " runtime_failure=" << UrmaFailureReasonName(_runtime_failure.load())
        << " handshake_version=" << _handshake_version
        << " read_buf=" << _input_processor.read_buf().size();
