@@ -292,16 +292,25 @@ inline void compute_cpu_frequency_scale(int64_t freq, uint64_t* mult, uint32_t* 
         }
         --s;
     }
-#endif
     *mult = (1000000000ULL + ufreq - 1) / ufreq;
     *shift = 0;
+#else
+    *mult = ufreq;
+    *shift = 0;
+#endif
 }
 
 inline int64_t cycles_to_ns(uint64_t cycles, uint64_t mult, uint32_t shift) {
 #if defined(__SIZEOF_INT128__)
     return static_cast<int64_t>((static_cast<__uint128_t>(cycles) * mult) >> shift);
 #else
-    return static_cast<int64_t>((cycles * mult) >> shift);
+    (void)shift;
+    if (mult == 0) {
+        return 0;
+    }
+    const uint64_t sec = cycles / mult;
+    const uint64_t remain = cycles % mult;
+    return static_cast<int64_t>(remain * 1000000000ULL / mult + sec * 1000000000ULL);
 #endif
 }
 
@@ -336,15 +345,8 @@ inline int64_t cpuwide_time_ns() {
     int64_t cpu_freq = detail::invariant_cpu_freq;
     if (cpu_freq > 0) {
         const uint64_t tsc = detail::clock_cycles();
-#if defined(__SIZEOF_INT128__)
         return detail::cycles_to_ns(tsc, detail::invariant_cpu_freq_mult,
                                     detail::invariant_cpu_freq_shift);
-#else
-        // Try to avoid overflow on 32-bit platforms without __uint128_t
-        const uint64_t sec = tsc / cpu_freq;
-        const uint64_t remain = tsc % cpu_freq;
-        return remain * 1000000000L / cpu_freq + sec * 1000000000L;
-#endif
     } else {
         // Lack of necessary features, return system-wide monotonic time instead.
         return monotonic_time_ns();

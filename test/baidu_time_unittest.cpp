@@ -228,11 +228,15 @@ TEST(BaiduTimeTest, clock_cycles_monotonic_and_serialized) {
     // because clock_cycles() executes isb before mrs cntvct_el0, the reader thread
     // cannot speculatively hoist the counter read ahead of the acquire load.
     uint64_t published_tsc = 0;
-    std::atomic<int> turn{0};  // 0: producer's turn, 1: consumer's turn
+    std::atomic<int> turn{0};  // 0: producer's turn, 1: consumer's turn, -1: stop
     const int kHandoffs = 2000;
     std::thread producer([&]() {
         for (int i = 0; i < kHandoffs; ++i) {
-            while (turn.load(std::memory_order_acquire) != 0) {
+            int t = 1;
+            while ((t = turn.load(std::memory_order_acquire)) == 1) {
+            }
+            if (t < 0) {
+                break;
             }
             published_tsc = butil::detail::clock_cycles();
             turn.store(1, std::memory_order_release);
@@ -243,8 +247,12 @@ TEST(BaiduTimeTest, clock_cycles_monotonic_and_serialized) {
         }
         const uint64_t after_acquire_tsc = butil::detail::clock_cycles();
         const uint64_t before_release_tsc = published_tsc;
+        if (after_acquire_tsc < before_release_tsc) {
+            turn.store(-1, std::memory_order_release);
+            EXPECT_GE(after_acquire_tsc, before_release_tsc) << "handoff=" << i;
+            break;
+        }
         turn.store(0, std::memory_order_release);
-        ASSERT_GE(after_acquire_tsc, before_release_tsc) << "handoff=" << i;
     }
     producer.join();
 #endif
@@ -256,11 +264,12 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
     butil::detail::compute_cpu_frequency_scale(0, &zero_mult, &zero_shift);
     ASSERT_EQ(static_cast<uint64_t>(0), zero_mult);
     ASSERT_EQ(0U, zero_shift);
+    ASSERT_EQ(0, butil::detail::cycles_to_ns(1000, zero_mult, zero_shift));
     butil::detail::compute_cpu_frequency_scale(-100, &zero_mult, &zero_shift);
     ASSERT_EQ(static_cast<uint64_t>(0), zero_mult);
     ASSERT_EQ(0U, zero_shift);
+    ASSERT_EQ(0, butil::detail::cycles_to_ns(1000, zero_mult, zero_shift));
 
-#if defined(__SIZEOF_INT128__)
     const int64_t freqs[] = {
         19200000LL,    // 19.2 MHz (Qualcomm / ARM generic timer)
         24000000LL,    // 24 MHz (Apple Silicon / ARM generic timer)
@@ -273,6 +282,7 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
 
     for (size_t f_idx = 0; f_idx < arraysize(freqs); ++f_idx) {
         const int64_t freq = freqs[f_idx];
+        const uint64_t ufreq = static_cast<uint64_t>(freq);
         uint64_t mult = 0;
         uint32_t shift = 0;
         butil::detail::compute_cpu_frequency_scale(freq, &mult, &shift);
@@ -284,7 +294,7 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
         for (uint64_t tsc = 0; tsc <= 10000; ++tsc) {
             const int64_t actual = butil::detail::cycles_to_ns(tsc, mult, shift);
             const int64_t expected = static_cast<int64_t>(
-                (static_cast<__uint128_t>(tsc) * 1000000000ULL) / static_cast<uint64_t>(freq));
+                (tsc % ufreq) * 1000000000ULL / ufreq + (tsc / ufreq) * 1000000000ULL);
             ASSERT_NEAR(expected, actual, 1) << "freq=" << freq << " tsc=" << tsc;
             ASSERT_GE(actual, prev_ns) << "freq=" << freq << " tsc=" << tsc;
             prev_ns = actual;
@@ -295,20 +305,19 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
             1ULL, 60ULL, 3600ULL, 86400ULL, 10000000ULL, 100000000ULL
         };
         for (size_t s_idx = 0; s_idx < arraysize(sec_anchors); ++s_idx) {
-            const uint64_t base_tsc = sec_anchors[s_idx] * static_cast<uint64_t>(freq);
+            const uint64_t base_tsc = sec_anchors[s_idx] * ufreq;
             int64_t local_prev = butil::detail::cycles_to_ns(base_tsc - 100, mult, shift);
             for (int64_t offset = -99; offset <= 100; ++offset) {
                 const uint64_t tsc = static_cast<uint64_t>(static_cast<int64_t>(base_tsc) + offset);
                 const int64_t actual = butil::detail::cycles_to_ns(tsc, mult, shift);
                 const int64_t expected = static_cast<int64_t>(
-                    (static_cast<__uint128_t>(tsc) * 1000000000ULL) / static_cast<uint64_t>(freq));
+                    (tsc % ufreq) * 1000000000ULL / ufreq + (tsc / ufreq) * 1000000000ULL);
                 ASSERT_NEAR(expected, actual, 1) << "freq=" << freq << " tsc=" << tsc;
                 ASSERT_GE(actual, local_prev) << "freq=" << freq << " tsc=" << tsc;
                 local_prev = actual;
             }
         }
     }
-#endif
 }
 
 TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
