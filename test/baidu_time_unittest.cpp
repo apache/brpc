@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <atomic>
+#include <thread>
 #include <gtest/gtest.h>
 #include "butil/build_config.h"
 
@@ -221,6 +223,30 @@ TEST(BaiduTimeTest, clock_cycles_monotonic_and_serialized) {
         prev = cur;
     }
 #endif
+#if defined(__aarch64__)
+    // Verify cross-thread acquire/release ordering of clock_cycles() on AArch64:
+    // because clock_cycles() executes isb before mrs cntvct_el0, the reader thread
+    // cannot speculatively hoist the counter read ahead of the acquire load.
+    std::atomic<uint64_t> published_tsc{0};
+    std::atomic<int> step{0};
+    const int kHandoffs = 2000;
+    std::thread producer([&]() {
+        for (int i = 1; i <= kHandoffs; ++i) {
+            while (step.load(std::memory_order_acquire) != i - 1) {
+            }
+            published_tsc.store(butil::detail::clock_cycles(), std::memory_order_relaxed);
+            step.store(i, std::memory_order_release);
+        }
+    });
+    for (int i = 1; i <= kHandoffs; ++i) {
+        while (step.load(std::memory_order_acquire) != i) {
+        }
+        const uint64_t after_acquire_tsc = butil::detail::clock_cycles();
+        const uint64_t before_release_tsc = published_tsc.load(std::memory_order_relaxed);
+        ASSERT_GE(after_acquire_tsc, before_release_tsc) << "handoff=" << i;
+    }
+    producer.join();
+#endif
 }
 
 TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
@@ -288,6 +314,22 @@ TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
 #if BUTIL_USE_CPU_FREQUENCY
     if (butil::detail::invariant_cpu_freq > 0) {
         ASSERT_GT(butil::detail::invariant_cpu_freq_mult, static_cast<uint64_t>(0));
+        // 1. Direct cycle-bracket check: regardless of OS scheduling or whether
+        // invariant_cpu_freq is CNTFRQ_EL0 (ARM64) or /proc/cpuinfo (x86),
+        // cpuwide_time_ns() must lie between the legacy division conversion of
+        // two bracketing clock_cycles() reads (within 1ns rounding).
+        const uint64_t ufreq = static_cast<uint64_t>(butil::detail::invariant_cpu_freq);
+        for (int i = 0; i < 1000; ++i) {
+            const uint64_t c0 = butil::detail::clock_cycles();
+            const int64_t t_cpu = butil::cpuwide_time_ns();
+            const uint64_t c1 = butil::detail::clock_cycles();
+            const int64_t ns0 = static_cast<int64_t>(
+                (c0 % ufreq) * 1000000000ULL / ufreq + (c0 / ufreq) * 1000000000ULL);
+            const int64_t ns1 = static_cast<int64_t>(
+                (c1 % ufreq) * 1000000000ULL / ufreq + (c1 / ufreq) * 1000000000ULL);
+            ASSERT_GE(t_cpu + 1, ns0);
+            ASSERT_LE(t_cpu - 1, ns1);
+        }
     }
 #endif
     int64_t prev = butil::cpuwide_time_ns();
@@ -297,34 +339,42 @@ TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
         prev = cur;
     }
 
-    const int64_t freq = (butil::detail::invariant_cpu_freq > 0)
-                             ? butil::detail::invariant_cpu_freq
-                             : 24000000LL;
+    int64_t freq = butil::detail::invariant_cpu_freq;
+#if defined(__aarch64__)
+    if (freq <= 0) {
+        // Exercise the hardware CNTFRQ_EL0 rate even when built with default
+        // WITH_CPU_FREQUENCY=OFF.
+        __asm__ __volatile__("mrs %0, cntfrq_el0" : "=r"(freq));
+    }
+    ASSERT_GT(freq, 0);
+#else
+    if (freq <= 0) {
+        freq = 24000000LL;
+    }
+#endif
     uint64_t mult = 0;
     uint32_t shift = 0;
     butil::detail::compute_cpu_frequency_scale(freq, &mult, &shift);
 
-    // Bracket cpuwide_time_ns() with monotonic_time_ns() on platforms where
-    // cpuwide_time_ns() uses an authoritative counter rate (AArch64 CNTFRQ_EL0
-    // or fallback to CLOCK_MONOTONIC). On x86 with WITH_CPU_FREQUENCY=ON,
-    // /proc/cpuinfo "cpu MHz" reflects instantaneous DVFS speed rather than
-    // invariant TSC rate, so validate conversion against the division formula.
-#if defined(__aarch64__) || !BUTIL_USE_CPU_FREQUENCY
+#if defined(__aarch64__)
+    // 2. Authoritative hardware timer rate check on AArch64 (works whether
+    // WITH_CPU_FREQUENCY is ON or OFF): bracket CNTFRQ_EL0-scaled clock_cycles()
+    // with monotonic_time_ns() across a 20ms sleep.
     const int64_t mono_before_start = butil::monotonic_time_ns();
-    const int64_t cpu_start = butil::cpuwide_time_ns();
+    const int64_t cnt_start_ns =
+        butil::detail::cycles_to_ns(butil::detail::clock_cycles(), mult, shift);
     const int64_t mono_after_start = butil::monotonic_time_ns();
     usleep(20000);  // 20ms
     const int64_t mono_before_end = butil::monotonic_time_ns();
-    const int64_t cpu_end = butil::cpuwide_time_ns();
+    const int64_t cnt_end_ns =
+        butil::detail::cycles_to_ns(butil::detail::clock_cycles(), mult, shift);
     const int64_t mono_after_end = butil::monotonic_time_ns();
 
-    const int64_t cpu_elapsed = cpu_end - cpu_start;
+    const int64_t cnt_elapsed = cnt_end_ns - cnt_start_ns;
     const int64_t min_mono_elapsed = mono_before_end - mono_after_start;
     const int64_t max_mono_elapsed = mono_after_end - mono_before_start;
-    EXPECT_GE(cpu_elapsed + 1000000L, min_mono_elapsed);
-    EXPECT_LE(cpu_elapsed - 1000000L, max_mono_elapsed);
-#else
-    usleep(20000);  // 20ms
+    EXPECT_GE(cnt_elapsed + 1000000L, min_mono_elapsed);
+    EXPECT_LE(cnt_elapsed - 1000000L, max_mono_elapsed);
 #endif
 
 #if defined(__aarch64__) || defined(__x86_64__) || defined(__amd64__) || defined(__loongarch64)
@@ -336,29 +386,33 @@ TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
     ASSERT_NEAR(div_ns, mul_ns, 1);
 #endif
 
-    // Microbenchmark cycles_to_ns vs dual-division over 200,000 iterations.
-
+    // 3. Dependent-chain microbenchmark of 2x 64-bit udiv vs 128-bit mul+shift
+    // using volatile runtime parameters so the compiler cannot constant-fold.
     const size_t N = 200000;
-    uint64_t sink = 0;
+    volatile uint64_t vfreq = static_cast<uint64_t>(freq);
+    volatile uint64_t vmult = mult;
+    volatile uint32_t vshift = shift;
+    uint64_t dep = butil::detail::clock_cycles();
     butil::Timer t_div, t_mul;
     t_div.start();
     for (size_t i = 0; i < N; ++i) {
-        const uint64_t tsc = butil::detail::clock_cycles() + i;
-        const uint64_t sec = tsc / static_cast<uint64_t>(freq);
-        const uint64_t remain = tsc % static_cast<uint64_t>(freq);
-        sink += remain * 1000000000ULL / static_cast<uint64_t>(freq) + sec * 1000000000ULL;
+        const uint64_t tsc = (dep & 1ULL) + i + 1000000ULL;
+        const uint64_t f = vfreq;
+        const uint64_t sec = tsc / f;
+        const uint64_t remain = tsc % f;
+        dep = remain * 1000000000ULL / f + sec * 1000000000ULL;
     }
     t_div.stop();
 
     t_mul.start();
     for (size_t i = 0; i < N; ++i) {
-        const uint64_t tsc = butil::detail::clock_cycles() + i;
-        sink += static_cast<uint64_t>(butil::detail::cycles_to_ns(tsc, mult, shift));
+        const uint64_t tsc = (dep & 1ULL) + i + 1000000ULL;
+        dep = static_cast<uint64_t>(butil::detail::cycles_to_ns(tsc, vmult, vshift));
     }
     t_mul.stop();
-    printf("clock_cycles + dual-div takes %" PRId64 "ns, clock_cycles + mul-shift takes %" PRId64 "ns (sink=%" PRIu64 ")\n",
+    printf("2x 64-bit udiv takes %" PRId64 "ns, 128-bit mul-shift takes %" PRId64 "ns (dep=%" PRIu64 ")\n",
            t_div.n_elapsed() / static_cast<int64_t>(N),
-           t_mul.n_elapsed() / static_cast<int64_t>(N), sink);
+           t_mul.n_elapsed() / static_cast<int64_t>(N), dep);
 }
 
 } // namespace
