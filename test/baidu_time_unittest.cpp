@@ -297,21 +297,46 @@ TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
         prev = cur;
     }
 
-    const int64_t mono_start = butil::monotonic_time_ns();
-    const int64_t cpu_start = butil::cpuwide_time_ns();
-    usleep(20000);  // 20ms
-    const int64_t mono_elapsed = butil::monotonic_time_ns() - mono_start;
-    const int64_t cpu_elapsed = butil::cpuwide_time_ns() - cpu_start;
-    // Allow reasonable scheduling jitter around the 20ms sleep, but both clocks must agree closely.
-    ASSERT_NEAR(mono_elapsed, cpu_elapsed, 5000000L);  // within 5ms
-
-    // Microbenchmark cycles_to_ns vs dual-division over 200,000 iterations.
     const int64_t freq = (butil::detail::invariant_cpu_freq > 0)
                              ? butil::detail::invariant_cpu_freq
                              : 24000000LL;
     uint64_t mult = 0;
     uint32_t shift = 0;
     butil::detail::compute_cpu_frequency_scale(freq, &mult, &shift);
+
+    // Bracket cpuwide_time_ns() with monotonic_time_ns() on platforms where
+    // cpuwide_time_ns() uses an authoritative counter rate (AArch64 CNTFRQ_EL0
+    // or fallback to CLOCK_MONOTONIC). On x86 with WITH_CPU_FREQUENCY=ON,
+    // /proc/cpuinfo "cpu MHz" reflects instantaneous DVFS speed rather than
+    // invariant TSC rate, so validate conversion against the division formula.
+#if defined(__aarch64__) || !BUTIL_USE_CPU_FREQUENCY
+    const int64_t mono_before_start = butil::monotonic_time_ns();
+    const int64_t cpu_start = butil::cpuwide_time_ns();
+    const int64_t mono_after_start = butil::monotonic_time_ns();
+    usleep(20000);  // 20ms
+    const int64_t mono_before_end = butil::monotonic_time_ns();
+    const int64_t cpu_end = butil::cpuwide_time_ns();
+    const int64_t mono_after_end = butil::monotonic_time_ns();
+
+    const int64_t cpu_elapsed = cpu_end - cpu_start;
+    const int64_t min_mono_elapsed = mono_before_end - mono_after_start;
+    const int64_t max_mono_elapsed = mono_after_end - mono_before_start;
+    EXPECT_GE(cpu_elapsed + 1000000L, min_mono_elapsed);
+    EXPECT_LE(cpu_elapsed - 1000000L, max_mono_elapsed);
+#else
+    usleep(20000);  // 20ms
+#endif
+
+#if defined(__aarch64__) || defined(__x86_64__) || defined(__amd64__) || defined(__loongarch64)
+    const uint64_t tsc_now = butil::detail::clock_cycles();
+    const uint64_t ufreq = static_cast<uint64_t>(freq);
+    const int64_t div_ns = static_cast<int64_t>(
+        (tsc_now % ufreq) * 1000000000ULL / ufreq + (tsc_now / ufreq) * 1000000000ULL);
+    const int64_t mul_ns = butil::detail::cycles_to_ns(tsc_now, mult, shift);
+    ASSERT_NEAR(div_ns, mul_ns, 1);
+#endif
+
+    // Microbenchmark cycles_to_ns vs dual-division over 200,000 iterations.
 
     const size_t N = 200000;
     uint64_t sink = 0;
