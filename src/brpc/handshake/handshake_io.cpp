@@ -17,6 +17,7 @@
 
 #include "brpc/handshake/handshake_io.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <errno.h>
 #include <unistd.h>
@@ -50,18 +51,34 @@ void SocketHandshakeIO::NotifyReadable() {
     bthread::butex_wake(_read_butex);
 }
 
+int SocketHandshakeIO::GetWaitDeadline(timespec* deadline) const {
+    if (_socket->Failed()) {
+        errno = EFAILEDSOCKET;
+        return -1;
+    }
+    const int64_t connect_deadline = _socket->_connect_deadline_us;
+    const int64_t now = butil::gettimeofday_us();
+    if (connect_deadline >= 0 && now >= connect_deadline) {
+        errno = ETIMEDOUT;
+        return -1;
+    }
+    const int64_t wait_until = now + WAIT_TIMEOUT_MS * 1000;
+    *deadline = butil::microseconds_to_timespec(
+        connect_deadline < 0 ? wait_until : std::min(wait_until, connect_deadline));
+    return 0;
+}
+
 int SocketHandshakeIO::ReadExact(void* data, size_t len) {
     CHECK(data != nullptr);
     CHECK(_socket != nullptr);
     const int fd = _socket->fd();
     size_t received = 0;
     while (received < len) {
-        if (_socket->Failed()) {
-            errno = EFAILEDSOCKET;
+        const int expected = _read_butex->load(butil::memory_order_acquire);
+        timespec duetime;
+        if (GetWaitDeadline(&duetime) != 0) {
             return -1;
         }
-        const int expected = _read_butex->load(butil::memory_order_acquire);
-        const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
         const ssize_t nr = read(
             fd, static_cast<uint8_t*>(data) + received, len - received);
         if (nr < 0) {
@@ -91,11 +108,10 @@ int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
     const int fd = _socket->fd();
     size_t written = 0;
     while (written < len) {
-        if (_socket->Failed()) {
-            errno = EFAILEDSOCKET;
+        timespec duetime;
+        if (GetWaitDeadline(&duetime) != 0) {
             return -1;
         }
-        const timespec duetime = butil::milliseconds_from_now(WAIT_TIMEOUT_MS);
         const ssize_t nw = write(
             fd, static_cast<const uint8_t*>(data) + written, len - written);
         if (nw > 0) {
@@ -112,7 +128,7 @@ int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
         if (errno != EAGAIN) {
             return -1;
         }
-        if (_socket->WaitEpollOut(_socket->fd(), true, &duetime) < 0 &&
+        if (_socket->WaitEpollOut(fd, true, &duetime, /*check_failed=*/true) < 0 &&
             errno != ETIMEDOUT) {
             if (_socket->Failed()) {
                 errno = EFAILEDSOCKET;

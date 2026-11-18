@@ -311,7 +311,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     static WriteRequest* const UNCONNECTED;
 
     butil::IOBuf data;
-    WriteRequest* next;
+    butil::atomic<WriteRequest*> next;
     bthread_id_t id_wait;
 
     void clear_and_set_control_bits(bool notify_on_success,
@@ -459,6 +459,7 @@ Socket::Socket(Forbidden f)
     , _need_on_edge_trigger(false)
     , _user(nullptr)
     , _conn(nullptr)
+    , _connect_deadline_us(-1)
     , _preferred_index(-1)
     , _hc_count(0)
     , _last_readtime_us(0)
@@ -477,6 +478,7 @@ Socket::Socket(Forbidden f)
     , _connection_type_for_progressive_read(CONNECTION_TYPE_UNKNOWN)
     , _controller_released_socket(false)
     , _fail_me_at_server_stop(false)
+    , _idle_fail_ref_count(0)
     , _logoff_flag(false)
     , _error_code(0)
     , _pipeline_q(nullptr)
@@ -533,8 +535,9 @@ void Socket::ReturnFailedWriteRequest(Socket::WriteRequest* p, int error_code,
 Socket::WriteRequest* Socket::ReleaseWriteRequestsExceptLast(
     Socket::WriteRequest* req, int error_code, const std::string& error_text) {
     WriteRequest* p = req;
-    while (p->next != nullptr) {
-        WriteRequest* const saved_next = p->next;
+    while (p->next.load(butil::memory_order_relaxed) != nullptr) {
+        WriteRequest* const saved_next =
+            p->next.load(butil::memory_order_relaxed);
         ReturnFailedWriteRequest(p, error_code, error_text);
         p = saved_next;
     }
@@ -744,6 +747,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _user = options.user;
     _conn = options.conn;
     _app_connect = _transport->Connect();
+    _connect_deadline_us = -1;
     _preferred_index = -1;
     _hc_count = 0;
     CHECK(_fd_input_processor.read_buf().empty());
@@ -773,6 +777,7 @@ int Socket::OnCreated(const SocketOptions& options) {
     _controller_released_socket.store(false, butil::memory_order_relaxed);
     // Maybe non-zero for RTMP connections.
     _fail_me_at_server_stop = false;
+    _idle_fail_ref_count.store(0, butil::memory_order_relaxed);
     _logoff_flag.store(false, butil::memory_order_relaxed);
     _error_code = 0;
     _agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
@@ -925,7 +930,7 @@ void Socket::OnFailed(int error_code, const std::string& error_text) {
         StartHealthCheck(id(), GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
     }
     // Wake up all threads waiting on EPOLLOUT when closing fd
-    _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
+    _epollout_butex->fetch_add(1, butil::memory_order_release);
     bthread::butex_wake_all(_epollout_butex);
 
     // Wake up all unresponded RPC.
@@ -1112,10 +1117,11 @@ int Socket::ReleaseReferenceIfIdle(int idle_seconds) {
     LOG_IF(WARNING, FLAGS_log_idle_connection_close)
         << "Close " << *this << " due to no data transmission for "
         << idle_seconds << " seconds";
-    if (shall_fail_me_at_server_stop()) {
-        // sockets for streaming purposes (say RTMP) are probably referenced
-        // by many places, ReleaseAdditionalReference() cannot notify other
-        // places to release refs, SetFailed() is a must.
+    if (shall_fail_me_at_server_stop() || shall_fail_me_at_idle_timeout()) {
+        // sockets for streaming purposes (say RTMP) or holding deferred
+        // responses are probably referenced by other places,
+        // ReleaseAdditionalReference() cannot notify other places to release
+        // refs, SetFailed() is a must.
         return SetFailed(EUNUSED, "No data transmission for %d seconds",
                          idle_seconds);
     }
@@ -1195,7 +1201,7 @@ int Socket::Status(SocketId id, int32_t* nref) {
 bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
                              bool singular_node,
                              Socket::WriteRequest** new_tail) {
-    CHECK(nullptr == old_head->next);
+    CHECK(nullptr == old_head->next.load(butil::memory_order_relaxed));
     // Try to set _write_head to nullptr to mark that the write is done.
     WriteRequest* new_head = old_head;
     WriteRequest* desired = nullptr;
@@ -1205,8 +1211,11 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
         // Write is obviously not complete if old_head is not fully written.
         return_when_no_more = false;
     }
-    if (_write_head.compare_exchange_strong(
-            new_head, desired, butil::memory_order_acquire)) {
+    // Release the writer's state when making the queue idle. On failure,
+    // acquire the initialization of the newly published requests.
+    if (_write_head.compare_exchange_strong(new_head, desired,
+                                            butil::memory_order_acq_rel,
+                                            butil::memory_order_acquire)) {
         // No one added new requests.
         if (new_tail) {
             *new_tail = old_head;
@@ -1222,23 +1231,25 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
     WriteRequest* tail = nullptr;
     WriteRequest* p = new_head;
     do {
-        while (p->next == WriteRequest::UNCONNECTED) {
+        WriteRequest* saved_next;
+        while ((saved_next = p->next.load(butil::memory_order_acquire)) ==
+               WriteRequest::UNCONNECTED) {
             // TODO(gejun): elaborate this
             sched_yield();
         }
-        WriteRequest* const saved_next = p->next;
-        p->next = tail;
+        p->next.store(tail, butil::memory_order_relaxed);
         tail = p;
         p = saved_next;
         CHECK(p != nullptr);
     } while (p != old_head);
 
     // Link old list with new list.
-    old_head->next = tail;
+    old_head->next.store(tail, butil::memory_order_relaxed);
     // Call Setup() from oldest to newest, notice that the calling sequence
     // matters for protocols using pipelined_count, this is why we don't
     // call Setup in above loop which is from newest to oldest.
-    for (WriteRequest* q = tail; q; q = q->next) {
+    for (WriteRequest* q = tail; q;
+         q = q->next.load(butil::memory_order_relaxed)) {
         q->Setup(this);
     }
     if (new_tail) {
@@ -1247,19 +1258,24 @@ bool Socket::IsWriteComplete(Socket::WriteRequest* old_head,
     return false;
 }
 
-int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
+int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime, bool check_failed) {
     if (!ValidFileDescriptor(fd)) {
         return 0;
     }
-    // Do not need to check addressable since it will be called by
-    // health checker which called `SetFailed' before
-    const int expected_val = _epollout_butex->load(butil::memory_order_relaxed);
+    // Snapshot before checking Failed(): an earlier cancellation is visible
+    // through the release in OnFailed(), while a later one changes the value
+    // or wakes butex_wait. Health checks deliberately skip this check.
+    int expected_val = _epollout_butex->load(butil::memory_order_acquire);
+    if (check_failed && Failed()) {
+        errno = ECANCELED;
+        return -1;
+    }
     if (_io_event.RegisterEvent(fd, pollin) != 0) {
         return -1;
     }
 
     int rc = bthread::butex_wait(_epollout_butex, expected_val, abstime);
-    const int saved_errno = errno;
+    int saved_errno = errno;
     if (rc < 0 && errno == EWOULDBLOCK) {
         // Could be writable or spurious wakeup
         rc = 0;
@@ -1267,13 +1283,18 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     // Ignore return value since `fd' might have been removed
     // by `RemoveConsumer' in `SetFailed'
     butil::ignore_result(_io_event.UnregisterEvent(fd, pollin));
+    if (check_failed && Failed()) {
+        errno = ECANCELED;
+        return -1;
+    }
     errno = saved_errno;
     // Could be writable or spurious wakeup (by former epollout)
     return rc;
 }
 
 int Socket::Connect(const timespec* abstime,
-                    int (*on_connect)(int, int, void*), void* data) {
+                    int (*on_connect)(int, int, void*), void* data,
+                    bool check_failed) {
     if (_ssl_ctx) {
         _ssl_state = SSL_CONNECTING;
     } else {
@@ -1378,7 +1399,7 @@ int Socket::Connect(const timespec* abstime,
         }
         
     } else {
-        if (WaitEpollOut(sockfd, false, abstime) != 0) {
+        if (WaitEpollOut(sockfd, false, abstime, check_failed) != 0) {
             PLOG(WARNING) << "Fail to wait EPOLLOUT of fd=" << sockfd;
             return -1;
         }
@@ -1430,6 +1451,7 @@ int Socket::ConnectIfNot(const timespec* abstime, WriteRequest* req) {
     if (_fd.load(butil::memory_order_consume) >= 0) {
        return 0;
     }
+    _connect_deadline_us = abstime ? butil::timespec_to_microseconds(*abstime) : -1;
     // Set tag for client side socket
     _io_event.set_bthread_tag(bthread_self_tag());
     // Have to hold a reference for `req'
@@ -1669,7 +1691,7 @@ int Socket::Write(butil::IOBuf* data, const WriteOptions* options_in) {
     req->data.swap(*data);
     // Set `req->next' to UNCONNECTED so that the KeepWrite thread will
     // wait until it points to a valid WriteRequest or nullptr.
-    req->next = WriteRequest::UNCONNECTED;
+    req->next.store(WriteRequest::UNCONNECTED, butil::memory_order_relaxed);
     req->id_wait = opt.id_wait;
     req->clear_and_set_control_bits(opt.notify_on_success, opt.shutdown_write);
     req->set_pipelined_count_and_user_message(
@@ -1706,7 +1728,7 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
 
     // Set `req->next' to UNCONNECTED so that the KeepWrite thread will
     // wait until it points to a valid WriteRequest or nullptr.
-    req->next = WriteRequest::UNCONNECTED;
+    req->next.store(WriteRequest::UNCONNECTED, butil::memory_order_relaxed);
     req->id_wait = opt.id_wait;
     req->clear_and_set_control_bits(opt.notify_on_success, opt.shutdown_write);
     req->set_pipelined_count_and_user_message(
@@ -1715,16 +1737,16 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
 }
 
 int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
-    // Release fence makes sure the thread getting request sees *req
-    WriteRequest* const prev_head =
-        _write_head.exchange(req, butil::memory_order_release);
+    // Publish *req, and acquire the previous writer's state when taking
+    // ownership of an idle queue.
+    WriteRequest* const prev_head = _write_head.exchange(req, butil::memory_order_acq_rel);
     if (prev_head != nullptr) {
         // Someone is writing to the fd. The KeepWrite thread may spin
         // until req->next to be non-UNCONNECTED. This process is not
         // lock-free, but the duration is so short(1~2 instructions,
         // depending on compiler) that the spin rarely occurs in practice
         // (I've not seen any spin in highly contended tests).
-        req->next = prev_head;
+        req->next.store(prev_head, butil::memory_order_release);
         return 0;
     }
 
@@ -1737,7 +1759,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     int ret = 0;
 
     // We've got the right to write.
-    req->next = nullptr;
+    req->next.store(nullptr, butil::memory_order_relaxed);
 
     // Fast fail when write has been shutdown.
     if (_is_write_shutdown) {
@@ -1827,10 +1849,11 @@ void* Socket::KeepWrite(void* void_arg) {
     do {
         // req was written, skip it.
         bool need_shutdown = false;
-        if (req->next != nullptr && req->data.empty()) {
+        if (req->next.load(butil::memory_order_relaxed) != nullptr &&
+            req->data.empty()) {
             WriteRequest* const saved_req = req;
             need_shutdown = req->need_shutdown_write();
-            req = req->next;
+            req = req->next.load(butil::memory_order_relaxed);
             s->ReturnSuccessfulWriteRequest(saved_req);
         }
         if (need_shutdown) {
@@ -1851,10 +1874,11 @@ void* Socket::KeepWrite(void* void_arg) {
             s->AddOutputBytes(nw);
         }
         // Release WriteRequest until non-empty data, last request or shutdown write.
-        while (req->next != nullptr && req->data.empty()) {
+        while (req->next.load(butil::memory_order_relaxed) != nullptr &&
+               req->data.empty()) {
             WriteRequest* const saved_req = req;
             need_shutdown = req->need_shutdown_write();
-            req = req->next;
+            req = req->next.load(butil::memory_order_relaxed);
             s->ReturnSuccessfulWriteRequest(saved_req);
             if (need_shutdown) {
                 break;
@@ -1884,8 +1908,9 @@ void* Socket::KeepWrite(void* void_arg) {
             }
         }
         if (nullptr == cur_tail) {
-            for (cur_tail = req; cur_tail->next != nullptr;
-                 cur_tail = cur_tail->next);
+            for (cur_tail = req;
+                 cur_tail->next.load(butil::memory_order_relaxed) != nullptr;
+                 cur_tail = cur_tail->next.load(butil::memory_order_relaxed));
         }
         // Return when there's no more WriteRequests and req is completely
         // written.
@@ -1906,7 +1931,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
     butil::IOBuf* data_list[DATA_LIST_MAX];
     size_t ndata = 0;
     for (WriteRequest* p = req; p != nullptr && ndata < DATA_LIST_MAX;
-         p = p->next) {
+         p = p->next.load(butil::memory_order_relaxed)) {
         data_list[ndata++] = &p->data;
         if (p->need_shutdown_write()) {
             // Write WriteRequest until shutdown write.

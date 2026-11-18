@@ -118,16 +118,14 @@ std::string MVariableBase::get_description() {
 int MVariableBase::describe_exposed(const std::string& name,
                                 std::ostream& os) {
     MVarMapWithLock& m = get_mvar_map();
-    MVariableBase* var = nullptr;
-    SharedExposedRef ref;
+    ScopedExposedRef var;
     {
         BAIDU_SCOPED_LOCK(m.mutex);
         MVarEntry* entry = m.seek(name);
         if (entry == nullptr) {
             return -1;
         }
-        ref = entry->ref;
-        var = ref->acquire();
+        var.reset(entry->ref);
     }
     if (var == nullptr) {
         return -1;
@@ -135,7 +133,6 @@ int MVariableBase::describe_exposed(const std::string& name,
     // Call describe() outside the MVarMap lock to avoid deadlock when the user
     // callback (e.g. Dumper) yields the bthread.
     var->describe(os);
-    ref->release();
     return 0;
 }
 
@@ -246,7 +243,7 @@ bool MVariableBase::hide() {
 #ifdef UNIT_TEST
 void MVariableBase::hide_all() {
     struct MVariableToHide {
-        MVariableBase* variable;
+        ScopedExposedRef variable;
         SharedExposedRef ref;
     };
 
@@ -260,7 +257,7 @@ void MVariableBase::hide_all() {
         for (MVarMap::const_iterator it = m.begin(); it != m.end(); ++it) {
             MVariableToHide variable;
             variable.ref = it->second.ref;
-            variable.variable = variable.ref->acquire();
+            variable.variable.reset(variable.ref);
             if (variable.variable != nullptr) {
                 variables.push_back(std::move(variable));
             }
@@ -269,12 +266,12 @@ void MVariableBase::hide_all() {
     }
 
     for (auto& variable : variables) {
-        // Touch the owner while the reference taken by acquire() above is still
-        // held: release() lets a concurrent destructor run to completion, and
+        // Touch the owner while the scoped reference is still held: resetting
+        // it lets a concurrent destructor run to completion, and
         // hide_and_wait() blocks until the last reference is gone, so it has to
-        // come after release() rather than before it.
+        // come after reset() rather than before it.
         variable.variable->_name.clear();
-        variable.ref->release();
+        variable.variable.reset();
         variable.ref->hide_and_wait();
     }
 }
@@ -364,22 +361,19 @@ int MVariableBase::dump_exposed(Dumper* dumper, const DumpOptions* options) {
         dumper, static_cast<size_t>(FLAGS_bvar_max_dump_multi_dimension_metric_number));
     size_t n = 0;
     for (size_t i = 0; i < mvars.size(); ++i) {
-        MVariableBase* var = nullptr;
-        SharedExposedRef ref;
+        ScopedExposedRef var;
         {
             MVarMapWithLock& m = get_mvar_map();
             BAIDU_SCOPED_LOCK(m.mutex);
             MVarEntry* entry = m.seek(mvars[i]);
             if (entry) {
-                ref = entry->ref;
-                var = ref->acquire();
+                var.reset(entry->ref);
             }
         }
         if (var != nullptr) {
             // Call dump() outside the MVarMap lock to avoid deadlock when the dump()
             // yields the bthread.
             n += var->dump(&limited_dumper, &opt);
-            ref->release();
         }
         if (limited_dumper.exhausted()) {
             // An exact fit on the last mvar has lost nothing.

@@ -102,6 +102,7 @@ public:
     // Returns 0 on success, 1 when ECE query is unavailable, -1 on error.
     int QueryLocalEce(ibv_ece* ece) const;
     void SetOutgoingEce(const ibv_ece& ece);
+    int ReconnectForHandshake();
 
     // For debug
     void DebugInfo(std::ostream& os,
@@ -125,6 +126,7 @@ private:
     // in the middle with resources partially allocated.
     // Return 0 if success, -1 if failed and errno set
     int DoAllocateResources();
+    int ReplaceHandshakeFd(int fd);
     // Start consuming CQ events only after handshake parsing has finished.
     int StartCqEvents();
 

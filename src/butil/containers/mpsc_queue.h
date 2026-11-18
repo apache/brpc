@@ -22,6 +22,7 @@
 #ifndef BUTIL_MPSC_QUEUE_H
 #define BUTIL_MPSC_QUEUE_H
 
+#include <new>
 #include "butil/object_pool.h"
 #include "butil/type_traits.h"
 #include "butil/memory/manual_constructor.h"
@@ -32,7 +33,7 @@ template <typename T>
 struct BAIDU_CACHELINE_ALIGNMENT MPSCQueueNode {
     static MPSCQueueNode* const UNCONNECTED;
 
-    MPSCQueueNode* next{nullptr};
+    atomic<MPSCQueueNode*> next{nullptr};
     ManualConstructor<T> data_mem;
 };
 
@@ -107,8 +108,8 @@ void MPSCQueue<T, Alloc>::Enqueue(T&& data) {
 template <typename T, typename Alloc>
 template <typename U>
 void MPSCQueue<T, Alloc>::EnqueueInternal(U&& data) {
-    auto node = (MPSCQueueNode<T>*)_alloc.Alloc();
-    node->next = MPSCQueueNode<T>::UNCONNECTED;
+    auto node = new (_alloc.Alloc()) MPSCQueueNode<T>;
+    node->next.store(MPSCQueueNode<T>::UNCONNECTED, memory_order_relaxed);
     node->data_mem.Init(std::forward<U>(data));
     EnqueueImpl(node);
 }
@@ -117,11 +118,11 @@ template <typename T, typename Alloc>
 void MPSCQueue<T, Alloc>::EnqueueImpl(MPSCQueueNode<T>* node) {
     MPSCQueueNode<T>* prev = _head.exchange(node, memory_order_release);
     if (prev) {
-        node->next = prev;
+        node->next.store(prev, memory_order_release);
         return;
     }
-    node->next = nullptr;
-    _cur_enqueue_node.store(node, memory_order_relaxed);
+    node->next.store(nullptr, memory_order_relaxed);
+    _cur_enqueue_node.store(node, memory_order_release);
 }
 
 template <typename T, typename Alloc>
@@ -135,7 +136,7 @@ bool MPSCQueue<T, Alloc>::DequeueImpl(T* data) {
     if (_cur_dequeue_node) {
         node = _cur_dequeue_node;
     } else {
-        node = _cur_enqueue_node.exchange(nullptr, memory_order_relaxed);
+        node = _cur_enqueue_node.exchange(nullptr, memory_order_acquire);
     }
     if (!node) {
         return false;
@@ -146,10 +147,10 @@ bool MPSCQueue<T, Alloc>::DequeueImpl(T* data) {
         *data = std::move(*mem);
     }
     MPSCQueueNode<T>* old_node = node;
-    if (!node->next) {
+    if (!node->next.load(memory_order_relaxed)) {
         ReverseList(node);
     }
-    _cur_dequeue_node = node->next;
+    _cur_dequeue_node = node->next.load(memory_order_relaxed);
     node->data_mem.Destroy();
     _alloc.Free(old_node);
 
@@ -167,27 +168,27 @@ void MPSCQueue<T, Alloc>::ReverseList(MPSCQueueNode<T>* old_head) {
         return;
     }
     CHECK_NE(new_head, old_head);
-    // Above acquire fence pairs release fence of exchange in Enqueue() to make
-    // sure that we see all fields of requests set.
+    // Acquire the new head's initialization, including its UNCONNECTED link.
 
     // Someone added new requests.
     // Reverse the list until old_head.
     MPSCQueueNode<T>* tail = nullptr;
     MPSCQueueNode<T>* p = new_head;
     do {
-        while (p->next == MPSCQueueNode<T>::UNCONNECTED) {
-            // TODO(gejun): elaborate this
+        MPSCQueueNode<T>* saved_next;
+        // The producer connects the link after publishing the node in _head.
+        while ((saved_next = p->next.load(memory_order_acquire)) ==
+               MPSCQueueNode<T>::UNCONNECTED) {
             sched_yield();
         }
-        MPSCQueueNode<T>* const saved_next = p->next;
-        p->next = tail;
+        p->next.store(tail, memory_order_relaxed);
         tail = p;
         p = saved_next;
         CHECK(p);
     } while (p != old_head);
 
     // Link old list with new list.
-    old_head->next = tail;
+    old_head->next.store(tail, memory_order_relaxed);
 }
 
 }

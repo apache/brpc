@@ -71,7 +71,6 @@ DECLARE_int32(bthread_min_concurrency);
 DECLARE_int32(bthread_parking_lot_of_each_tag);
 
 extern pthread_mutex_t g_task_control_mutex;
-EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
 void (*g_worker_startfn)() = nullptr;
 void (*g_tagged_worker_startfn)(bthread_tag_t) = nullptr;
 
@@ -129,7 +128,7 @@ void* TaskControl::worker_thread(void* arg) {
     }
     BT_VLOG << "Created worker=" << pthread_self() << " tid=" << g->_tid
             << " bthread=" << g->main_tid() << " tag=" << g->tag();
-    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group, g);
+    tls_task_group() = g;
     c->_nworkers << 1;
     c->tag_nworkers(g->tag()) << 1;
 
@@ -139,7 +138,7 @@ void* TaskControl::worker_thread(void* arg) {
     BT_VLOG << "Destroying worker=" << pthread_self() << " bthread="
             << g->main_tid() << " idle=" << stat.cputime_ns / 1000000.0
             << "ms uptime=" << g->current_uptime_ns() / 1000000.0 << "ms";
-    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_task_group, nullptr);
+    tls_task_group() = nullptr;
     g->destroy_self();
     c->_nworkers << -1;
     c->tag_nworkers(g->tag()) << -1;
@@ -666,7 +665,7 @@ int TaskControl::_destroy_group(TaskGroup* g) {
 }
 
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
-    auto tag = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)->tag();
+    auto tag = tls_task_group()->tag();
 
     if (_enable_priority_queue) {
         for (int i = 0;

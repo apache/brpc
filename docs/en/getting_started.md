@@ -389,6 +389,8 @@ Same with [here](#compile-brpc-with-cmake)
 
 c++14 is turned on by default to remove dependencies on boost (atomic).
 
+For butil ownership transfers, see [Migrating to C++14 move semantics](cpp14_move.md).
+
 The over-aligned issues in GCC7 is suppressed temporarily now.
 
 Using other versions of gcc may generate warnings, contact us to fix.

@@ -42,6 +42,12 @@
 
 namespace brpc {
 
+#if BRPC_WITH_RDMA
+namespace rdma {
+DECLARE_bool(rdma_trace_verbose);
+}
+#endif
+
 namespace {
 
 bool MatchesMagicPrefix(const char *prefix, size_t prefix_len,
@@ -126,7 +132,7 @@ struct ClientHandshakeTask {
     SocketUniquePtr socket;
 };
 
-#if BRPC_WITH_RDMA || BRPC_WITH_UBRING
+#if BRPC_WITH_UBRING
 template <typename T>
 void FailClientHandshake(T* transport, Socket* socket,
                          int* connect_error, const char* name) {
@@ -142,10 +148,36 @@ void FailClientHandshake(T* transport, Socket* socket,
 class RdmaClientHandshakeTransport : public handshake::HandshakeTransport {
 public:
     RdmaClientHandshakeTransport(
-        RdmaTransport* transport, rdma::RdmaHandshakeAdapter* protocol,
-        Socket* socket, int* connect_error)
-        : _transport(transport), _protocol(protocol), _socket(socket),
-          _connect_error(connect_error) {}
+        RdmaTransport* transport, Socket* socket)
+        : _transport(transport), _socket(socket), _protocol(nullptr) {}
+
+    void OnProtocolSelected(handshake::HandshakeProtocol* protocol) override {
+        _protocol = static_cast<rdma::RdmaHandshakeAdapter*>(protocol);
+    }
+
+    handshake::HandshakeProtocol* RetryClientHello(
+        handshake::HandshakeProtocol* protocol, bool hello_sent,
+        handshake::FrameResult frame, const std::string& magic) override {
+        if (protocol->ProtocolVersion() != 3) {
+            return nullptr;
+        }
+        const bool retry = hello_sent
+            ? ((frame == handshake::FRAME_IO_ERROR && magic.empty() &&
+                (errno == EEOF || errno == ECONNRESET)) ||
+               (frame == handshake::FRAME_NOT_MINE && magic == rdma::HELLO_MAGIC))
+            : (errno == EPIPE || errno == ECONNRESET);
+        if (!retry) {
+            return nullptr;
+        }
+        LOG_IF(INFO, rdma::FLAGS_rdma_trace_verbose)
+            << "Retry RDMA handshake with v2 on " << _socket->description();
+        auto* ep = _transport->GetRdmaEp();
+        if (ep->ReconnectForHandshake() != 0) {
+            return nullptr;
+        }
+        _retry_protocol = std::make_unique<rdma::RdmaClientHandshakeAdapterV2>(ep);
+        return _retry_protocol.get();
+    }
 
     handshake::StepResult PrepareResources() override {
         if (_transport->PrepareUpgradeResources() == 0) {
@@ -165,15 +197,14 @@ public:
 
     void OnFallback() override { _transport->DeactivateUpgrade(); }
 
-    void OnFailed() override {
-        FailClientHandshake(_transport, _socket, _connect_error, "rdma");
-    }
+    // AfterAppConnected applies the socket's connection timeout policy.
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
 
 private:
     RdmaTransport* _transport;
-    rdma::RdmaHandshakeAdapter* _protocol;
     Socket* _socket;
-    int* _connect_error;
+    rdma::RdmaHandshakeAdapter* _protocol;
+    std::unique_ptr<rdma::RdmaClientHandshakeAdapterV2> _retry_protocol;
 };
 #endif
 
@@ -346,8 +377,7 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         std::unique_ptr<rdma::RdmaHandshakeAdapter> protocol =
             transport->CreateClientHandshakeAdapter();
         CHECK(protocol != nullptr);
-        RdmaClientHandshakeTransport participant(
-            transport, protocol.get(), socket, &connect_error);
+        RdmaClientHandshakeTransport participant(transport, socket);
         const handshake::StepResult result = adapter->_handshake.RunClient(
             adapter->_handshake.socket_io(), protocol.get(), &participant);
         if (result == handshake::STEP_OK &&
@@ -355,10 +385,8 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
             const int saved_errno = errno != 0 ? errno : ERDMA;
             transport->DeactivateUpgrade();
             adapter->_handshake.MarkFailed();
-            socket->SetFailed(
-                saved_errno,
-                "Fail to start RDMA CQ events from %s: %s",
-                socket->description().c_str(), berror(saved_errno));
+            LOG(WARNING) << "Fail to start RDMA CQ events from "
+                         << socket->description() << ": " << berror(saved_errno);
             connect_error = saved_errno;
         }
         if (result == handshake::STEP_ERROR && connect_error == 0) {

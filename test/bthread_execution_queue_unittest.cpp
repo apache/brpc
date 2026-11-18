@@ -16,6 +16,7 @@
 // under the License.
 
 #include <gtest/gtest.h>
+#include <thread>
 
 #include <bthread/execution_queue.h>
 #include <bthread/sys_futex.h>
@@ -85,6 +86,68 @@ TEST_F(ExecutionQueueTest, single_thread) {
     for (int i = 0; i < 2; ++i) {
         test_single_thread(i);
     }
+}
+
+struct ExecutionHandoffState {
+    unsigned next = 0;
+    unsigned mismatches = 0;
+};
+
+int check_execution_handoff(void* meta, bthread::TaskIterator<unsigned>& iter) {
+    auto* state = static_cast<ExecutionHandoffState*>(meta);
+    for (; iter; ++iter) {
+        state->mismatches += (state->next != *iter);
+        ++state->next;
+    }
+    return 0;
+}
+
+TEST_F(ExecutionQueueTest, idle_owner_handoff) {
+    class InlineExecutor : public bthread::Executor {
+    public:
+        int submit(void* (*fn)(void*), void* args) override {
+            fn(args);
+            return 0;
+        }
+    } executor;
+    // Keep the stop task synchronous too, isolating queue ownership transfer
+    // from synchronization in the bthread scheduler.
+    bthread::ExecutionQueueOptions options;
+    options.executor = &executor;
+    ExecutionHandoffState state;
+    bthread::ExecutionQueueId<unsigned> id;
+    ASSERT_EQ(0, bthread::execution_queue_start(
+        &id, &options, check_execution_handoff, &state));
+    const unsigned rounds = 1000;
+    butil::atomic<unsigned> turn(0);
+    bool succeeded[2] = {true, true};
+    std::thread producers[2];
+    for (unsigned p = 0; p < 2; ++p) {
+        producers[p] = std::thread([&, p] {
+            // Retain the reference so per-task reference counting cannot
+            // provide synchronization between successive executors.
+            auto queue = bthread::execution_queue_address(id);
+            for (unsigned i = 0; i < rounds; ++i) {
+                // Alternate empty-queue executions without publishing the
+                // callback state. The queue must do that, including in TSan.
+                while (turn.load(butil::memory_order_relaxed) != p) {
+                    std::this_thread::yield();
+                }
+                succeeded[p] &= (queue->execute(
+                    2 * i + p, &bthread::TASK_OPTIONS_INPLACE, nullptr) == 0);
+                turn.store(1 - p, butil::memory_order_relaxed);
+            }
+        });
+    }
+    for (auto& producer : producers) {
+        producer.join();
+    }
+    ASSERT_EQ(0, bthread::execution_queue_stop(id));
+    ASSERT_EQ(0, bthread::execution_queue_join(id));
+    EXPECT_TRUE(succeeded[0]);
+    EXPECT_TRUE(succeeded[1]);
+    EXPECT_EQ(2 * rounds, state.next);
+    EXPECT_EQ(0u, state.mismatches);
 }
 
 class RValue {

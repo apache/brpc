@@ -45,7 +45,9 @@ int main(int argc, char* argv[]) {
                                EmptyProcessHuluRequest, EmptyProcessHuluRequest,
                                nullptr, nullptr, nullptr,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+    // Private protocols must not reuse builtin IDs (30 is fb_rpc); use the
+    // last slot of the protocol table.
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)127, dummy_protocol));
     return RUN_ALL_TESTS();
 }
 

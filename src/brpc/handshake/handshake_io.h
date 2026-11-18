@@ -56,6 +56,8 @@ public:
     int PushBack(const void* data, size_t len) override;
 
 private:
+    int GetWaitDeadline(timespec* deadline) const;
+
     Socket* _socket;
     butil::atomic<int>* _read_butex;
 

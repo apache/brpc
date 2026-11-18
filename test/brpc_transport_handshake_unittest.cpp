@@ -515,15 +515,15 @@ TEST(TransportHandshakeTest, rejected_handshake_start_releases_socket_reference)
     socket->SetFailed();
 }
 
-TEST(TransportHandshakeTest, registered_protocol_uses_transport_name) {
+TEST(TransportHandshakeTest, registered_protocol_keeps_legacy_name) {
     GlobalInitializeOrDie();
-    EXPECT_EQ(1, PROTOCOL_TRANSPORT_HANDSHAKE);
-    EXPECT_EQ(PROTOCOL_TRANSPORT_HANDSHAKE,
-              StringToProtocolType("transport_handshake"));
-    EXPECT_STREQ("transport_handshake",
-                 ProtocolTypeToString(PROTOCOL_TRANSPORT_HANDSHAKE));
+    EXPECT_EQ(1, PROTOCOL_RDMA_HANDSHAKE);
+    EXPECT_EQ(PROTOCOL_RDMA_HANDSHAKE,
+              StringToProtocolType("rdma_handshake"));
+    EXPECT_STREQ("rdma_handshake",
+                 ProtocolTypeToString(PROTOCOL_RDMA_HANDSHAKE));
 
-    const Protocol* protocol = FindProtocol(PROTOCOL_TRANSPORT_HANDSHAKE);
+    const Protocol* protocol = FindProtocol(PROTOCOL_RDMA_HANDSHAKE);
     ASSERT_NE(nullptr, protocol);
     EXPECT_EQ(policy::ParseTransportHandshake, protocol->parse);
     EXPECT_EQ(policy::ProcessTransportHandshake, protocol->process_request);

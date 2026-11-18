@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <fstream>
 #include <set>
+#include <utility>
 #include <vector>
 
 #include "butil/file_util.h"
@@ -1713,14 +1714,14 @@ TEST_F(FileUtilTest, CreateAndOpenTemporaryFileTest) {
 
 TEST_F(FileUtilTest, FileToFILE) {
   File file;
-  FILE* stream = FileToFILE(file.Pass(), "w");
+  FILE* stream = FileToFILE(std::move(file), "w");
   EXPECT_FALSE(stream);
 
   FilePath file_name = temp_dir_.path().Append(FPL("The file.txt"));
   file = File(file_name, File::FLAG_CREATE | File::FLAG_WRITE);
   EXPECT_TRUE(file.IsValid());
 
-  stream = FileToFILE(file.Pass(), "w");
+  stream = FileToFILE(std::move(file), "w");
   EXPECT_TRUE(stream);
   EXPECT_FALSE(file.IsValid());
   EXPECT_TRUE(CloseFile(stream));

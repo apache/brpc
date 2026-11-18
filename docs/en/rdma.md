@@ -35,6 +35,8 @@ RDMA does not use socket API like TCP. However, the brpc::Socket class is still 
 
 brpc uses RDMA RC mode. Every RdmaEndpoint has its own QP. Before establishing RDMA connection, a TCP connection is necessary to exchange some information such as GID and QPN. We call this procedure handshake. Since handshake needs TCP connection, the TCP fd in the corresponding Socket is still valid. The handshake procedure is completed in the AppConnect way in brpc. The TCP connection will keep in EST state but not be used for data transmission after RDMA connection is established. Once the TCP connection is closed, the corresponding RDMA connection will be set error.
 
+Each new logical connection starts with handshake v3, with no version configuration required. If the server closes or resets the connection before returning v3 magic, or replies with v2 magic, the client reconnects and retries v2 once. TCP connection establishment, the handshake, and reconnection share the original connection deadline. Malformed replies identified as v3, handshake timeouts, and failed v2 retries fail the connection. A normal server request to fall back to TCP continues on the existing connection.
+
 The first key feature in RdmaEndpoint data transmission is zero copy. All data which need to transmit is in the Blocks of IOBuf. Thus all the Blocks need to be released after the sent CQEs are triggered. The reference of these Blocks are stored in RdmaEndpoint::_sbuf. In order to realize receiving zero copy, the receive side must post receive buffers in Blocks of IOBuf, which are stored in RdmaEndpoint::_rbuf. Note that all the Blocks posted in the receive side has a fixed size (recv_block_size). The transmit side can only send message smaller than that. Otherwise the receive side cannot receive data successfully.
 
 The second key feature in RdmaEndpoint data transmission is sliding window flow control. The flow control is to avoid fast transmit side overwhelming slow receive side. TCP has similar mechanism in kernel TCP stack. RdmaEndpoint implements this mechanism with explicit ACKs from receive side. to reduce the overhead of ACKs, the ACK number can be piggybacked in ordinary data message as immediate data.
@@ -64,6 +66,7 @@ Examples:
 
 Configurable parameters:
 * rdma_trace_verbose: to print RDMA connection information in log，default is false.
+* rdma_client_handshake_version: deprecated and ignored. Retained for compatibility with existing command-line arguments. Clients always start with v3 and reconnect to retry v2 once if the peer rejects v3.
 * rdma_recv_zerocopy: enable zero copy in receive side，default is true.
 * rdma_zerocopy_min_size: the min message size for receive zero copy (in Byte)，default is 512.
 * rdma_recv_block_type: the block type used for receiving, can be default(8KB)/large(64KB)/huge(2MB)，default is default.

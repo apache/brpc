@@ -108,6 +108,12 @@ public:
     virtual ~HandshakeTransport() = default;
 
     virtual void OnProtocolSelected(HandshakeProtocol*) {}
+    // A transport may replace the connection and select a different codec
+    // before peer parameters are applied. Preserve errno on terminal failure.
+    virtual HandshakeProtocol* RetryClientHello(
+        HandshakeProtocol*, bool, FrameResult, const std::string&) {
+        return nullptr;
+    }
     virtual StepResult PrepareResources() = 0;
     virtual StepResult NegotiateResources() = 0;
     virtual void OnEstablished() = 0;

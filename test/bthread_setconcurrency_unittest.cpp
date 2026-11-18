@@ -63,14 +63,14 @@ static butil::atomic<int> *even;
 
 static butil::atomic<int> nbthreads(0);
 static butil::atomic<int> npthreads(0);
-static BAIDU_THREAD_LOCAL bool counted = false;
+static BUTIL_THREAD_LOCAL(bool, counted, false);
 static butil::atomic<bool> stop (false);
 
 static void *odd_thread(void *) {
     nbthreads.fetch_add(1);
     while (!stop) {
-        if (!counted) {
-            counted = true;
+        if (!counted()) {
+            counted() = true;
             npthreads.fetch_add(1);
         }
         bthread::butex_wake_all(even);
@@ -82,8 +82,8 @@ static void *odd_thread(void *) {
 static void *even_thread(void *) {
     nbthreads.fetch_add(1);
     while (!stop) {
-        if (!counted) {
-            counted = true;
+        if (!counted()) {
+            counted() = true;
             npthreads.fetch_add(1);
         }
         bthread::butex_wake_all(odd);

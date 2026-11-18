@@ -125,8 +125,11 @@ ParseResult InputMessengerProcessor::CutInputMessage(InputMessenger* messenger,
         }
         _socket->set_preferred_index(-1);
     }
-    for (int i = 0; i <= max_index; ++i) {
-        if (i == preferred || handlers[i].parse == nullptr) {
+    // A non-negative max_index (acquire) implies _probe_order is set.
+    const int* probe_order = messenger->_probe_order;
+    for (size_t k = 0; max_index >= 0 && k < messenger->_capacity; ++k) {
+        const int i = probe_order[k];
+        if (i > max_index || i == preferred || handlers[i].parse == nullptr) {
             // Don't try preferred handler(already tried) or invalid handler
             continue;
         }

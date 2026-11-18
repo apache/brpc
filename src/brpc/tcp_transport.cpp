@@ -54,7 +54,7 @@ ssize_t TcpTransport::CutFromIOBufList(butil::IOBuf** buf, size_t ndata) {
 int TcpTransport::WaitEpollOut(butil::atomic<int>* _epollout_butex,
                                bool pollin, timespec duetime) {
     g_vars->nwaitepollout << 1;
-    const int rc = _socket->WaitEpollOut(_socket->fd(), pollin, &duetime);
+    int rc = _socket->WaitEpollOut(_socket->fd(), pollin, &duetime, false);
     if (rc < 0 && errno != ETIMEDOUT) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to wait epollout of " << _socket;

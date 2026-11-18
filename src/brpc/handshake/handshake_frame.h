@@ -70,7 +70,8 @@ public:
                               std::string* frame);
     static FrameResult ReadFrame(HandshakeIO* io, const FrameSpec& spec,
                                  bool push_back_on_not_mine,
-                                 std::string* payload);
+                                 std::string* payload,
+                                 std::string* received_magic = nullptr);
     static FrameResult ParseBufferedFrame(butil::IOBuf* input,
                                           const FrameSpec& spec,
                                           std::string* payload,

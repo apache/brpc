@@ -47,11 +47,11 @@ File::File(Error error_details)
       async_(false) {
 }
 
-File::File(RValue other)
-    : file_(other.object->TakePlatformFile()),
-      error_details_(other.object->error_details()),
-      created_(other.object->created()),
-      async_(other.object->async_) {
+File::File(File&& other) noexcept
+    : file_(other.TakePlatformFile()),
+      error_details_(other.error_details()),
+      created_(other.created()),
+      async_(other.async_) {
 }
 
 File::~File() {
@@ -59,13 +59,13 @@ File::~File() {
   Close();
 }
 
-File& File::operator=(RValue other) {
-  if (this != other.object) {
+File& File::operator=(File&& other) noexcept {
+  if (this != &other) {
     Close();
-    SetPlatformFile(other.object->TakePlatformFile());
-    error_details_ = other.object->error_details();
-    created_ = other.object->created();
-    async_ = other.object->async_;
+    SetPlatformFile(other.TakePlatformFile());
+    error_details_ = other.error_details();
+    created_ = other.created();
+    async_ = other.async_;
   }
   return *this;
 }

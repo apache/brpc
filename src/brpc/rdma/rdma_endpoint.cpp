@@ -20,6 +20,8 @@
 #include "brpc/rdma/rdma_endpoint.h"
 #include <algorithm>
 #include "brpc/errno.pb.h"
+#include "butil/fd_guard.h"
+#include "butil/time.h"
 #include "brpc/event_dispatcher.h"
 #include "brpc/input_messenger.h"
 #include "brpc/rdma/block_pool.h"
@@ -230,6 +232,72 @@ int RdmaEndpoint::QueryLocalEce(ibv_ece *ece) const {
         return 1;
     }
     return IbvQueryEce(_resource->qp, ece) == 0 ? 0 : -1;
+}
+
+static int CheckConnectDeadline(Socket* socket, int64_t deadline_us) {
+    if (socket->Failed()) {
+        errno = ECANCELED;
+        return -1;
+    }
+    if (deadline_us >= 0 && butil::gettimeofday_us() >= deadline_us) {
+        errno = ETIMEDOUT;
+        return -1;
+    }
+    return 0;
+}
+
+int RdmaEndpoint::ReconnectForHandshake() {
+    Socket* s = _socket;
+    if (CheckConnectDeadline(s, s->_connect_deadline_us) != 0) {
+        return -1;
+    }
+    timespec deadline = butil::microseconds_to_timespec(s->_connect_deadline_us);
+    // Use Socket::Connect to preserve the configured device/local address and
+    // socket options. Keep ownership of the old fd until replacement succeeds.
+    butil::fd_guard new_fd(s->Connect(
+        s->_connect_deadline_us >= 0 ? &deadline : nullptr,
+        nullptr, nullptr, /*check_failed=*/true));
+    if (new_fd < 0 ||
+        CheckConnectDeadline(s, s->_connect_deadline_us) != 0) {
+        return -1;
+    }
+    if (ReplaceHandshakeFd(new_fd.release()) != 0) {
+        return -1;
+    }
+    _outgoing_ece.reset();
+    return 0;
+}
+
+int RdmaEndpoint::ReplaceHandshakeFd(int fd) {
+    Socket* s = _socket;
+    butil::fd_guard new_fd(fd);
+    int old_fd = s->fd();
+    if (s->_transport->HasOnEdgeTrigger()) {
+        s->_io_event.RemoveConsumer(old_fd);
+    }
+    if (s->ResetFileDescriptor(new_fd) != 0) {
+        // ResetFileDescriptor clears `_fd` on error. Retain the old fd so normal
+        // Socket recycling closes it and balances the connection counter.
+        s->_fd.store(old_fd, butil::memory_order_release);
+        return -1;
+    }
+    // SetFailed() can race with the earlier checks or fd setup. Validate
+    // after registration, before committing ownership of the new connection.
+    // The handshake's Socket reference prevents recycling or health-check
+    // reset while we undo the replacement.
+    if (CheckConnectDeadline(s, s->_connect_deadline_us) != 0) {
+        int saved_errno = errno;
+        if (s->_transport->HasOnEdgeTrigger()) {
+            s->_io_event.RemoveConsumer(new_fd);
+        }
+        s->_fd.store(old_fd, butil::memory_order_release);
+        new_fd.reset(-1);
+        errno = saved_errno;
+        return -1;
+    }
+    new_fd.release();
+    close(old_fd);
+    return 0;
 }
 
 void RdmaEndpoint::SetOutgoingEce(const ibv_ece &ece) {

@@ -41,11 +41,9 @@
 namespace brpc {
 namespace rdma {
 
-DEFINE_int32(rdma_client_handshake_version, 2,
-             "RDMA handshake protocol version used by client. "
-             "2 = legacy 'RDMA' magic (default, compatible with all servers); "
-             "3 = new 'RDM3' protobuf-based handshake "
-             "(MUST only be enabled after target servers support v3).");
+DEFINE_int32(rdma_client_handshake_version, 3,
+             "Deprecated and ignored. Retained for command-line compatibility. "
+             "Clients always start with v3 and retry v2 once if the peer rejects v3.");
 DECLARE_bool(rdma_trace_verbose);
 
 extern const uint16_t MIN_QP_SIZE;
@@ -320,12 +318,7 @@ handshake::StepResult RdmaHandshakeAdapter::ParseHello(
 
 std::unique_ptr<RdmaHandshakeAdapter> CreateClientHandshakeAdapter(
     RdmaEndpoint* ep) {
-    if (FLAGS_rdma_client_handshake_version == 3) {
-        return std::unique_ptr<RdmaHandshakeAdapter>(
-            new RdmaClientHandshakeAdapterV3(ep));
-    }
-    return std::unique_ptr<RdmaHandshakeAdapter>(
-        new RdmaClientHandshakeAdapterV2(ep));
+    return std::make_unique<RdmaClientHandshakeAdapterV3>(ep);
 }
 
 std::vector<std::unique_ptr<RdmaHandshakeAdapter> >

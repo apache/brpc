@@ -31,7 +31,7 @@ RDMA 和 UBSHM 共用握手流程，以 TCP 交换控制帧。升级成功后使
 ## 协议兼容
 
 - RDMA 保持 v2/v3 wire format 和协议数值 ID `1`。公共握手使用枚举
-  `PROTOCOL_TRANSPORT_HANDSHAKE`，注册名称为 `transport_handshake`。
+  `PROTOCOL_RDMA_HANDSHAKE`，注册名称为 `rdma_handshake`。
 - UBSHM 使用 64 字节 v3 hello、4 字节网络序格式扩展和 4 字节 ACK。
   IPC 后端选择 `IPC_V2`，UBS 后端选择 `LEGACY_64`；格式相同则升级，否则
   回退 TCP。资源映射使用对端共享内存长度，数据面激活前发布协商格式。

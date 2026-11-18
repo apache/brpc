@@ -30,7 +30,7 @@
 #include "butil/atomicops.h"              // butil::atomic
 #include "butil/macros.h"                 // BAIDU_CACHELINE_ALIGNMENT
 #include "butil/scoped_lock.h"            // BAIDU_SCOPED_LOCK
-#include "butil/thread_local.h"           // BAIDU_THREAD_LOCAL
+#include "butil/thread_local.h"           // BUTIL_THREAD_LOCAL
 #include "butil/time.h"                   // monotonic_time_us
 #include "butil/memory/aligned_memory.h"  // butil::AlignedMemory
 #include "butil/debug/address_annotations.h"
@@ -79,11 +79,20 @@ static const size_t OP_INITIAL_FREE_LIST_SIZE = 1024;
 
 template <typename T>
 class ObjectPoolBlockItemNum {
-    static const size_t N1 = ObjectPoolBlockMaxSize<T>::value / sizeof(T);
+public:
+#ifdef BUTIL_USE_ASAN
+    // ASan manual poisoning requires slots to start at 8-byte boundaries.
+    typedef AlignedMemory<sizeof(T), __alignof__(T) < 8 ? 8 : __alignof__(T)> BlockItem;
+#else
+    typedef AlignedMemory<sizeof(T), __alignof__(T)> BlockItem;
+#endif
+
+private:
+    static const size_t N1 = ObjectPoolBlockMaxSize<T>::value / sizeof(BlockItem);
     static const size_t N2 = (N1 < 1 ? 1 : N1);
 public:
-    static const size_t value = (N2 > ObjectPoolBlockMaxItem<T>::value ?
-                                 ObjectPoolBlockMaxItem<T>::value : N2);
+    static const size_t value =
+        N2 > ObjectPoolBlockMaxItem<T>::value ? ObjectPoolBlockMaxItem<T>::value : N2;
 };
 
 template <typename T>
@@ -117,20 +126,13 @@ public:
 
     // Free objects are batched in a FreeChunk before they're added to
     // global list(_free_chunks).
-    typedef ObjectPoolFreeChunk<T, FREE_CHUNK_NITEM>    FreeChunk;
+    typedef ObjectPoolFreeChunk<T, FREE_CHUNK_NITEM> FreeChunk;
     struct GlobalFreeChunk {
         int64_t push_us;
         size_t nfree;
         T* ptrs[0];
     };
-#ifdef BUTIL_USE_ASAN
-    // According to https://github.com/google/sanitizers/wiki/AddressSanitizerManualPoisoning ,
-    // The allocated chunks should start with 8-aligned addresses,
-    // so that AlignedMemory starts with at least 8-aligned addresses.
-    typedef AlignedMemory<sizeof(T), __alignof__(T) < 8 ? 8 : __alignof__(T)> BlockItem;
-#else
-    typedef AlignedMemory<sizeof(T), __alignof__(T)> BlockItem;
-#endif
+    typedef typename ObjectPoolBlockItemNum<T>::BlockItem BlockItem;
 
     // When a thread needs memory, it allocates a Block. To improve locality,
     // items in the Block are only used by the thread.
@@ -299,9 +301,9 @@ public:
     }
 
     void clear_objects() {
-        LocalPool* lp = _local_pool;
+        LocalPool* lp = _local_pool();
         if (lp) {
-            _local_pool = nullptr;
+            _local_pool() = nullptr;
             butil::thread_atexit_cancel(LocalPool::delete_local_pool, lp);
             delete lp;
         }
@@ -378,7 +380,7 @@ public:
                 }
             }
         }
-        info.total_size = info.block_num * info.block_item_num * sizeof(T);
+        info.total_size = info.block_num * info.block_item_num * sizeof(BlockItem);
         return info;
     }
 
@@ -459,10 +461,7 @@ private:
 
     // Create a Block and append it to right-most BlockGroup.
     static Block* add_block(size_t* index) {
-        Block* const new_block = new(std::nothrow) Block;
-        if (nullptr == new_block) {
-            return nullptr;
-        }
+        auto const new_block = new Block;
         size_t ngroup;
         do {
             ngroup = _ngroup.load(butil::memory_order_acquire);
@@ -497,25 +496,23 @@ private:
             return true;
         }
         if (ngroup < OP_MAX_BLOCK_NGROUP) {
-            bg = new(std::nothrow) BlockGroup;
-            if (nullptr != bg) {
-                // Release fence is paired with consume fence in add_block()
-                // to avoid un-constructed bg to be seen by other threads.
-                _block_groups[ngroup].store(bg, butil::memory_order_release);
-                _ngroup.store(ngroup + 1, butil::memory_order_release);
-            }
+            bg = new BlockGroup;
+            // Release fence is paired with consume fence in add_block()
+            // to avoid un-constructed bg to be seen by other threads.
+            _block_groups[ngroup].store(bg, butil::memory_order_release);
+            _ngroup.store(ngroup + 1, butil::memory_order_release);
         }
         return bg != nullptr;
     }
 
     inline LocalPool* get_or_new_local_pool() {
-	    LocalPool* lp = BAIDU_GET_VOLATILE_THREAD_LOCAL(_local_pool);
+        LocalPool* lp = _local_pool();
         if (BAIDU_LIKELY(lp != nullptr)) {
             return lp;
         }
         lp = new LocalPool(this);
         BAIDU_SCOPED_LOCK(_change_thread_mutex); //avoid race with clear()
-	    BAIDU_SET_VOLATILE_THREAD_LOCAL(_local_pool, lp);
+        _local_pool() = lp;
         butil::thread_atexit(LocalPool::delete_local_pool, lp);
         _nlocal.fetch_add(1, butil::memory_order_relaxed);
         return lp;
@@ -523,7 +520,7 @@ private:
 
     void clear_from_destructor_of_local_pool() {
         // Remove tls
-        _local_pool = nullptr;
+        _local_pool() = nullptr;
 
         // Do nothing if there're active threads.
         if (_nlocal.fetch_sub(1, butil::memory_order_relaxed) != 1) {
@@ -629,7 +626,7 @@ private:
     
     static butil::static_atomic<ObjectPool*> _singleton;
     static pthread_mutex_t _singleton_mutex;
-    STATIC_MEMBER_BAIDU_VOLATILE_THREAD_LOCAL(LocalPool*, _local_pool);
+    static BUTIL_THREAD_LOCAL(LocalPool*, _local_pool, nullptr);
     static butil::static_atomic<long> _nlocal;
     static butil::static_atomic<size_t> _ngroup;
     static pthread_mutex_t _block_group_mutex;
@@ -651,10 +648,6 @@ private:
 
 template <typename T>
 const size_t ObjectPool<T>::FREE_CHUNK_NITEM;
-
-template <typename T>
-BAIDU_THREAD_LOCAL typename ObjectPool<T>::LocalPool*
-ObjectPool<T>::_local_pool = nullptr;
 
 template <typename T>
 butil::static_atomic<ObjectPool<T>*> ObjectPool<T>::_singleton = BUTIL_STATIC_ATOMIC_INIT(nullptr);

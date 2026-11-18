@@ -38,7 +38,7 @@ pthread_mutex_t g_thread_key_mutex = PTHREAD_MUTEX_INITIALIZER;
 static size_t g_id = 0;
 static std::deque<size_t>* g_free_ids = nullptr;
 static std::vector<ThreadKeyInfo>* g_thread_keys = nullptr;
-static __thread std::vector<ThreadKeyTLS>* thread_key_tls_data = nullptr;
+static BUTIL_THREAD_LOCAL(std::vector<ThreadKeyTLS>*, thread_key_tls_data, nullptr);
 
 void detail::DestroyThreadKeyData(const std::vector<ThreadKeyInfo>& keys,
                                   std::vector<ThreadKeyTLS>* tls_data) {
@@ -67,7 +67,8 @@ bool ThreadKey::Valid() const {
 }
 
 static void DestroyTlsData() {
-    if (!thread_key_tls_data) {
+    auto* tls_data = thread_key_tls_data();
+    if (!tls_data) {
         return;
     }
     std::vector<ThreadKeyInfo> dummy_keys;
@@ -77,9 +78,9 @@ static void DestroyTlsData() {
                           g_thread_keys->begin(),
                           g_thread_keys->end());
     }
-    detail::DestroyThreadKeyData(dummy_keys, thread_key_tls_data);
-    delete thread_key_tls_data;
-    thread_key_tls_data = nullptr;
+    detail::DestroyThreadKeyData(dummy_keys, tls_data);
+    delete tls_data;
+    thread_key_tls_data() = nullptr;
 }
 
 int thread_key_create(ThreadKey& thread_key, DtorFunction dtor) {
@@ -143,19 +144,21 @@ int thread_setspecific(ThreadKey& thread_key, void* data) {
     }
     size_t id = thread_key._id;
     size_t seq = thread_key._seq;
-    if (BAIDU_UNLIKELY(!thread_key_tls_data)) {
-        thread_key_tls_data = new std::vector<ThreadKeyTLS>;
-        thread_key_tls_data->reserve(THREAD_KEY_RESERVE);
+    auto* tls_data = thread_key_tls_data();
+    if (BAIDU_UNLIKELY(!tls_data)) {
+        tls_data = new std::vector<ThreadKeyTLS>;
+        thread_key_tls_data() = tls_data;
+        tls_data->reserve(THREAD_KEY_RESERVE);
         // Register the destructor of tls_data in this thread.
         butil::thread_atexit(DestroyTlsData);
     }
 
-    if (id >= thread_key_tls_data->size()) {
-        thread_key_tls_data->resize(id + 1);
+    if (id >= tls_data->size()) {
+        tls_data->resize(id + 1);
     }
 
-    (*thread_key_tls_data)[id].seq  = seq;
-    (*thread_key_tls_data)[id].data = data;
+    (*tls_data)[id].seq  = seq;
+    (*tls_data)[id].data = data;
 
     return 0;
 }
@@ -166,13 +169,14 @@ void* thread_getspecific(ThreadKey& thread_key) {
     }
     size_t id = thread_key._id;
     size_t seq = thread_key._seq;
-    if (BAIDU_UNLIKELY(!thread_key_tls_data ||
-                       id >= thread_key_tls_data->size() ||
-                       (*thread_key_tls_data)[id].seq != seq)){
+    auto* tls_data = thread_key_tls_data();
+    if (BAIDU_UNLIKELY(!tls_data ||
+                       id >= tls_data->size() ||
+                       (*tls_data)[id].seq != seq)){
         return nullptr;
     }
 
-    return (*thread_key_tls_data)[id].data;
+    return (*tls_data)[id].data;
 }
 
 } // namespace butil

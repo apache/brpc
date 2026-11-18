@@ -241,18 +241,37 @@ StepResult HandshakeSession::RunClient(
         return FinishWithFailure(this, transport);
     }
 
-    set_phase(HELLO_SEND);
-    if (SendHello(io, protocol, true) != STEP_OK) {
-        return FinishWithFailure(this, transport);
+    for (;;) {
+        set_protocol_version(protocol->ProtocolVersion());
+        set_phase(HELLO_SEND);
+        const bool hello_sent = SendHello(io, protocol, true) == STEP_OK;
+        FrameResult frame = FRAME_IO_ERROR;
+        std::string magic;
+        if (hello_sent) {
+            set_phase(HELLO_WAIT);
+            std::string payload;
+            frame = FrameCodec::ReadFrame(
+                &io, protocol->HelloFrameSpec(), false, &payload, &magic);
+            if (frame == FRAME_OK) {
+                result = protocol->ParseHello(payload);
+                break;
+            }
+            if (frame == FRAME_NOT_MINE || frame == FRAME_NEED_MORE ||
+                frame == FRAME_PROTOCOL_ERROR) {
+                errno = EPROTO;
+            }
+        }
+        protocol = transport->RetryClientHello(protocol, hello_sent, frame, magic);
+        if (protocol == nullptr) {
+            return FinishWithFailure(this, transport);
+        }
+        transport->OnProtocolSelected(protocol);
+        errno = 0;
     }
-
-    set_phase(HELLO_WAIT);
-    result = ReceiveHello(io, protocol, nullptr, false);
     if (result == STEP_NOT_MINE || result == STEP_NEED_MORE) {
         errno = EPROTO;
     }
-    if (result == STEP_ERROR || result == STEP_NOT_MINE ||
-        result == STEP_NEED_MORE) {
+    if (result != STEP_OK && result != STEP_FALLBACK) {
         return FinishWithFailure(this, transport);
     }
     bool enabled = result == STEP_OK;

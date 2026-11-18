@@ -22,6 +22,9 @@
 #include "butil/macros.h"
 
 #if BRPC_WITH_FLATBUFFERS
+#if __cplusplus < 201703L
+#error "bRPC FlatBuffers support requires C++17 or later"
+#endif
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -35,6 +38,8 @@ class RpcController;
 }  // namespace google
 
 namespace brpc {
+class Channel;
+
 namespace flatbuffers {
 class Message;
 class ServiceDescriptor;
@@ -106,6 +111,12 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(RpcChannel);
 };
+
+// Returns an RpcChannel that issues fb_rpc calls through `channel', or nullptr
+// when `channel' is nullptr. Generated stubs use it so that brpc::Channel does
+// not have to inherit RpcChannel, which keeps its layout independent of
+// BRPC_WITH_FLATBUFFERS. The adapter deletes `channel' when `owns_channel'.
+RpcChannel* NewChannelAdapter(::brpc::Channel* channel, bool owns_channel);
 
 class Service {
 public:

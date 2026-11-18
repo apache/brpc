@@ -437,6 +437,19 @@ void GenerateHeader(const Service& service, std::ostream& out) {
            "ownership =\n"
         << "            ::brpc::flatbuffers::Service::"
            "STUB_DOESNT_OWN_CHANNEL);\n"
+        << "    // Calls through a brpc::Channel using fb_rpc.\n"
+        << "    explicit " << name << "_Stub(\n"
+        << "        ::brpc::Channel* channel,\n"
+        << "        ::brpc::flatbuffers::Service::ChannelOwnership "
+           "ownership =\n"
+        << "            ::brpc::flatbuffers::Service::"
+           "STUB_DOESNT_OWN_CHANNEL);\n"
+        << "    // A disconnected stub fails every call.\n"
+        << "    explicit " << name << "_Stub(\n"
+        << "        ::std::nullptr_t,\n"
+        << "        ::brpc::flatbuffers::Service::ChannelOwnership =\n"
+        << "            ::brpc::flatbuffers::Service::"
+           "STUB_DOESNT_OWN_CHANNEL);\n"
         << "    ::brpc::flatbuffers::RpcChannel* channel() const {\n"
         << "        return channel_;\n"
         << "    }\n";
@@ -548,7 +561,18 @@ void GenerateSource(const Service& service, std::ostream& out) {
         << "      owned_channel_(\n"
         << "          ownership == "
            "::brpc::flatbuffers::Service::STUB_OWNS_CHANNEL\n"
-        << "              ? channel : nullptr) {}\n\n";
+        << "              ? channel : nullptr) {}\n\n"
+        << name << "_Stub::" << name << "_Stub(\n"
+        << "        ::brpc::Channel* channel,\n"
+        << "        ::brpc::flatbuffers::Service::ChannelOwnership ownership)\n"
+        << "    : channel_(::brpc::flatbuffers::NewChannelAdapter(\n"
+        << "          channel, ownership == "
+           "::brpc::flatbuffers::Service::STUB_OWNS_CHANNEL)),\n"
+        << "      owned_channel_(channel_) {}\n\n"
+        << name << "_Stub::" << name << "_Stub(\n"
+        << "        ::std::nullptr_t,\n"
+        << "        ::brpc::flatbuffers::Service::ChannelOwnership)\n"
+        << "    : channel_(nullptr) {}\n\n";
     for (size_t i = 0; i < definition.calls.vec.size(); ++i) {
         out << "void " << name << "_Stub::" << definition.calls.vec[i]->name
             << "(\n        " << kArguments << ") {\n";
@@ -852,6 +876,7 @@ int Run(int argc, char** argv) {
         GuardComponent(Qualified(*services.front().definition)) + "_H_";
     std::ostringstream header;
     header << kLicense << "#ifndef " << guard << "\n#define " << guard << "\n\n"
+           << "#include <cstddef>\n"
            << "#include <memory>\n"
            << "#include <google/protobuf/service.h>\n"
            << "#include \"brpc/flatbuffers/message.h\"\n"

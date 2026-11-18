@@ -611,26 +611,26 @@ template <typename _T, typename _Hash, typename _Equal, bool _Sparse>
 const _T* find_lowered_cstr(
     const FlatMap<std::string, _T, _Hash, _Equal, _Sparse>& m,
     const char* key) {
-    return m.seek(*tls_stringmap_temp.get_lowered_string(key));
+    return m.seek(*tls_stringmap_temp().get_lowered_string(key));
 }
 
 template <typename _T, typename _Hash, typename _Equal, bool _Sparse>
 _T* find_lowered_cstr(FlatMap<std::string, _T, _Hash, _Equal, _Sparse>& m,
                       const char* key) {
-    return m.seek(*tls_stringmap_temp.get_lowered_string(key));
+    return m.seek(*tls_stringmap_temp().get_lowered_string(key));
 }
 
 template <typename _T, typename _Hash, typename _Equal, bool _Sparse>
 const _T* find_lowered_cstr(
     const FlatMap<std::string, _T, _Hash, _Equal, _Sparse>& m,
     const char* key, size_t length) {
-    return m.seek(*tls_stringmap_temp.get_lowered_string(key, length));
+    return m.seek(*tls_stringmap_temp().get_lowered_string(key, length));
 }
 
 template <typename _T, typename _Hash, typename _Equal, bool _Sparse>
 _T* find_lowered_cstr(FlatMap<std::string, _T, _Hash, _Equal, _Sparse>& m,
                       const char* key, size_t length) {
-    return m.seek(*tls_stringmap_temp.get_lowered_string(key, length));
+    return m.seek(*tls_stringmap_temp().get_lowered_string(key, length));
 }
 
 }  // namespace butil

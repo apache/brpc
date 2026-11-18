@@ -684,6 +684,21 @@ public:
     void fail_me_at_server_stop() { _fail_me_at_server_stop = true; }
     bool shall_fail_me_at_server_stop() const { return _fail_me_at_server_stop; }
 
+    // Track references held by deferred responses waiting for peer activity
+    // (such as HTTP/2 WINDOW_UPDATE). Unlike fail_me_at_server_stop(), these
+    // references are allowed to drain gracefully on Server.Stop(), but must
+    // trigger SetFailed() when the socket becomes idle so NotifyOnFailed()
+    // callbacks can clean up buffered state and release the socket.
+    void AddIdleFailRef() {
+        _idle_fail_ref_count.fetch_add(1, butil::memory_order_relaxed);
+    }
+    void ReleaseIdleFailRef() {
+        _idle_fail_ref_count.fetch_sub(1, butil::memory_order_relaxed);
+    }
+    bool shall_fail_me_at_idle_timeout() const {
+        return _idle_fail_ref_count.load(butil::memory_order_relaxed) > 0;
+    }
+
     // Tag the socket so that the response coming back from socket will be
     // parsed progressively. For example: in HTTP, the RPC may end w/o reading
     // the body part fully.
@@ -777,8 +792,10 @@ private:
     // true, EPOLLIN event will also be included and EPOLL_CTL_MOD will
     // be used instead of EPOLL_CTL_ADD. Note that spurious wakeups may
     // occur when this function returns, so make sure to check whether fd
-    // is writable or not even when it returns 0
-    int WaitEpollOut(int fd, bool pollin, const timespec* abstime);
+    // is writable or not even when it returns 0. If `check_failed' is true,
+    // SetFailed() cancels the wait with ECANCELED, including failures that
+    // precede the wait. Leave it false for health checks on failed sockets.
+    int WaitEpollOut(int fd, bool pollin, const timespec* abstime, bool check_failed);
 
     // [Not thread-safe] Establish a tcp connection to `remote_side()'
     // If `on_connect' is nullptr, this function blocks current thread
@@ -788,8 +805,10 @@ private:
     // Returns the socket fd on success, -1 otherwise
     int DoConnect(const timespec* abstime,
                   int (*on_connect)(int fd, int err, void* data), void* data);
+    // `check_failed' only applies to synchronous connects (on_connect == nullptr).
     int Connect(const timespec* abstime,
-                int (*on_connect)(int fd, int err, void* data), void* data);
+                int (*on_connect)(int fd, int err, void* data), void* data,
+                bool check_failed = false);
 
     int CheckConnected(int sockfd);
 
@@ -934,6 +953,10 @@ private:
     // Initialized by SocketOptions.app_connect.
     std::shared_ptr<AppConnect> _app_connect;
 
+    // Absolute CLOCK_REALTIME deadline for the current connection attempt,
+    // including transport handshakes/reconnects. -1 means no deadline.
+    int64_t _connect_deadline_us;
+
     IOEvent<Socket> _io_event;
 
     // Last chosen index of the protocol as a heuristic value to avoid
@@ -1019,6 +1042,7 @@ private:
     butil::atomic<bool> _controller_released_socket;
 
     bool _fail_me_at_server_stop;
+    butil::atomic<int32_t> _idle_fail_ref_count;
 
     // Set by SetLogOff
     butil::atomic<bool> _logoff_flag;

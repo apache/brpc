@@ -123,16 +123,23 @@ FrameResult FrameCodec::Encode(const FrameSpec& spec,
 
 FrameResult FrameCodec::ReadFrame(HandshakeIO* io, const FrameSpec& spec,
                                   bool push_back_on_not_mine,
-                                  std::string* payload) {
+                                  std::string* payload,
+                                  std::string* received_magic) {
     if (io == nullptr || payload == nullptr ||
         (spec.magic_len != 0 && spec.magic == nullptr)) {
         return FRAME_PROTOCOL_ERROR;
     }
 
+    if (received_magic != nullptr) {
+        received_magic->clear();
+    }
     std::string header(spec.magic_len + LengthFieldSize(spec), '\0');
     if (spec.magic_len != 0 &&
         io->ReadExact(&header[0], spec.magic_len) < 0) {
         return FRAME_IO_ERROR;
+    }
+    if (received_magic != nullptr) {
+        received_magic->assign(header.data(), spec.magic_len);
     }
     if (spec.magic_len != 0 &&
         memcmp(header.data(), spec.magic, spec.magic_len) != 0) {

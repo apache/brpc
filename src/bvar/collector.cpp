@@ -17,6 +17,7 @@
 
 // Date: Mon Dec 14 19:12:30 CST 2015
 
+#include <cstdlib>
 #include <map>
 #include <gflags/gflags.h>
 #include "butil/memory/singleton_on_pthread_once.h"
@@ -64,6 +65,9 @@ public:
 
     void wakeup_grab_thread();
 
+    // Called once, after singleton creation has finished.
+    void stop_and_join();
+
 private:
     // The thread for collecting TLS submissions.
     void grab_thread();
@@ -99,7 +103,7 @@ private:
     int64_t _last_active_cpuwide_us;
     
     bool _created;      // Mark validness of _grab_thread.
-    bool _stop;         // Set to true in dtor.
+    butil::atomic<bool> _stop;
     pthread_t _grab_thread;     // For joining.
     pthread_t _dump_thread;
     int64_t _ngrab BAIDU_CACHELINE_ALIGNMENT;
@@ -111,6 +115,51 @@ private:
     pthread_mutex_t _sleep_mutex;
     pthread_cond_t _sleep_cond;
 };
+
+// These survive static destruction, just like the collector itself. Only the
+// cold creation path and shutdown take the mutex; submissions remain TLS based.
+static pthread_mutex_t g_collector_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t g_collector_stop_once = PTHREAD_ONCE_INIT;
+static butil::static_atomic<bool> g_collector_stopped = BUTIL_STATIC_ATOMIC_INIT(false);
+
+static Collector* GetCollector() {
+    if (g_collector_stopped.load(butil::memory_order_acquire)) {
+        return nullptr;
+    }
+    Collector* collector = butil::has_leaky_singleton<Collector>();
+    if (collector != nullptr) {
+        return collector;
+    }
+    BAIDU_SCOPED_LOCK(g_collector_mutex);
+    if (g_collector_stopped.load(butil::memory_order_relaxed)) {
+        return nullptr;
+    }
+    return butil::get_leaky_singleton<Collector>();
+}
+
+static void StopCollectorOnce() {
+    Collector* collector;
+    {
+        BAIDU_SCOPED_LOCK(g_collector_mutex);
+        g_collector_stopped.store(true, butil::memory_order_release);
+        collector = butil::has_leaky_singleton<Collector>();
+    }
+    // A worker may have been waiting in GetCollector() during initialization.
+    // Let it observe shutdown instead of holding the creation lock while joining.
+    if (collector != nullptr) {
+        collector->stop_and_join();
+    }
+}
+
+void detail::StopCollector() {
+    pthread_once(&g_collector_stop_once, StopCollectorOnce);
+}
+
+// Also forbid first-time creation during later static destructors.
+struct CollectorExitGuard {
+    ~CollectorExitGuard() { detail::StopCollector(); }
+};
+static CollectorExitGuard g_collector_exit_guard;
 
 Collector::Collector()
     : _last_active_cpuwide_us(butil::cpuwide_time_us())
@@ -125,6 +174,9 @@ Collector::Collector()
     pthread_cond_init(&_dump_thread_cond, nullptr);
     pthread_mutex_init(&_sleep_mutex, nullptr);
     pthread_cond_init(&_sleep_cond, nullptr);
+    // The singleton is intentionally leaked. Register thread shutdown explicitly
+    // so runtime initialization stops callbacks before static destruction.
+    CHECK_EQ(0, atexit(detail::StopCollector));
     int rc = pthread_create(&_grab_thread, nullptr, run_grab_thread, this);
     if (rc != 0) {
         LOG(ERROR) << "Fail to create Collector, " << berror(rc);
@@ -134,15 +186,36 @@ Collector::Collector()
 }
 
 Collector::~Collector() {
-    if (_created) {
-        _stop = true;
-        pthread_join(_grab_thread, nullptr);
-        _created = false;
-    }
+    stop_and_join();
     pthread_mutex_destroy(&_dump_thread_mutex);
     pthread_cond_destroy(&_dump_thread_cond);
     pthread_mutex_destroy(&_sleep_mutex);
     pthread_cond_destroy(&_sleep_cond);
+}
+
+static void DestroySamples(butil::LinkNode<Collected>* root) {
+    while (root->next() != root) {
+        butil::LinkNode<Collected>* node = root->next();
+        node->RemoveFromList();
+        node->value()->destroy();
+    }
+}
+
+void Collector::stop_and_join() {
+    if (_created) {
+        _stop.store(true, butil::memory_order_relaxed);
+        wakeup_grab_thread();
+        // The grabber wakes and joins the dumper before it exits.
+        CHECK_EQ(0, pthread_join(_grab_thread, nullptr));
+        _created = false;
+    }
+    DestroySamples(&_dump_root);
+    butil::LinkNode<Collected> root;
+    Collected* head = reset();
+    if (head != nullptr) {
+        head->InsertBeforeAsList(&root);
+        DestroySamples(&root);
+    }
 }
 
 template <typename T>
@@ -185,7 +258,7 @@ void Collector::grab_thread() {
     PreprocessorMap prep_map;
 
     // The main loop.
-    while (!_stop) {
+    while (!_stop.load(butil::memory_order_relaxed)) {
         const int64_t abstime = _last_active_cpuwide_us + COLLECTOR_GRAB_INTERVAL_US;
 
         // Clear and reuse vectors in prep_map, don't clear prep_map directly.
@@ -266,10 +339,12 @@ void Collector::grab_thread() {
         _last_active_cpuwide_us = now;
 
         // sleep for the next round.
-        if (!_stop && abstime > now) {
+        if (abstime > now) {
             timespec abstimespec = butil::microseconds_from_now(abstime - now);
             pthread_mutex_lock(&_sleep_mutex);
-            pthread_cond_timedwait(&_sleep_cond, &_sleep_mutex, &abstimespec);
+            if (!_stop.load(butil::memory_order_relaxed)) {
+                pthread_cond_timedwait(&_sleep_cond, &_sleep_mutex, &abstimespec);
+            }
             pthread_mutex_unlock(&_sleep_mutex);
         }
         _last_active_cpuwide_us = butil::cpuwide_time_us();
@@ -277,7 +352,7 @@ void Collector::grab_thread() {
     // make sure _stop is true, we may have other reasons to quit above loop
     {
         BAIDU_SCOPED_LOCK(_dump_thread_mutex);
-        _stop = true; 
+        _stop.store(true, butil::memory_order_relaxed);
         pthread_cond_signal(&_dump_thread_cond);
     }
     CHECK_EQ(0, pthread_join(_dump_thread, nullptr));
@@ -352,7 +427,10 @@ size_t is_collectable_before_first_time_grabbed(CollectorSpeedLimit* sl) {
         if (before_add == 0) {
             sl->first_sample_us = butil::cpuwide_time_us();
         } else if (before_add >= FLAGS_bvar_collector_expected_per_second) {
-            butil::get_leaky_singleton<Collector>()->wakeup_grab_thread();
+            Collector* collector = GetCollector();
+            if (collector != nullptr) {
+                collector->wakeup_grab_thread();
+            }
         }
     }
     return sl->sampling_range;
@@ -376,19 +454,20 @@ void Collector::dump_thread() {
     size_t round = 0;
 
     // The main loop
-    while (!_stop) {
+    while (!_stop.load(butil::memory_order_relaxed)) {
         ++round;
         // Get new samples set by grab_thread.
         butil::LinkNode<Collected>* newhead = nullptr;
         {
             BAIDU_SCOPED_LOCK(_dump_thread_mutex);
-            while (!_stop && _dump_root.next() == &_dump_root) {
+            while (!_stop.load(butil::memory_order_relaxed) &&
+                   _dump_root.next() == &_dump_root) {
                 const int64_t now_ns = butil::cpuwide_time_ns();
                 busy_seconds += (now_ns - last_ns) / 1000000000.0;
                 pthread_cond_wait(&_dump_thread_cond, &_dump_thread_mutex);
                 last_ns = butil::cpuwide_time_ns();
             }
-            if (_stop) {
+            if (_stop.load(butil::memory_order_relaxed)) {
                 break;
             }
             newhead = _dump_root.next();
@@ -398,7 +477,8 @@ void Collector::dump_thread() {
         newhead->InsertBeforeAsList(&root);
 
         // Call callbacks.
-        for (butil::LinkNode<Collected>* p = root.next(); !_stop && p != &root;) {
+        for (butil::LinkNode<Collected>* p = root.next();
+             !_stop.load(butil::memory_order_relaxed) && p != &root;) {
             // We remove p from the list, save next first.
             butil::LinkNode<Collected>* saved_next = p->next();
             p->RemoveFromList();
@@ -408,15 +488,18 @@ void Collector::dump_thread() {
             p = saved_next;
         }
     }
+    DestroySamples(&root);
 }
 
-// Submit a sample for asynchronous dumping. The Collector holds only the Collected*
-// pointer (e.g., SpanContainer*). Regardless of which branch is taken below, the
-// sample will eventually be destroyed via either dump_and_destroy() or destroy(),
-// both of which call 'delete this' to release the container and decrement the
-// reference count of any managed resources (e.g., shared_ptr<Span>).
+// Submit a sample for asynchronous dumping. Shutdown rejects new submissions.
+// A submission already racing shutdown may still enter the leaked reducer after
+// its final reset; such samples are reclaimed along with the process.
 void Collected::submit(int64_t cpuwide_us) {
-    Collector* d = butil::get_leaky_singleton<Collector>();
+    Collector* d = GetCollector();
+    if (d == nullptr) {
+        destroy();
+        return;
+    }
     // Destroy the sample in-place if the grab_thread did not run for twice
     // of the normal interval. This also applies to the situation that
     // grab_thread aborts due to severe errors.

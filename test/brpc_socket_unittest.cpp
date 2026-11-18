@@ -21,8 +21,11 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <poll.h>
 #include <unistd.h>
 #include <fcntl.h>  // F_GETFD
+#include <thread>
+#include <vector>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include "gperftools_helper.h"
@@ -82,7 +85,9 @@ int main(int argc, char* argv[]) {
                                EchoProcessHuluRequest, EchoProcessHuluRequest,
                                nullptr, nullptr, nullptr,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+    // Private protocols must not reuse builtin IDs (30 is fb_rpc); use the
+    // last slot of the protocol table.
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)127, dummy_protocol));
     return RUN_ALL_TESTS();
 }
 
@@ -366,6 +371,109 @@ private:
     bool _called_start_connect; 
 };
 
+class PausedAppConnect : public brpc::AppConnect {
+public:
+    void StartConnect(const brpc::Socket*,
+                      void (*callback)(int, void*), void* arg) override {
+        done = callback;
+        data = arg;
+        started.signal();
+    }
+    void StopConnect(brpc::Socket*) override {}
+
+    static void Complete(int error_code, void* arg) {
+        auto self = static_cast<PausedAppConnect*>(arg);
+        ++self->completed;
+        self->error = error_code;
+        auto callback = self->done;
+        self->done = nullptr;
+        if (callback) {
+            callback(error_code, self->data);
+        }
+    }
+
+    bthread::CountdownEvent started;
+    void (*done)(int, void*) = nullptr;
+    void* data = nullptr;
+    int completed = 0;
+    int error = 0;
+};
+
+TEST_F(SocketTest, failed_socket_before_handshake_releases_queued_writes) {
+    std::vector<brpc::SocketMode> modes;
+#if BRPC_WITH_RDMA
+    modes.push_back(brpc::SOCKET_MODE_RDMA);
+#endif
+#if BRPC_WITH_URMA
+    modes.push_back(brpc::SOCKET_MODE_URMA);
+#endif
+#if BRPC_WITH_UBRING
+    modes.push_back(brpc::SOCKET_MODE_UBRING);
+#endif
+    if (modes.empty()) {
+        GTEST_SKIP() << "Requires RDMA, URMA or UBRING transport";
+    }
+    for (auto mode : modes) {
+        SCOPED_TRACE(mode);
+        butil::EndPoint point;
+        butil::fd_guard listener;
+        ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listener));
+        int connected_fd = -1;
+        {
+            brpc::SocketOptions options;
+            options.socket_mode = mode;
+            options.remote_side = point;
+            brpc::SocketId id;
+            ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+            brpc::SocketUniquePtr socket;
+            ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+            auto connect = socket->_app_connect;
+            auto paused = std::make_shared<PausedAppConnect>();
+            socket->_app_connect = paused;
+            WaitData results[2];
+            auto cleanup = butil::MakeScopeGuard([&] {
+                socket->SetFailed();
+                if (paused->done) {
+                    PausedAppConnect::Complete(brpc::EFAILEDSOCKET, paused.get());
+                }
+            });
+
+            timespec deadline = butil::seconds_from_now(5);
+            for (int i = 0; i < 2; ++i) {
+                brpc::Socket::WriteOptions write_options;
+                write_options.abstime = &deadline;
+                ASSERT_EQ(0, bthread_id_create2(&write_options.id_wait,
+                                               &results[i], OnWaitIdReset));
+                butil::IOBuf request;
+                request.append("queued handshake request");
+                ASSERT_EQ(0, socket->Write(&request, &write_options));
+                if (i == 0) {
+                    ASSERT_EQ(0, paused->started.timed_wait(deadline));
+                }
+            }
+            connected_fd = socket->fd();
+            ASSERT_GE(connected_fd, 0);
+            ASSERT_NE(nullptr, socket->_write_head.load(butil::memory_order_acquire));
+
+            // Reproduce failure after ResetFileDescriptor but before the
+            // transport handshake takes its own reference with Address().
+            ASSERT_EQ(0, socket->SetFailed(ECANCELED, "Canceled before handshake"));
+            connect->StartConnect(socket.get(), PausedAppConnect::Complete, paused.get());
+            EXPECT_EQ(1, paused->completed);
+            EXPECT_EQ(brpc::EFAILEDSOCKET, paused->error);
+            EXPECT_EQ(nullptr, socket->_write_head.load(butil::memory_order_acquire));
+            for (auto& result : results) {
+                EXPECT_EQ(ECANCELED, result.error_code);
+            }
+            for (int i = 0; i < 100 && socket->nref() != 1; ++i) {
+                bthread_usleep(1000);
+            }
+            EXPECT_EQ(1, socket->nref());
+        }
+        ASSERT_NO_FATAL_FAILURE(WaitForClosedFd(connected_fd));
+    }
+}
+
 TEST_F(SocketTest, single_threaded_connect_and_write) {
     // FIXME(gejun): Messenger has to be new otherwise quitting may crash.
     // It is intentionally never deleted; mark it so it is not a reported leak.
@@ -547,6 +655,94 @@ TEST_F(SocketTest, fail_to_connect) {
     // The id is invalid.
     brpc::SocketUniquePtr ptr;
     ASSERT_EQ(-1, brpc::Socket::Address(id, &ptr));
+}
+
+// A full socketpair makes EPOLLOUT stay silent without relying on a dropped
+// TCP SYN or the host's routing configuration.
+class SocketConnectCancellationTest : public SocketTest {
+protected:
+    void SetUp() override {
+        int fds[2];
+        ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+        _writer.reset(fds[0]);
+        _reader.reset(fds[1]);
+        ASSERT_EQ(0, butil::make_non_blocking(_writer));
+        char buf[4096] = {};
+        while (write(_writer, buf, sizeof(buf)) > 0) {}
+        ASSERT_EQ(EAGAIN, errno);
+        pollfd pfd = {_writer, POLLOUT, 0};
+        ASSERT_EQ(0, poll(&pfd, 1, 0));
+
+        brpc::SocketOptions options;
+        brpc::SocketId id;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+        ASSERT_EQ(0, brpc::Socket::Address(id, &_socket));
+    }
+
+    void TearDown() override {
+        if (_socket) {
+            _socket->SetFailed(ECANCELED, "Cancellation test finished");
+        }
+    }
+
+    static void* WaitWithoutDeadline(void* arg) {
+        auto* test = static_cast<SocketConnectCancellationTest*>(arg);
+        test->_rc = test->_socket->WaitEpollOut(test->_writer, false, nullptr, true);
+        test->_error = errno;
+        test->_finished.signal();
+        return nullptr;
+    }
+
+    butil::fd_guard _writer;
+    butil::fd_guard _reader;
+    brpc::SocketUniquePtr _socket;
+    bthread::CountdownEvent _finished;
+    int _rc = 0;
+    int _error = 0;
+};
+
+TEST_F(SocketConnectCancellationTest, cancel_before_wait_snapshot) {
+    // Reproduce cancellation after the caller's pre-check but before the wait
+    // takes its butex snapshot. A timeout only bounds failures of this test.
+    ASSERT_FALSE(_socket->Failed());
+    ASSERT_EQ(0, _socket->SetFailed(ECANCELED, "Cancel before wait"));
+    timespec deadline = butil::milliseconds_from_now(200);
+    ASSERT_EQ(-1, _socket->WaitEpollOut(_writer, false, &deadline, true));
+    EXPECT_EQ(ECANCELED, errno);
+}
+
+TEST_F(SocketConnectCancellationTest, cancel_wait_without_deadline) {
+    bthread_t tid;
+    ASSERT_EQ(0, bthread_start_background(
+        &tid, nullptr, WaitWithoutDeadline, this));
+    auto join_waiter = butil::MakeScopeGuard([&] {
+        // Also unblock a broken implementation before joining, so this test
+        // cannot leave an indefinitely parked bthread on a failed assertion.
+        _reader.reset(-1);
+        bthread_join(tid, nullptr);
+    });
+    ASSERT_EQ(ETIMEDOUT, _finished.timed_wait(butil::milliseconds_from_now(10)));
+    ASSERT_EQ(0, _socket->SetFailed(ECANCELED, "Cancel pending wait"));
+    ASSERT_EQ(0, _finished.timed_wait(butil::seconds_from_now(5)));
+    EXPECT_EQ(-1, _rc);
+    EXPECT_EQ(ECANCELED, _error);
+}
+
+TEST_F(SocketTest, synchronous_health_connect_on_failed_socket) {
+    butil::EndPoint point;
+    butil::fd_guard listener;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listener));
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr s;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &s));
+    ASSERT_EQ(0, s->SetFailed(ECANCELED, "Health check on a failed socket"));
+    timespec deadline = butil::seconds_from_now(5);
+    butil::fd_guard fd(s->Connect(&deadline, nullptr, nullptr));
+    ASSERT_GE(fd, 0) << berror();
+    EXPECT_TRUE(s->Failed());
 }
 
 TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
@@ -1452,6 +1648,75 @@ TEST_F(SocketTest, multi_threaded_write) {
         ASSERT_EQ((brpc::Socket*)nullptr, global_sock);
         close(fds[0]);
     }
+}
+
+struct SocketHandoffState {
+    unsigned next = 0;
+    unsigned mismatches = 0;
+};
+
+class HandoffMessage : public brpc::SocketMessage {
+public:
+    HandoffMessage(SocketHandoffState* state, unsigned expected)
+        : _state(state), _expected(expected) {}
+
+    butil::Status AppendAndDestroySelf(
+        butil::IOBuf*, brpc::Socket* socket) override {
+        if (socket) {
+            _state->mismatches += (_state->next != _expected);
+            ++_state->next;
+        }
+        delete this;
+        return butil::Status();
+    }
+
+private:
+    SocketHandoffState* _state;
+    unsigned _expected;
+};
+
+TEST_F(SocketTest, idle_writer_handoff) {
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    butil::fd_guard peer(fds[0]);
+    brpc::SocketOptions options;
+    options.fd = fds[1];
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+
+    SocketHandoffState state;
+    const unsigned rounds = 1000;
+    butil::atomic<unsigned> turn(0);
+    bool succeeded[2] = {true, true};
+    std::thread writers[2];
+    for (unsigned p = 0; p < 2; ++p) {
+        writers[p] = std::thread([&, p] {
+            for (unsigned i = 0; i < rounds; ++i) {
+                // This schedules successive writers without synchronizing
+                // their callback state; the write queue must publish it.
+                while (turn.load(butil::memory_order_relaxed) != p) {
+                    std::this_thread::yield();
+                }
+                // An empty message keeps the write synchronous, so each
+                // writer takes over an empty queue from the previous writer.
+                brpc::SocketMessagePtr<> message(
+                    new HandoffMessage(&state, 2 * i + p));
+                succeeded[p] &= (socket->Write(message) == 0);
+                turn.store(1 - p, butil::memory_order_relaxed);
+            }
+        });
+    }
+    for (auto& writer : writers) {
+        writer.join();
+    }
+    EXPECT_TRUE(succeeded[0]);
+    EXPECT_TRUE(succeeded[1]);
+    EXPECT_EQ(2 * rounds, state.next);
+    EXPECT_EQ(0u, state.mismatches);
+    EXPECT_EQ(nullptr, socket->_write_head.load(butil::memory_order_relaxed));
+    ASSERT_EQ(0, socket->SetFailed());
 }
 
 void* FastWriter(void* void_arg) {
