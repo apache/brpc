@@ -7,9 +7,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <gtest/gtest.h>
-#include <vector>
 #include "butil/crc32c.h"
+
+#include <gtest/gtest.h>
+
+#include <vector>
+
 #include "butil/time.h"
 #if defined(__aarch64__) && defined(__linux__)
 #include <sys/auxv.h>
@@ -128,14 +131,8 @@ TEST_F(CRC, UnalignedAndAllTailLengths) {
 }
 
 TEST_F(CRC, LargeBuffersAndSeeds) {
-  const size_t sizes[] = {
-    191, 192, 193,
-    383, 384, 385,
-    1007, 1008, 1009,
-    1024,
-    3071, 3072, 3073,
-    4096, 16384, 65536
-  };
+  const size_t sizes[] = {191,  192,  193,  383,  384,  385,  1007,  1008,
+                          1009, 1024, 3071, 3072, 3073, 4096, 16384, 65536};
   const uint32_t seeds[] = {0U, 1U, 0x12345678U, 0xdeadbeefU, 0xffffffffU};
   std::vector<char> storage(65536 + 32);
   uint32_t prng = 0x9e3779b9U;
@@ -178,7 +175,8 @@ TEST_F(CRC, Benchmark) {
     }
     timer.stop();
     const double elapsed_s = timer.n_elapsed() / 1e9;
-    const double mb_per_s = (static_cast<double>(iters * len) / (1024.0 * 1024.0)) / elapsed_s;
+    const double mb_per_s =
+        (static_cast<double>(iters * len) / (1024.0 * 1024.0)) / elapsed_s;
     std::cout << "CRC32C size=" << len << "B throughput=" << mb_per_s
               << " MiB/s (crc=" << crc << ")" << std::endl;
   }
