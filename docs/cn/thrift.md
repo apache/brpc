@@ -18,7 +18,7 @@ brpc默认不启用thrift支持也不需要thrift依赖。但如果需用thrift�
 Linux下安装thrift依赖
 先参考[官方wiki](https://thrift.apache.org/docs/install/debian)安装好必备的依赖和工具，然后从[官网](https://thrift.apache.org/download)下载thrift源代码，解压编译。
 ```bash
-wget https://downloads.apache.org/thrift/0.22.0/thrift-0.22.0.tar.gz
+wget https://archive.apache.org/dist/thrift/0.22.0/thrift-0.22.0.tar.gz
 tar -xf thrift-0.22.0.tar.gz
 cd thrift-0.22.0/
 ./bootstrap.sh

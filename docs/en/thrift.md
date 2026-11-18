@@ -18,7 +18,7 @@ brpc does not enable thrift support or depend on the thrift lib by default. If t
 Install thrift under Linux
 Read [Official wiki](https://thrift.apache.org/docs/install/debian) to install depended libs and tools, then download thrift source code from [official site](https://thrift.apache.org/download), uncompress and compile。
 ```bash
-wget https://downloads.apache.org/thrift/0.22.0/thrift-0.22.0.tar.gz
+wget https://archive.apache.org/dist/thrift/0.22.0/thrift-0.22.0.tar.gz
 tar -xf thrift-0.22.0.tar.gz
 cd thrift-0.22.0/
 ./bootstrap.sh
