@@ -661,7 +661,8 @@ public:
             void* start = r.block->data + r.offset;
             urma_target_seg_t* tseg =
                 GetPoolSegFor(start);
-            if (!tseg && r.block->is_user_data()) {
+            if (!tseg &&
+                (r.block->flags & butil::IOBUF_BLOCK_FLAGS_USER_DATA)) {
                 tseg = reinterpret_cast<urma_target_seg_t*>(
                     static_cast<uintptr_t>(r.block->u.data_meta));
             }
