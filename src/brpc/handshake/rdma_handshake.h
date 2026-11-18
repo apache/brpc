@@ -23,10 +23,7 @@
 namespace brpc {
 namespace handshake {
 
-// Returns the RDMA adapter used by policy::ParseTransportHandshake. The
-// concrete type is private to the implementation; callers only learn the
-// common HandshakeAdapter interface.
-HandshakeAdapter* GetRdmaServerHandshakeAdapter();
+const HandshakeRegistration& GetRdmaHandshakeRegistration();
 
 }  // namespace handshake
 }  // namespace brpc

@@ -17,10 +17,62 @@
 
 #include "brpc/handshake/handshake_adapter.h"
 
+#include <algorithm>
+#include <cstring>
+
+#include "brpc/handshake/rdma_handshake.h"
+#include "brpc/handshake/ubshm_handshake.h"
 #include "brpc/socket.h"
 
 namespace brpc {
 namespace handshake {
+namespace {
+
+const auto& Registrations() {
+    // Explicit references keep the protocol handlers linked in static builds,
+    // including the recognition paths for transports disabled at build time.
+    static const HandshakeRegistration* const registrations[] = {
+        &GetUBShmHandshakeRegistration(),
+        &GetRdmaHandshakeRegistration(),
+    };
+    return registrations;
+}
+
+bool MatchesMagic(const butil::IOBuf& input, const FrameSpec& spec) {
+    const size_t len = std::min(input.size(), spec.magic_len);
+    size_t offset = 0;
+    for (size_t i = 0; offset < len; ++i) {
+        const auto block = input.backing_block(i);
+        const size_t count = std::min(block.size(), len - offset);
+        if (memcmp(block.data(), spec.magic + offset, count) != 0) {
+            return false;
+        }
+        offset += count;
+    }
+    return true;
+}
+
+}  // namespace
+
+const HandshakeRegistration* HandshakeRegistration::Find(SocketMode mode) {
+    for (const auto* registration : Registrations()) {
+        if (registration->mode == mode) {
+            return registration;
+        }
+    }
+    return nullptr;
+}
+
+HandshakeAdapter* HandshakeRegistration::MatchHello(const butil::IOBuf& input) {
+    for (const auto* registration : Registrations()) {
+        for (const auto* frame : registration->hello_frames) {
+            if (MatchesMagic(input, *frame)) {
+                return registration->server;
+            }
+        }
+    }
+    return nullptr;
+}
 
 // InputMessenger may call this entry repeatedly while bytes arrive. Keep all
 // connection state in HandshakeSession and Socket rather than in the adapter,

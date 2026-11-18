@@ -13,6 +13,9 @@ RDMA 和 UBSHM 共用握手流程，以 TCP 交换控制帧。升级成功后使
 | `HandshakeTransport` | 准备和协商资源，处理升级、回退及失败清理 |
 | `RdmaEndpoint` / `UBShmEndpoint` | 管理传输资源和数据面 |
 
+RDMA 和 UBSHM 各自声明 hello 帧规格及升级入口，由静态表统一分流。
+未编译高速传输的节点仍可识别 hello 并协商回退到 TCP。
+
 客户端在 TCP 连接建立后启动握手 bthread；服务端通过 `InputMessenger`
 增量解析控制帧。在 `EXTENSION_WAIT` 和 `ACK_WAIT`，服务端保留解析上下文，
 按已选协议版本继续处理后续帧。

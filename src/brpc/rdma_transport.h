@@ -26,10 +26,9 @@
 #include "brpc/handshake/rdma_handshake.h"
 
 namespace brpc {
-class AdapterTransport;
 class RdmaTransport : public Transport {
     friend class TransportFactory;
-    friend class AdapterTransport;
+    friend struct handshake::HandshakeRegistration;
     friend class rdma::RdmaEndpoint;
 public:
     void Init(Socket* socket, const SocketOptions& options) override;

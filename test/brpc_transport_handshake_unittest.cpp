@@ -1178,6 +1178,31 @@ TEST(TransportHandshakeTest,
     socket->SetFailed();
 }
 
+TEST(TransportHandshakeTest, dispatches_magic_across_iobuf_blocks) {
+    const struct {
+        SocketMode mode;
+        const char* magic;
+    } cases[] = {
+        {SOCKET_MODE_RDMA, "RDMA"}, {SOCKET_MODE_RDMA, "RDM3"},
+        {SOCKET_MODE_UBRING, "UB"},
+    };
+    for (const auto& c : cases) {
+        const auto* registration = HandshakeRegistration::Find(c.mode);
+        ASSERT_NE(nullptr, registration);
+        const size_t size = strlen(c.magic);
+        char bytes[5];
+        memcpy(bytes, c.magic, size);
+        butil::IOBuf source;
+        const auto keep = [](void*) {};
+        ASSERT_EQ(0, source.append_user_data(bytes, 1, keep));
+        EXPECT_EQ(registration->server, HandshakeRegistration::MatchHello(source));
+        ASSERT_EQ(0, source.append_user_data(bytes + 1, size - 1, keep));
+        ASSERT_EQ(2UL, source.backing_block_num());
+        EXPECT_EQ(registration->server, HandshakeRegistration::MatchHello(source));
+        EXPECT_EQ(size, source.size());
+    }
+}
+
 TEST(TransportHandshakeTest,
      plain_tcp_server_incrementally_rejects_ubshm_upgrade) {
     HandshakeSocketPair pair;

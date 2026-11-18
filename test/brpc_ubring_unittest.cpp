@@ -1745,7 +1745,7 @@ TEST_F(UBShmEndpointTest, malformed_hello_releases_allocated_ring_and_poller) {
     butil::IOBuf source;
     source.append(frame, sizeof(frame));
     EXPECT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG,
-        brpc::handshake::GetUBShmServerHandshakeAdapter()
+        brpc::handshake::GetUBShmHandshakeRegistration().server
             ->ExecuteServerHandshake(&source, socket.get()).error());
     EXPECT_EQ(brpc::handshake::FAILED,
               brpc::AdapterTransport::Get(socket.get())->handshake_phase());

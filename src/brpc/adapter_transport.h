@@ -22,22 +22,18 @@
 
 #include "brpc/socket_mode.h"
 #include "brpc/transport.h"
-#include "brpc/transport_handshake.h"
+#include "brpc/handshake/handshake_adapter.h"
 #include "brpc/parse_result.h"
 
 namespace brpc {
 
 class TcpTransport;
-class RdmaTransport;
-class UBShmTransport;
 
 // The top-level Transport installed in Socket. It starts on TcpTransport and
 // may switch to a high-speed Transport after a successful
 // handshake. TCP remains usable before negotiation and after fallback.
 class AdapterTransport : public Transport {
 friend class TransportFactory;
-friend class RdmaTransport;
-friend class UBShmTransport;
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;
@@ -74,11 +70,12 @@ public:
     static void OnNewDataFromTcp(Socket* socket);
 
 private:
-    explicit AdapterTransport(SocketMode mode);
+    explicit AdapterTransport(
+        const handshake::HandshakeRegistration::Upgrade* upgrade);
     ~AdapterTransport() override;
 
     Transport* ActiveTransport() const;
-    void SetHighSpeedAvailable(bool available);
+    int StartUpgradeReceive();
     void FallbackToTcp();
     void ProcessTcpEvent();
     void CheckUnexpectedTcpData();
@@ -90,7 +87,7 @@ private:
                                       void (*done)(int, void*), void* data,
                                       StartBackground start_background);
 
-    SocketMode _mode;
+    const handshake::HandshakeRegistration::Upgrade* const _upgrade;
     handshake::HandshakeSession _handshake;
     std::unique_ptr<TcpTransport> _tcp_transport;
     std::unique_ptr<Transport> _high_speed_transport;

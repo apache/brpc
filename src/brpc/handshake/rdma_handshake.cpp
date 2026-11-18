@@ -405,9 +405,111 @@ private:
     int _version;
 };
 
-HandshakeAdapter* GetRdmaServerHandshakeAdapter() {
-    static RdmaServerHandshakeAdapter adapter;
-    return &adapter;
+#if BRPC_WITH_RDMA
+namespace {
+
+class RdmaClientHandshakeTransport : public HandshakeTransport {
+public:
+    RdmaClientHandshakeTransport(
+        RdmaTransport* transport, Socket* socket)
+        : _transport(transport), _socket(socket), _protocol(nullptr) {}
+
+    void OnProtocolSelected(HandshakeProtocol* protocol) override {
+        _protocol = static_cast<rdma::RdmaHandshakeAdapter*>(protocol);
+    }
+
+    HandshakeProtocol* RetryClientHello(
+        HandshakeProtocol* protocol, bool hello_sent,
+        FrameResult frame, const std::string& magic) override {
+        if (protocol->ProtocolVersion() != 3) {
+            return nullptr;
+        }
+        const bool retry = hello_sent
+            ? ((frame == FRAME_IO_ERROR && magic.empty() &&
+                (errno == EEOF || errno == ECONNRESET)) ||
+               (frame == FRAME_NOT_MINE &&
+                magic == rdma::HELLO_MAGIC))
+            : (errno == EPIPE || errno == ECONNRESET);
+        if (!retry) {
+            return nullptr;
+        }
+        LOG_IF(INFO, rdma::FLAGS_rdma_trace_verbose)
+            << "Retry RDMA handshake with v2 on " << _socket->description();
+        auto* ep = _transport->GetRdmaEp();
+        if (ep->ReconnectForHandshake() != 0) {
+            return nullptr;
+        }
+        _retry_protocol = std::make_unique<rdma::RdmaClientHandshakeAdapterV2>(ep);
+        return _retry_protocol.get();
+    }
+
+    StepResult PrepareResources() override {
+        if (_transport->PrepareUpgradeResources() == 0) {
+            return STEP_OK;
+        }
+        errno = 0;
+        return STEP_FALLBACK;
+    }
+
+    StepResult NegotiateResources() override {
+        return _transport->NegotiateUpgradeResources(
+                   _protocol->remote(), false) == 0
+            ? STEP_OK : STEP_FALLBACK;
+    }
+
+    void OnEstablished() override { _transport->ActivateUpgrade(); }
+
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+
+    // AfterAppConnected applies the socket's connection timeout policy.
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
+
+private:
+    RdmaTransport* _transport;
+    Socket* _socket;
+    rdma::RdmaHandshakeAdapter* _protocol;
+    std::unique_ptr<rdma::RdmaClientHandshakeAdapterV2> _retry_protocol;
+};
+
+int RunRdmaClientHandshake(Transport* high_speed, Socket* socket,
+                           HandshakeSession& session) {
+    auto* transport = static_cast<RdmaTransport*>(high_speed);
+    auto protocol = transport->CreateClientHandshakeAdapter();
+    CHECK(protocol != nullptr);
+    RdmaClientHandshakeTransport participant(transport, socket);
+    const auto result = session.RunClient(session.socket_io(), protocol.get(),
+                                          &participant);
+    return result == STEP_ERROR ? errno : 0;
+}
+
+int StartRdmaReceive(Transport* high_speed) {
+    auto* transport = static_cast<RdmaTransport*>(high_speed);
+    if (transport->StartUpgradeEvents() >= 0) {
+        return 0;
+    }
+    const int error = errno != 0 ? errno : ERDMA;
+    transport->DeactivateUpgrade();
+    return error;
+}
+
+}  // namespace
+#endif
+
+const HandshakeRegistration& GetRdmaHandshakeRegistration() {
+    static RdmaServerHandshakeAdapter server;
+#if BRPC_WITH_RDMA
+    static const auto operations =
+        HandshakeRegistration::ForTransport<RdmaTransport>(
+            rdma::IsRdmaAvailable, RunRdmaClientHandshake, StartRdmaReceive);
+    const auto* const upgrade = &operations;
+#else
+    const HandshakeRegistration::Upgrade* upgrade = nullptr;
+#endif
+    static const HandshakeRegistration registration = {
+        SOCKET_MODE_RDMA, &server,
+        {&rdma::RdmaHelloFrameSpec(2), &rdma::RdmaHelloFrameSpec(3)}, upgrade,
+    };
+    return registration;
 }
 
 HandshakeSession* RdmaServerHandshakeAdapter::GetSession(
