@@ -227,22 +227,23 @@ TEST(BaiduTimeTest, clock_cycles_monotonic_and_serialized) {
     // Verify cross-thread acquire/release ordering of clock_cycles() on AArch64:
     // because clock_cycles() executes isb before mrs cntvct_el0, the reader thread
     // cannot speculatively hoist the counter read ahead of the acquire load.
-    std::atomic<uint64_t> published_tsc{0};
-    std::atomic<int> step{0};
+    uint64_t published_tsc = 0;
+    std::atomic<int> turn{0};  // 0: producer's turn, 1: consumer's turn
     const int kHandoffs = 2000;
     std::thread producer([&]() {
-        for (int i = 1; i <= kHandoffs; ++i) {
-            while (step.load(std::memory_order_acquire) != i - 1) {
+        for (int i = 0; i < kHandoffs; ++i) {
+            while (turn.load(std::memory_order_acquire) != 0) {
             }
-            published_tsc.store(butil::detail::clock_cycles(), std::memory_order_relaxed);
-            step.store(i, std::memory_order_release);
+            published_tsc = butil::detail::clock_cycles();
+            turn.store(1, std::memory_order_release);
         }
     });
-    for (int i = 1; i <= kHandoffs; ++i) {
-        while (step.load(std::memory_order_acquire) != i) {
+    for (int i = 0; i < kHandoffs; ++i) {
+        while (turn.load(std::memory_order_acquire) != 1) {
         }
         const uint64_t after_acquire_tsc = butil::detail::clock_cycles();
-        const uint64_t before_release_tsc = published_tsc.load(std::memory_order_relaxed);
+        const uint64_t before_release_tsc = published_tsc;
+        turn.store(0, std::memory_order_release);
         ASSERT_GE(after_acquire_tsc, before_release_tsc) << "handoff=" << i;
     }
     producer.join();
