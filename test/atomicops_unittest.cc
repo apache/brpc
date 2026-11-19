@@ -181,8 +181,8 @@ static void TestAtomicExchange() {
 template <class AtomicType>
 static void TestAtomicIncrementBounds() {
   // Test at rollover boundary between int_max and int_min
-  AtomicType test_val = (static_cast<uint64_t>(1) <<
-                         (NUM_BITS(AtomicType) - 1));
+  AtomicType test_val = static_cast<AtomicType>(static_cast<uint64_t>(1)
+                                                << (NUM_BITS(AtomicType) - 1));
   AtomicType value = -1 ^ test_val;
   AtomicType new_value = butil::subtle::NoBarrier_AtomicIncrement(&value, 1);
   EXPECT_EQ(test_val, value);
@@ -323,6 +323,53 @@ static void TestMultiThreadedContention() {
   EXPECT_EQ(kExpected, protected_counter);
 }
 
+template <class AtomicType>
+static void TestAcquireReleaseVisibility() {
+  constexpr int kHandoffs = 2000;
+  volatile AtomicType turn = 0;
+  uint64_t payload_a = 0;
+  uint64_t payload_b = 0;
+
+  std::thread producer([&]() {
+    for (int i = 1; i <= kHandoffs; ++i) {
+      AtomicType t = butil::subtle::Acquire_Load(&turn);
+      while (t == 1) {
+        t = butil::subtle::Acquire_Load(&turn);
+      }
+      if (t < 0) {
+        break;
+      }
+      payload_a = static_cast<uint64_t>(i) * 0x9e3779b97f4a7c15ULL;
+      payload_b = ~payload_a;
+      butil::subtle::Release_Store(&turn, 1);
+    }
+  });
+
+  for (int i = 1; i <= kHandoffs; ++i) {
+    while (butil::subtle::Acquire_Load(&turn) != 1) {
+    }
+    const uint64_t obs_a = payload_a;
+    const uint64_t obs_b = payload_b;
+    const uint64_t expected_a =
+        static_cast<uint64_t>(i) * 0x9e3779b97f4a7c15ULL;
+    const uint64_t expected_b = ~expected_a;
+    EXPECT_EQ(static_cast<AtomicType>(1), butil::subtle::Release_Load(&turn));
+    if (obs_a != expected_a || obs_b != expected_b) {
+      butil::subtle::Release_Store(&turn, -1);
+      EXPECT_EQ(expected_a, obs_a);
+      EXPECT_EQ(expected_b, obs_b);
+      break;
+    }
+    if ((i & 1) == 0) {
+      butil::subtle::Acquire_Store(&turn, 0);
+    } else {
+      butil::subtle::Release_Store(&turn, 0);
+    }
+  }
+
+  producer.join();
+}
+
 #if defined(ARCH_CPU_ARM64) && defined(COMPILER_GCC) && !defined(THREAD_SANITIZER)
 TEST(AtomicOpsTest, UsesArm64GccInternalsHeader) {
 #if !defined(BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_)
@@ -384,5 +431,13 @@ TEST(AtomicOpsTest, MultiThreadedContention) {
   TestMultiThreadedContention<butil::subtle::AtomicWord>();
 #ifdef ARCH_CPU_64_BITS
   TestMultiThreadedContention<butil::subtle::Atomic64>();
+#endif
+}
+
+TEST(AtomicOpsTest, AcquireReleaseVisibility) {
+  TestAcquireReleaseVisibility<butil::subtle::Atomic32>();
+  TestAcquireReleaseVisibility<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestAcquireReleaseVisibility<butil::subtle::Atomic64>();
 #endif
 }
