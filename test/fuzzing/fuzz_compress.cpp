@@ -20,13 +20,17 @@
 // styles) or snappy, and arbitrary fuzz bytes are also fed straight into the
 // decompressors (the hostile-compressed-payload model).
 
+#include <google/protobuf/io/gzip_stream.h>
+
 #include "butil/iobuf.h"
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/policy/snappy_compress.h"
 
 extern "C" int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    if (size < 5) {
+    // data[0] is the mode byte; zero-size inputs can still arrive when
+    // libFuzzer loads an empty corpus file, so guard against reading it.
+    if (size < 1) {
         return 0;
     }
 
@@ -75,6 +79,8 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         // hostile compressed payload: feed the raw fuzz bytes to every
         // decompressor
         brpc::policy::GzipDecompress(in, &out);
+        out.clear();
+        brpc::policy::ZlibDecompress(in, &out);
         out.clear();
         brpc::policy::SnappyDecompress(in, &out);
         break;
