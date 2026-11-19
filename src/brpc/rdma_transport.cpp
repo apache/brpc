@@ -55,9 +55,10 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
 
 void RdmaTransport::Release() {
     if (_rdma_ep) {
-        delete _rdma_ep;
+        rdma::RdmaEndpoint* ep = _rdma_ep;
         _rdma_ep = nullptr;
         _rdma_state = RDMA_UNKNOWN;
+        ep->OnTransportReleased();
     }
 }
 

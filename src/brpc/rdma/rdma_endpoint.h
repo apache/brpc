@@ -124,6 +124,10 @@ public:
     // Reset the endpoint (for next use)
     void Reset();
 
+    void BeforeRecycle(Socket*) override;
+
+    void OnTransportReleased();
+
     // Cut data from the given IOBuf list and use RDMA to send
     // Return bytes cut if success, -1 if failed and errno set
     ssize_t CutFromIOBufList(butil::IOBuf** data, size_t ndata);
@@ -295,6 +299,8 @@ private:
     // Poll CQ and get the work completion
     static void PollCq(Socket* m);
 
+    void DropRef();
+
     // Get the description of current handshake state
     std::string GetStateStr() const;
 
@@ -306,6 +312,10 @@ private:
 
     // Not owner
     Socket* _socket;
+
+    // Cached `_socket->id()': the version makes Address() fail after
+    // the main Socket is recycled.
+    SocketId _socket_id;
 
     // State of Handshake. FALLBACK_TCP publishes RdmaTransport::_rdma_state
     // with release ordering and is consumed by OnNewDataFromTcpAtClient with acquire
@@ -388,6 +398,9 @@ private:
 
     // butex for inform read events on TCP fd during handshake
     butil::atomic<int> *_read_butex;
+
+    // One ref for the transport, one per CQ Socket; the last DropRef() deletes us.
+    butil::atomic<int> _nref;
 
     DISALLOW_COPY_AND_ASSIGN(RdmaEndpoint);
 
