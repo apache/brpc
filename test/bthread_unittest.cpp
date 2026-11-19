@@ -21,6 +21,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
+#include "butil/memory/scope_guard.h"
 #include "gperftools_helper.h"
 #include <vector>
 #include <sstream>
@@ -618,84 +619,73 @@ TEST_F(BthreadTest, bthread_usleep) {
 static const bthread_attr_t BTHREAD_ATTR_NORMAL_WITH_SPAN =
 { BTHREAD_STACKTYPE_NORMAL, BTHREAD_INHERIT_SPAN, nullptr, BTHREAD_TAG_INVALID };
 
-void* test_parent_span(void* p) {
-    uint64_t *q = (uint64_t *)p;
-    *q = (uint64_t)(bthread::tls_bls_ptr()->rpcz_parent_span);
-    LOG(INFO) << "span id in thread is " << *q;
+struct TestSpan {
+    TestSpan* child;
+};
+
+void* check_parent_span(void* expected) {
+    EXPECT_EQ(expected, bthread::tls_bls().rpcz_parent_span);
     return nullptr;
 }
 
-void* test_grandson_parent_span(void* p) {
-    uint64_t* q = (uint64_t*)p;
-    *q = (uint64_t)(bthread::tls_bls_ptr()->rpcz_parent_span);
-    LOG(INFO) << "parent span id in thread is " << *q;
-    return nullptr;
-}
-
-void* test_son_parent_span(void* p) {
-    uint64_t* q = (uint64_t*)p;
-    *q = (uint64_t)(bthread::tls_bls_ptr()->rpcz_parent_span);
-    LOG(INFO) << "parent span id in thread is " << *q;
+void* check_nested_spans(void* arg) {
+    TestSpan* expected = static_cast<TestSpan*>(arg);
+    EXPECT_EQ(expected, bthread::tls_bls().rpcz_parent_span);
     bthread_t th;
-    uint64_t multi_p;
-    bthread_start_urgent(&th, &BTHREAD_ATTR_NORMAL_WITH_SPAN, test_grandson_parent_span, &multi_p);
-    bthread_join(th, nullptr);
+    const int rc = bthread_start_urgent(&th, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
+                                        check_parent_span, expected->child);
+    EXPECT_EQ(0, rc);
+    if (rc == 0) {
+        EXPECT_EQ(0, bthread_join(th, nullptr));
+    }
     return nullptr;
 }
 
-static uint64_t targets[] = {0xBADBEB0UL, 0xBADBEB1UL, 0xBADBEB2UL, 0xBADBEB3UL};
 void* create_span_func() {
-    static std::atomic<int> index(0);
-    auto idx = index.fetch_add(1);
-    LOG(INFO) << "Bthread create span " << targets[idx];
-    return (void*)targets[idx];
+    TestSpan* parent = static_cast<TestSpan*>(bthread::tls_bls().rpcz_parent_span);
+    return parent ? parent->child : nullptr;
 }
 
-void destroy_span_func(void* span) {
-    LOG(INFO) << "Destroy span " << (uint64_t)span;
-}
-
-void end_span_func() {
-}
+void destroy_span_func(void*) {}
+void end_span_func() {}
 
 TEST_F(BthreadTest, test_span) {
-    uint64_t p1 = 0;
-    uint64_t p2 = 0;
-
-    uint64_t target = 0xBADBEAFUL;
-    LOG(INFO) << "target span id is " << target;
-
-    bthread::tls_bls_ptr()->rpcz_parent_span = (void*)target;
-    bthread_t th1;
-    ASSERT_EQ(0, bthread_start_urgent(&th1, &BTHREAD_ATTR_NORMAL_WITH_SPAN, test_parent_span, &p1));
-    ASSERT_EQ(0, bthread_join(th1, nullptr));
-
-    bthread_t th2;
-    ASSERT_EQ(0, bthread_start_background(&th2, nullptr, test_parent_span, &p2));
-    ASSERT_EQ(0, bthread_join(th2, nullptr));
-
-    ASSERT_EQ(p1, target);
-    ASSERT_NE(p2, target);
-
-    LOG(INFO) << "Test bthread create span";
-
-    ASSERT_EQ(0, bthread_set_span_funcs(create_span_func, destroy_span_func, end_span_func));
-
-    bthread_t multi_th1;
-    bthread_t multi_th2;
-    uint64_t multi_p1;
-    uint64_t multi_p2;
-    ASSERT_EQ(0, bthread_start_background(&multi_th1, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
-                                          test_son_parent_span, &multi_p1));
-    ASSERT_EQ(0, bthread_start_background(&multi_th2, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
-                                          test_son_parent_span, &multi_p2));
-    ASSERT_EQ(0, bthread_join(multi_th1, nullptr));
-    ASSERT_EQ(0, bthread_join(multi_th2, nullptr));
-    ASSERT_NE(multi_p1, multi_p2);
-    ASSERT_NE(std::find(targets, targets + 4, multi_p1), targets + 4);
-    ASSERT_NE(std::find(targets, targets + 4, multi_p2), targets + 4);
+    void* saved_parent = bthread::tls_bls().rpcz_parent_span;
+    const auto saved_create = bthread::g_create_bthread_span;
+    const auto saved_destroy = bthread::g_rpcz_parent_span_dtor;
+    const auto saved_end = bthread::g_end_bthread_span;
+    BRPC_SCOPE_EXIT {
+        bthread::tls_bls().rpcz_parent_span = saved_parent;
+        bthread_set_span_funcs(saved_create, saved_destroy, saved_end);
+    };
 
     ASSERT_EQ(0, bthread_set_span_funcs(nullptr, nullptr, nullptr));
+    TestSpan root = {};
+    bthread::tls_bls().rpcz_parent_span = &root;
+    bthread_t th;
+    ASSERT_EQ(0, bthread_start_urgent(&th, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
+                                      check_parent_span, &root));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
+    ASSERT_EQ(0, bthread_start_background(&th, nullptr, check_parent_span, nullptr));
+    ASSERT_EQ(0, bthread_join(th, nullptr));
+
+    ASSERT_EQ(0, bthread_set_span_funcs(create_span_func, destroy_span_func, end_span_func));
+    TestSpan grandchildren[2] = {};
+    TestSpan children[] = {{&grandchildren[0]}, {&grandchildren[1]}};
+    bthread_t first;
+    root.child = &children[0];
+    ASSERT_EQ(0, bthread_start_background(&first, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
+                                          check_nested_spans, root.child));
+
+    // The root's create callback runs in this thread. Each child uses its
+    // own span to create its grandchild, regardless of scheduling order.
+    bthread_t second;
+    root.child = &children[1];
+    const int rc = bthread_start_background(&second, &BTHREAD_ATTR_NORMAL_WITH_SPAN,
+                                            check_nested_spans, root.child);
+    EXPECT_EQ(0, bthread_join(first, nullptr));
+    ASSERT_EQ(0, rc);
+    EXPECT_EQ(0, bthread_join(second, nullptr));
 }
 
 void* dummy_thread(void*) {
