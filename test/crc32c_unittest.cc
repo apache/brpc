@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <vector>
 
 #include "butil/time.h"
@@ -18,12 +19,18 @@
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 #ifndef HWCAP_CRC32
-#define HWCAP_CRC32 (1 << 7)
+#define HWCAP_CRC32 (1UL << 7)
 #endif
 #endif
 
 namespace butil {
 namespace crc32c {
+
+#if defined(__aarch64__)
+uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char *buf, size_t size);
+uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char *buf,
+                                      size_t size);
+#endif
 
 namespace {
 
@@ -54,12 +61,12 @@ TEST_F(CRC, StandardResults) {
   ASSERT_EQ(0x62a8ab43U, Value(buf, sizeof(buf)));
 
   for (int i = 0; i < 32; i++) {
-    buf[i] = i;
+    buf[i] = static_cast<char>(i);
   }
   ASSERT_EQ(0x46dd794eU, Value(buf, sizeof(buf)));
 
   for (int i = 0; i < 32; i++) {
-    buf[i] = 31 - i;
+    buf[i] = static_cast<char>(31 - i);
   }
   ASSERT_EQ(0x113fdb5cU, Value(buf, sizeof(buf)));
 
@@ -157,6 +164,46 @@ TEST_F(CRC, LargeBuffersAndSeeds) {
   }
 }
 
+TEST_F(CRC, TightBoundsAndAllArm64Paths) {
+  const size_t lengths[] = {
+      0,   1,   2,    3,    4,    5,    6,    7,    8,    9,    15,  16,  17,
+      31,  32,  33,   63,   64,   65,   191,  192,  193,  335,  336, 337, 383,
+      384, 385, 1007, 1008, 1009, 1199, 1200, 1201, 2015, 2016, 2017};
+  const uint32_t seeds[] = {0U, 0x9e3779b9U, 0xffffffffU};
+  for (size_t li = 0; li < sizeof(lengths) / sizeof(lengths[0]); ++li) {
+    const size_t len = lengths[li];
+    for (size_t align = 0; align < 16; ++align) {
+      const size_t alloc_len = (align + len == 0) ? 1 : (align + len);
+      std::unique_ptr<char[]> raw(new char[alloc_len]);
+      for (size_t a = 0; a < align; ++a) {
+        raw[a] = static_cast<char>(0xa5);
+      }
+      for (size_t i = 0; i < len; ++i) {
+        raw[align + i] = static_cast<char>(((i * 131) + 17) & 0xff);
+      }
+      const char *base = raw.get() + align;
+      for (size_t si = 0; si < sizeof(seeds) / sizeof(seeds[0]); ++si) {
+        const uint32_t seed = seeds[si];
+        const uint32_t expected = ReferenceExtend(seed, base, len);
+        ASSERT_EQ(expected, Extend(seed, base, len))
+            << "len=" << len << " align=" << align << " seed=" << seed;
+#if defined(__aarch64__)
+        if (IsFastCrc32Supported()) {
+          ASSERT_EQ(expected, Arm64ExtendCrc32ForTest(seed, base, len))
+              << "len=" << len << " align=" << align << " seed=" << seed;
+          ASSERT_EQ(expected, Arm64ExtendCrc32PmullForTest(seed, base, len))
+              << "len=" << len << " align=" << align << " seed=" << seed;
+        }
+#endif
+      }
+      for (size_t a = 0; a < align; ++a) {
+        ASSERT_EQ(static_cast<char>(0xa5), raw[a])
+            << "len=" << len << " align=" << align << " a=" << a;
+      }
+    }
+  }
+}
+
 TEST_F(CRC, Benchmark) {
   const size_t sizes[] = {64, 256, 1024, 4096, 65536};
   std::vector<char> buf(65536, 0x5a);
@@ -174,7 +221,7 @@ TEST_F(CRC, Benchmark) {
       crc = Extend(crc, buf.data(), len);
     }
     timer.stop();
-    const double elapsed_s = timer.n_elapsed() / 1e9;
+    const double elapsed_s = static_cast<double>(timer.n_elapsed()) / 1e9;
     const double mb_per_s =
         (static_cast<double>(iters * len) / (1024.0 * 1024.0)) / elapsed_s;
     std::cout << "CRC32C size=" << len << "B throughput=" << mb_per_s

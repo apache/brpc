@@ -408,7 +408,9 @@ uint32_t ExtendImpl(uint32_t crc, const char* buf, size_t size) {
   uint64_t l = crc ^ 0xffffffffu;
 
 // Align n to (1 << m) byte boundary
-#define ALIGN(n, m)     ((n + ((1 << m) - 1)) & ~((1 << m) - 1))
+#define ALIGN(n, m)                                                            \
+  (((n) + ((static_cast<uintptr_t>(1) << (m)) - 1)) &                          \
+   ~((static_cast<uintptr_t>(1) << (m)) - 1))
 
 #define STEP1 do {                              \
     int c = (l & 0xff) ^ *p++;                  \
@@ -851,7 +853,7 @@ static bool isArmCrc32() {
   static const bool supported = []() {
 #if defined(__linux__)
 #ifndef HWCAP_CRC32
-#define HWCAP_CRC32 (1 << 7)
+#define HWCAP_CRC32 (1UL << 7)
 #endif
     return (getauxval(AT_HWCAP) & HWCAP_CRC32) != 0;
 #elif defined(__APPLE__)
@@ -872,7 +874,7 @@ static bool isArmPmull() {
   static const bool supported = []() {
 #if defined(__linux__)
 #ifndef HWCAP_PMULL
-#define HWCAP_PMULL (1 << 4)
+#define HWCAP_PMULL (1UL << 4)
 #endif
     return (getauxval(AT_HWCAP) & HWCAP_PMULL) != 0;
 #elif defined(__APPLE__)
@@ -1114,6 +1116,21 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
     c = ArmCrc32cb(c, *p);
   }
   return c ^ 0xffffffffU;
+}
+
+uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char *buf, size_t size) {
+  if (isArmCrc32()) {
+    return Arm64ExtendCrc32(crc, buf, size);
+  }
+  return ExtendImpl<SlowCRC32Functor>(crc, buf, size);
+}
+
+uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char *buf,
+                                      size_t size) {
+  if (isArmCrc32() && isArmPmull()) {
+    return Arm64ExtendCrc32Pmull(crc, buf, size);
+  }
+  return Arm64ExtendCrc32ForTest(crc, buf, size);
 }
 
 #undef BUTIL_CRC32_TARGET_CRC
