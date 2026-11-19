@@ -74,7 +74,7 @@ TEST(BaiduTimeTest, cost_of_timer) {
     t1.stop();
     printf("clock() takes %" PRId64 "ns\n", t1.n_elapsed() / N);
 
-    long s = 0;
+    uint64_t s = 0;
     t1.start();
     for (size_t i = 0; i < N; ++i) {
         s += butil::cpuwide_time_ns();
@@ -101,7 +101,8 @@ TEST(BaiduTimeTest, cost_of_timer) {
         s += butil::monotonic_time_ns();
     }
     t1.stop();
-    printf("monotonic_time_ns takes %" PRId64 "ns s=%ld\n", t1.n_elapsed() / N, s);
+    printf("monotonic_time_ns takes %" PRId64 "ns s=%" PRIu64 "\n",
+           t1.n_elapsed() / N, s);
 
     for (size_t i = 0; i < arraysize(clock_desc); ++i) {
 #if defined(OS_LINUX)
@@ -295,7 +296,10 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
             const int64_t actual = butil::detail::cycles_to_ns(tsc, mult, shift);
             const int64_t expected = static_cast<int64_t>(
                 (tsc % ufreq) * 1000000000ULL / ufreq + (tsc / ufreq) * 1000000000ULL);
-            ASSERT_NEAR(expected, actual, 1) << "freq=" << freq << " tsc=" << tsc;
+            ASSERT_GE(actual, expected - 1)
+                << "freq=" << freq << " tsc=" << tsc;
+            ASSERT_LE(actual, expected + 1)
+                << "freq=" << freq << " tsc=" << tsc;
             ASSERT_GE(actual, prev_ns) << "freq=" << freq << " tsc=" << tsc;
             prev_ns = actual;
         }
@@ -306,13 +310,17 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
         };
         for (size_t s_idx = 0; s_idx < arraysize(sec_anchors); ++s_idx) {
             const uint64_t base_tsc = sec_anchors[s_idx] * ufreq;
-            int64_t local_prev = butil::detail::cycles_to_ns(base_tsc - 100, mult, shift);
-            for (int64_t offset = -99; offset <= 100; ++offset) {
+            int64_t local_prev =
+                butil::detail::cycles_to_ns(base_tsc - 251, mult, shift);
+            for (int64_t offset = -250; offset <= 250; ++offset) {
                 const uint64_t tsc = static_cast<uint64_t>(static_cast<int64_t>(base_tsc) + offset);
                 const int64_t actual = butil::detail::cycles_to_ns(tsc, mult, shift);
                 const int64_t expected = static_cast<int64_t>(
                     (tsc % ufreq) * 1000000000ULL / ufreq + (tsc / ufreq) * 1000000000ULL);
-                ASSERT_NEAR(expected, actual, 1) << "freq=" << freq << " tsc=" << tsc;
+                ASSERT_GE(actual, expected - 1)
+                    << "freq=" << freq << " tsc=" << tsc;
+                ASSERT_LE(actual, expected + 1)
+                    << "freq=" << freq << " tsc=" << tsc;
                 ASSERT_GE(actual, local_prev) << "freq=" << freq << " tsc=" << tsc;
                 local_prev = actual;
             }
@@ -393,7 +401,8 @@ TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
     const int64_t div_ns = static_cast<int64_t>(
         (tsc_now % ufreq) * 1000000000ULL / ufreq + (tsc_now / ufreq) * 1000000000ULL);
     const int64_t mul_ns = butil::detail::cycles_to_ns(tsc_now, mult, shift);
-    ASSERT_NEAR(div_ns, mul_ns, 1);
+    ASSERT_GE(mul_ns, div_ns - 1);
+    ASSERT_LE(mul_ns, div_ns + 1);
 #endif
 
     // 3. Dependent-chain microbenchmark of 2x 64-bit udiv vs 128-bit mul+shift
