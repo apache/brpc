@@ -297,6 +297,40 @@ TEST(Mcpack2pbParserTest, ModeratelyNestedPayloadParses) {
     EXPECT_TRUE(ok);
 }
 
+static void AppendDeletedFields(std::string* out, int count) {
+    for (int i = 0; i < count; ++i) {
+        out->push_back((char)0x80);  // FIELD_SHORT_MASK, deleted (type & 0x70 == 0)
+        out->push_back(0x00);        // name_size = 0
+        out->push_back(0x00);        // value_size = 0
+    }
+}
+
+TEST(Mcpack2pbParserTest, ManyDeletedFieldsDoNotOverflowStack) {
+    // Deleted fields are skipped by size and are not bounded by item_count
+    // or MAX_DEPTH. Skipping them used to recurse into operator++() once per
+    // field, so ~100K of them (a 600KB payload, below the default
+    // max_body_size) overflowed the 1 MB stack. Cover both ObjectIterator
+    // and ArrayIterator.
+    const int kDeleted = 100000;
+    const std::string name = std::string("children\0", 9);
+    std::string arr;  // an array with only deleted items
+    AppendU32(&arr, 0);
+    AppendDeletedFields(&arr, kDeleted);
+
+    std::string payload;  // an object: deleted fields, then "children"
+    AppendU32(&payload, 1);
+    AppendDeletedFields(&payload, kDeleted);
+    payload.push_back(0x20);  // FIELD_ARRAY
+    payload.push_back((char)name.size());
+    AppendU32(&payload, (uint32_t)arr.size());
+    payload.append(name);
+    payload.append(arr);
+
+    bool ok = false;
+    ASSERT_EQ(0, ParseRecursivePayloadWith1MBStack(payload, &ok));
+    EXPECT_TRUE(ok);
+}
+
 TEST(Mcpack2pbParserTest, ObjectItemCountIsRejectedWhenInconsistentWithSize) {
     // An mcpack object whose ItemsHead declares an absurd field count for
     // the given payload must be rejected instead of being trusted: the
