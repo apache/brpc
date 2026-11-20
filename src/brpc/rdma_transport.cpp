@@ -28,13 +28,42 @@ namespace brpc {
 DECLARE_bool(usercode_in_coroutine);
 DECLARE_bool(usercode_in_pthread);
 
+// Test-only injection point: when true, RdmaTransport::DoInit() pretends the
+// RdmaEndpoint allocation failed, to exercise the TCP fallback path. Defined
+// in this file (not a gflag) so only tests can flip it.
+bool g_rdma_ep_alloc_fail = false;
+
 extern SocketVarsCollector *g_vars;
 
-void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
+void RdmaTransport::DoInit(Socket *socket, const SocketOptions &options, bool use_gdr) {
     CHECK(_rdma_ep == nullptr);
-    if (options.socket_mode == SOCKET_MODE_RDMA) {
-        _rdma_ep = new rdma::RdmaEndpoint(socket);
-        _rdma_state = RDMA_UNKNOWN;
+    // gdr mode is a special mode of rdma mode.
+    // both rdma mode and gdr mode need init rdma::RdmaEndpoint.
+    if (options.socket_mode == SOCKET_MODE_RDMA ||
+            options.socket_mode == SOCKET_MODE_GDR) {
+        // g_rdma_ep_alloc_fail simulates a failed new(std::nothrow).
+        if (!g_rdma_ep_alloc_fail) {
+            _rdma_ep = new(std::nothrow)rdma::RdmaEndpoint(socket, use_gdr);
+        }
+        if (!_rdma_ep) {
+            // Do NOT call socket->SetFailed() here: the Socket still only
+            // holds its creation reference at this point, so SetFailed()
+            // would synchronously recycle it while OnCreated()/DoInit() are
+            // still initializing it. Fall back to TCP instead:
+            // - _rdma_state = RDMA_OFF makes the data path use the TCP
+            //   transport (CutFromIOBuf*, WaitEpollOut, ...).
+            // - socket_mode = SOCKET_MODE_TCP makes the server handshake
+            //   (ExecuteServerHandshake) take the fallback path instead of
+            //   dereferencing the null endpoint, and makes the client use
+            //   the TCP connection logic (Connect() below returns
+            //   nullptr so Socket uses its own TCP connect).
+            PLOG(ERROR) << "Fail to create RdmaEndpoint, "
+                           "fall back to TCP transport";
+            _rdma_state = RDMA_OFF;
+            socket->_socket_mode = SOCKET_MODE_TCP;
+        } else {
+            _rdma_state = RDMA_UNKNOWN;
+        }
     } else {
         _rdma_state = RDMA_OFF;
         socket->_socket_mode = SOCKET_MODE_TCP;
@@ -51,6 +80,10 @@ void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
     }
     _tcp_transport = std::make_shared<TcpTransport>();
     _tcp_transport->Init(socket, options);
+}
+
+void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
+    DoInit(socket, options, false);
 }
 
 void RdmaTransport::Release() {
@@ -70,6 +103,13 @@ int RdmaTransport::Reset(int32_t expected_nref) {
 }
 
 std::shared_ptr<AppConnect> RdmaTransport::Connect() {
+    // Without an RdmaEndpoint (allocation failed in DoInit) the connection
+    // has already fallen back to TCP; returning nullptr makes Socket skip
+    // RdmaConnect::StartConnect (which CHECKs for a non-null endpoint) and
+    // use its own TCP connection logic (AfterAppConnected directly).
+    if (_rdma_ep == nullptr) {
+        return nullptr;
+    }
     if (_default_connect == nullptr) {
         return  std::make_shared<rdma::RdmaConnect>();
     }

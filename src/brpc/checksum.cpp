@@ -74,7 +74,9 @@ void ListChecksumHandler(std::vector<ChecksumHandler>* vec) {
     }
 }
 
-// Compute `data' checksum
+// Compute `data' checksum. A handler that cannot compute the checksum
+// reports it by failing the controller (see ChecksumHandler::Compute), so
+// callers must check in.cntl->Failed() afterwards and abort the RPC.
 void ComputeDataChecksum(const ChecksumIn& in, ChecksumType checksum_type) {
     if (checksum_type == CHECKSUM_TYPE_NONE) {
         return;

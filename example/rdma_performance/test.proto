@@ -22,6 +22,7 @@ package test;
 
 message PerfTestRequest {
       required bool echo_attachment = 1;
+      optional bool checksum = 2;
 };
 
 message PerfTestResponse {

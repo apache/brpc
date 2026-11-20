@@ -156,6 +156,7 @@ set(BUTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/guid_posix.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/hash.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/iobuf.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu/gpu_block_pool.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/iobuf_profiler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/lazy_instance.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/location.cc
@@ -288,6 +289,16 @@ endif()
 if(WITH_GLOG)
     list(PREPEND butil_libraries ${GLOG_LIB})
     set(butil_private_libs "-lglog ${butil_private_libs}")
+endif()
+if(WITH_GDR)
+    # gpu_block_pool.cpp is a no-op translation unit without BRPC_WITH_GDR;
+    # only link CUDA libs when GDR is actually enabled. Update both
+    # butil_libraries (in-tree link) and butil_private_libs (exported to
+    # brpc.pc Libs.private) so external consumers linking the static lib via
+    # "pkg-config --static --libs brpc" also resolve the CUDA symbols,
+    # mirroring how WITH_RDMA exports -libverbs in brpc/CMakeLists.txt.
+    list(APPEND butil_libraries ${CUDA_LIB} ${CUDART_LIB})
+    string(APPEND butil_private_libs " -lcuda -lcudart")
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND butil_system_libraries rt)

@@ -66,6 +66,13 @@ DEFINES = [
  }) + select({
      "//bazel/config:brpc_with_rdma": ["BRPC_WITH_RDMA=1"],
      "//conditions:default": [],
+}) + select({
+    # NOTE: `defines` is auto-prefixed with -D by Bazel, so do NOT add -D here.
+    # Compare with the rdma/glog/thrift entries above which also omit the prefix.
+    # GDR implies RDMA (gdr_transport.h inherits from RdmaTransport, compiled
+    # only under BRPC_WITH_RDMA), mirroring CMake and config_brpc.sh.
+    "//bazel/config:brpc_with_gdr": ["BRPC_WITH_GDR=1", "BRPC_WITH_RDMA=1"],
+    "//conditions:default": [],
  }) + select({
      "//bazel/config:brpc_with_urma": ["BRPC_WITH_URMA=1"],
      "//conditions:default": [],
@@ -116,6 +123,18 @@ LINKOPTS = [
 }) + select({
     "//bazel/config:brpc_with_rdma": [
         "-libverbs",
+    ],
+    "//conditions:default": [],
+}) + select({
+    # GDR implies RDMA, mirroring CMake (WITH_GDR implies WITH_RDMA) and
+    # config_brpc.sh: gdr_transport.h inherits from RdmaTransport, which is
+    # compiled only under BRPC_WITH_RDMA, and the verbs symbols are needed
+    # at link time. When both defines are passed the duplicated
+    # BRPC_WITH_RDMA=1 / -libverbs are harmless.
+    "//bazel/config:brpc_with_gdr": [
+        "-libverbs",
+        "-lcuda",
+        "-lcudart",
     ],
     "//conditions:default": [],
 }) + select({
@@ -277,6 +296,7 @@ BUTIL_SRCS = [
     "src/butil/iobuf.cpp",
     "src/butil/single_iobuf.cpp",
     "src/butil/iobuf_profiler.cpp",
+    "src/butil/gpu/gpu_block_pool.cpp",
     "src/butil/binary_printer.cpp",
     "src/butil/recordio.cc",
     "src/butil/popen.cpp",

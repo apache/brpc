@@ -44,6 +44,14 @@ struct ChecksumIn {
 struct ChecksumHandler {
     // checksum `buf'.
     // Returns checksum value
+    //
+    // NOTE: this signature is part of the public API (brpc/checksum.h is
+    // installed and RegisterChecksumHandler() is exposed for out-of-tree
+    // implementations), so it must stay `void'. Implementations that can
+    // fail (e.g. GPU memory read failure with GDR) must report the failure
+    // through the controller instead: call in.cntl->SetFailed() and leave
+    // the checksum value unset. Callers check cntl.Failed() afterwards and
+    // fail the RPC instead of sending unchecked data.
     void (*Compute)(const ChecksumIn& in);
 
     // verify buf checksum
@@ -65,9 +73,15 @@ const char* ChecksumTypeToCStr(ChecksumType type);
 void ListChecksumHandler(std::vector<ChecksumHandler>* vec);
 
 // Compute `data' checksum and set to controller
+//
+// NOTE: kept `void' for API compatibility. A handler that cannot compute the
+// checksum (e.g. GPU memory read failure with GDR) reports it by calling
+// in.cntl->SetFailed(); callers must check cntl.Failed() afterwards and
+// abort the RPC instead of sending data whose checksum was never computed.
 void ComputeDataChecksum(const ChecksumIn& in, ChecksumType checksum_type);
 
-// Verify `data' checksum Returns true on success, false otherwise
+// Verify `data' checksum. Returns true on success, false on mismatch or when
+// the checksum could not be computed.
 bool VerifyDataChecksum(const ChecksumIn& in, ChecksumType checksum_type);
 
 }  // namespace brpc

@@ -24,6 +24,10 @@
 #include "brpc/transport.h"
 
 namespace brpc {
+// Test-only injection point in rdma_transport.cpp: when true, DoInit() acts
+// as if the RdmaEndpoint allocation failed (see rdma_transport.cpp).
+extern bool g_rdma_ep_alloc_fail;
+
 class RdmaTransport : public Transport {
 friend class TransportFactory;
 friend class rdma::RdmaEndpoint;
@@ -31,6 +35,7 @@ friend class rdma::RdmaConnect;
 friend class rdma::RdmaHandshakeServerV2;
 friend class rdma::RdmaHandshakeServerV3;
 public:
+    void DoInit(Socket* socket, const SocketOptions& options, bool use_gdr);
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;
     int Reset(int32_t expected_nref) override;
