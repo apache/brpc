@@ -631,38 +631,43 @@ TEST(HttpMessageTest, chunked_trailer_is_not_a_header) {
 }
 
 TEST(HttpMessageTest, ctl_in_chunk_extension) {
-    // A peer that ends the chunk-size line at the bare LF reads one request
-    // with chunks "xx" and 0x31 bytes. Skipping the LF as part of the
-    // extension read "31" as the chunk data instead, ended the request at
-    // "0\r\n\r\n" and parsed GET /smuggled as the next request.
-    const std::string smuggled =
+    const std::string valid =
         "POST /a HTTP/1.1\r\n"
         "Host: a.com\r\n"
         "Transfer-Encoding: chunked\r\n\r\n"
-        "2;\nxx\r\n"
-        "31\r\n"
-        "0\r\n\r\n"
-        "GET /smuggled HTTP/1.1\r\nHost: a.com\r\nX: \r\n\r\n"
-        "0\r\n\r\n";
-    butil::IOBuf buf;
-    buf.append(smuggled);
-    brpc::HttpMessage http_message;
-    ASSERT_EQ(-1, http_message.ParseFromIOBuf(buf));
-    ASSERT_FALSE(http_message.Completed());
-    ASSERT_EQ(brpc::HPE_INVALID_CHUNK_SIZE,
-              (brpc::http_errno)http_message._parser.http_errno);
+        "5;a=b\r\nhello\r\n"
+        "0;c=d\r\n\r\n";
+    {
+        butil::IOBuf buf;
+        buf.append(valid);
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)valid.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ("hello", http_message.body().to_string());
+    }
 
-    const char* rejected[] = {
-        "POST / HTTP/1.1\r\nHost: a.com\r\nTransfer-Encoding: chunked\r\n\r\n"
-        "5;\nhello\r\n0\r\n\r\n",
-        "POST / HTTP/1.1\r\nHost: a.com\r\nTransfer-Encoding: chunked\r\n\r\n"
-        "5;a\x7f\r\nhello\r\n0\r\n\r\n",
-        "POST / HTTP/1.1\r\nHost: a.com\r\nTransfer-Encoding: chunked\r\n\r\n"
-        "5\r\nhello\r\n0;\n\r\n\r\n",
+    // Same message with only the extension bytes changed. A bare LF used to
+    // be skipped as part of the extension, so a peer that ends the chunk-size
+    // line at LF disagreed with bRPC about where the chunk data starts.
+    struct { const char* ext; const char* replacement; } mutations[] = {
+        { "a=b", "a\nb" },
+        { "a=b", "a\x7f" "b" },
+        { "a=b", "a\x01" "b" },
+        { "c=d", "c\nd" },
     };
-    for (size_t i = 0; i < arraysize(rejected); ++i) {
-        ASSERT_EQ(brpc::HPE_INVALID_CHUNK_SIZE, ParseHttpErrno(rejected[i]))
-            << rejected[i];
+    for (size_t i = 0; i < arraysize(mutations); ++i) {
+        std::string request = valid;
+        request.replace(request.find(mutations[i].ext), 3,
+                        mutations[i].replacement);
+        butil::IOBuf buf;
+        buf.append(request);
+        brpc::HttpMessage http_message;
+        ASSERT_EQ(-1, http_message.ParseFromIOBuf(buf)) << request;
+        ASSERT_FALSE(http_message.Completed());
+        ASSERT_EQ(brpc::HPE_INVALID_CHUNK_SIZE,
+                  (brpc::http_errno)http_message._parser.http_errno)
+            << request;
     }
 
     const char* accepted[] = {
