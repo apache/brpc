@@ -131,7 +131,7 @@ TEST_BUTIL_SOURCES = [
     "seqlock_unittest.cpp",
     "butil_unittest_main.cpp",
 ] + select({
-    "@bazel_tools//tools/osx:darwin_x86_64": [],
+    "@bazel_tools//src/conditions:darwin": [],
     "//conditions:default": [
         "test_file_util_linux.cc",
         "proc_maps_linux_unittest.cc",
