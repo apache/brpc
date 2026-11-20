@@ -25,7 +25,9 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
+#include <sys/eventfd.h>
 #include <functional>
+#include <thread>
 #include <vector>
 #include <google/protobuf/descriptor.h>
 #include "butil/endpoint.h"
@@ -75,9 +77,14 @@ DECLARE_bool(rdma_trace_verbose);
 DECLARE_int32(rdma_memory_pool_max_regions);
 DECLARE_int32(rdma_client_handshake_version);
 DECLARE_bool(rdma_ece);
+DECLARE_bool(rdma_use_polling);
+DECLARE_int32(rdma_prepared_qp_cnt);
 
 extern ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int);
 extern int (*IbvDestroyCq)(ibv_cq*);
+extern int (*IbvGetCqEvent)(ibv_comp_channel*, ibv_cq**, void**);
+extern void (*IbvAckCqEvents)(ibv_cq*, unsigned int);
+extern int (*IbvDestroyCompChannel)(ibv_comp_channel*);
 extern ibv_qp* (*IbvCreateQp)(ibv_pd*, ibv_qp_init_attr*);
 extern int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask);
 extern int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_attr*);
@@ -85,6 +92,8 @@ extern int (*IbvDestroyQp)(ibv_qp*);
 extern butil::atomic<bool> g_rdma_available;
 extern bool g_skip_rdma_init;
 extern bool g_fail_resource_alloc_for_test;
+// Number of live RdmaEndpoint objects, for UT.
+extern butil::atomic<int> g_live_endpoint_count;
 extern uint32_t InlineDataToRequest(uint32_t vendor_id, uint32_t size,
                                     bool refused);
 extern ibv_qp* CreateQpWithInlineData(ibv_pd* pd, ibv_qp_init_attr* attr,
@@ -3993,6 +4002,193 @@ TEST(RdmaInlineDataTest, should_post_inline) {
     EXPECT_FALSE(rdma::ShouldPostInline(false, granted, granted));
     // A QP granted no inline data inlines nothing.
     EXPECT_FALSE(rdma::ShouldPostInline(true, 1, 0));
+}
+
+
+// Regression tests for the endpoint lifetime: the endpoint must outlive the
+// CQ Socket, and PollCq() must not dereference a recycled main Socket.
+namespace {
+
+static int FakeGetCqEvent(ibv_comp_channel*, ibv_cq**, void**) {
+    errno = EAGAIN;
+    return -1;
+}
+static void FakeAckCqEvents(ibv_cq*, unsigned int) {}
+static int FakeDestroyCq(ibv_cq*) { return 0; }
+static int FakeDestroyQp(ibv_qp*) { return 0; }
+static int FakeDestroyCompChannel(ibv_comp_channel*) { return 0; }
+static int FakeModifyQp(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask) { return 0; }
+
+
+struct IbvMockGuard {
+    decltype(rdma::IbvGetCqEvent) get_cq_event;
+    decltype(rdma::IbvAckCqEvents) ack_cq_events;
+    decltype(rdma::IbvDestroyCq) destroy_cq;
+    decltype(rdma::IbvDestroyQp) destroy_qp;
+    decltype(rdma::IbvDestroyCompChannel) destroy_comp_channel;
+    decltype(rdma::IbvModifyQp) modify_qp;
+    int32_t prepared_qp_cnt;
+    bool use_polling;
+
+    IbvMockGuard()
+        : get_cq_event(rdma::IbvGetCqEvent)
+        , ack_cq_events(rdma::IbvAckCqEvents)
+        , destroy_cq(rdma::IbvDestroyCq)
+        , destroy_qp(rdma::IbvDestroyQp)
+        , destroy_comp_channel(rdma::IbvDestroyCompChannel)
+        , modify_qp(rdma::IbvModifyQp)
+        , prepared_qp_cnt(rdma::FLAGS_rdma_prepared_qp_cnt)
+        , use_polling(rdma::FLAGS_rdma_use_polling) {
+        rdma::IbvGetCqEvent = FakeGetCqEvent;
+        rdma::IbvAckCqEvents = FakeAckCqEvents;
+        rdma::IbvDestroyCq = FakeDestroyCq;
+        rdma::IbvDestroyQp = FakeDestroyQp;
+        rdma::IbvDestroyCompChannel = FakeDestroyCompChannel;
+        rdma::IbvModifyQp = FakeModifyQp;
+        rdma::FLAGS_rdma_prepared_qp_cnt = 0;
+        rdma::FLAGS_rdma_use_polling = false;
+    }
+
+    ~IbvMockGuard() {
+        rdma::IbvGetCqEvent = get_cq_event;
+        rdma::IbvAckCqEvents = ack_cq_events;
+        rdma::IbvDestroyCq = destroy_cq;
+        rdma::IbvDestroyQp = destroy_qp;
+        rdma::IbvDestroyCompChannel = destroy_comp_channel;
+        rdma::IbvModifyQp = modify_qp;
+        rdma::FLAGS_rdma_prepared_qp_cnt = prepared_qp_cnt;
+        rdma::FLAGS_rdma_use_polling = use_polling;
+    }
+};
+
+// A main RDMA Socket with a mocked resource, plus its CQ Socket.
+struct FakeRdmaConnection {
+    IbvMockGuard mock_guard;
+    ibv_context fake_ctx;
+    ibv_cq fake_recv_cq;
+    ibv_cq fake_send_cq;
+    ibv_comp_channel fake_comp_channel;
+    int comp_fd;
+    SocketId main_sid;
+    SocketUniquePtr main_socket;
+    RdmaTransport* transport;
+    rdma::RdmaEndpoint* ep;
+
+    FakeRdmaConnection()
+        : fake_ctx()
+        , fake_recv_cq()
+        , fake_send_cq()
+        , fake_comp_channel()
+        , comp_fd(eventfd(0, 0))
+        , transport(nullptr)
+        , ep(nullptr) {
+        fake_recv_cq.context = &fake_ctx;
+        fake_send_cq.context = &fake_ctx;
+        fake_comp_channel.fd = comp_fd;
+    }
+    ~FakeRdmaConnection() {
+        if (comp_fd >= 0) {
+            close(comp_fd);
+        }
+    }
+
+    int Setup() {
+        SocketOptions main_options;
+        main_options.socket_mode = SOCKET_MODE_RDMA;
+        if (Socket::Create(main_options, &main_sid) != 0) {
+            return -1;
+        }
+        if (Socket::Address(main_sid, &main_socket) != 0) {
+            return -1;
+        }
+        transport = static_cast<RdmaTransport*>(main_socket->_transport.get());
+        ep = transport->_rdma_ep;
+        if (ep == nullptr) {
+            return -1;
+        }
+        ep->_state.store(rdma::RdmaEndpoint::ESTABLISHED,
+                         butil::memory_order_release);
+        rdma::RdmaResource* res = new rdma::RdmaResource();
+        res->recv_cq = &fake_recv_cq;
+        res->send_cq = &fake_send_cq;
+        res->comp_channel = &fake_comp_channel;
+        ep->_resource = res;
+        return ep->StartCqEvents();
+    }
+};
+
+}  // namespace
+
+TEST_F(RdmaTest, endpoint_outlives_cq_socket_and_reset) {
+    const int live_before = rdma::g_live_endpoint_count.load();
+
+    // Case 1: the main Socket is recycled while a PollCq callback still holds
+    // a CQ Socket reference. The endpoint must outlive it, and a late callback
+    // must return safely.
+    {
+        FakeRdmaConnection conn;
+        ASSERT_GE(conn.comp_fd, 0);
+        ASSERT_EQ(0, conn.Setup());
+        rdma::RdmaEndpoint* ep = conn.ep;
+        ASSERT_NE(INVALID_SOCKET_ID, ep->_cq_sid);
+
+        // Hold a CQ Socket ref, as an in-flight PollCq would.
+        SocketUniquePtr cq_socket;
+        ASSERT_EQ(0, Socket::Address(ep->_cq_sid, &cq_socket));
+
+        // Recycle the main Socket as at exit: the drain must wait for that ref.
+        butil::atomic<bool> main_recycled(false);
+        std::thread recycler([&] {
+            conn.main_socket->ReleaseAdditionalReference();
+            conn.main_socket.reset();
+            main_recycled.store(true);
+        });
+        ASSERT_TRUE(WaitUntil([&] { return cq_socket->Failed(); }));
+
+        rdma::RdmaEndpoint::PollCq(cq_socket.get());
+        EXPECT_FALSE(main_recycled.load());
+
+        cq_socket.reset();
+        recycler.join();
+        EXPECT_TRUE(main_recycled.load());
+        EXPECT_EQ(live_before, rdma::g_live_endpoint_count.load());
+    }
+
+    // Case 2: Reset() (health-check reuse) waits for the in-flight callback,
+    // and the endpoint survives for a revived connection.
+    {
+        FakeRdmaConnection conn;
+        ASSERT_GE(conn.comp_fd, 0);
+        ASSERT_EQ(0, conn.Setup());
+        rdma::RdmaEndpoint* ep = conn.ep;
+
+        // Hold a CQ Socket ref so Reset() runs concurrently with the callback.
+        SocketUniquePtr cq_socket;
+        ASSERT_EQ(0, Socket::Address(ep->_cq_sid, &cq_socket));
+
+        // Health-check premise: the main Socket is failed.
+        conn.main_socket->SetFailed();
+
+        butil::atomic<bool> reset_done(false);
+        std::thread resetter([&] {
+            ep->Reset();  // what WaitAndReset() does after the refcount drops
+            reset_done.store(true);
+        });
+        ASSERT_TRUE(WaitUntil([&] { return cq_socket->Failed(); }));
+        rdma::RdmaEndpoint::PollCq(cq_socket.get());
+        EXPECT_FALSE(reset_done.load());
+
+        cq_socket.reset();
+        resetter.join();
+        EXPECT_TRUE(reset_done.load());
+        EXPECT_EQ(nullptr, ep->_resource);
+        EXPECT_EQ(INVALID_SOCKET_ID, ep->_cq_sid);
+        EXPECT_EQ(live_before + 1, rdma::g_live_endpoint_count.load());
+        EXPECT_EQ(1, ep->_nref.load());  // the transport's reference
+
+        conn.main_socket.reset();
+        EXPECT_EQ(live_before, rdma::g_live_endpoint_count.load());
+    }
 }
 
 #endif  // if BRPC_WITH_RDMA

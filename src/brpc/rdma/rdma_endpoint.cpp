@@ -61,6 +61,9 @@ extern bool g_skip_rdma_init;
 // of the handshake can be tested without a real RDMA device.
 bool g_fail_resource_alloc_for_test = false;
 
+// For UT: number of live RdmaEndpoint objects.
+butil::atomic<int> g_live_endpoint_count(0);
+
 DEFINE_int32(rdma_sq_size, 128, "SQ size for RDMA");
 DEFINE_int32(rdma_rq_size, 128, "RQ size for RDMA");
 DEFINE_bool(rdma_recv_zerocopy, true, "Enable zerocopy for receive side");
@@ -133,6 +136,7 @@ RdmaResource::~RdmaResource() {
 
 RdmaEndpoint::RdmaEndpoint(Socket* s)
     : _socket(s)
+    , _socket_id(s->id())
     , _state(UNINIT)
     , _handshake_version(0)
     , _resource(nullptr)
@@ -155,6 +159,7 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     , _remote_rq_window_size(0)
     , _sq_window_size(0)
     , _new_rq_wrs(0)
+    , _nref(1)
 {
     if (_sq_size < MIN_QP_SIZE) {
         _sq_size = MIN_QP_SIZE;
@@ -170,11 +175,13 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     }
     _read_butex = bthread::butex_create_checked<butil::atomic<int> >();
     _input_processor.Init(s, InputMessengerProcessor::STREAM_RDMA_QP);
+    g_live_endpoint_count.fetch_add(1, butil::memory_order_relaxed);
 }
 
 RdmaEndpoint::~RdmaEndpoint() {
     Reset();
     bthread::butex_destroy(_read_butex);
+    g_live_endpoint_count.fetch_sub(1, butil::memory_order_relaxed);
 }
 
 void RdmaEndpoint::Reset() {
@@ -1475,6 +1482,9 @@ int RdmaEndpoint::StartCqEvents() {
         return -1;
     }
 
+    // Before Create(): OnCreated() may call BeforeRecycle() before returning.
+    _nref.fetch_add(1, butil::memory_order_relaxed);
+
     SocketOptions options;
     options.user = this;
     options.keytable_pool = _socket->_keytable_pool;
@@ -1628,15 +1638,6 @@ int RdmaEndpoint::BringUpQp(const ParsedHello& remote, bool is_server) {
     return 0;
 }
 
-static void DeallocateCq(ibv_cq* cq) {
-    if (nullptr == cq) {
-        return;
-    }
-
-    int err = IbvDestroyCq(cq);
-    LOG_IF(WARNING, 0 != err) << "Fail to destroy CQ: " << berror(err);
-}
-
 static int DrainCq(ibv_cq* cq) {
     if (nullptr == cq) {
         return 0;
@@ -1653,11 +1654,44 @@ static int DrainCq(ibv_cq* cq) {
 }
 
 void RdmaEndpoint::DeallocateResources() {
+    // Drain the CQ Socket first: a running PollCq still uses `_resource'.
+    if (INVALID_SOCKET_ID != _cq_sid) {
+        if (FLAGS_rdma_use_polling) {
+            PollerRemoveCqSid();
+        }
+        SocketUniquePtr s;
+        if (Socket::AddressFailedAsWell(_cq_sid, &s) >= 0) {
+            // The CQ Socket may live on another tag than `_socket'.
+            if (s->_fd >= 0) {
+                s->_io_event.RemoveConsumer(s->_fd);
+            }
+            s->_fd = -1;  // closed with the comp_channel
+            s->SetFailed();
+        }
+        s.reset();
+
+        // Spin while a PollCq callback or explicit holder is alive: freeing
+        // `_resource' under one would be a use-after-free.
+        int nwait = 0;
+        SocketUniquePtr waiter;
+        while (Socket::AddressFailedAsWell(_cq_sid, &waiter) != -1) {
+            waiter.reset();
+            if (++nwait % 10000 == 0) {
+                LOG(ERROR) << "CQ Socket " << _cq_sid
+                           << " still not recycled after " << nwait / 1000 << "s";
+            }
+            bthread_usleep(1000);
+        }
+    }
+
     if (_resource == nullptr) {
         return;
     }
-    if (FLAGS_rdma_use_polling) {
-        PollerRemoveCqSid();
+    if (BAIDU_UNLIKELY(!IsRdmaAvailable())) {
+        // GlobalRelease() (atexit) may have closed the device already:
+        // leak rather than destroy.
+        _resource = nullptr;
+        return;
     }
     bool move_to_rdma_resource_list = false;
     if (_sq_size <= FLAGS_rdma_prepared_qp_size &&
@@ -1677,49 +1711,10 @@ void RdmaEndpoint::DeallocateResources() {
         IbvAckCqEvents(_resource->recv_cq, _recv_cq_events);
     }
 
-    bool remove_consumer = true;
 _reclaim:
     if (!move_to_rdma_resource_list) {
-        if (_resource->qp != nullptr) {
-            int err = IbvDestroyQp(_resource->qp);
-            LOG_IF(WARNING, 0 != err) << "Fail to destroy QP: " << berror(err);
-            _resource->qp = nullptr;
-        }
-
-        DeallocateCq(_resource->polling_cq);
-        DeallocateCq(_resource->send_cq);
-        DeallocateCq(_resource->recv_cq);
-
-        if (_resource->comp_channel != nullptr) {
-            if (_cq_sid != INVALID_SOCKET_ID) {
-                // Destroy send_comp_channel will destroy this fd,
-                // so that we should remove it from epoll fd first
-                int fd = _resource->comp_channel->fd;
-                GetGlobalEventDispatcher(fd, _socket->_io_event.bthread_tag()).RemoveConsumer(fd);
-                remove_consumer = false;
-            }
-            int err = IbvDestroyCompChannel(_resource->comp_channel);
-            LOG_IF(WARNING, 0 != err) << "Fail to destroy CQ channel: " << berror(err);
-        }
-
-        _resource->polling_cq = nullptr;
-        _resource->send_cq = nullptr;
-        _resource->recv_cq = nullptr;
-        _resource->comp_channel = nullptr;
         delete _resource;
         _resource = nullptr;
-    }
-
-    if (INVALID_SOCKET_ID != _cq_sid) {
-        SocketUniquePtr s;
-        if (Socket::Address(_cq_sid, &s) == 0) {
-            if (remove_consumer) {
-                s->_io_event.RemoveConsumer(s->_fd);
-            }
-            s->_user = nullptr;  // Do not release user (this RdmaEndpoint).
-            s->_fd = -1;  // Already remove fd from epoll fd.
-            s->SetFailed();
-        }
     }
 
     if (move_to_rdma_resource_list) {
@@ -1819,6 +1814,21 @@ int RdmaEndpoint::ReqNotifyCq(bool send_cq, bool fatal_on_error) {
     return 0;
 }
 
+void RdmaEndpoint::DropRef() {
+    if (_nref.fetch_sub(1, butil::memory_order_acq_rel) == 1) {
+        delete this;
+    }
+}
+
+void RdmaEndpoint::BeforeRecycle(Socket*) {
+    DropRef();
+}
+
+void RdmaEndpoint::OnTransportReleased() {
+    DeallocateResources();
+    DropRef();
+}
+
 void RdmaEndpoint::PollCq(Socket* m) {
     RdmaEndpoint* ep = static_cast<RdmaEndpoint*>(m->user());
     if (!ep) {
@@ -1826,7 +1836,7 @@ void RdmaEndpoint::PollCq(Socket* m) {
     }
 
     SocketUniquePtr s;
-    if (Socket::Address(ep->_socket->id(), &s) < 0) {
+    if (Socket::Address(ep->_socket_id, &s) < 0) {
         return;
     }
     // A queued callback may outlive Reset() and see the main Socket after
