@@ -57,6 +57,8 @@ class ChannelBalancer;
 }
 namespace rdma {
 class RdmaEndpoint;
+class SrqConnection;
+class RqConnection;
 class RdmaConnect;
 class RdmaHandshakeClientV2;
 class RdmaHandshakeServerV2;
@@ -343,6 +345,8 @@ friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class rdma::RdmaEndpoint;
+friend class rdma::SrqConnection;
+friend class rdma::RqConnection;
 friend class rdma::RdmaConnect;
 friend class ubring::UBShmEndpoint;
 friend class ubring::UBConnect;
@@ -377,6 +381,7 @@ public:
     // NOTE: User cannot create Socket from constructor. Use Create()
     // instead. It's public just because of requirement of ResourcePool.
     explicit Socket(Forbidden);
+    DISALLOW_COPY_AND_ASSIGN(Socket);
     ~Socket();
 
     // Write `msg' into this Socket and clear it. The `msg' should be an
@@ -736,8 +741,6 @@ public:
     HttpMethod http_request_method() const { return _http_request_method; }
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(Socket);
-
     int ConductError(bthread_id_t);
     int StartWrite(WriteRequest*, const WriteOptions&);
 

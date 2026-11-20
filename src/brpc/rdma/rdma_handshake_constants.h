@@ -33,8 +33,8 @@ constexpr uint16_t HELLO_V2_VERSION = 2;
 constexpr uint16_t IMPL_V2_VERSION = 1;
 
 // v2 hello length bounds. HELLO_V2_MSG_LEN_MIN is the total length of the
-// base v2 hello (4B magic + 36B HelloMessage); anything shorter is malformed.
-// HELLO_V2_MSG_LEN_MAX caps the msg_len declared by the peer; anything
+// base v2 hello (4B magic + 36B HelloMessage). Anything shorter is malformed.
+// HELLO_V2_MSG_LEN_MAX caps the msg_len declared by the peer. Anything
 // beyond it is treated as a protocol error and the connection is closed without
 // attempting to drain.
 constexpr size_t HELLO_V2_MSG_LEN_MIN = 40;
@@ -45,8 +45,8 @@ constexpr size_t HELLO_V2_MSG_LEN_MAX = 4096;
 constexpr size_t HELLO_V3_PB_SIZE_LEN = 4;
 constexpr size_t HELLO_V3_MAX_PB_SIZE = 8192;
 
-// Handshake ACK (shared by all versions): a single 4B big-endian flags word;
-// bit 0 (HELLO_ACK_RDMA_OK) means the sender wants to use RDMA.
+// Handshake ACK (shared by all versions): a single 4B big-endian flags word.
+// Bit 0 (HELLO_ACK_RDMA_OK) means the sender wants to use RDMA.
 constexpr size_t HELLO_ACK_LEN = 4;
 constexpr uint32_t HELLO_ACK_RDMA_OK = 0x1;
 
