@@ -232,17 +232,17 @@ StepResult HandshakeSession::RunClient(
     // let an errno left by earlier work override this handshake's result.
     errno = 0;
 
-    set_phase(PREPARING);
-    StepResult result = transport->PrepareResources();
-    if (result == STEP_FALLBACK) {
-        return FinishWithFallback(this, transport);
-    }
-    if (result != STEP_OK) {
-        return FinishWithFailure(this, transport);
-    }
-
+    StepResult result;
     for (;;) {
         set_protocol_version(protocol->ProtocolVersion());
+        set_phase(PREPARING);
+        result = transport->PrepareResources();
+        if (result == STEP_FALLBACK) {
+            return FinishWithFallback(this, transport);
+        }
+        if (result != STEP_OK) {
+            return FinishWithFailure(this, transport);
+        }
         set_phase(HELLO_SEND);
         const bool hello_sent = SendHello(io, protocol, true) == STEP_OK;
         FrameResult frame = FRAME_IO_ERROR;

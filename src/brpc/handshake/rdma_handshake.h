@@ -45,8 +45,6 @@ const HandshakeRegistration& GetRdmaHandshakeRegistration();
 namespace brpc {
 namespace rdma {
 
-using ParsedHello = RdmaConnectionInfo;
-
 namespace v2_wire {
 
 struct HelloMessage {

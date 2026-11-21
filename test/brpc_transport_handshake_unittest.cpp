@@ -52,6 +52,7 @@
 #if BRPC_WITH_RDMA
 #include "brpc/rdma_transport.h"
 #include "brpc/rdma/rdma_endpoint.h"
+#include "brpc/rdma/rq_connection.h"
 #endif
 #if BRPC_WITH_UBRING
 #include "brpc/ubshm/ub_endpoint.h"
@@ -170,7 +171,7 @@ TEST(PollerStartupTest, rdma_rolls_back_and_retries) {
     EXPECT_EXIT({
         alarm(5);
         rdma::FLAGS_rdma_use_polling = true;
-        CheckPollerStartup<rdma::RdmaEndpoint>(rdma::StartPollingThread);
+        CheckPollerStartup<rdma::RqConnection>(rdma::StartPollingThread);
         _exit(::testing::Test::HasFailure() ? 1 : 0);
     }, ::testing::ExitedWithCode(0), "");
     GTEST_FLAG_SET(death_test_style, saved);

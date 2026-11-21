@@ -303,6 +303,16 @@ cc_test(
     ] + TCMALLOC_DEP_UNLESS_ASAN,
 )
 
+cc_library(
+    name = "rdma_test_helper",
+    hdrs = ["rdma_test_helper.h"],
+    deps = [
+        ":cc_test_proto",
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 generate_unittests(
     name = "brpc_unittests",
     srcs = glob(
@@ -317,6 +327,7 @@ generate_unittests(
         ":gperftools_helper",
         "//:brpc",
         ":cc_test_proto",
+        ":rdma_test_helper",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ] + TCMALLOC_DEP_UNLESS_ASAN,
@@ -345,6 +356,7 @@ generate_unittests(
         "brpc_http_rpc_protocol_unittest.cpp": ["exclusive"],
         "brpc_redis_unittest.cpp": ["external", "local"],
         "brpc_rdma_unittest.cpp": ["exclusive"],
+        "brpc_srq_unittest.cpp": ["exclusive"],
         "brpc_server_unittest.cpp": ["exclusive"],
         "brpc_socket_unittest.cpp": ["exclusive"],
         "brpc_ssl_unittest.cpp": ["exclusive"],

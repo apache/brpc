@@ -37,6 +37,7 @@
 
 #include "brpc/rdma_transport.h"
 #include "brpc/rdma/rdma_helper.h"
+#include "brpc/rdma/srq_worker.h"
 
 namespace brpc {
 namespace rdma {
@@ -192,7 +193,7 @@ handshake::StepResult RdmaServerHandshakeAdapterV2::BuildHello(
 
 namespace v3_wire {
 
-static bool ValidRdmaHello(const RdmaHello& msg) {
+bool ValidRdmaHello(const RdmaHello& msg) {
     if (msg.gid().size() != sizeof(ibv_gid)) {
         return false;
     }
@@ -201,8 +202,16 @@ static bool ValidRdmaHello(const RdmaHello& msg) {
         msg.lid() > max_uint16) {
         return false;
     }
-    if (msg.block_size() < MIN_BLOCK_SIZE || msg.sq_size() < MIN_QP_SIZE ||
-        msg.rq_size() < MIN_QP_SIZE) {
+    if (msg.block_size() < MIN_BLOCK_SIZE || msg.sq_size() < MIN_QP_SIZE) {
+        return false;
+    }
+    if (msg.srq_protocol() == 1) {
+        if (msg.rq_size() != 0 || msg.fc_window() < 4 ||
+            msg.fc_window() > max_uint16) {
+            return false;
+        }
+    } else if (msg.srq_protocol() != 0 || msg.has_fc_window() ||
+               msg.rq_size() < MIN_QP_SIZE) {
         return false;
     }
     if (msg.has_mtu() &&
@@ -220,6 +229,10 @@ static void FillLocalRdmaHello(const ParsedHello& local, RdmaHello* msg) {
     msg->set_gid(reinterpret_cast<const char*>(local.gid.raw),
                  sizeof(local.gid.raw));
     msg->set_qp_num(local.qp_num);
+    if (local.srq_protocol != 0) {
+        msg->set_srq_protocol(local.srq_protocol);
+        msg->set_fc_window(local.fc_window);
+    }
     if (local.path_mtu.has_value()) {
         msg->set_mtu(*local.path_mtu);
     }
@@ -231,7 +244,9 @@ static void FillLocalRdmaHello(const ParsedHello& local, RdmaHello* msg) {
     }
 }
 
-static void TranslateHello(const RdmaHello& msg, ParsedHello* out) {
+void TranslateHello(const RdmaHello& msg, ParsedHello* out) {
+    out->srq_protocol = msg.srq_protocol();
+    out->fc_window = msg.fc_window();
     out->block_size = msg.block_size();
     out->sq_size = static_cast<uint16_t>(msg.sq_size());
     out->rq_size = static_cast<uint16_t>(msg.rq_size());
@@ -444,7 +459,11 @@ public:
     }
 
     StepResult PrepareResources() override {
-        if (_transport->PrepareUpgradeResources() == 0) {
+        const bool use_srq = _protocol->ProtocolVersion() == 3 &&
+                             rdma::FLAGS_rdma_use_srq;
+        const auto mode = use_srq ? rdma::RdmaQueueMode::SHARED_RQ
+                                  : rdma::RdmaQueueMode::PRIVATE_RQ;
+        if (_transport->PrepareUpgradeResources(mode) == 0) {
             return STEP_OK;
         }
         errno = 0;
@@ -543,7 +562,14 @@ public:
     }
 
     StepResult PrepareResources() override {
-        if (_transport->PrepareUpgradeResources() == 0) {
+        const bool use_srq = _protocol->remote().srq_protocol == 1;
+        if (use_srq && !rdma::FLAGS_rdma_use_srq) {
+            _transport->DeactivateUpgrade();
+            return STEP_FALLBACK;
+        }
+        const auto mode = use_srq ? rdma::RdmaQueueMode::SHARED_RQ
+                                  : rdma::RdmaQueueMode::PRIVATE_RQ;
+        if (_transport->PrepareUpgradeResources(mode) == 0) {
             return STEP_OK;
         }
         PLOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"

@@ -53,9 +53,9 @@ public:
     static int ContextInitOrDie(bool serverOrNot, const void* _options);
 
     // Resource operations consumed by the upper-level handshake coordinator.
-    int PrepareUpgradeResources();
+    int PrepareUpgradeResources(rdma::RdmaQueueMode mode);
     int StartUpgradeEvents();
-    int NegotiateUpgradeResources(const rdma::RdmaConnectionInfo& remote,
+    int NegotiateUpgradeResources(const rdma::ParsedHello& remote,
                                   bool server);
     std::unique_ptr<rdma::RdmaHandshakeAdapter>
     CreateClientHandshakeAdapter();

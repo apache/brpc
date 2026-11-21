@@ -69,13 +69,21 @@ void RdmaTransport::SetHighSpeedAvailable(bool available) {
     _rdma_state = available ? RDMA_ON : RDMA_OFF;
 }
 
-int RdmaTransport::PrepareUpgradeResources() {
-    return _rdma_ep->AllocateResources();
+int RdmaTransport::PrepareUpgradeResources(rdma::RdmaQueueMode mode) {
+    if (_rdma_ep->_queue_mode != mode) {
+        _rdma_ep->DeallocateResources();
+        _rdma_ep->SelectQueueMode(mode);
+    }
+    return _rdma_ep->_connection ? 0 : _rdma_ep->AllocateResources();
 }
 
 int RdmaTransport::NegotiateUpgradeResources(
-    const rdma::RdmaConnectionInfo &remote, bool server) {
-    _rdma_ep->ApplyRemoteInfo(remote);
+    const rdma::ParsedHello& remote, bool server) {
+    if ((_rdma_ep->_queue_mode == rdma::RdmaQueueMode::SHARED_RQ) !=
+        (remote.srq_protocol == 1)) {
+        errno = EPROTO;
+        return -1;
+    }
     return _rdma_ep->BringUpQp(remote, server);
 }
 
