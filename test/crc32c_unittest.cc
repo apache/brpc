@@ -24,8 +24,8 @@
 #endif
 #endif
 #if defined(__aarch64__) && defined(__linux__)
-#include <sys/auxv.h>
 #include <asm/hwcap.h>
+#include <sys/auxv.h>
 #ifndef HWCAP_CRC32
 #define HWCAP_CRC32 (1UL << 7)
 #endif
@@ -37,8 +37,8 @@ namespace butil {
 namespace crc32c {
 
 #if defined(__aarch64__)
-uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char *buf, size_t size);
-uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char *buf,
+uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char* buf, size_t size);
+uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char* buf,
                                       size_t size);
 #endif
 
@@ -139,9 +139,7 @@ TEST_F(CRC, fast_is_on) {
        val != 0);
   EXPECT_EQ(sysctl_crc32, IsFastCrc32Supported());
 #elif defined(__aarch64__) && defined(__linux__)
-  if ((getauxval(AT_HWCAP) & HWCAP_CRC32) != 0) {
-    EXPECT_TRUE(IsFastCrc32Supported());
-  }
+  EXPECT_EQ((getauxval(AT_HWCAP) & HWCAP_CRC32) != 0, IsFastCrc32Supported());
 #endif
 }
 
@@ -211,7 +209,7 @@ TEST_F(CRC, TightBoundsAndAllArm64Paths) {
       for (size_t i = 0; i < len; ++i) {
         raw[align + i] = static_cast<char>(((i * 131) + 17) & 0xff);
       }
-      const char *base = raw.get() + align;
+      const char* base = raw.get() + align;
       for (size_t si = 0; si < sizeof(seeds) / sizeof(seeds[0]); ++si) {
         const uint32_t seed = seeds[si];
         const uint32_t expected = ReferenceExtend(seed, base, len);

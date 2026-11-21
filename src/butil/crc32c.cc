@@ -33,8 +33,8 @@
 #pragma GCC pop_options
 #endif
 #if defined(__linux__)
-#include <sys/auxv.h>
 #include <asm/hwcap.h>
+#include <sys/auxv.h>
 #elif defined(__APPLE__)
 #include <sys/sysctl.h>
 #undef ALIGN
@@ -313,6 +313,7 @@ static const uint32_t table3_[256] = {
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
+#if defined(__aarch64__)
 static inline uint16_t DecodeFixed16(const char* ptr) {
 #if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
   // Load the raw bytes
@@ -325,6 +326,7 @@ static inline uint16_t DecodeFixed16(const char* ptr) {
       (static_cast<uint16_t>(static_cast<unsigned char>(ptr[1])) << 8));
 #endif
 }
+#endif  // defined(__aarch64__)
 
 static inline uint32_t DecodeFixed32(const char* ptr) {
 #if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
@@ -1126,14 +1128,14 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
   return c ^ 0xffffffffU;
 }
 
-uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char *buf, size_t size) {
+uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char* buf, size_t size) {
   if (isArmCrc32()) {
     return Arm64ExtendCrc32(crc, buf, size);
   }
   return ExtendImpl<SlowCRC32Functor>(crc, buf, size);
 }
 
-uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char *buf,
+uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char* buf,
                                       size_t size) {
   if (isArmCrc32() && isArmPmull()) {
     return Arm64ExtendCrc32Pmull(crc, buf, size);
