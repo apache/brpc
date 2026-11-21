@@ -284,10 +284,12 @@ struct ServerOptions {
 
     // Only enable these protocols, separated by spaces.
     // All names inside must be valid, check protocols name in global.cpp
-    // http/h2 and rdma_handshake are served whatever this field says:
-    // the builtin services are only reachable over http/h2, and
-    // rdma_handshake is a transport level handshake dispatching no request.
-    // Naming them here is allowed and changes nothing.
+    // When this field is non-empty, only the listed protocols are served.
+    // rdma_handshake is always served as it is a transport level handshake
+    // dispatching no request; naming it here is allowed and changes nothing.
+    // Builtin and restful services are served through http/h2, so if either of
+    // them is enabled, http or h2 must be listed as well, otherwise
+    // Server::Start() fails.
     // Default: empty (all protocols)
     std::string enabled_protocols;
 
