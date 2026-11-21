@@ -1368,6 +1368,16 @@ TEST(RtmpTest, payload_starting_with_c0_version_tries_others) {
     ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
     ASSERT_EQ(nullptr, socket->parsing_context());
 
+    // The version field of C1 is checked as soon as it is available, so a
+    // non-rtmp payload shorter than C0+C1 falls through without waiting for
+    // all of them to arrive.
+    butil::IOBuf partial;
+    std::string partial_payload(100, '\x03');
+    partial.append(partial_payload.data(), partial_payload.size());
+    pr = brpc::policy::ParseRtmpMessage(&partial, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, pr.error());
+    ASSERT_EQ(nullptr, socket->parsing_context());
+
     ASSERT_EQ(0, socket->SetFailed());
     socket.reset();
     server.Stop(0);

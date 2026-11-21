@@ -3481,10 +3481,11 @@ inline ParseResult IsPossiblyRtmp(const butil::IOBuf* source) {
                MAGIC_NUMBER_SIZE) == 0) {
         return MakeMessage(nullptr);
     }
-    // Both handshakes supported by brpc need the whole C0+C1: the complex one
-    // is verified by adobe_hs::C1::Load, the simple one requires the version
-    // field of C1 to be zero.
-    if (len < RTMP_HANDSHAKE_SIZE0 + RTMP_HANDSHAKE_SIZE1) {
+    // Reject the connection as early as possible: the version field of C1 is
+    // enough to tell whether it can be a handshake supported by brpc. The
+    // simple one requires zero, the complex one is verified by
+    // adobe_hs::C1::Load and uses FP_VERSION or FMS_VERSION.
+    if (len < RTMP_SNIFF_SIZE1) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     const uint32_t version = ReadBigEndian4Bytes(p + RTMP_HANDSHAKE_SIZE0 + 4);
@@ -3492,6 +3493,10 @@ inline ParseResult IsPossiblyRtmp(const butil::IOBuf* source) {
         version != adobe_hs::FP_VERSION &&
         version != adobe_hs::FMS_VERSION) {
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+    }
+    // Both supported handshakes need the whole C0+C1.
+    if (len < RTMP_HANDSHAKE_SIZE0 + RTMP_HANDSHAKE_SIZE1) {
+        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
     return MakeMessage(nullptr);
 }
