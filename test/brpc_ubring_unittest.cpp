@@ -28,6 +28,9 @@
 #include "brpc/socket.h"
 
 #if BRPC_WITH_UBRING
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "brpc/ubshm/common/common.h"
 #include "brpc/ubshm/ub_endpoint.h"
@@ -834,6 +837,46 @@ TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
               static_cast<uint32_t>(
                   brpc::ubring::FLAGS_ub_event_queue_timer_interval_us) *
                   USEC_TO_NSEC);
+}
+
+// Newly created segments must not be accessible to other users of the host.
+// The UBS backend allocates through the external ubsm SDK, which is not
+// available in unit tests, so only the constant it passes to
+// ubsmem_shmem_allocate is checked here.
+TEST(UBRingShmModeTest, segment_mode_is_owner_only) {
+    EXPECT_EQ(0600, SHM_SEGMENT_MODE);
+    EXPECT_EQ(SHM_SEGMENT_MODE, SHM_IPC_MODE);
+}
+
+TEST(UBRingShmModeTest, ipc_segment_is_mapped_by_peer_only) {
+    static std::atomic<uint32_t> name_sequence(0);
+    const std::string name = "/brpc_mode_" + std::to_string(getpid()) + "_" +
+        std::to_string(name_sequence.fetch_add(1, std::memory_order_relaxed));
+    brpc::ubring::SHM local_shm = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_LT(name.size(), sizeof(local_shm.name));
+    memcpy(local_shm.name, name.c_str(), name.size() + 1);
+
+    // A permissive umask must not widen the mode of a new segment.
+    const mode_t saved_umask = umask(0);
+    const int ret = brpc::ubring::IpcShmLocalMalloc(&local_shm);
+    umask(saved_umask);
+    ASSERT_EQ(0, ret);
+    ASSERT_NE(nullptr, local_shm.addr);
+
+    const int fd = shm_open(local_shm.name, O_RDONLY, 0);
+    ASSERT_GE(fd, 0);
+    struct stat st;
+    ASSERT_EQ(0, fstat(fd, &st));
+    close(fd);
+    EXPECT_EQ(mode_t(0600), st.st_mode & 0777);
+
+    // The legitimate peer, running as the same user, still maps it.
+    brpc::ubring::SHM remote_shm = {nullptr, local_shm.len, 0, {0}, 0};
+    memcpy(remote_shm.name, local_shm.name, sizeof(remote_shm.name));
+    EXPECT_EQ(0, brpc::ubring::IpcShmRemoteMalloc(&remote_shm));
+    EXPECT_NE(nullptr, remote_shm.addr);
+    EXPECT_EQ(0, brpc::ubring::IpcShmRemoteFree(&remote_shm));
+    EXPECT_EQ(0, brpc::ubring::IpcShmLocalFree(&local_shm));
 }
 
 namespace brpc {
