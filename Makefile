@@ -62,6 +62,7 @@ BUTIL_SOURCES = \
     src/butil/third_party/icu/icu_utf.cc \
     src/butil/third_party/superfasthash/superfasthash.c \
     src/butil/third_party/modp_b64/modp_b64.cc \
+    src/butil/third_party/modp_b64/modp_b64_avx2.cc \
     src/butil/third_party/symbolize/demangle.cc \
     src/butil/third_party/symbolize/symbolize.cc \
     src/butil/third_party/snappy/snappy-sinksource.cc \
