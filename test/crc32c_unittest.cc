@@ -11,10 +11,18 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <memory>
 #include <vector>
 
 #include "butil/time.h"
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/mman.h>
+#include <unistd.h>
+#if !defined(MAP_ANON) && defined(MAP_ANONYMOUS)
+#define MAP_ANON MAP_ANONYMOUS
+#endif
+#endif
 #if defined(__aarch64__) && defined(__linux__)
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
@@ -46,6 +54,21 @@ uint32_t ReferenceExtend(uint32_t init_crc, const char* data, size_t n) {
     }
   }
   return c ^ 0xffffffffU;
+}
+
+void VerifyAllExtendPaths(const char* mode, uint32_t seed, const char* buf,
+                          size_t len, size_t offset) {
+  const uint32_t expected = ReferenceExtend(seed, buf, len);
+  ASSERT_EQ(expected, Extend(seed, buf, len))
+      << mode << " len=" << len << " offset=" << offset << " seed=" << seed;
+#if defined(__aarch64__)
+  if (IsFastCrc32Supported()) {
+    ASSERT_EQ(expected, Arm64ExtendCrc32ForTest(seed, buf, len))
+        << mode << " len=" << len << " offset=" << offset << " seed=" << seed;
+    ASSERT_EQ(expected, Arm64ExtendCrc32PmullForTest(seed, buf, len))
+        << mode << " len=" << len << " offset=" << offset << " seed=" << seed;
+  }
+#endif
 }
 
 }  // namespace
@@ -224,6 +247,85 @@ TEST_F(CRC, NullPointerZeroLength) {
         << "seed=" << seed;
 #endif
   }
+}
+
+TEST_F(CRC, GuardPageAndWideMisalignment) {
+  const uint32_t seeds[] = {0U, 0x9e3779b9U, 0xffffffffU};
+  struct FreeDeleter {
+    void operator()(void* p) const { std::free(p); }
+  };
+
+  // Part A: Wide misalignment (0..63) with exact-sized malloc buffers.
+  const size_t malloc_lengths[] = {0,    1,    7,    8,    15,  31,
+                                   63,   64,   191,  192,  193, 336,
+                                   1007, 1008, 1009, 2016, 2017};
+  for (size_t li = 0; li < sizeof(malloc_lengths) / sizeof(malloc_lengths[0]);
+       ++li) {
+    const size_t len = malloc_lengths[li];
+    for (size_t offset = 0; offset < 64; ++offset) {
+      const size_t alloc_len = (offset + len == 0) ? 1 : (offset + len);
+      std::unique_ptr<char, FreeDeleter> raw(
+          static_cast<char*>(std::malloc(alloc_len)));
+      ASSERT_NE(nullptr, raw.get());
+      for (size_t a = 0; a < offset; ++a) {
+        raw.get()[a] = static_cast<char>(0xa5);
+      }
+      for (size_t i = 0; i < len; ++i) {
+        raw.get()[offset + i] =
+            static_cast<char>(((i * 131) + offset + 17) & 0xff);
+      }
+      const char* base = raw.get() + offset;
+      for (size_t si = 0; si < sizeof(seeds) / sizeof(seeds[0]); ++si) {
+        ASSERT_NO_FATAL_FAILURE(
+            VerifyAllExtendPaths("malloc", seeds[si], base, len, offset));
+      }
+    }
+  }
+
+#if defined(__unix__) || defined(__APPLE__)
+  // Part B: Trailing PROT_NONE guard page via mmap/mprotect.
+  const long raw_page_size = sysconf(_SC_PAGESIZE);
+  ASSERT_GT(raw_page_size, 0L);
+  const size_t page_size = static_cast<size_t>(raw_page_size);
+  void* mapped = mmap(nullptr, 2 * page_size, PROT_READ | PROT_WRITE,
+                      MAP_PRIVATE | MAP_ANON, -1, 0);
+  ASSERT_NE(MAP_FAILED, mapped);
+  struct MmapGuard {
+    void* ptr;
+    size_t size;
+    ~MmapGuard() {
+      if (ptr != nullptr && ptr != MAP_FAILED) {
+        munmap(ptr, size);
+      }
+    }
+  } guard{mapped, 2 * page_size};
+
+  char* region = static_cast<char*>(mapped);
+  ASSERT_EQ(0, mprotect(region + page_size, page_size, PROT_NONE));
+  for (size_t i = 0; i < page_size; ++i) {
+    region[i] = static_cast<char>(((i * 131) + 17) & 0xff);
+  }
+
+  const size_t guard_lengths[] = {
+      0,  1,  2,   3,   4,   5,   6,   7,   8,    15,   16,   31,   32,   63,
+      64, 65, 191, 192, 193, 335, 336, 337, 1007, 1008, 1009, 2015, 2016, 2017};
+  for (size_t li = 0; li < sizeof(guard_lengths) / sizeof(guard_lengths[0]);
+       ++li) {
+    const size_t len = guard_lengths[li];
+    if (len > page_size) {
+      continue;
+    }
+    const char* buf = region + page_size - len;
+    const size_t offset = (page_size - len) & 63U;
+    for (size_t si = 0; si < sizeof(seeds) / sizeof(seeds[0]); ++si) {
+      ASSERT_NO_FATAL_FAILURE(
+          VerifyAllExtendPaths("guard_page", seeds[si], buf, len, offset));
+    }
+  }
+
+  guard.ptr = nullptr;
+  ASSERT_EQ(0, munmap(mapped, 2 * page_size));
+#endif
 }
 
 TEST_F(CRC, Benchmark) {
