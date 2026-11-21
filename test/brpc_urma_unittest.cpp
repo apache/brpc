@@ -21,9 +21,13 @@
 #include <gflags/gflags.h>
 
 #if BRPC_WITH_URMA
+#include <atomic>
+#include <cstdlib>
+#include "bthread/bthread.h"
 #include "butil/atomicops.h"
 #include "butil/sys_byteorder.h"
 #include "urma_api.h"
+#include "brpc/urma/urma_endpoint.h"
 #include "brpc/urma/urma_handshake.h"
 #include "brpc/urma/urma_handshake.pb.h"
 #include "brpc/urma/urma_helper.h"
@@ -31,15 +35,229 @@
 
 using namespace brpc;
 
+DECLARE_int32(task_group_ntags);
+
 namespace brpc {
 namespace urma {
 
 DECLARE_int32(urma_client_handshake_version);
+DECLARE_int32(urma_buffer_size);
+DECLARE_int32(urma_buffer_count);
+DECLARE_int32(urma_sq_size);
+DECLARE_int32(urma_rq_size);
+DECLARE_int32(urma_prepared_jetty_cnt);
 extern bool g_skip_urma_init;
 extern butil::atomic<bool> g_urma_available;
 
 }  // namespace urma
 }  // namespace brpc
+
+class UrmaPollingTest : public ::testing::TestWithParam<bool> {
+protected:
+    void SetUp() override {
+        urma::FLAGS_urma_use_polling = true;
+        urma::FLAGS_urma_poller_num = 2;
+        urma::FLAGS_urma_disable_bthread = GetParam();
+        ASSERT_EQ(0, urma::UrmaEndpoint::GlobalInitialize());
+    }
+
+    void TearDown() override {
+        urma::UrmaEndpoint::PollingModeRelease(0);
+    }
+
+    GFLAGS_NAMESPACE::FlagSaver _flags;
+};
+
+TEST_P(UrmaPollingTest, release_joins_and_can_be_repeated) {
+    std::atomic<int> initialized{0};
+    std::atomic<int> released{0};
+    ASSERT_EQ(0, urma::UrmaEndpoint::PollingModeInitialize(
+        0, nullptr, [&] { ++initialized; }, [&] { ++released; }));
+    urma::UrmaEndpoint::PollingModeRelease(0);
+    EXPECT_EQ(2, initialized.load());
+    EXPECT_EQ(2, released.load());
+    auto& group = urma::UrmaEndpoint::PollerGroups()[0];
+    EXPECT_FALSE(group.running.load());
+    for (const auto& poller : group.pollers) {
+        EXPECT_EQ(INVALID_BTHREAD, poller.tid);
+    }
+    urma::UrmaEndpoint::PollingModeRelease(0);
+    EXPECT_EQ(2, released.load());
+
+    ASSERT_EQ(0, urma::UrmaEndpoint::PollingModeInitialize(
+        0, nullptr, nullptr, [&] { ++released; }));
+    urma::UrmaEndpoint::PollingModeRelease(0);
+    EXPECT_EQ(4, released.load());
+}
+
+TEST_P(UrmaPollingTest, stopped_pollers_skip_add_and_preserve_remove) {
+    ASSERT_EQ(0, urma::UrmaEndpoint::PollingModeInitialize(
+        0, nullptr, nullptr, nullptr));
+    urma::UrmaEndpoint::PollingModeRelease(0);
+    urma::UrmaEndpoint endpoint(nullptr);
+    endpoint._cq_sid = 7;
+    endpoint.PollerAddCqSid();
+    endpoint.PollerRemoveCqSid();
+    int removals = 0;
+    for (auto& poller : urma::UrmaEndpoint::PollerGroups()[0].pollers) {
+        urma::UrmaEndpoint::CqSidOp op;
+        if (poller.op_queue.Dequeue(op)) {
+            EXPECT_EQ(urma::UrmaEndpoint::CqSidOp::REMOVE, op.type);
+            EXPECT_EQ(7, op.sid);
+            ++removals;
+        }
+        EXPECT_FALSE(poller.op_queue.Dequeue(op));
+    }
+    EXPECT_EQ(1, removals);
+}
+
+INSTANTIATE_TEST_SUITE_P(BthreadAndPthread, UrmaPollingTest,
+                        ::testing::Bool());
+
+namespace {
+std::atomic<int> g_exit_pollers_released{0};
+urma::UrmaEndpoint* g_exit_endpoint = nullptr;
+
+void CheckPollingExit() {
+    if (g_exit_pollers_released.load() != 2) {
+        std::_Exit(91);
+    }
+    // This handler was registered before URMA initialization, so it runs
+    // after the polling exit handler, like a late Socket/endpoint destructor.
+    urma::FLAGS_urma_use_polling = true;
+    delete g_exit_endpoint;
+    g_exit_endpoint = nullptr;
+}
+}  // namespace
+
+TEST(UrmaPollingDeathTest, restart_consumes_pending_add_and_late_remove) {
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    for (bool use_pthread : {false, true}) {
+        EXPECT_EXIT({
+            urma::FLAGS_urma_use_polling = true;
+            urma::FLAGS_urma_poller_num = 1;
+            urma::FLAGS_urma_disable_bthread = use_pthread;
+            if (urma::UrmaEndpoint::GlobalInitialize() != 0 ||
+                urma::UrmaEndpoint::PollingModeInitialize(
+                    0, nullptr, nullptr, nullptr) != 0) {
+                std::_Exit(92);
+            }
+            urma::UrmaEndpoint::PollingModeRelease(0);
+            auto& poller = urma::UrmaEndpoint::PollerGroups()[0].pollers[0];
+            auto& queue = poller.op_queue;
+            // Seed the stopped queue with an ADD left unconsumed by a worker.
+            urma::UrmaEndpoint::CqSidOp add;
+            add.type = urma::UrmaEndpoint::CqSidOp::ADD;
+            add.sid = 7;
+            queue.Enqueue(add);
+            urma::UrmaEndpoint endpoint(nullptr);
+            endpoint._cq_sid = 7;
+            endpoint.PollerRemoveCqSid();
+            urma::UrmaEndpoint::CqSidOp op;
+            if (!queue.Dequeue(op) || op.type != add.type || op.sid != add.sid) {
+                std::_Exit(96);
+            }
+            if (!queue.Dequeue(op) ||
+                op.type != urma::UrmaEndpoint::CqSidOp::REMOVE ||
+                op.sid != add.sid) {
+                std::_Exit(97);
+            }
+            // Replay the verified pair through a restarted worker. Its callback
+            // runs after draining the queue, so observing it bounds the wait.
+            queue.Enqueue(add);
+            queue.Enqueue(op);
+            std::atomic<bool> polled{false};
+            if (urma::UrmaEndpoint::PollingModeInitialize(
+                    0, [&] { polled.store(true); }, nullptr, nullptr) != 0) {
+                std::_Exit(92);
+            }
+            for (int i = 0; i < 5000 && !polled.load(); ++i) {
+                bthread_usleep(1000);
+            }
+            urma::UrmaEndpoint::PollingModeRelease(0);
+            if (!polled.load() || queue.Dequeue(op)) {
+                std::_Exit(98);
+            }
+            std::_Exit(0);
+        }, ::testing::ExitedWithCode(0), "");
+    }
+}
+
+TEST(UrmaPollingDeathTest, global_shutdown_joins_all_tags) {
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    EXPECT_EXIT({
+        urma::FLAGS_urma_use_polling = true;
+        urma::FLAGS_urma_poller_num = 2;
+        FLAGS_task_group_ntags = 2;
+        if (urma::UrmaEndpoint::GlobalInitialize() != 0 ||
+            urma::UrmaEndpoint::PollingModeInitialize(
+                0, nullptr, nullptr,
+                [] { ++g_exit_pollers_released; }) != 0) {
+            std::_Exit(92);
+        }
+        if (urma::UrmaEndpoint::PollingModeInitialize(
+                1, nullptr, nullptr,
+                [] { ++g_exit_pollers_released; }) != 0) {
+            std::_Exit(92);
+        }
+        urma::FLAGS_urma_use_polling = false;
+        urma::UrmaEndpoint::GlobalPollingModeRelease();
+        urma::UrmaEndpoint::GlobalPollingModeRelease();
+        if (g_exit_pollers_released.load() != 4) {
+            std::_Exit(93);
+        }
+        std::_Exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST(UrmaPollingDeathTest, exit_stops_pollers_before_late_endpoint_cleanup) {
+    // Only the link-time mock can provide device resources independently of
+    // the host. Release the probe initialization before starting the child.
+    urma_init_attr_t init_attr{};
+    const urma_status_t status = urma_init(&init_attr);
+    if (status != URMA_SUCCESS && status != URMA_EEXIST) {
+        GTEST_SKIP() << "Polling exit test requires the URMA link-time mock";
+    }
+    int num_devices = 0;
+    urma_device_t** devices = urma_get_device_list(&num_devices);
+    const bool using_mock = devices && num_devices > 0 &&
+        strcmp(devices[0]->name, "mock_urma_device") == 0;
+    if (devices) {
+        urma_free_device_list(devices);
+    }
+    if (status == URMA_SUCCESS) {
+        ASSERT_EQ(URMA_SUCCESS, urma_uninit());
+    }
+    if (!using_mock) {
+        GTEST_SKIP() << "Polling exit test requires the URMA link-time mock";
+    }
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    EXPECT_EXIT({
+        urma::FLAGS_urma_use_polling = true;
+        urma::FLAGS_urma_poller_num = 2;
+        urma::FLAGS_urma_buffer_size = 4096;
+        urma::FLAGS_urma_buffer_count = 512;
+        urma::FLAGS_urma_sq_size = 16;
+        urma::FLAGS_urma_rq_size = 16;
+        urma::FLAGS_urma_prepared_jetty_cnt = 0;
+        urma::g_skip_urma_init = false;
+        if (std::atexit(CheckPollingExit) != 0) {
+            std::_Exit(94);
+        }
+        urma::GlobalUrmaInitializeOrDie();
+        if (!urma::IsUrmaAvailable() ||
+            urma::UrmaEndpoint::PollingModeInitialize(
+                0, nullptr, nullptr,
+                [] { ++g_exit_pollers_released; }) != 0) {
+            std::_Exit(95);
+        }
+        g_exit_endpoint = new urma::UrmaEndpoint(nullptr);
+        g_exit_endpoint->_resource = new urma::UrmaResource;
+        g_exit_endpoint->_cq_sid = 7;
+        urma::FLAGS_urma_use_polling = false;
+        std::exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
 
 // ---------------------------------------------------------------------------
 // v2 binary HelloMessage: serialize + deserialize round-trips.
