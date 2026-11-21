@@ -40,6 +40,24 @@ namespace {
 // Unit Tests - No Server Required
 class CouchbaseUnitTest : public testing::Test {};
 
+TEST_F(CouchbaseUnitTest, LocalCollectionCacheLookup) {
+  std::unordered_map<std::string, brpc::CouchbaseManifestManager::CollectionManifest> cache;
+  cache["bucket"].scope_to_collection_id_map["scope"]["collection"] = 42;
+  brpc::CouchbaseOperations::CouchbaseRequest req(&cache);
+  uint8_t id = 7;
+  EXPECT_TRUE(req.getLocalCachedCollectionId("bucket", "scope", "collection", &id));
+  EXPECT_EQ(42, id);
+  id = 7;
+  EXPECT_FALSE(req.getLocalCachedCollectionId("missing", "scope", "collection", &id));
+  EXPECT_FALSE(req.getLocalCachedCollectionId("bucket", "missing", "collection", &id));
+  EXPECT_FALSE(req.getLocalCachedCollectionId("bucket", "scope", "missing", &id));
+  EXPECT_FALSE(req.getLocalCachedCollectionId("", "scope", "collection", &id));
+  EXPECT_EQ(7, id);
+  EXPECT_EQ(1u, cache.size());
+  EXPECT_EQ(1u, cache["bucket"].scope_to_collection_id_map.size());
+  EXPECT_EQ(1u, cache["bucket"].scope_to_collection_id_map["scope"].size());
+}
+
 TEST_F(CouchbaseUnitTest, ManifestJsonNesting) {
   brpc::CouchbaseManifestManager manager;
   brpc::CouchbaseManifestManager::CollectionManifest manifest;

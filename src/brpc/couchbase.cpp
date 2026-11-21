@@ -323,18 +323,18 @@ bool CouchbaseManifestManager::refreshCollectionManifest(
     DEBUG_PRINT("Collection manifest is already up-to-date for bucket "
                 << bucket << " on server " << server);
     if (local_collection_manifest_cache != nullptr) {
-      if (local_collection_manifest_cache->find(bucket) !=
-          local_collection_manifest_cache->end()) {
+      auto local_it = local_collection_manifest_cache->find(bucket);
+      if (local_it != local_collection_manifest_cache->end()) {
         // if the bucket already exists in the local cache, check the UID
-        if ((*local_collection_manifest_cache)[bucket].uid != manifest.uid) {
+        if (local_it->second.uid != manifest.uid) {
           // if the UID is different, update the local cache
-          (*local_collection_manifest_cache)[bucket] = manifest;
+          local_it->second = manifest;
           DEBUG_PRINT("Updated local collection manifest cache for bucket "
                       << bucket << " on server " << server);
         }
       } else {
         // if the bucket does not exist in the local cache, add it
-        (*local_collection_manifest_cache)[bucket] = manifest;
+        local_collection_manifest_cache->emplace(bucket, manifest);
         DEBUG_PRINT("Added to local collection manifest cache for bucket "
                     << bucket << " on server " << server);
       }
@@ -2139,11 +2139,12 @@ bool CouchbaseOperations::CouchbaseRequest::getLocalCachedCollectionId(
   auto it = local_collection_manifest_cache->find(bucket);
   if (it != local_collection_manifest_cache->end()) {
     CouchbaseManifestManager::CollectionManifest& manifest = it->second;
-    if (manifest.scope_to_collection_id_map.find(scope) !=
-        manifest.scope_to_collection_id_map.end()) {
-      auto& collection_map = manifest.scope_to_collection_id_map[scope];
-      if (collection_map.find(collection) != collection_map.end()) {
-        *collection_id = collection_map[collection];
+    auto scope_it = manifest.scope_to_collection_id_map.find(scope);
+    if (scope_it != manifest.scope_to_collection_id_map.end()) {
+      const auto& collection_map = scope_it->second;
+      auto collection_it = collection_map.find(collection);
+      if (collection_it != collection_map.end()) {
+        *collection_id = collection_it->second;
         return true;
       } else {
         DEBUG_PRINT("Collection name not found in local cache: " << collection);
