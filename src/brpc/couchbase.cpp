@@ -51,6 +51,8 @@ constexpr uint32_t APPLE_VBUCKET_COUNT ALLOW_UNUSED = 64;
 constexpr uint32_t DEFAULT_VBUCKET_COUNT ALLOW_UNUSED = 1024;
 constexpr int CONNECTION_ID_SIZE = 33;
 constexpr size_t RANDOM_ID_HEX_SIZE = 67;  // 33 bytes * 2 + null terminator
+
+using policy::ValidCouchbaseRequestLengths;
 }  // namespace
 
 // Static member definitions
@@ -456,6 +458,9 @@ bool CouchbaseOperations::CouchbaseRequest::selectBucketRequest(
     DEBUG_PRINT("Empty bucket name");
     return false;
   }
+  if (!ValidCouchbaseRequestLengths(bucket_name.size(), 0, 0, 0)) {
+    return false;
+  }
   // construct the request header
   const policy::CouchbaseRequestHeader header = {
       policy::CB_MAGIC_REQUEST,
@@ -565,6 +570,9 @@ bool CouchbaseOperations::CouchbaseRequest::authenticateRequest(
     const butil::StringPiece& username, const butil::StringPiece& password) {
   if (username.empty() || password.empty()) {
     DEBUG_PRINT("Empty username or password");
+    return false;
+  }
+  if (!policy::ValidCouchbaseAuthLengths(username.size(), password.size())) {
     return false;
   }
   // insert the features to get enabled, calling function helloRequest() will do
@@ -792,6 +800,9 @@ std::string CouchbaseOperations::CouchbaseResponse::formatErrorMessage(
 // MUST NOT have value.
 bool CouchbaseOperations::CouchbaseRequest::getOrDelete(
     uint8_t command, const butil::StringPiece& key, uint8_t coll_id) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, 0, 0)) {
+    return false;
+  }
   // Collection ID
   uint8_t collection_id = coll_id;
   uint16_t VBucket_id = hashCrc32(key.data(), key.size());
@@ -896,6 +907,9 @@ bool CouchbaseOperations::CouchbaseRequest::getCachedOrFetchCollectionId(
 bool CouchbaseOperations::CouchbaseRequest::getRequest(
     const butil::StringPiece& key, std::string collection_name,
     brpc::Channel* channel, const std::string& server, const std::string& bucket) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, 0, 0)) {
+    return false;
+  }
   DEBUG_PRINT("getRequest called with key: "
               << key << ", collection_name: " << collection_name
               << ", server: " << server << ", bucket: " << bucket);
@@ -936,6 +950,9 @@ bool CouchbaseOperations::CouchbaseRequest::getRequest(
 bool CouchbaseOperations::CouchbaseRequest::deleteRequest(
     const butil::StringPiece& key, std::string collection_name,
     brpc::Channel* channel, const std::string& server, const std::string& bucket) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, 0, 0)) {
+    return false;
+  }
   DEBUG_PRINT("deleteRequest called with key: "
               << key << ", collection_name: " << collection_name
               << ", server: " << server << ", bucket: " << bucket);
@@ -1099,6 +1116,9 @@ bool CouchbaseOperations::CouchbaseRequest::store(
     uint8_t command, const butil::StringPiece& key,
     const butil::StringPiece& value, uint32_t flags, uint32_t exptime,
     uint64_t cas_value, uint8_t coll_id) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, STORE_EXTRAS, value.size())) {
+    return false;
+  }
   // add collection id
   //  uint16_t collection_id = 0x00;
   uint8_t collection_id = coll_id;
@@ -1280,6 +1300,9 @@ bool CouchbaseOperations::CouchbaseRequest::upsertRequest(
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
     std::string collection_name, brpc::Channel* channel, const std::string& server,
     const std::string& bucket) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, STORE_EXTRAS, value.size())) {
+    return false;
+  }
   DEBUG_PRINT("upsertRequest called with key: "
               << key << ", value: " << value
               << ", collection_name: " << collection_name
@@ -1343,6 +1366,9 @@ bool CouchbaseOperations::CouchbaseRequest::addRequest(
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
     std::string collection_name, brpc::Channel* channel, const std::string& server,
     const std::string& bucket) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, STORE_EXTRAS, value.size())) {
+    return false;
+  }
   DEBUG_PRINT("addRequest called with key: "
               << key << ", value: " << value
               << ", collection_name: " << collection_name
@@ -1387,6 +1413,9 @@ bool CouchbaseOperations::CouchbaseRequest::appendRequest(
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
     std::string collection_name, brpc::Channel* channel, const std::string& server,
     const std::string& bucket) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, STORE_EXTRAS, value.size())) {
+    return false;
+  }
   if (value.empty()) {
     DEBUG_PRINT("value to append must be non-empty");
     return false;
@@ -1422,6 +1451,9 @@ bool CouchbaseOperations::CouchbaseRequest::prependRequest(
     uint32_t flags, uint32_t exptime, uint64_t cas_value,
     std::string collection_name, brpc::Channel* channel, const std::string& server,
     const std::string& bucket) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, STORE_EXTRAS, value.size())) {
+    return false;
+  }
   if (value.empty()) {
     DEBUG_PRINT("value to prepend must be non-empty");
     return false;
@@ -1670,6 +1702,9 @@ const size_t INCR_EXTRAS =
 bool CouchbaseOperations::CouchbaseRequest::counter(
     uint8_t command, const butil::StringPiece& key, uint64_t delta,
     uint64_t initial_value, uint32_t exptime) {
+  if (!ValidCouchbaseRequestLengths(key.size(), 0, INCR_EXTRAS, 0)) {
+    return false;
+  }
   IncrHeaderWithExtras header_with_extras = {
       {policy::CB_MAGIC_REQUEST, command, butil::HostToNet16(key.size()),
        INCR_EXTRAS, policy::CB_BINARY_RAW_BYTES, 0,
@@ -1848,6 +1883,17 @@ bool sendRequest(CouchbaseOperations::operation_type op_type, const std::string&
     DEBUG_PRINT("No bucket selected, make sure to call SelectBucket() first");
     result->error_message =
         "No bucket selected, make sure to call SelectBucket() first";
+    return false;
+  }
+  const bool has_value = op_type == CouchbaseOperations::UPSERT ||
+      op_type == CouchbaseOperations::ADD || op_type == CouchbaseOperations::APPEND ||
+      op_type == CouchbaseOperations::PREPEND;
+  if (!ValidCouchbaseRequestLengths(key.size(), 1, has_value ? STORE_EXTRAS : 0,
+                           has_value ? value.size() : 0)) {
+    result->success = false;
+    result->value.clear();
+    result->error_message = "Couchbase request exceeds protocol length limits";
+    result->status_code = 0;
     return false;
   }
   brpc::Controller cntl;
