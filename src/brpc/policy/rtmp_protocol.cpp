@@ -3453,12 +3453,44 @@ bool RtmpChunkStream::OnPause(const RtmpMessageHeader& mh,
 
 // ============== protocol handlers =============
 
+// Size of C0 plus the magic number of simplified rtmp.
+static const size_t RTMP_SNIFF_SIZE0 = RTMP_HANDSHAKE_SIZE0 + MAGIC_NUMBER_SIZE;
+// Size of C0 plus the time and version fields of C1.
+static const size_t RTMP_SNIFF_SIZE1 = RTMP_HANDSHAKE_SIZE0 + 8;
+
 inline ParseResult IsPossiblyRtmp(const butil::IOBuf* source) {
-    const char* p = (const char*)source->fetch1();
-    if (p == nullptr) {
+    // C0 alone is too weak a signature: any payload starting with 0x03(e.g. a
+    // thrift request) would be captured by the RTMP handshake and the
+    // connection is broken. So validate C1 as well before claiming the
+    // connection.
+    const size_t len = source->length();
+    if (len < RTMP_HANDSHAKE_SIZE0) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
-    if (*p != RTMP_DEFAULT_VERSION) {
+    char buf[RTMP_SNIFF_SIZE1];
+    // `fetch' may return the internal buffer instead of copying to `buf'.
+    const char* const p = (const char*)source->fetch(
+        buf, std::min<size_t>(len, sizeof(buf)));
+    if ((uint8_t)p[0] != RTMP_DEFAULT_VERSION) {
+        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+    }
+    if (len < RTMP_SNIFF_SIZE0) {
+        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
+    }
+    if (memcmp(p + RTMP_HANDSHAKE_SIZE0, SIMPLIFIED_RTMP_MAGIC_NUMBER,
+               MAGIC_NUMBER_SIZE) == 0) {
+        return MakeMessage(nullptr);
+    }
+    // Both handshakes supported by brpc need the whole C0+C1: the complex one
+    // is verified by adobe_hs::C1::Load, the simple one requires the version
+    // field of C1 to be zero.
+    if (len < RTMP_HANDSHAKE_SIZE0 + RTMP_HANDSHAKE_SIZE1) {
+        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
+    }
+    const uint32_t version = ReadBigEndian4Bytes(p + RTMP_HANDSHAKE_SIZE0 + 4);
+    if (version != 0 &&
+        version != adobe_hs::FP_VERSION &&
+        version != adobe_hs::FMS_VERSION) {
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
     return MakeMessage(nullptr);
@@ -3475,9 +3507,8 @@ ParseResult ParseRtmpMessage(butil::IOBuf* source, Socket *socket, bool read_eof
         const Server* server = static_cast<const Server*>(arg);
         RtmpService* service = server->options().rtmp_service;
         if (service == nullptr) {
-            // Validating RTMP protocol only checks the first byte, which
-            // is very easy to be confused with other protocols. Currently
-            // if rtmp_service is not set, the protocol is skipped w/o any
+            // RTMP shares the port with other protocols. Currently if
+            // rtmp_service is not set, the protocol is skipped w/o any
             // warning. We'll register the protocol on demand in later CI
             // to avoid the confusion from root.
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
