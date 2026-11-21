@@ -20,6 +20,7 @@
 // Date: Sun Aug  3 12:46:15 CST 2014
 
 #include <pthread.h>
+#include <atomic>
 #include <gflags/gflags.h>
 
 #include "bthread/bthread.h"     // bthread_create_span_fn and related types
@@ -68,7 +69,7 @@ static const uint32_t KEYS_MAX = KEY_2NDLEVEL_SIZE * KEY_1STLEVEL_SIZE;
 
 // destructors/version of TLS.
 struct KeyInfo {
-    uint32_t version;
+    std::atomic<uint32_t> version{0};
     void (*dtor)(void*, const void*);
     const void* dtor_args;
 };
@@ -106,9 +107,20 @@ public:
                 // the position again.
                 _data[i].ptr = nullptr;
 
-                KeyInfo info = bthread::s_key_info[offset + i];
-                if (info.dtor && _data[i].version == info.version) {
-                    info.dtor(p, info.dtor_args);
+                void (*dtor)(void*, const void*) = nullptr;
+                const void* dtor_args = nullptr;
+                {
+                    BAIDU_SCOPED_LOCK(s_key_mutex);
+                    const KeyInfo& info = s_key_info[offset + i];
+                    if (_data[i].version ==
+                        info.version.load(std::memory_order_relaxed)) {
+                        dtor = info.dtor;
+                        dtor_args = info.dtor_args;
+                    }
+                }
+                // Destructors may create or delete keys themselves.
+                if (dtor) {
+                    dtor(p, dtor_args);
                 }
             }
         }
@@ -193,7 +205,8 @@ public:
     inline int set_data(bthread_key_t key, void* data) {
         const uint32_t subidx = key.index / KEY_2NDLEVEL_SIZE;
         if (subidx < KEY_1STLEVEL_SIZE &&
-            key.version == s_key_info[key.index].version) {
+            key.version == s_key_info[key.index].version.load(
+                std::memory_order_relaxed)) {
             SubKeyTable* sub_kt = _subs[subidx];
             if (sub_kt == nullptr) {
                 sub_kt = new SubKeyTable;
@@ -632,14 +645,15 @@ int bthread_key_create2(bthread_key_t* key,
         } else {
             return EAGAIN;  // what pthread_key_create returns in this case.
         }
-    }
-    bthread::s_key_info[index].dtor = dtor;
-    bthread::s_key_info[index].dtor_args = dtor_args;
-    key->index = index;
-    key->version = bthread::s_key_info[index].version;
-    if (key->version == 0) {
-        ++bthread::s_key_info[index].version;
-        ++key->version;
+        bthread::s_key_info[index].dtor = dtor;
+        bthread::s_key_info[index].dtor_args = dtor_args;
+        key->index = index;
+        key->version = bthread::s_key_info[index].version.load(
+            std::memory_order_relaxed);
+        if (key->version == 0) {
+            key->version = 1;
+            bthread::s_key_info[index].version.store(1, std::memory_order_relaxed);
+        }
     }
     return 0;
 }
@@ -653,13 +667,16 @@ int bthread_key_create(bthread_key_t* key, void (*dtor)(void*)) {
 }
 
 int bthread_key_delete(bthread_key_t key) {
-    if (key.index < bthread::KEYS_MAX &&
-        key.version == bthread::s_key_info[key.index].version) {
+    if (key.index < bthread::KEYS_MAX) {
         BAIDU_SCOPED_LOCK(bthread::s_key_mutex);
-        if (key.version == bthread::s_key_info[key.index].version) {
-            if (++bthread::s_key_info[key.index].version == 0) {
-                ++bthread::s_key_info[key.index].version;
+        if (key.version == bthread::s_key_info[key.index].version.load(
+                std::memory_order_relaxed)) {
+            uint32_t next_version = key.version + 1;
+            if (next_version == 0) {
+                ++next_version;
             }
+            bthread::s_key_info[key.index].version.store(
+                next_version, std::memory_order_relaxed);
             bthread::s_key_info[key.index].dtor = nullptr;
             bthread::s_key_info[key.index].dtor_args = nullptr;
             bthread::s_free_keys[bthread::nfreekey++] = key.index;
