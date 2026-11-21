@@ -4,7 +4,10 @@
 
 #include "butil/cpu.h"
 #include "butil/build_config.h"
+#include "butil/macros.h"
+#include "butil/processor.h"
 
+#include <string>
 #include <gtest/gtest.h>
 
 // Tests whether we can run extended instructions represented by the CPU
@@ -95,3 +98,14 @@ TEST(CPU, RunExtendedInstructions) {
 #endif
 #endif
 }
+
+#if defined(ARCH_CPU_ARM64)
+TEST(CPU, CpuRelaxArm64UsesIsb) {
+  for (int i = 0; i < 16; ++i) {
+    cpu_relax();
+  }
+  std::string expansion = BAIDU_SYMBOLSTR(cpu_relax());
+  EXPECT_NE(std::string::npos, expansion.find("isb")) << expansion;
+  EXPECT_EQ(std::string::npos, expansion.find("yield")) << expansion;
+}
+#endif
