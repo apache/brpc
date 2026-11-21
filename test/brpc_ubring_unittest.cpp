@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include "brpc/ubshm/common/common.h"
 #include "brpc/ubshm/ub_endpoint.h"
@@ -833,7 +834,7 @@ TEST(UBRingShmModeTest, segment_mode_is_owner_only) {
     EXPECT_EQ(SHM_SEGMENT_MODE, SHM_IPC_MODE);
 }
 
-TEST(UBRingShmModeTest, ipc_segment_is_mapped_by_peer_only) {
+TEST(UBRingShmModeTest, ipc_segment_mode_and_peer_mapping) {
     static std::atomic<uint32_t> name_sequence(0);
     const std::string name = "/brpc_mode_" + std::to_string(getpid()) + "_" +
         std::to_string(name_sequence.fetch_add(1, std::memory_order_relaxed));
@@ -841,11 +842,39 @@ TEST(UBRingShmModeTest, ipc_segment_is_mapped_by_peer_only) {
     ASSERT_LT(name.size(), sizeof(local_shm.name));
     memcpy(local_shm.name, name.c_str(), name.size() + 1);
 
-    // A permissive umask must not widen the mode of a new segment.
-    const mode_t saved_umask = umask(0);
-    const int ret = brpc::ubring::IpcShmLocalMalloc(&local_shm);
-    umask(saved_umask);
-    ASSERT_EQ(0, ret);
+    // A permissive umask must not widen the mode of a new segment. umask is
+    // process-wide, so this case runs in a child process and leaves the umask
+    // of this (possibly multi-threaded) process untouched. Only syscalls are
+    // used after the fork.
+    const pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0) {
+        umask(0);
+        brpc::ubring::SHM child_shm = {nullptr, local_shm.len, 0, {0}, 0};
+        memcpy(child_shm.name, local_shm.name, sizeof(child_shm.name));
+        int child_rc = 1;
+        if (brpc::ubring::IpcShmLocalMalloc(&child_shm) == 0) {
+            const int child_fd = shm_open(child_shm.name, O_RDONLY, 0);
+            struct stat child_st;
+            if (child_fd >= 0 && fstat(child_fd, &child_st) == 0 &&
+                (child_st.st_mode & 0777) == 0600) {
+                child_rc = 0;
+            }
+            if (child_fd >= 0) {
+                close(child_fd);
+            }
+            munmap(child_shm.addr, child_shm.len);
+            shm_unlink(child_shm.name);
+        }
+        _exit(child_rc);
+    }
+    int status = 0;
+    ASSERT_EQ(pid, waitpid(pid, &status, 0));
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(0, WEXITSTATUS(status))
+        << "A segment created under umask 0 is not 0600";
+
+    ASSERT_EQ(0, brpc::ubring::IpcShmLocalMalloc(&local_shm));
     ASSERT_NE(nullptr, local_shm.addr);
 
     const int fd = shm_open(local_shm.name, O_RDONLY, 0);
