@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include "brpc/channel.h"
@@ -39,6 +40,12 @@
 #include "brpc/server.h"
 #include "brpc/socket.h"
 #include "flatbuffers_message_generated.h"
+
+#if !BRPC_WITH_GLOG
+namespace logging {
+DECLARE_bool(crash_on_fatal_log);
+}
+#endif
 
 namespace brpc {
 namespace rdma {
@@ -332,6 +339,44 @@ TEST_F(FlatBuffersRdmaTest, PoolExhaustionFallsBackToRegisteredStorage) {
     wire.clear();
     EXPECT_EQ(0u, brpc::rdma::GetLKey(data));
 }
+
+// Its destructor runs after the RDMA atexit handler installed in main().
+Message g_late_message;
+
+class FlatBuffersRdmaDeathTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        // Re-exec with a fresh RDMA context and its own exit handlers.
+        GTEST_FLAG_SET(death_test_style, "threadsafe");
+    }
+};
+
+TEST_F(FlatBuffersRdmaDeathTest, MessageOutlivesRdmaCleanup) {
+    ASSERT_EXIT({
+        g_late_message = MakePayload(3 * 1024 * 1024);
+        void* data = g_late_message._iobuf.get_cur_ref().block->data;
+        ASSERT_NE(0u, brpc::rdma::GetLKey(data));
+        std::exit(0);  // Run RDMA cleanup, then the Message destructor.
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+#if !BRPC_WITH_GLOG
+TEST_F(FlatBuffersRdmaDeathTest, ReleasesRegisteredMessageAfterRdmaDisable) {
+    ASSERT_EXIT({
+        Message message = MakePayload(3 * 1024 * 1024);
+        void* data = message._iobuf.get_cur_ref().block->data;
+        const uint32_t lkey = brpc::rdma::GetLKey(data);
+        ASSERT_NE(0u, lkey);
+        logging::FLAGS_crash_on_fatal_log = false;
+        brpc::rdma::GlobalDisableRdma();
+        ASSERT_FALSE(brpc::rdma::IsRdmaAvailable());
+        ASSERT_EQ(lkey, brpc::rdma::GetLKey(data));
+        message.Clear();
+        ASSERT_EQ(0u, brpc::rdma::GetLKey(data));
+        std::exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+#endif  // !BRPC_WITH_GLOG
 
 TEST_F(FlatBuffersRdmaTest, RegistrationFailureStillSupportsTcp) {
     ASSERT_NO_FATAL_FAILURE(StartServer(brpc::SOCKET_MODE_TCP));

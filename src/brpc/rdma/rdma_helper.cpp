@@ -26,6 +26,7 @@
 #include "butil/fd_guard.h"
 #include "butil/fd_utility.h"                     // butil::make_non_blocking
 #include "butil/logging.h"
+#include "butil/scoped_lock.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_endpoint.h"
@@ -108,8 +109,10 @@ static SocketId g_async_socket;
 static ibv_pd* g_pd = nullptr;
 static std::vector<ibv_mr*>* g_mrs = nullptr; // mr registered by brpc
 
-static butil::FlatMap<void*, ibv_mr*>* g_user_mrs;  // mr registered by user
-static butil::Mutex* g_user_mrs_lock = nullptr;
+// A user buffer can outlive GlobalRelease(). Keep the lock valid for its
+// deleter and hold it through verbs operations before releasing the PD.
+static pthread_mutex_t g_user_mrs_lock = PTHREAD_MUTEX_INITIALIZER;
+static butil::FlatMap<void*, ibv_mr*>* g_user_mrs = nullptr;
 
 // Store the original IOBuf memalloc and memdealloc functions
 static void* (*g_mem_alloc)(size_t) = nullptr;
@@ -146,18 +149,16 @@ static void GlobalRelease() {
         return;
     }
 
-    if (g_user_mrs_lock) {
-        BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
-        for (butil::FlatMap<void*, ibv_mr*>::iterator it = g_user_mrs->begin();
-                it != g_user_mrs->end(); ++it) {
-            IbvDeregMr(it->second);
+    {
+        BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+        if (g_user_mrs != nullptr) {
+            for (const auto& entry : *g_user_mrs) {
+                IbvDeregMr(entry.second);
+            }
+            delete g_user_mrs;
+            g_user_mrs = nullptr;
         }
-        g_user_mrs->clear();
-        delete g_user_mrs;
-        g_user_mrs = nullptr;
     }
-    delete g_user_mrs_lock;
-    g_user_mrs_lock = nullptr;
 
     if (g_mrs) {
         for (size_t i = 0; i < g_mrs->size(); ++i) {
@@ -494,11 +495,15 @@ static void GlobalRdmaInitializeOrDieImpl() {
         ExitWithError();
     }
 
-    g_user_mrs_lock = new butil::Mutex;
-    g_user_mrs = new butil::FlatMap<void*, ibv_mr*>();
-    if (g_user_mrs->init(65536) < 0) {
+    auto user_mrs = new butil::FlatMap<void*, ibv_mr*>();
+    if (user_mrs->init(65536) < 0) {
         PLOG(WARNING) << "Fail to initialize g_user_mrs";
+        delete user_mrs;
         ExitWithError();
+    }
+    {
+        BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+        g_user_mrs = user_mrs;
     }
     g_mrs = new std::vector<ibv_mr*>;
 
@@ -561,6 +566,11 @@ void GlobalRdmaInitializeOrDie() {
 }
 
 uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
+    BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+    if (!g_user_mrs || !IsRdmaAvailable()) {
+        errno = ENODEV;
+        return 0;
+    }
     ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_RELAXED_ORDERING);
     if (!mr) {
         PLOG(WARNING) << "Do not support IBV_ACCESS_RELAXED_ORDERING for RDMA!!!";
@@ -570,37 +580,29 @@ uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
             return 0;
         }
     }
-    {
-        BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
-        if (!g_user_mrs->insert(buf, mr)) {
-            LOG(WARNING) << "Fail to insert to user mr maps (now there are "
-                         << g_user_mrs->size() << " mrs already";
-        } else {
-            return mr->lkey;
-        }
+    if (g_user_mrs->insert(buf, mr)) {
+        return mr->lkey;
     }
-    if(IbvDeregMr(mr)) {
+    LOG(WARNING) << "Fail to insert to user mr maps (now there are "
+                 << g_user_mrs->size() << " mrs already";
+    if (IbvDeregMr(mr)) {
         PLOG(ERROR) << "Failed to deregister memory";
     }
     return 0;
 }
 
 void DeregisterMemoryForRdma(void* buf) {
-    ibv_mr* mr = nullptr;
-    {
-        BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
-        ibv_mr** mr_ptr = g_user_mrs->seek(buf);
-        if (mr_ptr) {
-            mr = *mr_ptr;
-            g_user_mrs->erase(buf);
-        }
+    BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+    if (g_user_mrs == nullptr) {
+        return;
     }
-    if (mr) {
-        if (IbvDeregMr(mr)) {
-            PLOG(ERROR) << "Failed to deregister memory at: " << mr->addr;
-        }
-    } else {
+    ibv_mr* mr = nullptr;
+    if (g_user_mrs->erase(buf, &mr) == 0) {
         LOG(WARNING) << "Try to deregister a buffer which is not registered";
+        return;
+    }
+    if (IbvDeregMr(mr) != 0) {
+        PLOG(ERROR) << "Failed to deregister memory at: " << buf;
     }
 }
 
@@ -629,7 +631,10 @@ ibv_pd* GetRdmaPd() {
 }
 
 uint32_t GetLKey(void* buf) {
-    BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
+    BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+    if (!g_user_mrs) {
+        return 0;
+    }
     ibv_mr** mr_ptr = g_user_mrs->seek(buf);
     if (mr_ptr) {
         return (*mr_ptr)->lkey;
