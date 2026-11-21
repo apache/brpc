@@ -21,6 +21,8 @@
 #ifndef HWCAP_CRC32
 #define HWCAP_CRC32 (1UL << 7)
 #endif
+#elif defined(__aarch64__) && defined(__APPLE__)
+#include <sys/sysctl.h>
 #endif
 
 namespace butil {
@@ -107,7 +109,12 @@ TEST_F(CRC, Mask) {
 TEST_F(CRC, fast_is_on) {
   std::cout << "IsFastCrc32Supported=" << IsFastCrc32Supported() << std::endl;
 #if defined(__aarch64__) && defined(__APPLE__)
-  EXPECT_TRUE(IsFastCrc32Supported());
+  int val = 0;
+  size_t len = sizeof(val);
+  const bool sysctl_crc32 =
+      (sysctlbyname("hw.optional.armv8_crc32", &val, &len, nullptr, 0) == 0 &&
+       val != 0);
+  EXPECT_EQ(sysctl_crc32, IsFastCrc32Supported());
 #elif defined(__aarch64__) && defined(__linux__)
   if ((getauxval(AT_HWCAP) & HWCAP_CRC32) != 0) {
     EXPECT_TRUE(IsFastCrc32Supported());
@@ -238,7 +245,9 @@ TEST_F(CRC, Benchmark) {
     timer.stop();
     const double elapsed_s = static_cast<double>(timer.n_elapsed()) / 1e9;
     const double mb_per_s =
-        (static_cast<double>(iters * len) / (1024.0 * 1024.0)) / elapsed_s;
+        elapsed_s > 0.0
+            ? (static_cast<double>(iters * len) / (1024.0 * 1024.0)) / elapsed_s
+            : 0.0;
     std::cout << "CRC32C size=" << len << "B throughput=" << mb_per_s
               << " MiB/s (crc=" << crc << ")" << std::endl;
   }
