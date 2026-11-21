@@ -1113,7 +1113,8 @@ butil::Status TsWriter::Write(const RtmpAudioMessage& msg) {
         if (!_has_aac_seq_header) {
             return butil::Status(EINVAL, "Lack of AAC sequence header");
         }
-        if (aac_msg.data.size() > 0x1fff) {
+        // frame_length is 13 bits and includes the 7-byte ADTS header.
+        if (aac_msg.data.size() > 0x1fff - 7) {
             return butil::Status(EINVAL, "Invalid AAC data_size=%" PRIu64,
                                 (uint64_t)aac_msg.data.size());
         }
