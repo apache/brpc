@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <atomic>
 #include <thread>
 #include <vector>
 
@@ -376,6 +377,60 @@ static void TestAcquireReleaseVisibility() {
   producer.join();
 }
 
+#if !defined(THREAD_SANITIZER)
+template <class AtomicType>
+static void TestReleaseCompareAndSwapFailureOrdering() {
+  struct alignas(64) PaddedAtomic {
+    volatile AtomicType value;
+  };
+
+  constexpr int kIterations = 20000;
+  PaddedAtomic flag_a{0};
+  PaddedAtomic flag_b{0};
+  std::atomic<int> round(0);
+  std::atomic<int> done(0);
+  AtomicType r1 = -1;
+  AtomicType r2 = -1;
+  int both_zero = 0;
+
+  std::thread t1([&]() {
+    for (int i = 1; i <= kIterations; ++i) {
+      while (round.load(std::memory_order_acquire) != i) {
+      }
+      butil::subtle::NoBarrier_Store(&flag_a.value, 1);
+      r1 = butil::subtle::Release_CompareAndSwap(&flag_b.value, 1, 2);
+      done.fetch_add(1, std::memory_order_release);
+    }
+  });
+
+  std::thread t2([&]() {
+    for (int i = 1; i <= kIterations; ++i) {
+      while (round.load(std::memory_order_acquire) != i) {
+      }
+      butil::subtle::NoBarrier_Store(&flag_b.value, 1);
+      r2 = butil::subtle::Release_CompareAndSwap(&flag_a.value, 1, 2);
+      done.fetch_add(1, std::memory_order_release);
+    }
+  });
+
+  for (int i = 1; i <= kIterations; ++i) {
+    butil::subtle::NoBarrier_Store(&flag_a.value, 0);
+    butil::subtle::NoBarrier_Store(&flag_b.value, 0);
+    done.store(0, std::memory_order_relaxed);
+    round.store(i, std::memory_order_release);
+    while (done.load(std::memory_order_acquire) != 2) {
+    }
+    if (r1 == 0 && r2 == 0) {
+      ++both_zero;
+    }
+  }
+
+  t1.join();
+  t2.join();
+  EXPECT_EQ(0, both_zero);
+}
+#endif
+
 #if defined(ARCH_CPU_ARM64) && defined(COMPILER_GCC) && !defined(THREAD_SANITIZER)
 TEST(AtomicOpsTest, UsesArm64GccInternalsHeader) {
 #if !defined(BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_)
@@ -447,3 +502,13 @@ TEST(AtomicOpsTest, AcquireReleaseVisibility) {
   TestAcquireReleaseVisibility<butil::subtle::Atomic64>();
 #endif
 }
+
+#if !defined(THREAD_SANITIZER)
+TEST(AtomicOpsTest, ReleaseCompareAndSwapFailureOrdering) {
+  TestReleaseCompareAndSwapFailureOrdering<butil::subtle::Atomic32>();
+  TestReleaseCompareAndSwapFailureOrdering<butil::subtle::AtomicWord>();
+#ifdef ARCH_CPU_64_BITS
+  TestReleaseCompareAndSwapFailureOrdering<butil::subtle::Atomic64>();
+#endif
+}
+#endif

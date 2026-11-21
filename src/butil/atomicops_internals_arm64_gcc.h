@@ -52,6 +52,7 @@ inline Atomic32 Acquire_CompareAndSwap(volatile Atomic32* ptr,
 inline Atomic32 Release_CompareAndSwap(volatile Atomic32* ptr,
                                        Atomic32 old_value,
                                        Atomic32 new_value) {
+  __atomic_thread_fence(__ATOMIC_SEQ_CST);
   __atomic_compare_exchange_n(ptr, &old_value, new_value, false,
                               __ATOMIC_RELEASE, __ATOMIC_RELAXED);
   return old_value;
@@ -120,6 +121,7 @@ inline Atomic64 Acquire_CompareAndSwap(volatile Atomic64* ptr,
 inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
                                        Atomic64 old_value,
                                        Atomic64 new_value) {
+  __atomic_thread_fence(__ATOMIC_SEQ_CST);
   __atomic_compare_exchange_n(ptr, &old_value, new_value, false,
                               __ATOMIC_RELEASE, __ATOMIC_RELAXED);
   return old_value;
