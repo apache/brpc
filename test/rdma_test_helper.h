@@ -128,6 +128,7 @@ protected:
     void StartServer(bool use_rdma = true) {
         ServerOptions options;
         options.enabled_protocols = "baidu_std";
+        options.has_builtin_services = false;
         options.socket_mode = use_rdma ? SOCKET_MODE_RDMA : SOCKET_MODE_TCP;
         options.idle_timeout_sec = 5;
         options.max_concurrency = 0;

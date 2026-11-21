@@ -686,15 +686,24 @@ int Server::AddBuiltinServices() {
     return 0;
 }
 
-BUTIL_FORCE_INLINE bool is_http_protocol(const char* name) {
-    if (name[0] != 'h') {
-        return false;
-    }
-    return strcmp(name, "http") == 0 || strcmp(name, "h2") == 0;
-}
-
 BUTIL_FORCE_INLINE bool is_rdma_handshake_protocol(const char* name) {
     return strcmp(name, "rdma_handshake") == 0;
+}
+
+// Builtin and restful services are served through http/h2 requests.
+static bool HasHttpOnlyServices(const ServerOptions& options,
+                                const Server::ServiceMap& services,
+                                const RestfulMap* global_restful_map) {
+    if (options.has_builtin_services || global_restful_map != nullptr) {
+        return true;
+    }
+    for (Server::ServiceMap::const_iterator it = services.begin();
+         it != services.end(); ++it) {
+        if (it->second.restful_map != nullptr) {
+            return true;
+        }
+    }
+    return false;
 }
 
 Acceptor* Server::BuildAcceptor() {
@@ -705,6 +714,9 @@ Acceptor* Server::BuildAcceptor() {
         whitelist.insert(protocol);
     }
     const bool has_whitelist = !whitelist.empty();
+    const bool http_in_whitelist =
+        has_whitelist &&
+        (whitelist.count("http") != 0 || whitelist.count("h2") != 0);
     Acceptor* acceptor = new Acceptor(_keytable_pool);
     InputMessageHandler handler;
     std::vector<Protocol> protocols;
@@ -714,12 +726,12 @@ Acceptor* Server::BuildAcceptor() {
             // The protocol does not support server-side.
             continue;
         }
-        // Erase whatever the exemptions below say. http, h2 and
-        // rdma_handshake are always served, but they are still
-        // valid names for the whitelist.
+        // Erase the name so that naming a served protocol in the whitelist
+        // does not become an "unknown protocol" below. rdma_handshake is
+        // always served since it only handles the transport level handshake
+        // and dispatches no request.
         bool in_whitelist = (whitelist.erase(protocols[i].name) != 0);
         if (has_whitelist && !in_whitelist &&
-            !is_http_protocol(protocols[i].name) &&
             !is_rdma_handshake_protocol(protocols[i].name)) {
             // the protocol is not allowed to serve.
             RPC_VLOG << "Skip protocol=" << protocols[i].name;
@@ -747,6 +759,27 @@ Acceptor* Server::BuildAcceptor() {
         err << '\'';
         delete acceptor;
         LOG(ERROR) << err.str();
+        return nullptr;
+    }
+    if (has_whitelist && !http_in_whitelist &&
+        HasHttpOnlyServices(_options, _fullname_service_map,
+                            _global_restful_map)) {
+        // Serving neither http nor h2 makes builtin/restful services
+        // silently unreachable, reject the configuration instead.
+        const bool has_builtin_services = _options.has_builtin_services;
+        LOG(ERROR) << "ServerOptions.enabled_protocols=`"
+                   << _options.enabled_protocols << "' enables neither http "
+                   << "nor h2, but "
+                   << (has_builtin_services
+                           ? "ServerOptions.has_builtin_services is true"
+                           : "restful services are added")
+                   << ". Builtin and restful services are served through "
+                   << "http/h2, add `http' (or `h2') to enabled_protocols, "
+                   << "or "
+                   << (has_builtin_services
+                           ? "set ServerOptions.has_builtin_services=false."
+                           : "remove the restful mappings.");
+        delete acceptor;
         return nullptr;
     }
     return acceptor;

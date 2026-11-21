@@ -348,6 +348,18 @@ Server detects supported protocols automatically, without assignment from users.
 
 If you need more protocols, contact us.
 
+`ServerOptions.enabled_protocols` restricts the protocols to serve. It is a space-separated list of protocol names, and when it is non-empty only the listed protocols are served; an unknown name makes `Server::Start()` fail. `rdma_handshake` is always served as it is a transport level handshake dispatching no request, naming it in the list is allowed and changes nothing. Builtin services and restful services are served through http/h2, so when they are enabled (`ServerOptions.has_builtin_services` is true by default), `http` or `h2` must be listed as well, otherwise `Server::Start()` fails with an error explaining how to fix the configuration:
+
+```c++
+ServerOptions options;
+// Serve baidu_std RPC and http, the latter keeps builtin services reachable.
+options.enabled_protocols = "baidu_std http";
+...
+// Builtin services are disabled, so http is not needed.
+options.has_builtin_services = false;
+options.enabled_protocols = "baidu_std";
+```
+
 # fork without exec
 In general, [forked](https://linux.die.net/man/3/fork) subprocess should call [exec](https://linux.die.net/man/3/exec) ASAP, before which only async-signal-safe functions should be called. brpc programs using fork like this should work correctly even in previous versions. 
 
