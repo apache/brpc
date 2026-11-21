@@ -25,6 +25,8 @@
 #include "butil/file_util.h"                 // butil::FilePath
 #include "butil/third_party/murmurhash3/murmurhash3.h"
 #include "butil/process_util.h"              // ReadCommandLine
+#include "brpc/controller.h"
+#include "brpc/grpc.h"
 #include "brpc/server.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/builtin/common.h"
@@ -122,27 +124,36 @@ void PrintRealDateTime(std::ostream& os, int64_t tm,
     }
 }
 
+static std::string EncodeUriPath(const char* path) {
+    std::string encoded;
+    PercentEncode(path, &encoded);
+    size_t pos = 0;
+    while ((pos = encoded.find("%2f", pos)) != std::string::npos) {
+        encoded.replace(pos, 3, "/");
+        ++pos;
+    }
+    return encoded;
+}
+
 std::ostream& operator<<(std::ostream& os, const PrintedAsDateTime& d) {
     PrintRealDateTime(os, d.realtime);
     return os;
 }
 
 std::ostream& operator<<(std::ostream& os, const Path& link) {
-    if (link.html_addr) {
-        if (link.html_addr != Path::LOCAL) {
-            os << "<a href=\"http://" << *link.html_addr << link.uri << "\">";
-        } else {
-            os << "<a href=\"" << link.uri << "\">";
-        }
+    const char* const text = (link.text ? link.text : link.uri);
+    if (!link.html_addr) {
+        os << text;
+        return os;
     }
-    if (link.text) {
-        os << link.text;
+
+    const std::string escaped_uri = WebEscape(EncodeUriPath(link.uri));
+    if (link.html_addr != Path::LOCAL) {
+        os << "<a href=\"http://" << *link.html_addr << escaped_uri << "\">";
     } else {
-        os << link.uri;
+        os << "<a href=\"" << escaped_uri << "\">";
     }
-    if (link.html_addr) {
-        os << "</a>";
-    }
+    os << WebEscape(text) << "</a>";
     return os;
 }
 

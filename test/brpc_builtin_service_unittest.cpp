@@ -22,16 +22,20 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
+#include <sstream>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include "gperftools_helper.h"
+#include "butil/file_util.h"
+#include "butil/files/scoped_temp_dir.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "brpc/socket.h"
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
+#include "brpc/grpc.h"
 #include "brpc/span.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/builtin/version_service.h"
@@ -813,6 +817,76 @@ TEST_F(BuiltinServiceTest, hotspots_query_escaping) {
         EXPECT_EQ(std::string::npos, body.find(payload))
             << "unescaped payload in html: " << body;
     }
+}
+
+TEST_F(BuiltinServiceTest, hotspots_profile_filename_escaping) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    butil::ScopedTempDir temp_dir;
+    ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+    brpc::FLAGS_rpc_profiling_dir = temp_dir.path().value();
+    const butil::FilePath profile_dir = temp_dir.path().Append(
+        brpc::GetProgramChecksum());
+    ASSERT_TRUE(butil::CreateDirectory(profile_dir));
+
+    const std::string filename = "profile'><img src=x onerror=alert(1)>.cpu";
+    const butil::FilePath profile_path = profile_dir.Append(filename);
+    ASSERT_EQ(0, butil::WriteFile(profile_path, "", 0));
+
+    ClosureChecker done;
+    brpc::Controller cntl;
+    brpc::HotspotsRequest req;
+    brpc::HotspotsResponse res;
+    brpc::HotspotsService service;
+    SetUpController(&cntl, true);
+    service.cpu(&cntl, &req, &res, &done);
+
+    const std::string& body = cntl.response_attachment().to_string();
+    EXPECT_EQ(std::string::npos, body.find(filename))
+        << "unescaped profile filename in html: " << body;
+    EXPECT_EQ(std::string::npos, body.find(brpc::WebEscape(filename)));
+
+}
+
+TEST_F(BuiltinServiceTest, hotspots_non_responsive_raw_profile_paths) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    butil::ScopedTempDir temp_dir;
+    ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+    brpc::FLAGS_rpc_profiling_dir = temp_dir.path().value();
+    const butil::FilePath profile_dir = temp_dir.path().Append(
+        brpc::GetProgramChecksum());
+    ASSERT_TRUE(butil::CreateDirectory(profile_dir));
+    const butil::FilePath view_path = profile_dir.Append("selected.cpu");
+    const butil::FilePath base_path = profile_dir.Append("base.cpu");
+    ASSERT_EQ(0, butil::WriteFile(view_path, "", 0));
+    ASSERT_EQ(0, butil::WriteFile(base_path, "", 0));
+
+    ClosureChecker done;
+    brpc::Controller cntl;
+    brpc::HotspotsRequest req;
+    brpc::HotspotsResponse res;
+    brpc::HotspotsService service;
+    SetUpController(&cntl, true);
+    cntl.http_request().uri().SetQuery("view", view_path.value());
+    cntl.http_request().uri().SetQuery("base", base_path.value());
+    service.cpu_non_responsive(&cntl, &req, &res, &done);
+    EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+}
+
+TEST_F(BuiltinServiceTest, path_html_escaping) {
+    const std::string payload = "\"'><script>alert(1)</script>&";
+    std::ostringstream html;
+    html << brpc::Path(payload.c_str(), brpc::Path::LOCAL, payload.c_str());
+    EXPECT_EQ(std::string::npos, html.str().find(payload));
+    EXPECT_NE(std::string::npos, html.str().find(brpc::WebEscape(payload)));
+
+    std::ostringstream reserved_html;
+    reserved_html << brpc::Path("/dir/a?x#fragment", brpc::Path::LOCAL);
+    EXPECT_NE(std::string::npos,
+              reserved_html.str().find("href=\"/dir/a%3fx%23fragment\""));
+
+    std::ostringstream text;
+    text << brpc::Path(payload.c_str(), nullptr, payload.c_str());
+    EXPECT_EQ(payload, text.str());
 }
 
 TEST_F(BuiltinServiceTest, rpcz_query_escaping) {
