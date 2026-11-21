@@ -690,16 +690,18 @@ BUTIL_FORCE_INLINE bool is_rdma_handshake_protocol(const char* name) {
     return strcmp(name, "rdma_handshake") == 0;
 }
 
-// Builtin and restful services are served through http/h2 requests.
-static bool HasHttpOnlyServices(const ServerOptions& options,
-                                const Server::ServiceMap& services,
-                                const RestfulMap* global_restful_map) {
-    if (options.has_builtin_services || global_restful_map != nullptr) {
+// Restful services are served through http/h2 requests. Empty maps may be
+// left by RemoveService(), so check the number of mappings instead of the
+// existence of the map.
+static bool HasRestfulServices(const Server::ServiceMap& services,
+                               const RestfulMap* global_restful_map) {
+    if (global_restful_map != nullptr && global_restful_map->size() != 0) {
         return true;
     }
     for (Server::ServiceMap::const_iterator it = services.begin();
          it != services.end(); ++it) {
-        if (it->second.restful_map != nullptr) {
+        if (it->second.restful_map != nullptr &&
+            it->second.restful_map->size() != 0) {
             return true;
         }
     }
@@ -761,25 +763,38 @@ Acceptor* Server::BuildAcceptor() {
         LOG(ERROR) << err.str();
         return nullptr;
     }
+    const bool has_builtin_services = _options.has_builtin_services;
+    const bool has_restful_services =
+        HasRestfulServices(_fullname_service_map, _global_restful_map);
     if (has_whitelist && !http_in_whitelist &&
-        HasHttpOnlyServices(_options, _fullname_service_map,
-                            _global_restful_map)) {
+        (has_builtin_services || has_restful_services)) {
         // Serving neither http nor h2 makes builtin/restful services
         // silently unreachable, reject the configuration instead.
-        const bool has_builtin_services = _options.has_builtin_services;
-        LOG(ERROR) << "ServerOptions.enabled_protocols=`"
-                   << _options.enabled_protocols << "' enables neither http "
-                   << "nor h2, but "
-                   << (has_builtin_services
-                           ? "ServerOptions.has_builtin_services is true"
-                           : "restful services are added")
-                   << ". Builtin and restful services are served through "
-                   << "http/h2, add `http' (or `h2') to enabled_protocols, "
-                   << "or "
-                   << (has_builtin_services
-                           ? "set ServerOptions.has_builtin_services=false."
-                           : "remove the restful mappings.");
+        std::ostringstream err;
+        err << "ServerOptions.enabled_protocols=`"
+            << _options.enabled_protocols << "' enables neither http nor h2, "
+            << "but ";
+        if (has_builtin_services && has_restful_services) {
+            err << "builtin and restful services are enabled";
+        } else if (has_builtin_services) {
+            err << "ServerOptions.has_builtin_services is true";
+        } else {
+            err << "restful services are enabled";
+        }
+        err << ". They are served through http/h2, add `http' (or `h2') to "
+            << "enabled_protocols, or ";
+        if (has_builtin_services) {
+            err << "set ServerOptions.has_builtin_services=false";
+        }
+        if (has_builtin_services && has_restful_services) {
+            err << " and ";
+        }
+        if (has_restful_services) {
+            err << "remove the restful mappings";
+        }
+        err << '.';
         delete acceptor;
+        LOG(ERROR) << err.str();
         return nullptr;
     }
     return acceptor;

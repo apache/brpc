@@ -761,6 +761,25 @@ TEST_F(ServerTest, enabled_protocols_must_include_http_for_restful_services) {
     ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
 }
 
+// RemoveService() keeps the (now empty) restful maps, which must not be
+// mistaken for restful services still requiring http.
+TEST_F(ServerTest, removed_restful_services_do_not_require_http) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                                   "*.flv => Echo, /v1/echo => Echo"));
+    ASSERT_EQ(0, server.RemoveService(&echo_svc));
+    ASSERT_TRUE(server._global_restful_map);
+    ASSERT_EQ(0u, server._global_restful_map->size());
+
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
 TEST_F(ServerTest, services_in_different_ns) {
     const int port = 9200;
     brpc::Server server1;
