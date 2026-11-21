@@ -164,6 +164,34 @@ TEST(NamingServiceTest, sanity) {
     }
 }
 
+TEST(NamingServiceTest, domain_with_ipv6_address) {
+    std::vector<brpc::ServerNode> servers;
+    brpc::policy::DomainNamingService dns;
+
+    ASSERT_EQ(0, dns.GetServers("[::1]:1234", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[::1]:1234", butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(0, dns.GetServers("[fdbd:dc03:ff:501:b783:830f:f0f5:aa6a]:2280", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[fdbd:dc03:ff:501:b783:830f:f0f5:aa6a]:2280",
+                 butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(0, dns.GetServers("[::1]:1234/useless1/useless2", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[::1]:1234", butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(0, dns.GetServers("[::1]", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[::1]:80", butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(-1, dns.GetServers("[::1", &servers));
+    ASSERT_EQ(-1, dns.GetServers("[::1]:", &servers));
+    ASSERT_EQ(-1, dns.GetServers("[::1]1234", &servers));
+    ASSERT_EQ(-1, dns.GetServers("[::1]:99999", &servers));
+    ASSERT_EQ(-1, dns.GetServers("[not-an-ip]:1234", &servers));
+}
+
 TEST(NamingServiceTest, invalid_port) {
     std::vector<brpc::ServerNode> servers;
 
