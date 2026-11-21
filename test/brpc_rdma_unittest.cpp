@@ -4439,6 +4439,18 @@ TEST(RdmaInlineDataTest, create_qp_reuses_inline_size) {
     rdma::g_inline_data_request.store(UINT32_MAX);
 }
 
+TEST(RdmaProtocolTest, supported_protocols) {
+    EXPECT_TRUE(rdma::SupportedByRdma("baidu_std"));
+#if BRPC_WITH_FLATBUFFERS
+    EXPECT_TRUE(rdma::SupportedByRdma("fb_rpc"));
+#else
+    EXPECT_FALSE(rdma::SupportedByRdma("fb_rpc"));
+#endif
+    EXPECT_FALSE(rdma::SupportedByRdma("http"));
+    EXPECT_FALSE(rdma::SupportedByRdma("h2"));
+    EXPECT_FALSE(rdma::SupportedByRdma("unknown_protocol"));
+}
+
 // The send-path decision of CutFromIOBufList(), which itself needs an
 // initialized RDMA device.
 TEST(RdmaInlineDataTest, should_post_inline) {
