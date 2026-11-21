@@ -22,6 +22,7 @@
 #include "butil/string_printf.h"
 #include "butil/sys_byteorder.h"
 #include "brpc/policy/memcache_binary_header.h"
+#include "brpc/policy/couchbase_protocol.h"
 
 namespace brpc {
 namespace policy {
@@ -36,6 +37,9 @@ constexpr char kPadding[1] = {'\0'};
 // To get the couchbase authentication protocol, see
 // https://developer.couchbase.com/documentation/server/3.x/developer/dev-guide-3.0/sasl.html
 int CouchbaseAuthenticator::GenerateCredential(std::string* auth_str) const {
+    if (!ValidCouchbaseAuthLengths(bucket_name_.size(), bucket_password_.size())) {
+        return -1;
+    }
     const brpc::policy::MemcacheRequestHeader header = {
         brpc::policy::MC_MAGIC_REQUEST, brpc::policy::MC_BINARY_SASL_AUTH,
         butil::HostToNet16(sizeof(kPlainAuthCommand) - 1), 0, 0, 0,

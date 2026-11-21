@@ -18,10 +18,27 @@
 #ifndef BRPC_POLICY_COUCHBASE_BINARY_PROTOCOL_H
 #define BRPC_POLICY_COUCHBASE_BINARY_PROTOCOL_H
 
+#include <limits>
 #include "brpc/protocol.h"
 
 namespace brpc {
 namespace policy {
+
+inline bool ValidCouchbaseRequestLengths(size_t key_size, size_t key_prefix,
+                                         size_t extras_size, size_t value_size) {
+  const size_t max_key = std::numeric_limits<uint16_t>::max();
+  const size_t max_body = std::numeric_limits<uint32_t>::max();
+  return key_prefix <= max_key && key_size <= max_key - key_prefix &&
+      extras_size <= max_body - key_prefix - key_size &&
+      value_size <= max_body - key_prefix - key_size - extras_size;
+}
+
+inline bool ValidCouchbaseAuthLengths(size_t username_size, size_t password_size) {
+  const size_t max_body = std::numeric_limits<uint32_t>::max();
+  const size_t overhead = sizeof("PLAIN") + 1;
+  return username_size <= (max_body - overhead) / 2 &&
+      password_size <= max_body - overhead - username_size * 2;
+}
 
 enum CouchbaseMagic { CB_MAGIC_REQUEST = 0x80, CB_MAGIC_RESPONSE = 0x81 };
 
