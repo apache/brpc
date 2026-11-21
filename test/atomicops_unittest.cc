@@ -341,7 +341,12 @@ static void TestAcquireReleaseVisibility() {
       }
       payload_a = static_cast<uint64_t>(i) * 0x9e3779b97f4a7c15ULL;
       payload_b = ~payload_a;
-      butil::subtle::Release_Store(&turn, 1);
+      if ((i & 1) == 0) {
+        EXPECT_EQ(static_cast<AtomicType>(0),
+                  butil::subtle::Release_CompareAndSwap(&turn, 0, 1));
+      } else {
+        butil::subtle::Release_Store(&turn, 1);
+      }
     }
   });
 
@@ -361,7 +366,8 @@ static void TestAcquireReleaseVisibility() {
       break;
     }
     if ((i & 1) == 0) {
-      butil::subtle::Acquire_Store(&turn, 0);
+      EXPECT_EQ(static_cast<AtomicType>(1),
+                butil::subtle::Release_CompareAndSwap(&turn, 1, 0));
     } else {
       butil::subtle::Release_Store(&turn, 0);
     }
