@@ -454,7 +454,8 @@ butil::Status RedisCommandByComponents(butil::IOBuf* output,
 RedisCommandParser::RedisCommandParser()
     : _parsing_array(false)
     , _length(0)
-    , _index(0) {}
+    , _index(0)
+    , _used_bytes(0) {}
 
 size_t RedisCommandParser::ParsedArgsSize() {
     return _args.size();
@@ -657,6 +658,19 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
         *err = PARSE_ERROR_ABSOLUTELY_WRONG;
         return CONSUME_STATE_ERROR;
     }
+    // Parsed arguments stay in the connection arena until the whole command
+    // has arrived, so their sum, not only each argument, must be bounded by
+    // -redis_max_allocation_size. Payload bytes are charged here; the _args
+    // descriptors are bounded by the array-count check above.
+    if (FLAGS_redis_max_allocation_size > 0 &&
+        (uint64_t)_used_bytes + (uint64_t)len >
+            (uint64_t)FLAGS_redis_max_allocation_size) {
+        LOG(ERROR) << "accumulated command allocation exceeds max allocation "
+                      "size! max=" << FLAGS_redis_max_allocation_size
+                   << ", already=" << _used_bytes << ", requesting=" << len;
+        *err = PARSE_ERROR_ABSOLUTELY_WRONG;
+        return CONSUME_STATE_ERROR;
+    }
     if (buf.size() < crlf_pos + 2 + (size_t)len + 2/*CRLF*/) {
         *err = PARSE_ERROR_NOT_ENOUGH_DATA;
         return CONSUME_STATE_ERROR;
@@ -671,6 +685,7 @@ RedisCommandConsumeState RedisCommandParser::ConsumeImpl(butil::IOBuf& buf,
     }
     buf.cutn(d, len);
     d[len] = '\0';
+    _used_bytes += len;
     if (_args.size() <= (size_t)_index) {
         // Grow _args as the arguments arrive instead of upfront.
         _args.resize(_index + 1);
@@ -699,6 +714,7 @@ void RedisCommandParser::Reset() {
     _parsing_array = false;
     _length = 0;
     _index = 0;
+    _used_bytes = 0;
     _args.clear();
 }
 

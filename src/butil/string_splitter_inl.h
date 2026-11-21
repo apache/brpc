@@ -132,39 +132,45 @@ int StringSplitter::to_uint(unsigned int* pv) const {
 }
 
 int StringSplitter::to_long(long* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtol(field(), &endptr, 10);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtol(value.c_str(), &endptr, 10);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringSplitter::to_ulong(unsigned long* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtoul(field(), &endptr, 10);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtoul(value.c_str(), &endptr, 10);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringSplitter::to_longlong(long long* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtoll(field(), &endptr, 10);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtoll(value.c_str(), &endptr, 10);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringSplitter::to_ulonglong(unsigned long long* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtoull(field(), &endptr, 10);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtoull(value.c_str(), &endptr, 10);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringSplitter::to_float(float* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtof(field(), &endptr);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtof(value.c_str(), &endptr);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringSplitter::to_double(double* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtod(field(), &endptr);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtod(value.c_str(), &endptr);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 StringMultiSplitter::StringMultiSplitter (
@@ -283,39 +289,45 @@ int StringMultiSplitter::to_uint(unsigned int* pv) const {
 }
 
 int StringMultiSplitter::to_long(long* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtol(field(), &endptr, 10);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtol(value.c_str(), &endptr, 10);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringMultiSplitter::to_ulong(unsigned long* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtoul(field(), &endptr, 10);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtoul(value.c_str(), &endptr, 10);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringMultiSplitter::to_longlong(long long* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtoll(field(), &endptr, 10);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtoll(value.c_str(), &endptr, 10);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringMultiSplitter::to_ulonglong(unsigned long long* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtoull(field(), &endptr, 10);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtoull(value.c_str(), &endptr, 10);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringMultiSplitter::to_float(float* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtof(field(), &endptr);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtof(value.c_str(), &endptr);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 int StringMultiSplitter::to_double(double* pv) const {
+    const std::string value(field(), length());
     char* endptr = nullptr;
-    *pv = strtod(field(), &endptr);
-    return (endptr == field() + length()) ? 0 : -1;
+    *pv = strtod(value.c_str(), &endptr);
+    return (endptr == value.c_str() + value.size()) ? 0 : -1;
 }
 
 void KeyValuePairsSplitter::UpdateDelimiterPosition() {

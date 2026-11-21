@@ -25,6 +25,7 @@
 #include <google/protobuf/descriptor.h>             // ServiceDescriptor
 #include "idl_options.pb.h"                         // option(idl_support)
 #include "bthread/unstable.h"                       // bthread_keytable_pool_init
+#include "butil/atomicops.h"                        // butil::atomic
 #include "butil/macros.h"                           // ARRAY_SIZE
 #include "butil/fd_guard.h"                         // fd_guard
 #include "butil/logging.h"                          // CHECK
@@ -800,16 +801,16 @@ struct BthreadInitArgs {
     bool (*bthread_init_fn)(void* args); // default: nullptr (do nothing)
     void* bthread_init_args;             // default: nullptr
     bool result;
-    bool done;
-    bool stop;
+    butil::atomic<bool> done;
+    butil::atomic<bool> stop;
     bthread_t th;
 };
 
 static void* BthreadInitEntry(void* void_args) {
     BthreadInitArgs* args = (BthreadInitArgs*)void_args;
     args->result = args->bthread_init_fn(args->bthread_init_args);
-    args->done = true;
-    while (!args->stop) {
+    args->done.store(true, butil::memory_order_release);
+    while (!args->stop.load(butil::memory_order_acquire)) {
         bthread_usleep(1000);
     }
     return nullptr;
@@ -1051,8 +1052,8 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
             init_args[i].bthread_init_fn = _options.bthread_init_fn;
             init_args[i].bthread_init_args = _options.bthread_init_args;
             init_args[i].result = false;
-            init_args[i].done = false;
-            init_args[i].stop = false;
+            init_args[i].done.store(false, butil::memory_order_relaxed);
+            init_args[i].stop.store(false, butil::memory_order_relaxed);
             bthread_attr_t tmp = BTHREAD_ATTR_NORMAL;
             tmp.tag = _options.bthread_tag;
             tmp.keytable_pool = _keytable_pool;
@@ -1063,13 +1064,13 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         }
         // Wait until all created bthreads finish the init function.
         for (size_t i = 0; i < ncreated; ++i) {
-            while (!init_args[i].done) {
+            while (!init_args[i].done.load(butil::memory_order_acquire)) {
                 bthread_usleep(1000);
             }
         }
         // Stop and join created bthreads.
         for (size_t i = 0; i < ncreated; ++i) {
-            init_args[i].stop = true;
+            init_args[i].stop.store(true, butil::memory_order_release);
         }
         for (size_t i = 0; i < ncreated; ++i) {
             bthread_join(init_args[i].th, nullptr);

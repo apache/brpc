@@ -33,6 +33,7 @@ static bool DBUG = false;  // Set to true to enable debug logs
 #include <cinttypes>
 #include <iostream>
 
+#include "brpc/details/json_util.h"
 #include "brpc/policy/couchbase_protocol.h"
 #include "brpc/proto_base.pb.h"
 #include "butil/logging.h"
@@ -124,12 +125,14 @@ bool CouchbaseManifestManager::jsonToCollectionManifest(
     return false;
   }
 
-  // Parse JSON using RapidJSON
   BUTIL_RAPIDJSON_NAMESPACE::Document document;
-  document.Parse(json.c_str());
-
-  if (document.HasParseError()) {
-    DEBUG_PRINT("Failed to parse JSON: " << document.GetParseError());
+  if (!ParseJsonWithDepthLimit(json, &document)) {
+    if (document.HasParseError()) {
+      DEBUG_PRINT("Failed to parse JSON: " << document.GetParseError());
+    } else {
+      DEBUG_PRINT("Rejected JSON: embedded NUL or nesting exceeds "
+                  << kMaxJsonDepth << " levels (including the root)");
+    }
     return false;
   }
 

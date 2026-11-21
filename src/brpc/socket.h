@@ -57,6 +57,8 @@ class ChannelBalancer;
 }
 namespace rdma {
 class RdmaEndpoint;
+class SrqConnection;
+class RqConnection;
 class RdmaConnect;
 class RdmaHandshakeClientV2;
 class RdmaHandshakeServerV2;
@@ -343,6 +345,8 @@ friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class rdma::RdmaEndpoint;
+friend class rdma::SrqConnection;
+friend class rdma::RqConnection;
 friend class rdma::RdmaConnect;
 friend class ubring::UBShmEndpoint;
 friend class ubring::UBConnect;
@@ -377,6 +381,7 @@ public:
     // NOTE: User cannot create Socket from constructor. Use Create()
     // instead. It's public just because of requirement of ResourcePool.
     explicit Socket(Forbidden);
+    DISALLOW_COPY_AND_ASSIGN(Socket);
     ~Socket();
 
     // Write `msg' into this Socket and clear it. The `msg' should be an
@@ -736,8 +741,6 @@ public:
     HttpMethod http_request_method() const { return _http_request_method; }
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(Socket);
-
     int ConductError(bthread_id_t);
     int StartWrite(WriteRequest*, const WriteOptions&);
 
@@ -799,8 +802,10 @@ private:
     // true, EPOLLIN event will also be included and EPOLL_CTL_MOD will
     // be used instead of EPOLL_CTL_ADD. Note that spurious wakeups may
     // occur when this function returns, so make sure to check whether fd
-    // is writable or not even when it returns 0
-    int WaitEpollOut(int fd, bool pollin, const timespec* abstime);
+    // is writable or not even when it returns 0. If `check_failed' is true,
+    // SetFailed() cancels the wait with ECANCELED, including failures that
+    // precede the wait. Leave it false for health checks on failed sockets.
+    int WaitEpollOut(int fd, bool pollin, const timespec* abstime, bool check_failed);
 
     // [Not thread-safe] Establish a tcp connection to `remote_side()'
     // If `on_connect' is nullptr, this function blocks current thread
@@ -810,8 +815,10 @@ private:
     // Returns the socket fd on success, -1 otherwise
     int DoConnect(const timespec* abstime,
                   int (*on_connect)(int fd, int err, void* data), void* data);
+    // `check_failed' only applies to synchronous connects (on_connect == nullptr).
     int Connect(const timespec* abstime,
-                int (*on_connect)(int fd, int err, void* data), void* data);
+                int (*on_connect)(int fd, int err, void* data), void* data,
+                bool check_failed = false);
 
     int CheckConnected(int sockfd);
 
@@ -955,6 +962,10 @@ private:
     // User-level connection after TCP-connected.
     // Initialized by SocketOptions.app_connect.
     std::shared_ptr<AppConnect> _app_connect;
+
+    // Absolute CLOCK_REALTIME deadline for the current connection attempt,
+    // including transport handshakes/reconnects. -1 means no deadline.
+    int64_t _connect_deadline_us;
 
     IOEvent<Socket> _io_event;
 

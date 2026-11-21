@@ -630,6 +630,59 @@ TEST(HttpMessageTest, chunked_trailer_is_not_a_header) {
     ASSERT_EQ("10.0.0.1", *xff);
 }
 
+TEST(HttpMessageTest, ctl_in_chunk_extension) {
+    const std::string valid =
+        "POST /a HTTP/1.1\r\n"
+        "Host: a.com\r\n"
+        "Transfer-Encoding: chunked\r\n\r\n"
+        "5;a=b\r\nhello\r\n"
+        "0;c=d\r\n\r\n";
+    {
+        butil::IOBuf buf;
+        buf.append(valid);
+        brpc::HttpMessage http_message;
+        ASSERT_EQ((ssize_t)valid.size(), http_message.ParseFromIOBuf(buf))
+            << http_message._parser;
+        ASSERT_TRUE(http_message.Completed());
+        ASSERT_EQ("hello", http_message.body().to_string());
+    }
+
+    // Same message with only the extension bytes changed. A bare LF used to
+    // be skipped as part of the extension, so a peer that ends the chunk-size
+    // line at LF disagreed with bRPC about where the chunk data starts.
+    struct { const char* ext; const char* replacement; } mutations[] = {
+        { "a=b", "a\nb" },
+        { "a=b", "a\x7f" "b" },
+        { "a=b", "a\x01" "b" },
+        { "c=d", "c\nd" },
+    };
+    for (size_t i = 0; i < arraysize(mutations); ++i) {
+        std::string request = valid;
+        request.replace(request.find(mutations[i].ext), 3,
+                        mutations[i].replacement);
+        butil::IOBuf buf;
+        buf.append(request);
+        brpc::HttpMessage http_message;
+        ASSERT_EQ(-1, http_message.ParseFromIOBuf(buf)) << request;
+        ASSERT_FALSE(http_message.Completed());
+        ASSERT_EQ(brpc::HPE_INVALID_CHUNK_SIZE,
+                  (brpc::http_errno)http_message._parser.http_errno)
+            << request;
+    }
+
+    const char* accepted[] = {
+        "POST / HTTP/1.1\r\nHost: a.com\r\nTransfer-Encoding: chunked\r\n\r\n"
+        "5;name=val\r\nhello\r\n0;a=b\r\n\r\n",
+        "POST / HTTP/1.1\r\nHost: a.com\r\nTransfer-Encoding: chunked\r\n\r\n"
+        "5;n=\"a b;c\"\r\nhello\r\n0\r\n\r\n",
+        "POST / HTTP/1.1\r\nHost: a.com\r\nTransfer-Encoding: chunked\r\n\r\n"
+        "5 ;\tn\t=\tv\r\nhello\r\n0\r\n\r\n",
+    };
+    for (size_t i = 0; i < arraysize(accepted); ++i) {
+        ASSERT_EQ(brpc::HPE_OK, ParseHttpErrno(accepted[i])) << accepted[i];
+    }
+}
+
 // Puts `data' in a single IOBuf block, the way one read() returns pipelined
 // messages that arrive together.
 void AppendInOneBlock(butil::IOBuf* buf, const std::string& data) {

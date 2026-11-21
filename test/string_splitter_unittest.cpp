@@ -246,6 +246,46 @@ TEST_F(StringSplitterTest, number_list) {
     ASSERT_EQ(ss2.field(), str + str_len);
 }
 
+template <typename Splitter>
+void CheckBoundedNumericField(const Splitter& splitter) {
+    long l;
+    unsigned long ul;
+    long long ll;
+    unsigned long long ull;
+    float f;
+    double d;
+    EXPECT_EQ(0, splitter.to_long(&l));
+    EXPECT_EQ(123, l);
+    EXPECT_EQ(0, splitter.to_ulong(&ul));
+    EXPECT_EQ(123u, ul);
+    EXPECT_EQ(0, splitter.to_longlong(&ll));
+    EXPECT_EQ(123, ll);
+    EXPECT_EQ(0, splitter.to_ulonglong(&ull));
+    EXPECT_EQ(123u, ull);
+    EXPECT_EQ(0, splitter.to_float(&f));
+    EXPECT_FLOAT_EQ(123, f);
+    EXPECT_EQ(0, splitter.to_double(&d));
+    EXPECT_DOUBLE_EQ(123, d);
+}
+
+TEST_F(StringSplitterTest, numeric_conversions_respect_field_end) {
+    // The suffix is numeric too: parsing must stop at the explicit end,
+    // rather than consume it and reject the bounded field afterwards.
+    const char text[] = "123456";
+    CheckBoundedNumericField(butil::StringSplitter(text, text + 3, ','));
+    CheckBoundedNumericField(butil::StringMultiSplitter(text, text + 3, ",;"));
+
+    // These bytes have no trailing NUL. Sanitizers also check the read bound.
+    const std::string digits = "123";
+    char* bounded = new char[digits.size()];
+    memcpy(bounded, digits.data(), digits.size());
+    CheckBoundedNumericField(butil::StringSplitter(
+        bounded, bounded + digits.size(), ','));
+    CheckBoundedNumericField(butil::StringMultiSplitter(
+        bounded, bounded + digits.size(), ",;"));
+    delete[] bounded;
+}
+
 TEST_F(StringSplitterTest, cast_type) {
     const char* str = "-1\t123\t111\t1\t10\t11\t1.3\t3.1415926\t127\t128\t256";
     int i = 0;

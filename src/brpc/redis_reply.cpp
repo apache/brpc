@@ -32,6 +32,25 @@ DEFINE_int32(redis_max_reply_depth, 128,
 //BAIDU_CASSERT(sizeof(RedisReply) == 24, size_match);
 const int RedisReply::npos = -1;
 
+// Charge `need' payload bytes of a string to the per-reply budget kept in
+// `used_bytes'. Returns false if the budget would be exceeded, in which case
+// nothing is charged. The arena rounds each string up to 8 bytes; that padding
+// is not charged so that a string of exactly -redis_max_allocation_size bytes
+// stays valid, as the per-string checks allow, and it is bounded
+// constant-factor overhead.
+static bool ChargeReplyAllocation(uint32_t* used_bytes, uint64_t need) {
+    if (FLAGS_redis_max_allocation_size > 0 &&
+        (uint64_t)*used_bytes + need >
+            (uint64_t)FLAGS_redis_max_allocation_size) {
+        LOG(ERROR) << "accumulated reply allocation exceeds max allocation "
+                      "size! max=" << FLAGS_redis_max_allocation_size
+                   << ", already=" << *used_bytes << ", requesting=" << need;
+        return false;
+    }
+    *used_bytes += need;
+    return true;
+}
+
 const char* RedisReplyTypeToString(RedisReplyType type) {
     switch (type) {
     case REDIS_REPLY_STRING: return "string";
@@ -186,6 +205,11 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth,
             str.copy_to_cstr(_data.short_str, (size_t)-1L, 1/*skip fc*/);
             return PARSE_OK;
         }
+        // Charge the payload to the per-reply budget so that an array of
+        // individually allowed strings cannot exceed the cap in total.
+        if (!ChargeReplyAllocation(used_bytes, len)) {
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
         char* d = (char*)_arena->allocate((len/8 + 1)*8);
         if (d == nullptr) {
             LOG(FATAL) << "Fail to allocate string[" << len << "]";
@@ -246,6 +270,9 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth,
                 buf.cutn(_data.short_str, len);
                 _data.short_str[len] = '\0';
             } else {
+                if (!ChargeReplyAllocation(used_bytes, len)) {
+                    return PARSE_ERROR_ABSOLUTELY_WRONG;
+                }
                 char* d = (char*)_arena->allocate((len/8 + 1)*8);
                 if (d == nullptr) {
                     LOG(FATAL) << "Fail to allocate string[" << len << "]";
@@ -291,14 +318,7 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth,
             // Charge the allocation to the per-reply budget so that nested
             // arrays cannot multiply -redis_max_allocation_size by depth.
             const size_t need = sizeof(RedisReply) * count;
-            if (FLAGS_redis_max_allocation_size > 0 &&
-                (uint64_t)*used_bytes + need >
-                    (uint64_t)FLAGS_redis_max_allocation_size) {
-                LOG(ERROR) << "accumulated array allocation exceeds max "
-                              "allocation size! max="
-                           << FLAGS_redis_max_allocation_size
-                           << ", already=" << *used_bytes
-                           << ", requesting=" << need;
+            if (!ChargeReplyAllocation(used_bytes, need)) {
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // FIXME(gejun): Call allocate_aligned instead.
@@ -307,7 +327,6 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, int depth,
                 LOG(FATAL) << "Fail to allocate RedisReply[" << count << "]";
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
-            *used_bytes += need;
             for (int64_t i = 0; i < count; ++i) {
                 new (&subs[i]) RedisReply(_arena);
             }

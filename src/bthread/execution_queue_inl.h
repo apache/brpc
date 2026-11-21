@@ -495,8 +495,11 @@ inline bool ExecutionQueueBase::_more_tasks(
         desired = old_head;
         return_when_no_more = true;
     }
-    if (_head.compare_exchange_strong(
-                new_head, desired, butil::memory_order_acquire)) {
+    // Publish the completed callbacks' state before another thread takes
+    // over an idle queue. On failure, acquire the newly published tasks.
+    if (_head.compare_exchange_strong(new_head, desired,
+                                      butil::memory_order_acq_rel,
+                                      butil::memory_order_acquire)) {
         // No one added new tasks.
         return return_when_no_more;
     }

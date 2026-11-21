@@ -56,15 +56,17 @@ inline const char* SSLStateToYesNo(SSLState s, bool use_html) {
 }
 
 struct NameOfPoint {
-    explicit NameOfPoint(const butil::EndPoint& pt_) : pt(pt_) {}
+    NameOfPoint(const butil::EndPoint& pt_, bool use_html_)
+        : pt(pt_), use_html(use_html_) {}
     butil::EndPoint pt;
+    bool use_html;
 };
 
 std::ostream& operator<<(std::ostream& os, const NameOfPoint& nop) {
     char buf[128];
     if (FLAGS_show_hostname_instead_of_ip &&
         butil::endpoint2hostname(nop.pt, buf, sizeof(buf)) == 0) {
-        return os << buf;
+        return os << (nop.use_html ? WebEscape(buf) : std::string(buf));
     } else {
         return os << nop.pt;
     }
@@ -174,7 +176,7 @@ void ConnectionsService::PrintConnections(
         }
         if (failed) {
             os << min_width("Broken", 26) << bar
-               << min_width(NameOfPoint(ptr->remote_side()), 19) << bar;
+               << min_width(NameOfPoint(ptr->remote_side(), use_html), 19) << bar;
             if (is_channel_conn) {
                 os << min_width(ptr->local_side().port, 5) << bar
                    << min_width(ptr->recent_error_count(), 10) << bar
@@ -276,7 +278,7 @@ void ConnectionsService::PrintConnections(
             } else {
                 strcpy(rtt_display, "-");
             }
-            os << bar << min_width(NameOfPoint(ptr->remote_side()), 19) << bar;
+            os << bar << min_width(NameOfPoint(ptr->remote_side(), use_html), 19) << bar;
             if (is_channel_conn) {
                 if (ptr->local_side().port > 0) {
                     os << min_width(ptr->local_side().port, 5) << bar;

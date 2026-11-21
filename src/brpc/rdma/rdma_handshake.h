@@ -47,10 +47,12 @@ struct ParsedHello {
     uint16_t lid;
     ibv_gid  gid;
     uint32_t qp_num;
+    uint32_t srq_protocol{0};
+    uint32_t fc_window{0};
     // ECE (Enhanced Connection Establishment), v3 handshake only.
     // nullopt means the peer did not advertise any ECE (either it disabled
     // ECE, its lib does not support ECE, or it is a v2 peer). When engaged:
-    //   - on the server side: the client's queried ECE capabilities;
+    //   - on the server side: the client's queried ECE capabilities.
     //   - on the client side: the server's reduced/negotiated ECE.
     butil::optional<ibv_ece> ece;
 
@@ -71,6 +73,9 @@ enum class RemoteHelloResult {
     FALLBACK,
     // (server only) Not enough data yet.
     NEED_MORE,
+    // (v3 client only) The peer closed before identifying itself as v3, or
+    // replied with v2 magic. Retry v2 on a new TCP connection (errno set).
+    RETRY_V2,
     // IO/protocol error (errno set).
     ERROR,
 };
@@ -110,10 +115,10 @@ public:
     // Returns 0 on success, -1 on IO error (errno set).
     //
     // For a server in fallback state, implementations MUST still
-    // produce a sendable message; each version uses its own wire
+    // produce a sendable message. Each version uses its own wire
     // convention to signal "I am falling back" to the peer:
     //   - v2: zero hello_ver/impl_ver so the peer's HelloNegotiationValid
-    //         rejects it;
+    //         rejects it.
     //   - v3: qp_num==0 so the peer's ValidRdmaHello rejects it.
     virtual int SendLocalHello() = 0;
 
@@ -168,15 +173,6 @@ public:
     int SendLocalHello() override;
     RemoteHelloResult ReceiveAndParseRemoteHello(ParsedHello* remote) override;
 };
-
-// Factory methods
-//
-// Pick the client-side handshake based on
-// FLAGS_rdma_client_handshake_version:
-//   2 (default) -> RdmaHandshakeClientV2
-//   3           -> RdmaHandshakeClientV3
-// Other values fall back to V2.
-std::unique_ptr<RdmaHandshake> CreateClientHandshake(RdmaEndpoint* ep);
 
 // Pick the server-side handshake based on the 4B magic already read.
 // Returns nullptr if `magic` is not a recognized RDMA magic

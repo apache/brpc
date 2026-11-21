@@ -204,7 +204,7 @@ class MVariable {
 | mbvar_dump_format	| common | Dump mbvar write format <br> common：文本格式，Key和Value用冒号分割(和目前的单维度dump文件格式一致) <br><br> prometheus：文本格式，Key和Value用空格分开protobuf：二进制格式，暂时不支持|
 | bvar_dump_interval | 10 |Seconds between consecutive dump |
 | mbvar_dump_prefix | \<app\> | Every dumped name starts with this prefix |
-| bvar_max_dump_multi_dimension_metric_number | 0 | 最多导出的mbvar指标数，默认是0，即不导出任何mbvar。计数以指标为单位，一个label组合可能贡献多个指标（Histogram导出`_bucket`/`_sum`/`_count`，LatencyRecorder导出各个分位值） |
+| bvar_max_dump_multi_dimension_metric_number | 1024 | 最多导出的mbvar指标数，默认是1024，设为0则不导出任何mbvar。计数以指标为单位，一个label组合可能贡献多个指标（Histogram导出`_bucket`/`_sum`/`_count`，LatencyRecorder导出各个分位值） |
 
 用户可在程序启动前加上对应的gflags。
 
@@ -218,7 +218,7 @@ class MVariable {
 | mbvar_dump_format	| common | Dump mbvar write format <br> common：文本格式，Key和Value用冒号分割(和目前的单维度dump文件格式一致) <br><br> prometheus：文本格式，Key和Value用空格分开protobuf：二进制格式，暂时不支持|
 | bvar_dump_interval | 10 |Seconds between consecutive dump |
 | mbvar_dump_prefix | mbvar | Every dumped name starts with this prefix |
-| bvar_max_dump_multi_dimension_metric_number | 2000 | 最多导出的mbvar指标数，默认是0，即不导出任何mbvar。计数以指标为单位，一个label组合可能贡献多个指标（Histogram导出`_bucket`/`_sum`/`_count`，LatencyRecorder导出各个分位值） |
+| bvar_max_dump_multi_dimension_metric_number | 2000 | 最多导出的mbvar指标数，默认是1024，设为0则不导出任何mbvar。计数以指标为单位，一个label组合可能贡献多个指标（Histogram导出`_bucket`/`_sum`/`_count`，LatencyRecorder导出各个分位值） |
 
 导出的本地文件为monitor/mbvar.\<app\>.data：
 ```

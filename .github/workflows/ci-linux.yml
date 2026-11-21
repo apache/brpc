@@ -387,6 +387,13 @@ jobs:
     - uses: ./.github/actions/init-ut-make-config
       with:
         options: --with-bthread-tracer --with-asan
+    - name: Test C++14 optional with sanitizers
+      run: |
+        clang++-12 -std=c++14 -DBRPC_TEST_OPTIONAL_CXX14 \
+          -fsanitize=address,undefined -fno-omit-frame-pointer -I src \
+          test/optional_unittest.cpp -lgtest_main -lgtest -pthread \
+          -o "$RUNNER_TEMP/optional-cxx14-unittest"
+        "$RUNNER_TEMP/optional-cxx14-unittest"
     - name: compile tests
       run: |
         cat config.mk

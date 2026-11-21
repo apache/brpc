@@ -127,7 +127,12 @@ void NsheadPbServiceAdaptor::ProcessNsheadRequest(
             break;
         }
         pbdone->status = mp->status;
-        mp->status->OnRequested();
+        if (!mp->status->OnRequested()) {
+            controller->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
+                                  meta->full_method_name().c_str(),
+                                  mp->status->MaxConcurrency());
+            break;
+        }
 
         google::protobuf::Service* svc = mp->service;
         const google::protobuf::MethodDescriptor* method = mp->method;

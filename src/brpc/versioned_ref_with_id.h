@@ -563,7 +563,7 @@ int VersionedRefWithId<T>::ReleaseAdditionalReferenceImpl(bool permanent) {
     do {
         AdditionalRefStatus expect = ADDITIONAL_REF_USING;
         if (_additional_ref_status.compare_exchange_strong(
-                expect, permanent ? ADDITIONAL_REF_RELEASED 
+                expect, permanent ? ADDITIONAL_REF_RELEASED
                                   : ADDITIONAL_REF_RELEASED_ON_FAILURE,
                 butil::memory_order_relaxed, butil::memory_order_relaxed)) {
             CallBeforeAdditionalRefReleased(static_cast<T*>(this));

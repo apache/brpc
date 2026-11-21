@@ -100,7 +100,7 @@ config_setting(
 
 config_setting(
     name = "darwin",
-    values = {"cpu": "darwin"},
+    constraint_values = ["@platforms//os:macos"],
     visibility = ["//:__subpkgs__"],
 )
 
