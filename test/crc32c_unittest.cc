@@ -204,6 +204,21 @@ TEST_F(CRC, TightBoundsAndAllArm64Paths) {
   }
 }
 
+TEST_F(CRC, NullPointerZeroLength) {
+  ASSERT_EQ(0U, Value(nullptr, 0));
+  const uint32_t seeds[] = {0U, 0x12345678U, 0xffffffffU};
+  for (size_t i = 0; i < sizeof(seeds) / sizeof(seeds[0]); ++i) {
+    const uint32_t seed = seeds[i];
+    ASSERT_EQ(seed, Extend(seed, nullptr, 0)) << "seed=" << seed;
+#if defined(__aarch64__)
+    ASSERT_EQ(seed, Arm64ExtendCrc32ForTest(seed, nullptr, 0))
+        << "seed=" << seed;
+    ASSERT_EQ(seed, Arm64ExtendCrc32PmullForTest(seed, nullptr, 0))
+        << "seed=" << seed;
+#endif
+  }
+}
+
 TEST_F(CRC, Benchmark) {
   const size_t sizes[] = {64, 256, 1024, 4096, 65536};
   std::vector<char> buf(65536, 0x5a);

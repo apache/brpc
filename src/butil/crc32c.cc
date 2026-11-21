@@ -313,6 +313,19 @@ static const uint32_t table3_[256] = {
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
+static inline uint16_t DecodeFixed16(const char* ptr) {
+#if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
+  // Load the raw bytes
+  uint16_t result;
+  memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
+  return result;
+#else
+  return static_cast<uint16_t>(
+      static_cast<uint16_t>(static_cast<unsigned char>(ptr[0])) |
+      (static_cast<uint16_t>(static_cast<unsigned char>(ptr[1])) << 8));
+#endif
+}
+
 static inline uint32_t DecodeFixed32(const char* ptr) {
 #if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
     // Load the raw bytes
@@ -401,6 +414,9 @@ public:
 
 template<typename CRC32Functor>
 uint32_t ExtendImpl(uint32_t crc, const char* buf, size_t size) {
+  if (size == 0) {
+    return crc;
+  }
   CRC32Functor CRC32;
 
   const uint8_t *p = reinterpret_cast<const uint8_t *>(buf);
@@ -964,9 +980,7 @@ static uint32_t Arm64ExtendCrc32(uint32_t crc, const char* buf, size_t size) {
       --size;
     }
     if (reinterpret_cast<uintptr_t>(p) & 2) {
-      uint16_t v;
-      memcpy(&v, p, sizeof(v));
-      c = ArmCrc32ch(c, v);
+      c = ArmCrc32ch(c, DecodeFixed16(reinterpret_cast<const char*>(p)));
       p += 2;
       size -= 2;
     }
@@ -995,9 +1009,7 @@ static uint32_t Arm64ExtendCrc32(uint32_t crc, const char* buf, size_t size) {
     p += 4;
   }
   if (size & 2) {
-    uint16_t v;
-    memcpy(&v, p, sizeof(v));
-    c = ArmCrc32ch(c, v);
+    c = ArmCrc32ch(c, DecodeFixed16(reinterpret_cast<const char*>(p)));
     p += 2;
   }
   if (size & 1) {
@@ -1018,9 +1030,7 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
       --size;
     }
     if (reinterpret_cast<uintptr_t>(p) & 2) {
-      uint16_t v;
-      memcpy(&v, p, sizeof(v));
-      c = ArmCrc32ch(c, v);
+      c = ArmCrc32ch(c, DecodeFixed16(reinterpret_cast<const char*>(p)));
       p += 2;
       size -= 2;
     }
@@ -1107,9 +1117,7 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
     p += 4;
   }
   if (size & 2) {
-    uint16_t v;
-    memcpy(&v, p, sizeof(v));
-    c = ArmCrc32ch(c, v);
+    c = ArmCrc32ch(c, DecodeFixed16(reinterpret_cast<const char*>(p)));
     p += 2;
   }
   if (size & 1) {
