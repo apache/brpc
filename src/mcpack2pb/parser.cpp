@@ -101,6 +101,11 @@ void ObjectIterator::operator++() {
             return set_bad();
         }
     }
+    // Deleted fields are skipped by jumping back here rather than by calling
+    // operator++() again: they are counted by bytes, not by item_count, so a
+    // payload made of many of them would otherwise recurse once per field and
+    // overflow the stack.
+next_field:
     if (_expected_popped_bytes >= _expected_popped_end) {
         return set_end();
     }
@@ -116,7 +121,7 @@ void ObjectIterator::operator++() {
             - sizeof(FieldFixedHead);
         if (!(head.type() & FIELD_NON_DELETED_MASK)) {
             _stream->popn(head.full_size() - sizeof(FieldFixedHead));
-            return operator++();  // tailr
+            goto next_field;
         }
         _current_field.name = _stream->ref_cut(&_name_backup_string, head.name_size());
         if (!_current_field.name.empty()) {
@@ -135,7 +140,7 @@ void ObjectIterator::operator++() {
         if (!(head.type() & FIELD_NON_DELETED_MASK)) {
             // Skip deleted field.
             _stream->popn(head.full_size() - sizeof(FieldShortHead));
-            return operator++();  // tailr
+            goto next_field;
         }
         // Remove FIELD_SHORT_MASK.
         FieldType type = (FieldType)(head.type() & ~FIELD_SHORT_MASK);
@@ -156,7 +161,7 @@ void ObjectIterator::operator++() {
         if (!(head.type() & FIELD_NON_DELETED_MASK)) {
             // Skip deleted field.
             _stream->popn(head.full_size() - sizeof(FieldLongHead));
-            return operator++();  // tailr
+            goto next_field;
         }
         _current_field.name = _stream->ref_cut(&_name_backup_string, head.name_size());
         if (!_current_field.name.empty()) {
@@ -184,6 +189,11 @@ void ArrayIterator::operator++() {
             return set_bad();
         }
     }
+    // Deleted fields are skipped by jumping back here rather than by calling
+    // operator++() again: they are counted by bytes, not by item_count, so a
+    // payload made of many of them would otherwise recurse once per field and
+    // overflow the stack.
+next_field:
     if (_expected_popped_bytes >= _expected_popped_end) {
         return set_end();
     }
@@ -200,7 +210,7 @@ void ArrayIterator::operator++() {
         if (!(head.type() & FIELD_NON_DELETED_MASK)) {
             // Skip deleted fields.
             _stream->popn(head.full_size() - sizeof(FieldFixedHead));
-            return operator++();  // tailr
+            goto next_field;
         }
         const uint32_t name_size = head.name_size();
         if (name_size) {
@@ -219,7 +229,7 @@ void ArrayIterator::operator++() {
         if (!(head.type() & FIELD_NON_DELETED_MASK)) {
             // Skip deleted field.
             _stream->popn(head.full_size() - sizeof(FieldShortHead));
-            return operator++();  // tailr
+            goto next_field;
         }
         // Remove FIELD_SHORT_MASK.
         const FieldType type = (FieldType)(head.type() & ~FIELD_SHORT_MASK);
@@ -240,7 +250,7 @@ void ArrayIterator::operator++() {
         if (!(head.type() & FIELD_NON_DELETED_MASK)) {
             // Skip deleted field.
             _stream->popn(head.full_size() - sizeof(FieldLongHead));
-            return operator++();  // tailr
+            goto next_field;
         }
         const uint32_t name_size = head.name_size();
         if (name_size) {
