@@ -16,6 +16,7 @@
 // under the License.
 
 
+#include <limits>
 #include <gflags/gflags.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h> // StringOutputStream
 #include "bthread/bthread.h"                      // bthread_id_xx
@@ -819,6 +820,15 @@ butil::Status AVCDecoderConfigurationRecord::ParseSPS(
     int32_t pic_height_in_map_units_minus1 = -1;
     if (avc_nalu_read_uev(&bs, &pic_height_in_map_units_minus1) != 0) {
         return butil::Status(EINVAL, "Fail to read pic_height_in_map_units_minus1");
+    }
+    // ue(v) decodes up to 2^31-2, so (x + 1) * 16 must be bounded to fit int.
+    const int32_t max_size_in_mbs = std::numeric_limits<int>::max() / 16;
+    if (pic_width_in_mbs_minus1 >= max_size_in_mbs ||
+        pic_height_in_map_units_minus1 >= max_size_in_mbs) {
+        return butil::Status(EINVAL, "Invalid pic_width_in_mbs_minus1=%d "
+                            "pic_height_in_map_units_minus1=%d",
+                            (int)pic_width_in_mbs_minus1,
+                            (int)pic_height_in_map_units_minus1);
     }
     width = (int)(pic_width_in_mbs_minus1 + 1) * 16;
     height = (int)(pic_height_in_map_units_minus1 + 1) * 16;
