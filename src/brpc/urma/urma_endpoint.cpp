@@ -952,28 +952,24 @@ ssize_t UrmaEndpoint::HandleCompletion(const urma_cr_t& cr) {
         uint16_t wnd = 1;  // We signal every WR (complete_enable=1).
         uint16_t old =
             _sq_window_size.load(butil::memory_order_relaxed);
-        while (true) {
-            if (old >= _local_window_capacity) {
-                LOG(WARNING)
-                    << "URMA send completion exceeds SQ window: old=" << old
-                    << " increment=" << wnd
-                    << " capacity=" << _local_window_capacity
-                    << " user_ctx=" << cr.user_ctx
-                    << " on " << _socket->description();
-                errno = EPROTO;
-                return -1;
-            }
-            if (_sq_window_size.compare_exchange_weak(
-                    old, static_cast<uint16_t>(old + wnd),
-                    butil::memory_order_relaxed)) {
-                break;
-            }
+        if (old >= _local_window_capacity) {
+            LOG(WARNING)
+                << "URMA send completion exceeds SQ window: old=" << old
+                << " increment=" << wnd
+                << " capacity=" << _local_window_capacity
+                << " user_ctx=" << cr.user_ctx
+                << " on " << _socket->description();
+            errno = EPROTO;
+            return -1;
         }
         for (uint16_t i = 0; i < wnd; ++i) {
             _sbuf[_sq_sent].clear();
             _sq_sent = (_sq_sent + 1) % (_sq_size - RESERVED_WR_NUM);
         }
         butil::subtle::MemoryBarrier();
+        // Reclaim the buffer before publishing the SQ credit. Otherwise the
+        // writer may reuse this slot while the completion thread clears it.
+        _sq_window_size.fetch_add(wnd, butil::memory_order_relaxed);
         if (_remote_rq_window_size.load(butil::memory_order_relaxed) >=
             _local_window_capacity / 8) {
             _socket->WakeAsEpollOut();
