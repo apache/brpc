@@ -10,7 +10,7 @@ for large-packet / cross-node scenarios (Route C, "double backend").
 ## Technical Background
 
 URMA exposes a verbs-style API over devices supported by UMDK. This
-implementation creates a reliable-message (`URMA_TM_RM`) Jetty with a CTP
+implementation creates a reliable-message (`URMA_TM_RM`) Jetty with a CTP or RTP
 transport path, posts send work requests with `urma_post_jetty_send_wr`, and
 posts receive work requests with `urma_post_jfr_wr`. Completions are consumed
 from a JFC either by busy polling or through a JFCE event fd.
@@ -20,24 +20,18 @@ from a JFC either by busy polling or through a JFCE event fd.
 ### Build with CMake
 
 ```bash
-# Build brpc with URMA support
-cmake -B build -DWITH_URMA=ON
-make -C build -j$(nproc)
-
-# Build the urma_performance example
-cd example/urma_performance
-cmake -B build
-make -C build -j$(nproc)
+cmake -S . -B build -DWITH_URMA=ON
+cmake --build build -j8
+cmake --install build --prefix "$PWD/build/install"
+cmake -S example/urma_performance -B build/urma-example \
+    -DCMAKE_PREFIX_PATH="$PWD/build/install"
+cmake --build build/urma-example -j8
 ```
 
-`WITH_URMA=ON` compiles against upstream UMDK headers. CMake prefers an
-installed SDK and, following Mooncake's mock setup, downloads UMDK at a pinned
-commit when the headers are unavailable. Set `DOWNLOAD_URMA_HEADERS=OFF` to
-disable downloading.
-When `liburma` is found it is linked for the hardware data path. Otherwise,
-brpc uses its link-time mock so URMA code and tests can still be built without
-hardware. `URMA_USE_MOCK` defaults to `AUTO`; set it to `ON` to force the mock,
-or to `OFF` to require `liburma` and exclude the mock.
+CMake uses installed UMDK headers or downloads a pinned version.
+`DOWNLOAD_URMA_HEADERS=OFF` disables downloading. `URMA_USE_MOCK=AUTO` selects by
+`liburma` availability; `ON` uses the mock and `OFF` uses the hardware library.
+Set `URMA_ROOT` or `URMA_INCLUDE_PATH` to select SDK headers for the example.
 
 ### Build with Make
 
@@ -63,7 +57,7 @@ requires `liburma` in the configured library paths.
 # Build brpc with URMA support
 bazel build --define=BRPC_WITH_URMA=true //:brpc
 
-# This only shows the download switch; headers must still be declared by the toolchain or a local BUILD target
+# Use locally declared SDK headers
 bazel build --define=BRPC_WITH_URMA=true \
     --define=BRPC_DOWNLOAD_URMA_HEADERS=false //:brpc
 
@@ -76,15 +70,10 @@ bazel build --define=BRPC_WITH_URMA=true \
     --define=BRPC_URMA_USE_MOCK=false //:brpc
 ```
 
-Bazel fetches the pinned UMDK commit and exposes its headers through
-`@umdk//:urma_headers` by default. With
-`BRPC_DOWNLOAD_URMA_HEADERS=false`, Bazel does not depend on that external
-repository; the actual build must still declare `urma_api.h`, `urma_types.h`,
-and `urma_ubagg.h` through the toolchain or a local BUILD target. Passing only
-`--copt=-I/path` to a directory outside the workspace does not make undeclared
-headers available inside Bazel's default sandbox.
-`BRPC_URMA_USE_MOCK=true` forces the link-time mock, while `false` excludes it
-and links `liburma`. If unspecified, URMA builds use the mock by default.
+Bazel uses pinned UMDK headers through `@umdk//:urma_headers`.
+With downloading disabled, declare `urma_api.h`, `urma_types.h` and `urma_ubagg.h`
+through the toolchain or a local BUILD target. `BRPC_URMA_USE_MOCK=true` uses the
+mock; `false` links `liburma`. The default is the mock.
 
 ## Usage
 
@@ -137,23 +126,17 @@ Like RDMA / UBRing, the control plane is TCP and the data plane is URMA:
 3. Both sides exchange a `UrmaHello` message (magic `URMA` for v2 binary,
    `URM3` for v3 protobuf) over the TCP fd. The message carries the local
    EID, jetty id, recv buffer count, and the flattened buffer-pool segment.
-4. Each side calls `urma_import_seg` **before** `urma_import_jetty` to
-   establish transport-path (TP) routing for the remote EID. Skipping the
-   `import_seg` step causes the first SEND to be rejected by hardware with
-   `URMA_CR_RNR_RETRY_CNT_EXC_ERR`.
+4. Each side calls `urma_import_seg`, then `urma_import_jetty`, to establish the remote route.
 5. A 4-byte ACK (`HELLO_ACK_URMA_OK = 0x1`) confirms both sides want URMA.
 6. On success, the TCP fd is kept only for the epoll lifecycle and fallback;
    payloads flow through URMA.
 
 ### Memory management
 
-A single large region is `mmap`-ed and registered once with
-`urma_register_seg`, then sliced into fixed-size buffers (default 8 KB).
-`butil::iobuf::blockmem_allocate` is hijacked so every IOBuf block is backed
-by the registered segment, allowing the send path to build `urma_sge_t`
-directly from IOBuf block refs without per-message registration (mirroring the
-RDMA `block_pool` design). User-registered memory is supported via
-`urma::RegisterMemoryForUrma` / `DeregisterMemoryForUrma`.
+A region allocated with `mmap` is registered with `urma_register_seg` and split
+into fixed-size buffers (default 8 KB). IOBuf uses the registered-pool allocator;
+the send path builds `urma_sge_t` from block refs. Manage user memory with
+`RegisterMemoryForUrma` / `DeregisterMemoryForUrma`.
 
 ## Configuration
 
@@ -168,8 +151,10 @@ All flags use the `urma_` prefix (mirroring RDMA's `rdma_` prefix):
 | `--urma_rq_size` | 128 | Local JFR depth [16, 4096] |
 | `--urma_cqe_poll_once` | 32 | Max CQEs per `urma_poll_jfc` |
 | `--urma_recv_zerocopy` | true | Zero-copy receives above `--urma_zerocopy_min_size` |
+| `--urma_copy_send` | false | Copy and coalesce host payloads into a 64-byte aligned registered send buffer |
 | `--urma_zerocopy_min_size` | 512 | Receives smaller than this are copied |
 | `--urma_device` | "" | URMA device name (empty = first) |
+| `--urma_tp_type` | auto | RM path: auto prefers CTP, then RTP; ctp or rtp selects a path explicitly |
 | `--urma_max_sge` | 0 | Max SGEs per WR (0 = device max) |
 | `--urma_bonding_mode` | 0 | Bonding mode: 0=standalone, 1=active-backup, 2=balance |
 | `--urma_bonding_level` | 0 | Bonding level: 0=IODIE, 1=port |
@@ -183,6 +168,17 @@ For a device whose name starts with `bonding`, brpc configures the provider
 immediately after context creation and before creating segments or queues.
 The default standalone+IODIE combination matches the UMDK performance tool.
 Bonding support requires the provider extension header `urma_ubagg.h`.
+
+### Transport path selection
+
+`--urma_tp_type=auto` prefers CTP, then RTP, from device capabilities; `ctp` and
+`rtp` select a path explicitly. Both peers use the same path, fixed at process
+initialization. Jettys use the first matching priority, including combined
+capability bits. The device maps priority to SL, such as priority 0 to SL 2.
+Logs report the selected `tp_type` and `priority`.
+
+Providers without a capability table use CTP priority 6 for auto/ctp or RTP
+priority 0 for rtp. Path selection failure uses initialization's TCP fallback.
 
 ## Coexistence with UBRing
 
@@ -198,12 +194,88 @@ syscalls). For a mixed workload, select the transport per service:
 | Cross-node large packets (>= 64 KB) | `SOCKET_MODE_URMA` |
 | Traditional RoCE / IB datacenter | `SOCKET_MODE_URMA` or `SOCKET_MODE_RDMA` |
 
-A single-connection hybrid that auto-routes by packet size (Route C, scheme B)
-is tracked as a future enhancement.
+## Runtime environment
 
-## Limitations
+Linux, the `baidu_std` protocol, and a UMDK provider with `liburma` for the target device.
 
-- `baidu_std` protocol only (same as RDMA). SSL, RTMP, NSHEAD, MONGO are
-  rejected at `ContextInitOrDie`.
-- A hardware data path requires a supported UMDK provider and `liburma`.
-- The current implementation targets Linux.
+## Runtime recovery
+
+Configure recovery per process for new connections:
+
+| Mode | Behavior |
+| --- | --- |
+| LEGACY (default) | Existing handshake and error handling |
+| AUTO | Cool a failed peer, use TCP during cooldown, then resume URMA admission |
+| TCP_ONLY | Select TCP |
+
+```cpp
+#include "brpc/urma/urma_recovery_policy.h"
+
+brpc::urma::SetUrmaRecoveryCooldownMs(5000);
+brpc::urma::SetUrmaRecoveryMode(brpc::urma::UrmaRecoveryMode::AUTO);
+```
+
+The default cooldown is five seconds. Sources include retry exhaustion, RNR,
+JFC errors and WR submission failures. Each connection records its first runtime
+failure; access errors have a separate counter, and exhausted windows return EAGAIN.
+The recovery policy maintains process-level modes, epochs and peer cooldowns.
+Mode changes filter reports from older connections.
+
+A client reports a transport failure when an established URMA connection's
+control TCP socket closes or fails to read, cooling the peer in AUTO mode.
+Server-side EOF from a normal short-connection client simply closes the socket.
+
+`GetUrmaRecoveryStatus()` and `/vars/urma_recovery_status` expose failure reasons,
+cooldown state and negotiation counts. `/vars/urma_recovery_tcp_fallback_admissions`
+counts TCP admissions per connection.
+
+### Functional checks
+
+Use the `urma_performance_server` and `urma_recovery_client` built above with the
+same path on both peers. Client example:
+
+```bash
+./build/urma-example/urma_recovery_client --transport=urma \
+    --server=SERVER_IP:8003 --urma_device=URMA_DEVICE --urma_tp_type=rtp \
+    --mode=auto --connection_type=short --seconds=15 --interval_ms=200
+```
+
+Healthy AUTO requires `failure=0`, increasing URMA negotiations and zero TCP
+admissions. TCP_ONLY requires `failure=0` and increasing TCP admissions.
+Use `--mode_file` to switch modes while running.
+Use `--connection_type=single` or `pooled` for connection reuse and
+`--attachment_size=1048576` for a 1 MiB echo attachment. The client checks every
+byte and reports `validation_failures` in the summary.
+
+### Targeted send failure test
+
+Enable the Linux injector to reject one data SEND with EIO in the selected client:
+
+```bash
+cmake -S example/urma_performance -B build/urma-example -DBUILD_URMA_FAULT_INJECTOR=ON
+cmake --build build/urma-example --target urma_send_failure_injector -j8
+python3 example/urma_performance/run_recovery_injection.py \
+    --server=SERVER_IP:8003 --device=URMA_DEVICE --tp-type=rtp
+```
+
+The runner waits for successful URMA RPCs, checks the metric listener PID, and
+saves CSV, logs and three phase snapshots. Defaults are v3, a 40-second run and
+10-second cooldown. Checks require `send_post=1` and TCP admission during cooldown.
+`short` requires one expected RPC failure and resumed URMA negotiations;
+`--connection-type=single` or `pooled` checks sustained RPC recovery after
+reconnecting and reusing TCP. The runner supports `--attachment-size` for echo
+validation and `--polling` for polling mode.
+Build `urma_send_failure_injector_test` and run CTest in the example build
+directory for the tool self-tests.
+
+The main library's `brpc_urma_remote_recovery_*` CTest cases inject one server
+SEND failure across CTP/RTP, v2/v3 and event/polling modes. They check client
+peer cooldown, TCP admission, URMA recovery and 64 KiB attachment echoes,
+including normal short-connection closes before the injection.
+
+### Comparing send access failures
+
+`--urma_copy_send=true` coalesces each data WR into a 64-byte aligned registered
+buffer held until completion, adding one CPU copy. Keep device, queue and payload
+settings consistent when comparing send paths. Startup logs report `copy_send`;
+failure logs report direction, send slot and registered segment range.

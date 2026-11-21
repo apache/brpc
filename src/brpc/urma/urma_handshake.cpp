@@ -328,7 +328,12 @@ int UrmaHandshakeServerV3::ReceiveAndParseRemoteHello(ParsedHello* out,
 int UrmaHandshakeServerV3::SendLocalHello() {
     UrmaHello msg;
     _ep->FillLocalHelloV3(&msg);
-    // v3 has no zero-out path; the client rejects jetty_id==0 via ValidHello.
+    auto* tp = static_cast<UrmaTransport*>(_ep->_socket->_transport.get());
+    if (tp->_urma_state.load(butil::memory_order_acquire) ==
+        UrmaTransport::URMA_OFF) {
+        msg.set_jetty_id(0);
+        msg.set_buffer_size(0);
+    }
     return _ep->WriteHelloV3(msg);
 }
 
