@@ -64,7 +64,13 @@ void Arena::clear() {
 }
 
 void* Arena::allocate_new_block(size_t n) {
+    if (n > UINT32_MAX || n > SIZE_MAX - offsetof(Block, data)) {
+        return nullptr;
+    }
     Block* b = (Block*)malloc(offsetof(Block, data) + n);
+    if (b == nullptr) {
+        return nullptr;
+    }
     b->next = _isolated_blocks;
     b->alloc_size = n;
     b->size = n;
@@ -85,6 +91,9 @@ void* Arena::allocate_in_other_blocks(size_t n) {
     size_t new_size = _block_size;
     if (new_size < n) {
         new_size = n;
+    }
+    if (new_size > UINT32_MAX || new_size > SIZE_MAX - offsetof(Block, data)) {
+        return nullptr;
     }
     Block* b = (Block*)malloc(offsetof(Block, data) + new_size);
     if (nullptr == b) {
