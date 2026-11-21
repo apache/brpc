@@ -75,6 +75,7 @@ class ExcludedServers;
 class RPCSender;
 class StreamSettings;
 class MongoContext;
+class MysqlStatementStub;
 class RetryPolicy;
 class BackupRequestPolicy;
 class InputMessageBase;
@@ -1015,10 +1016,8 @@ private:
     // set_bind_sock_action()/bind_sock_action(). The socket reserved by a
     // previous RPC and reused when the action is BIND_SOCK_USE:
     SocketUniquePtr _bind_sock;
-    // Opaque per-RPC slot a protocol codec may use to carry typed state from
-    // serialize_request to pack_request/parse (e.g. the mysql prepared-statement
-    // stub). Not owned by Controller.
-    void* _session_data;
+    // Per-RPC prepared statement data, owned until reset or destruction.
+    MysqlStatementStub* _mysql_statement_stub;
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
