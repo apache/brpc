@@ -21,6 +21,8 @@ UBRing 支持两种共享内存后端，通过 `ub_shm_type` 参数控制：
 
 这是默认模式，使用标准 POSIX 共享内存进行本地 IPC。同一机器上的进程可以通过共享内存区域直接通信。
 
+共享内存段的创建模式为 0600，因此 client 与 server 需要以同一用户运行。
+
 ### 2. UBS-Mem 远端共享内存 (ub\_shm\_type = 2)
 
 此模式使用 ubs-mem（Unified Block Storage Memory），这是来自 openEuler 的开源远端共享内存框架。它支持机架内节点之间的共享内存通信，类似于 RDMA 但部署要求更简单。
