@@ -19,6 +19,7 @@
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
+#include <atomic>
 #include <cstdlib>
 #include <pthread.h>
 #include <sys/types.h>
@@ -28,6 +29,7 @@
 #include "gperftools_helper.h"
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/processor.h"
 #include "butil/fd_utility.h"
 #include "butil/memory/scope_guard.h"
 #include "bthread/bthread.h"
@@ -123,6 +125,391 @@ TEST(EventDispatcherDeathTest, max_concurrency_supports_both_initialization_orde
             check_max_concurrency_with_dispatcher(dispatcher_first);
             _exit(::testing::Test::HasFailure() ? 1 : 0);
         }, ::testing::ExitedWithCode(0), "");
+    }
+}
+
+// Separate processes keep startup-only polling/tag options independent from
+// the blocking-mode tests and bound any missed acknowledgement to 20 seconds.
+void configure_polling_test() {
+    alarm(20);
+    FLAGS_task_group_ntags = 2;
+    FLAGS_event_dispatcher_num = 2;
+    brpc::FLAGS_event_dispatcher_use_polling = true;
+}
+
+bool wait_for_poll_count(const std::atomic<int>& count, int expected) {
+    const int64_t deadline = butil::gettimeofday_us() + 5000000;
+    while (count.load(std::memory_order_acquire) < expected &&
+           butil::gettimeofday_us() < deadline) {
+        usleep(1000);
+    }
+    return count.load(std::memory_order_acquire) >= expected;
+}
+
+void check_polling_callback_lifecycle() {
+    configure_polling_test();
+    std::atomic<int> counts[2][2];
+    for (auto& tag_counts : counts) {
+        for (auto& count : tag_counts) {
+            std::atomic_init(&count, 0);
+        }
+    }
+    int initialized[2][2] = {};
+    int released[2][2] = {};
+    bthread_t tids[2][2] = {};
+    brpc::PollingRegistration registrations[2];
+    brpc::PollingCallbacks callbacks;
+    callbacks.init_fn = [&](brpc::PollingContext& ctx) {
+        EXPECT_EQ(ctx.tag, bthread_self_tag());
+        EXPECT_TRUE(ctx.dispatcher_index >= 0 && ctx.dispatcher_index < 2);
+        EXPECT_EQ(nullptr, ctx.user_data);
+        ctx.user_data = new int(ctx.dispatcher_index);
+        tids[ctx.tag][ctx.dispatcher_index] = bthread_self();
+        ++initialized[ctx.tag][ctx.dispatcher_index];
+        return 0;
+    };
+    callbacks.poll_fn = [&](brpc::PollingContext& ctx) {
+        EXPECT_EQ(tids[ctx.tag][ctx.dispatcher_index], bthread_self());
+        EXPECT_EQ(ctx.dispatcher_index, *static_cast<int*>(ctx.user_data));
+        counts[ctx.tag][ctx.dispatcher_index].fetch_add(
+            1, std::memory_order_release);
+    };
+    callbacks.release_fn = [&](brpc::PollingContext& ctx) {
+        EXPECT_EQ(tids[ctx.tag][ctx.dispatcher_index], bthread_self());
+        delete static_cast<int*>(ctx.user_data);
+        ++released[ctx.tag][ctx.dispatcher_index];
+    };
+    bool active[2] = {};
+    auto cleanup = butil::MakeScopeGuard([&] {
+        for (int tag = 0; tag < 2; ++tag) {
+            if (active[tag]) {
+                brpc::UnregisterPollingCallbacks(registrations[tag]);
+            }
+        }
+    });
+    // Registration itself initializes idle dispatchers: no sockets are needed.
+    for (int tag = 0; tag < 2; ++tag) {
+        ASSERT_EQ(0, brpc::RegisterPollingCallbacksWithTag(
+            tag, callbacks, &registrations[tag]));
+        active[tag] = true;
+        for (int i = 0; i < 2; ++i) {
+            EXPECT_EQ(1, initialized[tag][i]);
+            ASSERT_TRUE(wait_for_poll_count(counts[tag][i], 10));
+        }
+    }
+    brpc::PollingRegistration duplicate;
+    EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &duplicate));
+    EXPECT_EQ(EEXIST, errno);
+    ASSERT_EQ(0, brpc::UnregisterPollingCallbacks(registrations[0]));
+    active[0] = false;
+    int stopped_counts[2] = {counts[0][0].load(), counts[0][1].load()};
+    ASSERT_TRUE(wait_for_poll_count(counts[1][0], counts[1][0].load() + 10));
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_EQ(stopped_counts[i], counts[0][i].load());
+        EXPECT_EQ(1, released[0][i]);
+    }
+    // Old tokens must not unregister a newly registered callback set.
+    brpc::PollingRegistration replacement;
+    ASSERT_EQ(0, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &replacement));
+    const brpc::PollingRegistration stale = registrations[0];
+    registrations[0] = replacement;
+    active[0] = true;
+    EXPECT_EQ(-1, brpc::UnregisterPollingCallbacks(stale));
+    EXPECT_EQ(ENOENT, errno);
+    ASSERT_EQ(0, brpc::UnregisterPollingCallbacks(replacement));
+    active[0] = false;
+    ASSERT_EQ(0, brpc::UnregisterPollingCallbacks(registrations[1]));
+    active[1] = false;
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_EQ(2, initialized[0][i]);
+        EXPECT_EQ(2, released[0][i]);
+        EXPECT_EQ(1, released[1][i]);
+    }
+    // The dispatcher remains alive after callback removal.
+    EXPECT_TRUE(brpc::GetGlobalEventDispatcher(0, 0).Running());
+}
+
+TEST(EventDispatcherDeathTest, polling_callbacks_on_idle_dispatchers) {
+    set_threadsafe_death_test_style();
+    ASSERT_EXIT({
+        check_polling_callback_lifecycle();
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+void check_polling_initialization_rollback() {
+    configure_polling_test();
+    int initialized[2] = {};
+    int released[2] = {};
+    brpc::PollingCallbacks callbacks;
+    callbacks.init_fn = [&](brpc::PollingContext& ctx) {
+        ctx.user_data = new int(1);
+        ++initialized[ctx.dispatcher_index];
+        return ctx.dispatcher_index == 1 ? ENOMEM : 0;
+    };
+    callbacks.poll_fn = [](brpc::PollingContext&) {};
+    callbacks.release_fn = [&](brpc::PollingContext& ctx) {
+        delete static_cast<int*>(ctx.user_data);
+        ++released[ctx.dispatcher_index];
+    };
+    brpc::PollingRegistration registration;
+    const int rc = brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration);
+    auto cleanup = butil::MakeScopeGuard([&] {
+        brpc::UnregisterPollingCallbacks(registration);
+    });
+    ASSERT_EQ(-1, rc);
+    EXPECT_EQ(ENOMEM, errno);
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_EQ(1, initialized[i]);
+        EXPECT_EQ(1, released[i]);
+    }
+    callbacks.init_fn = nullptr;
+    callbacks.release_fn = nullptr;
+    ASSERT_EQ(0, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+    ASSERT_EQ(0, brpc::UnregisterPollingCallbacks(registration));
+}
+
+TEST(EventDispatcherDeathTest, polling_initialization_failure_rolls_back) {
+    set_threadsafe_death_test_style();
+    ASSERT_EXIT({
+        check_polling_initialization_rollback();
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+void check_polling_reentrant_registration() {
+    configure_polling_test();
+    std::atomic<bool> ready{false};
+    std::atomic<int> checked{0};
+    brpc::PollingRegistration registration;
+    brpc::PollingCallbacks nested;
+    nested.poll_fn = [](brpc::PollingContext&) {};
+    brpc::PollingCallbacks callbacks;
+    callbacks.poll_fn = [&](brpc::PollingContext&) {
+        if (!ready.load(std::memory_order_acquire)) {
+            return;
+        }
+        brpc::PollingRegistration token;
+        EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(1, nested, &token));
+        EXPECT_EQ(EDEADLK, errno);
+        EXPECT_EQ(-1, brpc::UnregisterPollingCallbacks(registration));
+        EXPECT_EQ(EDEADLK, errno);
+        checked.fetch_add(1, std::memory_order_release);
+    };
+    ASSERT_EQ(0, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+    auto cleanup = butil::MakeScopeGuard([&] {
+        brpc::UnregisterPollingCallbacks(registration);
+    });
+    ready.store(true, std::memory_order_release);
+    ASSERT_TRUE(wait_for_poll_count(checked, 2));
+    ASSERT_EQ(0, brpc::UnregisterPollingCallbacks(registration));
+}
+
+TEST(EventDispatcherDeathTest, polling_reentrant_registration_is_rejected) {
+    set_threadsafe_death_test_style();
+    ASSERT_EXIT({
+        check_polling_reentrant_registration();
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+void check_polling_shutdown() {
+    configure_polling_test();
+    int released = 0;
+    brpc::PollingCallbacks callbacks;
+    callbacks.poll_fn = [](brpc::PollingContext&) {};
+    callbacks.release_fn = [&](brpc::PollingContext&) { ++released; };
+    brpc::PollingRegistration registration;
+    ASSERT_EQ(0, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+    auto cleanup = butil::MakeScopeGuard([&] {
+        brpc::UnregisterPollingCallbacks(registration);
+    });
+    auto& dispatcher = brpc::GetGlobalEventDispatcher(0, 0);
+    dispatcher.Stop();
+    dispatcher.Join();
+    EXPECT_FALSE(dispatcher.IsDispatcherThread());
+    EXPECT_FALSE(dispatcher.Running());
+    ASSERT_EQ(0, brpc::UnregisterPollingCallbacks(registration));
+    EXPECT_EQ(2, released);
+    EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+    EXPECT_EQ(ESHUTDOWN, errno);
+}
+
+TEST(EventDispatcherDeathTest, polling_shutdown_releases_callbacks) {
+    set_threadsafe_death_test_style();
+    ASSERT_EXIT({
+        check_polling_shutdown();
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+struct PollingUnregisterArgs {
+    brpc::PollingRegistration registration;
+    std::atomic<int> started{0};
+    std::atomic<int> done{0};
+    int rc = -1;
+};
+
+void* unregister_polling_callbacks(void* arg) {
+    auto* args = static_cast<PollingUnregisterArgs*>(arg);
+    args->started.store(1, std::memory_order_release);
+    args->rc = brpc::UnregisterPollingCallbacks(args->registration);
+    args->done.store(1, std::memory_order_release);
+    return nullptr;
+}
+
+void check_polling_unregister_waits(bool stop) {
+    configure_polling_test();
+    std::atomic<int> entered{0};
+    std::atomic<bool> leave{false};
+    int released[2] = {};
+    brpc::PollingCallbacks callbacks;
+    callbacks.poll_fn = [&](brpc::PollingContext& ctx) {
+        if (ctx.dispatcher_index == 0) {
+            entered.store(1, std::memory_order_release);
+            // Artificially stall one iteration to verify the acknowledgement
+            // waits for in-flight callbacks, including the shutdown path.
+            while (!leave.load(std::memory_order_acquire)) {
+                cpu_relax();
+            }
+        }
+    };
+    callbacks.release_fn = [&](brpc::PollingContext& ctx) {
+        ++released[ctx.dispatcher_index];
+    };
+    PollingUnregisterArgs args;
+    bthread_t tid = INVALID_BTHREAD;
+    ASSERT_EQ(0, brpc::RegisterPollingCallbacksWithTag(
+        0, callbacks, &args.registration));
+    auto cleanup = butil::MakeScopeGuard([&] {
+        leave.store(true, std::memory_order_release);
+        if (tid) {
+            bthread_join(tid, nullptr);
+        }
+        brpc::UnregisterPollingCallbacks(args.registration);
+        if (stop) {
+            auto& dispatcher = brpc::GetGlobalEventDispatcher(0, 0);
+            dispatcher.Stop();
+            dispatcher.Join();
+        }
+    });
+    ASSERT_TRUE(wait_for_poll_count(entered, 1));
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    attr.tag = 0;
+    ASSERT_EQ(0, bthread_start_background(
+        &tid, &attr, unregister_polling_callbacks, &args));
+    ASSERT_TRUE(wait_for_poll_count(args.started, 1));
+    auto& dispatcher = brpc::GetGlobalEventDispatcher(0, 0);
+    const int64_t deadline = butil::gettimeofday_us() + 5000000;
+    while (!dispatcher._polling_command.load(std::memory_order_acquire) &&
+           butil::gettimeofday_us() < deadline) {
+        usleep(1000);
+    }
+    ASSERT_NE(nullptr, dispatcher._polling_command.load(std::memory_order_acquire));
+    // The stalled callback prevents consumption: Stop now must acknowledge
+    // this exact pending unregister command from FinishPolling().
+    if (stop) {
+        dispatcher.Stop();
+    }
+    EXPECT_EQ(0, args.done.load(std::memory_order_acquire));
+    leave.store(true, std::memory_order_release);
+    ASSERT_TRUE(wait_for_poll_count(args.done, 1));
+    ASSERT_EQ(0, bthread_join(tid, nullptr));
+    tid = INVALID_BTHREAD;
+    EXPECT_EQ(0, args.rc);
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_EQ(1, released[i]);
+    }
+    if (stop) {
+        dispatcher.Join();
+    }
+}
+
+TEST(EventDispatcherDeathTest, polling_unregister_waits_for_inflight_callback) {
+    set_threadsafe_death_test_style();
+    for (bool stop : {false, true}) {
+        SCOPED_TRACE(stop);
+        ASSERT_EXIT({
+            check_polling_unregister_waits(stop);
+            _exit(::testing::Test::HasFailure() ? 1 : 0);
+        }, ::testing::ExitedWithCode(0), "");
+    }
+}
+
+void* check_registration_from_bthread(void*) {
+    int initialized[2] = {};
+    int released[2] = {};
+    brpc::PollingCallbacks callbacks;
+    callbacks.init_fn = [&](brpc::PollingContext& ctx) {
+        ++initialized[ctx.dispatcher_index];
+        return 0;
+    };
+    callbacks.poll_fn = [](brpc::PollingContext&) {};
+    callbacks.release_fn = [&](brpc::PollingContext& ctx) {
+        ++released[ctx.dispatcher_index];
+    };
+    brpc::PollingRegistration registration;
+    auto cleanup = butil::MakeScopeGuard([&] {
+        brpc::UnregisterPollingCallbacks(registration);
+    });
+    EXPECT_EQ(0, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+    EXPECT_EQ(0, brpc::UnregisterPollingCallbacks(registration));
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_EQ(1, initialized[i]);
+        EXPECT_EQ(1, released[i]);
+    }
+    callbacks.init_fn = [&](brpc::PollingContext& ctx) {
+        ++initialized[ctx.dispatcher_index];
+        return ctx.dispatcher_index == 1 ? ENOMEM : 0;
+    };
+    EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+    EXPECT_EQ(ENOMEM, errno);
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_EQ(2, initialized[i]);
+        EXPECT_EQ(2, released[i]);
+    }
+    return nullptr;
+}
+
+void check_polling_bthread_registration() {
+    configure_polling_test();
+    // Start the worker pool with final tag settings before spawning a caller
+    // that registers callbacks on its own tag.
+    brpc::GetGlobalEventDispatcher(0, 0);
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    attr.tag = 0;
+    bthread_t tid;
+    ASSERT_EQ(0, bthread_start_background(
+        &tid, &attr, check_registration_from_bthread, nullptr));
+    ASSERT_EQ(0, bthread_join(tid, nullptr));
+}
+
+TEST(EventDispatcherDeathTest, polling_registration_from_same_tag_bthread) {
+    set_threadsafe_death_test_style();
+    ASSERT_EXIT({
+        check_polling_bthread_registration();
+        _exit(::testing::Test::HasFailure() ? 1 : 0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(EventDispatcherTest, polling_registration_validation) {
+    brpc::PollingRegistration registration;
+    brpc::PollingCallbacks callbacks;
+    EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+    EXPECT_EQ(EINVAL, errno);
+    callbacks.poll_fn = [](brpc::PollingContext&) {};
+    EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(-1, callbacks, &registration));
+    EXPECT_EQ(EINVAL, errno);
+    EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(
+        FLAGS_task_group_ntags, callbacks, &registration));
+    EXPECT_EQ(EINVAL, errno);
+    EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(0, callbacks, nullptr));
+    EXPECT_EQ(EINVAL, errno);
+    EXPECT_EQ(-1, brpc::UnregisterPollingCallbacks(registration));
+    EXPECT_EQ(EINVAL, errno);
+    if (!brpc::GetGlobalEventDispatcher(0, 0).use_polling()) {
+        EXPECT_EQ(-1, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+        EXPECT_EQ(EPERM, errno);
     }
 }
 
@@ -649,6 +1036,61 @@ void* stop_and_join(void* arg) {
     args->server->Join();
     args->done.store(true, butil::memory_order_release);
     return nullptr;
+}
+
+void check_tcp_with_polling(bool background) {
+    configure_polling_test();
+    brpc::FLAGS_event_dispatcher_edisp_unsched = background;
+    std::atomic<int> polls{0};
+    brpc::PollingCallbacks callbacks;
+    callbacks.poll_fn = [&](brpc::PollingContext&) {
+        polls.fetch_add(1, std::memory_order_release);
+    };
+    brpc::PollingRegistration registration;
+    ASSERT_EQ(0, brpc::RegisterPollingCallbacksWithTag(0, callbacks, &registration));
+    auto cleanup = butil::MakeScopeGuard([&] {
+        brpc::UnregisterPollingCallbacks(registration);
+    });
+    ASSERT_TRUE(wait_for_poll_count(polls, 10));
+    ReserveEchoServiceImpl service;
+    brpc::Server server;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions options;
+    options.num_threads = 4;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+    brpc::Channel channel;
+    brpc::ChannelOptions copt;
+    copt.timeout_ms = 3000;
+    ASSERT_EQ(0, channel.Init(server.listen_address(), &copt));
+    test::EchoService_Stub stub(&channel);
+    // Unregister between requests: it must leave the TCP path intact.
+    for (int i = 0; i < 20; ++i) {
+        if (i == 10) {
+            ASSERT_EQ(0, brpc::UnregisterPollingCallbacks(registration));
+        }
+        brpc::Controller cntl;
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message("polling echo");
+        stub.Echo(&cntl, &req, &res, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        EXPECT_EQ(req.message(), res.message());
+    }
+    server.Stop(0);
+    server.Join();
+    EXPECT_GE(bthread::g_task_control->reserved_concurrency(0), 2);
+    EXPECT_EQ(background, brpc::EventDispatcherUnsched());
+}
+
+TEST(EventDispatcherDeathTest, polling_tcp_supports_urgent_and_background) {
+    set_threadsafe_death_test_style();
+    for (bool background : {false, true}) {
+        SCOPED_TRACE(background);
+        ASSERT_EXIT({
+            check_tcp_with_polling(background);
+            _exit(::testing::Test::HasFailure() ? 1 : 0);
+        }, ::testing::ExitedWithCode(0), "");
+    }
 }
 
 // Dispatchers need extra workers beyond the configured normal concurrency.
