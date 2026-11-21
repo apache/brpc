@@ -133,7 +133,6 @@ RETURN_CODE IpcShmFree(SHM *shm)
         }
         if (errno == ENOENT) {
             LOG(INFO) << "IPC free shm=" << shm->name << " already deleted.";
-            shm->addr = nullptr;
             return SHM_ERR_NOT_FOUND;
         }
         LOG_EVERY_SECOND(ERROR) << "IPC free shm=" << shm->name << " failed, errno=" << errno;

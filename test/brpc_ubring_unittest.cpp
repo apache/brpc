@@ -28,9 +28,11 @@
 #include "brpc/socket.h"
 
 #if BRPC_WITH_UBRING
+#include <unistd.h>
 #include "brpc/ubshm/common/common.h"
 #include "brpc/ubshm/ub_endpoint.h"
 #include "brpc/ubshm/shm/shm_def.h"
+#include "brpc/ubshm/shm/shm_ipc.h"
 #include "brpc/ubshm/shm/shm_mgr.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "brpc/ubshm/ub_ring.h"
@@ -880,6 +882,22 @@ TEST_F(UBShmEndpointTest, allocate_client_resources_real_shm) {
         {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
     int ret = _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_client");
     EXPECT_EQ(0, ret);
+}
+
+TEST_F(UBShmEndpointTest, repeated_ipc_unlink_keeps_mapping_for_unmap) {
+    static std::atomic<uint32_t> name_sequence(0);
+    const std::string name = "/brpc_u_" + std::to_string(getpid()) + "_" +
+        std::to_string(name_sequence.fetch_add(1, std::memory_order_relaxed));
+    brpc::ubring::SHM shm = {nullptr, 4096, 0, {0}, (uint32_t)_socket->fd()};
+    ASSERT_LT(name.size(), sizeof(shm.name));
+    memcpy(shm.name, name.c_str(), name.size() + 1);
+    ASSERT_EQ(0, brpc::ubring::IpcShmLocalMalloc(&shm));
+    uint8_t* const addr = shm.addr;
+
+    ASSERT_EQ(0, brpc::ubring::IpcShmFree(&shm));
+    EXPECT_EQ(SHM_ERR_NOT_FOUND, brpc::ubring::IpcShmFree(&shm));
+    EXPECT_EQ(addr, shm.addr);
+    EXPECT_EQ(0, brpc::ubring::IpcShmMunmap(&shm));
 }
 
 TEST_F(UBShmEndpointTest, reset_cleans_up_resources) {
