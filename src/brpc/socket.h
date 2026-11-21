@@ -59,11 +59,6 @@ namespace rdma {
 class RdmaEndpoint;
 class SrqConnection;
 class RqConnection;
-class RdmaConnect;
-class RdmaHandshakeClientV2;
-class RdmaHandshakeServerV2;
-class RdmaHandshakeClientV3;
-class RdmaHandshakeServerV3;
 }
 
 namespace urma {
@@ -77,14 +72,16 @@ class UrmaHandshakeServerV3;
 
 namespace ubring {
     class UBShmEndpoint;
-    class UBConnect;
 }
-
+namespace handshake {
+class SocketHandshakeIO;
+}
 class Socket;
 class AuthContext;
 class EventDispatcher;
 class Stream;
 class Transport;
+class AdapterTransport;
 
 // Set SO_SNDBUF/SO_RCVBUF according to socket_*_buffer_size flags.
 void SetSocketBufferOptions(int fd);
@@ -347,14 +344,8 @@ friend class schan::ChannelBalancer;
 friend class rdma::RdmaEndpoint;
 friend class rdma::SrqConnection;
 friend class rdma::RqConnection;
-friend class rdma::RdmaConnect;
 friend class ubring::UBShmEndpoint;
-friend class ubring::UBConnect;
 friend class UBShmTransport;
-friend class rdma::RdmaHandshakeClientV2;
-friend class rdma::RdmaHandshakeServerV2;
-friend class rdma::RdmaHandshakeClientV3;
-friend class rdma::RdmaHandshakeServerV3;
 friend class urma::UrmaEndpoint;
 friend class urma::UrmaConnect;
 friend class urma::UrmaHandshakeClientV2;
@@ -369,6 +360,8 @@ friend class VersionedRefWithId<Socket>;
 friend class IOEvent<Socket>;
 friend void DereferenceSocket(Socket*);
 friend class Transport;
+friend class AdapterTransport;
+friend class handshake::SocketHandshakeIO;
 friend class TcpTransport;
 friend class RdmaTransport;
 friend class UrmaTransport;
@@ -1041,8 +1034,10 @@ private:
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
-    // Should use SOCKET_MODE_RDMA or SOCKET_MODE_TCP or Other, default is SOCKET_MODE_TCP Transport
+    // Requested transport for this connection.
     SocketMode _socket_mode;
+    // The top-level AdapterTransport, which selects TCP or the requested
+    // accelerated Transport.
     std::unique_ptr<Transport> _transport;
 
     // Pass from controller, for progressive reading.

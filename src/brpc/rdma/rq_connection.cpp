@@ -33,8 +33,7 @@
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rq_connection.h"
 #include "brpc/rdma_transport.h"
-#include "brpc/rdma/rdma_handshake.h"
-#include "brpc/rdma/rdma_handshake_constants.h"
+#include "brpc/handshake/rdma_handshake_constants.h"
 
 
 DECLARE_int32(task_group_ntags);
@@ -931,7 +930,7 @@ void RqConnection::PollCq(Socket* m) {
     if (Socket::Address(c->_sid, &s) < 0) {
         return;
     }
-    auto* transport = static_cast<RdmaTransport*>(s->_transport.get());
+    auto* transport = RdmaTransport::Get(s);
     RdmaEndpoint* ep = transport->GetRdmaEp();
     if (m->id() != c->_cq_sid || !ep->OwnsConnection(c)) {
         return;
@@ -1114,6 +1113,30 @@ void RqConnection::GlobalRelease() {
 
 std::vector<RqConnection::PollerGroup> RqConnection::_poller_groups;
 
+// Thread creation is replaceable in startup failure tests.
+decltype(&bthread_start_background) StartPollingThread = bthread_start_background;
+
+void RqConnection::PollerGroup::Stop(std::unique_lock<bthread::Mutex>& lock) {
+    if (stopping) {
+        stopped.wait(lock, [this] { return !stopping; });
+        return;
+    }
+    if (!running.exchange(false, std::memory_order_relaxed)) {
+        return;
+    }
+    stopping = true;
+    lock.unlock();
+    for (auto& poller : pollers) {
+        if (poller.tid != INVALID_BTHREAD) {
+            bthread_join(poller.tid, nullptr);
+            poller.tid = INVALID_BTHREAD;
+        }
+    }
+    lock.lock();
+    stopping = false;
+    stopped.notify_all();
+}
+
 int RqConnection::PollingModeInitialize(bthread_tag_t tag,
                                         std::function<void()> callback,
                                         std::function<void()> init_fn,
@@ -1124,10 +1147,15 @@ int RqConnection::PollingModeInitialize(bthread_tag_t tag,
     auto& group = _poller_groups[tag];
     auto& pollers = group.pollers;
     auto& running = group.running;
-    bool expected = false;
-    if (!running.compare_exchange_strong(expected, true)) {
+    std::unique_lock<bthread::Mutex> lock(group.mutex);
+    if (group.stopping) {
+        errno = EBUSY;
+        return -1;
+    }
+    if (running.load(std::memory_order_relaxed)) {
         return 0;
     }
+    running.store(true, std::memory_order_relaxed);
     struct FnArgs {
         Poller* poller;
         butil::atomic<bool>* running;
@@ -1143,7 +1171,7 @@ int RqConnection::PollingModeInitialize(bthread_tag_t tag,
             poller->init_fn();
         }
 
-        while (running->load(butil::memory_order_relaxed)) {
+        while (running->load(std::memory_order_relaxed)) {
             while (poller->op_queue.Dequeue(op)) {
                 if (op.type == CqSidOp::ADD) {
                     cq_sids.emplace(op.sid);
@@ -1172,18 +1200,22 @@ int RqConnection::PollingModeInitialize(bthread_tag_t tag,
 
         return nullptr;
     };
-    for (int i = 0; i < FLAGS_rdma_poller_num; ++i) {
+    for (size_t i = 0; i < pollers.size(); ++i) {
         auto args = new FnArgs{&pollers[i], &running};
-        auto attr = FLAGS_rdma_disable_bthread ? BTHREAD_ATTR_PTHREAD
-                                               : BTHREAD_ATTR_NORMAL;
+        auto attr =
+            FLAGS_rdma_disable_bthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
         attr.tag = tag;
         bthread_attr_set_name(&attr, "RdmaPolling");
         pollers[i].callback = callback;
         pollers[i].init_fn = init_fn;
         pollers[i].release_fn = release_fn;
-        auto rc = bthread_start_background(&pollers[i].tid, &attr, fn, args);
+        auto rc = StartPollingThread(&pollers[i].tid, &attr, fn, args);
         if (rc != 0) {
-            LOG(ERROR) << "Fail to start rdma polling bthread";
+            delete args;
+            group.Stop(lock);
+            LOG(ERROR) << "Fail to start rdma polling bthread: "
+                       << berror(rc);
+            errno = rc;
             return -1;
         }
     }
@@ -1195,12 +1227,8 @@ void RqConnection::PollingModeRelease(bthread_tag_t tag) {
         return;
     }
     auto& group = _poller_groups[tag];
-    auto& pollers = group.pollers;
-    auto& running = group.running;
-    running.store(false, butil::memory_order_relaxed);
-    for (int i = 0; i < FLAGS_rdma_poller_num; ++i) {
-        bthread_join(pollers[i].tid, nullptr);
-    }
+    std::unique_lock<bthread::Mutex> lock(group.mutex);
+    group.Stop(lock);
 }
 
 void RqConnection::PollerAddCqSid() {

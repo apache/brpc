@@ -44,6 +44,8 @@ public:
     RETURN_CODE UbrTrxMapShm(SHM *local_shm, SHM *remote_shm);
 
     RETURN_CODE UbrTrxClose();
+    // Release an upgrade that has not reached the established state.
+    RETURN_CODE UbrTrxAbort();
 
     RETURN_CODE UbrAddCloseTimer();
 
@@ -55,7 +57,7 @@ public:
 
     static void *UbrTrxHBCallback(void *args);
 
-    static RETURN_CODE UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE type);
+    static RETURN_CODE UbrPassiveClearTrx(UbrTrx* trx);
 
     static RETURN_CODE UbrAddAsynClearTimer(UbrTrx *trx);
 
@@ -206,6 +208,9 @@ public:
             LOG(ERROR) << "Trx close callback failed, trx is null.";
             return UBRING_ERR;
         }
+        if (ATOMIC_LOAD(trx->initializing)) {
+            return UBRING_REENTRY;
+        }
         if (UNLIKELY(trx->local_shm.addr == nullptr)) {
             LOG(ERROR) << "Trx close failed, local_shm addr is NULL.";
             return UBRING_ERR;
@@ -241,9 +246,13 @@ private:
     RETURN_CODE InitializeClientLocalLegacyFormat();
     void InitializeClientRemoteLegacyFormat();
     void InitializeClientLegacyFormat();
-    void ActivateClientFormat();
-    static RETURN_CODE UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type);
-    static RETURN_CODE ClearTrxResource(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type, int op=0);
+    RETURN_CODE ActivateClientFormat();
+    RETURN_CODE RegisterShmName(SHM* target, const char* name);
+    void RecordShm(SHM* target, const SHM& source);
+    static RETURN_CODE UnlinkLocalShm(UbrTrx* trx);
+    static RETURN_CODE UbrClearResourceCheck(UbrTrx* trx, UbrCloseType close_type);
+    static RETURN_CODE ClearTrxResource(UbrTrx* trx, UbrCloseType close_type);
+    RETURN_CODE ReleaseTrx();
 
     UbrTrx* _trx{nullptr};
 };

@@ -35,7 +35,6 @@
 #include "brpc/serialized_request.h"
 #include "brpc/serialized_response.h"
 #include "brpc/details/usercode_backup_pool.h"       // TooManyUserCode
-#include "brpc/rdma/rdma_helper.h"
 #include "brpc/policy/esp_authenticator.h"
 #include "brpc/transport_factory.h"
 #include "brpc/details/controller_private_accessor.h"
@@ -82,7 +81,8 @@ ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
 }
 
 static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
-    if (opt.auth == nullptr &&
+    if (opt.socket_mode == SOCKET_MODE_TCP &&
+        opt.auth == nullptr &&
         !opt.has_ssl_options() &&
         opt.client_host.empty() &&
         opt.device_name.empty() &&
@@ -91,6 +91,7 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         // Returning zeroized result by default is more intuitive for users.
         return ChannelSignature();
     }
+    const int mode = static_cast<int>(opt.socket_mode);
     uint32_t seed = 0;
     std::string buf;
     buf.reserve(1024);
@@ -98,6 +99,7 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
     do {
         buf.clear();
         butil::MurmurHash3_x64_128_Init(&mm_ctx, seed);
+        butil::MurmurHash3_x64_128_Update(&mm_ctx, &mode, sizeof(mode));
 
         if (!opt.connection_group.empty()) {
             buf.append("|conng=");
@@ -140,11 +142,6 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
             buf.append(verify.expected_peer_name);
         } else {
             // All disabled ChannelSSLOptions are the same
-        }
-        if (opt.socket_mode == SOCKET_MODE_RDMA) {
-            buf.append("|rdma");
-        } else if (opt.socket_mode == SOCKET_MODE_URMA) {
-            buf.append("|urma");
         }
         butil::MurmurHash3_x64_128_Update(&mm_ctx, buf.data(), buf.size());
         buf.clear();

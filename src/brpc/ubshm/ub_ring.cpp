@@ -22,6 +22,7 @@
 #include <limits>
 #include "bthread/bthread.h"
 #include "butil/logging.h"
+#include "butil/scoped_lock.h"
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/ub_ring_manager.h"
 #include "brpc/ubshm/shm/shm_ipc.h"
@@ -46,6 +47,20 @@ UBRing::UBRing()
 UBRing::~UBRing()
 {}
 
+RETURN_CODE UBRing::RegisterShmName(SHM* target, const char* name) {
+    std::lock_guard<pthread_mutex_t> lock(UBRingManager::g_ubr_trx_mgr_mtx);
+    if (ATOMIC_LOAD(_trx->device_fault)) {
+        return UBRING_ERR;
+    }
+    memcpy(target->name, name, sizeof(target->name));
+    return UBRING_OK;
+}
+
+void UBRing::RecordShm(SHM* target, const SHM& source) {
+    std::lock_guard<pthread_mutex_t> lock(UBRingManager::g_ubr_trx_mgr_mtx);
+    *target = source;
+}
+
 RETURN_CODE UBRing::UbrTrxMapShm(SHM *local_shm, SHM *remote_shm)
 {
     RETURN_CODE rc = UbrTrxMapLocalShm(local_shm);
@@ -61,7 +76,52 @@ RETURN_CODE UBRing::UbrTrxMapShm(SHM *local_shm, SHM *remote_shm)
     return UBRING_OK;
 }
 
+RETURN_CODE UBRing::UbrTrxAbort() {
+    if (_trx == nullptr) {
+        return UBRING_OK;
+    }
+    if (ATOMIC_LOAD(_trx->close_state) != UBR_CLOSE_FIRST) {
+        return ReleaseTrx();
+    }
+    if (_trx->ubr_tx.local_tx_event_q.addr != nullptr) {
+        const RETURN_CODE close_rc = UbrTrxCloseCheck(_trx);
+        if (close_rc != UBRING_OK) {
+            return close_rc;
+        }
+    }
+    int expected = UBR_CLOSE_FIRST;
+    if (!ATOMIC_COMPARE_EXCHANGE_STRONG(
+            _trx->close_state, expected, UBR_CLOSE_SECOND)) {
+        return ReleaseTrx();
+    }
+    // Drain timer callbacks before unmapping the queues they access.
+    DeleteTimerSafe(_trx->timer_fd);
+    DeleteTimerSafe(_trx->hb_timer_fd);
+    DeleteTimerSafe(_trx->clear_timer_fd);
+    if (UbrTrxFreeShm(_trx) == UBRING_OK) {
+        return ReleaseTrx();
+    }
+    // Transfer the ring reference when retry storage could not be acquired.
+    UbrTrx* trx = _trx;
+    _trx = nullptr;
+    trx->clear_timer_fd = 0;
+    if (UbrAddAsynClearTimer(trx) != UBRING_OK) {
+        UbrAsynClearCallback(trx);
+    }
+    return UBRING_OK;
+}
+
 RETURN_CODE UBRing::UbrTrxClose() {
+    if (_trx == nullptr) {
+        return UBRING_OK;
+    }
+    if (ATOMIC_LOAD(_trx->close_state) != UBR_CLOSE_FIRST) {
+        return ReleaseTrx();
+    }
+    // Incomplete upgrades do not participate in the peer-close exchange.
+    if (ATOMIC_LOAD(_trx->initializing) || _trx->remote_shm.addr == nullptr) {
+        return UbrTrxAbort();
+    }
     RETURN_CODE close_check_rc = UbrTrxCloseCheck(_trx);
     if (UNLIKELY(close_check_rc != UBRING_OK)) {
         if (close_check_rc == UBRING_REENTRY) {
@@ -89,41 +149,24 @@ RETURN_CODE UBRing::UbrTrxClose() {
         UbrSetSleepTask(UBR_TASK_CLOSE);
         if (HasTimedOut(start_time, disconnect_timeout_s) != UBRING_OK) {
             LOG(WARNING) << "Local shm " << _trx->local_shm.name
-            << " wait for the peer to close timed out, force cleanup.";
+                         << " wait for the peer to close timed out, schedule cleanup.";
             _trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
-            // Force synchronous cleanup instead of relying on async timer
-            DeleteTimerSafe((uint32_t)_trx->timer_fd);
-            DeleteTimerSafe((uint32_t)_trx->hb_timer_fd);
-            if (_trx->ubr_tx.remote_rx_event_q.addr != nullptr) {
-                ((UbrEventQMsg *)_trx->ubr_tx.remote_rx_event_q.addr)->flag = UBR_STATE_CLOSED;
-            }
-            if (UNLIKELY(UbrTrxFreeShm(_trx) != UBRING_OK)) {
-                LOG(WARNING) << "Force close, local shm " << _trx->local_shm.name << " free failed.";
-            }
-            if (UNLIKELY(UBRingManager::ReleaseUbrTrxFromMgr(_trx) != UBRING_OK)) {
-                LOG(WARNING) << "Force close, release trx " << _trx->local_shm.name << " failed.";
-            }
+            ClearTrxResource(_trx, UBR_SEND_CLOSE);
+            ReleaseTrx();
             return UBRING_ERR_TIMEOUT;
         }
         bthread_usleep(1000);  // 1ms, yield to other bthreads
     }
     _trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
-    RETURN_CODE rc;
-    if (UNLIKELY((rc = ClearTrxResource(_trx, start_time, UBR_SEND_CLOSE)) != UBRING_OK)) {
-        if (rc == UBRING_REENTRY) {
-            LOG(INFO) << "Trx close, peer is closing, trx local name=" << _trx->local_shm.name;
-            return UBRING_OK;
-        }
-        LOG(ERROR) << "Trx close, clear trx resource failed, trx local name=" << _trx->local_shm.name;
-        return UBRING_ERR;
-    }
-    // Unlink local shm name immediately so process exit does not leave visible leftovers.
-    RETURN_CODE unlink_rc = ShmFree(&_trx->local_shm);
-    if (unlink_rc != UBRING_OK && unlink_rc != SHM_ERR_NOT_FOUND && unlink_rc != SHM_ERR_RESOURCE_ATTACHED) {
-        LOG(WARNING) << "Trx close, unlink local shm failed, trx local name=" << _trx->local_shm.name
-                     << ", rc=" << unlink_rc;
-    }
-    return UBRING_OK;
+    const RETURN_CODE rc = ClearTrxResource(_trx, UBR_SEND_CLOSE);
+    ReleaseTrx();
+    return rc == UBRING_REENTRY ? UBRING_OK : rc;
+}
+
+RETURN_CODE UBRing::ReleaseTrx() {
+    UbrTrx* trx = _trx;
+    _trx = nullptr;
+    return UBRingManager::ReleaseUbrTrxFromMgr(trx);
 }
 
 RETURN_CODE UBRing::UbrAddCloseTimer() {
@@ -155,6 +198,7 @@ RETURN_CODE UBRing::UbrAddTimer() {
 
     if (UNLIKELY(UbrAddHBTimer() != UBRING_OK)) {
         DeleteTimerSafe((uint32_t)_trx->timer_fd);
+        _trx->timer_fd = 0;
         LOG(ERROR) << "Ubr " << _trx->local_shm.name << " add heartbeat timer failed.";
         return UBRING_ERR;
     }
@@ -172,32 +216,12 @@ void* UBRing::UbrTrxCloseCallback(void* args) {
     if (local_rx_event_q->flag != UBR_STATE_CLOSED || local_tx_event_q->flag == UBR_STATE_CLOSED) {
         return nullptr;
     }
-    trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
-    int fd = (int)trx->local_shm.fd;
-    do {
-        if (ATOMIC_LOAD(trx->close_cnt) == 0) {
-            break;
-        }
-        ATOMIC_SUB(trx->close_cnt, 1);
-
-        uint64_t start_time = GetCurNanoSeconds();
-
-        if (local_tx_event_q->flag == UBR_STATE_CONNECTED || ATOMIC_LOAD(trx->close_cnt) == 1) {
-            local_tx_event_q->flag = UBR_STATE_CLOSED;
-            trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
-        }
-        UbrEventQMsg* remote_rx_event_q = (UbrEventQMsg *)trx->ubr_tx.remote_rx_event_q.addr;
-        if (remote_rx_event_q == nullptr) {
-            LOG(ERROR) << "Trx close callback failed, " << trx->local_shm.name << " remote_rx_event_q is NULL.";
-            break;
-        }
+    UbrEventQMsg* remote_rx_event_q =
+        (UbrEventQMsg*)trx->ubr_tx.remote_rx_event_q.addr;
+    if (remote_rx_event_q != nullptr) {
         remote_rx_event_q->flag = UBR_STATE_CLOSED;
-        RETURN_CODE clear_rc = ClearTrxResource(trx, start_time, UBR_CALL_BACK_CLOSE, 1);
-        if (UNLIKELY(clear_rc != UBRING_OK && clear_rc != UBRING_REENTRY)) {
-            LOG(ERROR) << "Trx close callback failed, " << trx->local_shm.name << " clear trx resource failed.";
-            break;
-        }
-    } while (0);
+    }
+    ClearTrxResource(trx, UBR_CALL_BACK_CLOSE);
     return nullptr;
 }
 
@@ -220,41 +244,9 @@ RETURN_CODE UBRing::UbrAddHBTimer() {
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrPassiveClearTrx(UbrTrx *trx, int fd, PASSIVE_DISC_TYPE type) {
-    RETURN_CODE passive_close_check_rc = UbrTrxCloseCheck(trx);
-    if (UNLIKELY(passive_close_check_rc != UBRING_OK)) {
-        if (passive_close_check_rc == UBRING_REENTRY) {
-            LOG(INFO) << "Passive close skipped, active close in progress, name=" << trx->local_shm.name;
-            uint64_t start_time = GetCurNanoSeconds();
-            return ClearTrxResource(trx, start_time, UBR_CALL_BACK_CLOSE);
-        }
-        return UBRING_ERR;
-    }
-    trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
-    trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
-    DeleteTimerSafe((uint32_t)trx->timer_fd);
-    const char *type_name = nullptr;
-    if (type == UBR_HEARTBEAT) {
-        DeleteTimer((uint32_t)trx->hb_timer_fd);
-        type_name = "Trx heartbeat";
-    } else if (type == UBR_UB_EVENT) {
-        DeleteTimerSafe((uint32_t)trx->hb_timer_fd);
-        type_name = "Ub event callback";
-    }
-    constexpr int64_t kMicrosecondsPerSecond = 1000000LL;
-    bthread_usleep(FLAGS_ub_flying_io_timeout_s * kMicrosecondsPerSecond);
-
-    int rc = ShmLocalFree(&trx->remote_shm);
-    if (rc != UBRING_OK) {
-        LOG(ERROR) << type_name << ", delete remote shm failed. ret=" << rc;
-    }
-    rc = ShmLocalFree(&trx->local_shm);
-    if (rc != UBRING_OK) {
-        LOG(ERROR) << type_name << ", delete local shm failed. ret=" << rc;
-    }
-
-    UBRingManager::ReleaseUbrTrxFromMgr(trx);
-    return UBRING_OK;
+RETURN_CODE UBRing::UbrPassiveClearTrx(UbrTrx* trx) {
+    const RETURN_CODE rc = ClearTrxResource(trx, UBR_PASSIVE_CLOSE);
+    return rc == UBRING_REENTRY ? UBRING_OK : rc;
 }
 
 void* UBRing::UbrTrxHBCallback(void* args) {
@@ -289,7 +281,7 @@ void* UBRing::UbrTrxHBCallback(void* args) {
 
     int fd = (int)trx->local_shm.fd;
     LOG(INFO) << "Hlc heartbeat, start to clear trx resource. hb_timer_fd=" << fd << ", shm_name=" << trx->local_shm.name;
-    UbrPassiveClearTrx(trx, fd, UBR_HEARTBEAT);
+    UbrPassiveClearTrx(trx);
     LOG(INFO) << "Hlc heartbeat clear trx resource finish.";
     return nullptr;
 }
@@ -311,7 +303,8 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
 
     int timer_fd = TimerStart(&time_spec, UbrAsynClearCallback, (void*)trx);
     if (UNLIKELY(timer_fd == -1)) {
-        LOG(ERROR) << "Start ubr close timer failed, trx name=%s.", trx->local_shm.name;
+        LOG(ERROR) << "Start ubr close timer failed, trx name="
+                   << trx->local_shm.name;
         return UBRING_ERR;
     }
     trx->clear_timer_fd = timer_fd;
@@ -326,8 +319,15 @@ void *UBRing::UbrAsynClearCallback(void *args)
         return nullptr;
     }
 
-    if (UNLIKELY(UbrTrxFreeShm(trx) != UBRING_OK)) {
-        LOG(ERROR) << "Trx close, wait for local shm " << trx->local_shm.name << " free fail.";
+    while (UbrTrxFreeShm(trx) != UBRING_OK) {
+        LOG_EVERY_SECOND(ERROR) << "Trx close, retry cleanup for "
+                               << trx->local_shm.name;
+        trx->clear_timer_fd = 0;
+        if (UbrAddAsynClearTimer(trx) == UBRING_OK) {
+            return nullptr;
+        }
+        bthread_usleep(static_cast<uint64_t>(FLAGS_ub_flying_io_timeout_s) *
+                       SEC_TO_NSEC / USEC_TO_NSEC);
     }
 
     if (UNLIKELY(UBRingManager::ReleaseUbrTrxFromMgr(trx) != UBRING_OK)) {
@@ -848,44 +848,51 @@ RETURN_CODE UBRing::UbrTrxFreeShm(UbrTrx *trx)
         return UBRING_ERR;
     }
 
-    RETURN_CODE rc = UBRING_OK;
-    rc = ShmMunmap(&trx->local_shm);
-    if (UNLIKELY(rc != UBRING_OK)) {
-        LOG(ERROR) << "Trx close, local unmap " << trx->local_shm.name << " shm fail.";
-        return UBRING_ERR;
-    }
-
-    rc = ShmFree(&trx->local_shm);
-    if (UNLIKELY(rc != UBRING_OK)) {
-        if (rc != SHM_ERR_RESOURCE_ATTACHED && rc != SHM_ERR_NOT_FOUND) {
-            LOG(ERROR) << "Wait for " << trx->local_shm.name << " local shm free fail.";
-            return UBRING_ERR;
+    if (!trx->local_shm_released) {
+        int state = ATOMIC_LOAD(trx->local_name_state);
+        if (state != UBR_SHM_NAME_RELEASING &&
+            ATOMIC_COMPARE_EXCHANGE_STRONG(trx->local_name_state, state,
+                                          UBR_SHM_NAME_RELEASING)) {
+            const RETURN_CODE rc = trx->local_shm.len == 0 ? UBRING_OK
+                : state == UBR_SHM_NAME_RELEASED
+                    ? ShmRemoteFree(&trx->local_shm)
+                    : ShmLocalFree(&trx->local_shm);
+            trx->local_shm_released = rc == UBRING_OK ||
+                rc == SHM_ERR_NOT_FOUND || rc == SHM_ERR_RESOURCE_ATTACHED;
+            ATOMIC_STORE(trx->local_name_state, trx->local_shm_released
+                ? UBR_SHM_NAME_RELEASED : state);
         }
-        LOG(INFO) << "Local shm " << trx->local_shm.name << " already freed, continue to free remote shm.";
     }
-
-    RETURN_CODE remote_rc = UBRING_OK;
-    if (trx->remote_shm.addr != nullptr) {
-        remote_rc = ShmRemoteFree(&trx->remote_shm);
+    if (!trx->remote_shm_released) {
+        // The peer owns its name. Releasing a mapping never deletes it.
+        const RETURN_CODE rc = trx->remote_shm.len == 0
+            ? UBRING_OK : ShmRemoteFree(&trx->remote_shm);
+        trx->remote_shm_released = rc == UBRING_OK || rc == SHM_ERR_NOT_FOUND;
     }
-    if (remote_rc != UBRING_OK) {
-        LOG(WARNING) << "Free remote shm " << trx->remote_shm.name << " failed, rc=" << remote_rc;
-    }
-
-    return UBRING_OK;
+    return trx->local_shm_released && trx->remote_shm_released
+        ? UBRING_OK : UBRING_ERR;
 }
 
-RETURN_CODE UBRing::UbrUnlinkLocalShm()
-{
-    if (UNLIKELY(_trx == nullptr)) {
-        return UBRING_ERR;
+RETURN_CODE UBRing::UnlinkLocalShm(UbrTrx* trx) {
+    int expected = UBR_SHM_NAME_OWNED;
+    if (!ATOMIC_COMPARE_EXCHANGE_STRONG(trx->local_name_state, expected,
+                                       UBR_SHM_NAME_RELEASING)) {
+        return expected == UBR_SHM_NAME_RELEASED ? UBRING_OK : UBRING_RETRY;
     }
-    RETURN_CODE rc = ShmFree(&_trx->local_shm);
-    if (rc != UBRING_OK && rc != SHM_ERR_NOT_FOUND && rc != SHM_ERR_RESOURCE_ATTACHED) {
-        LOG(WARNING) << "Unlink local shm " << _trx->local_shm.name << " failed, rc=" << rc;
+    SHM local_shm = trx->local_shm;
+    const RETURN_CODE rc = ShmFree(&local_shm);
+    const bool released = rc == UBRING_OK || rc == SHM_ERR_NOT_FOUND;
+    ATOMIC_STORE(trx->local_name_state,
+                 released ? UBR_SHM_NAME_RELEASED : UBR_SHM_NAME_OWNED);
+    if (!released && rc != SHM_ERR_RESOURCE_ATTACHED) {
+        LOG(WARNING) << "Unlink local shm " << local_shm.name << " failed, rc=" << rc;
         return rc;
     }
     return UBRING_OK;
+}
+
+RETURN_CODE UBRing::UbrUnlinkLocalShm() {
+    return _trx != nullptr ? UnlinkLocalShm(_trx) : UBRING_ERR;
 }
 
 void UBRing::PreWriteAddr(uint8_t *addr, size_t len)
@@ -938,7 +945,7 @@ RETURN_CODE UBRing::UbrTrxMapLocalShm(SHM *local_shm)
         LOG(ERROR) << "Trx map Shared memory failed, local_shm is null or addr is NULL.";
         return UBRING_ERR;
     }
-    _trx->local_shm = *local_shm;
+    RecordShm(&_trx->local_shm, *local_shm);
     _trx->ubr_tx.local_tx_event_q.addr = local_shm->addr + TX_EVENTQ_ADDR_OFFSET;
     _trx->ubr_tx.local_tx_event_q.len = UBR_EVENTQ_LEN;
     _trx->ubr_rx.local_rx_event_q.addr = local_shm->addr + RX_EVENTQ_ADDR_OFFSET;
@@ -961,7 +968,7 @@ RETURN_CODE UBRing::UbrTrxMapRemoteShm(SHM *remote_shm)
         LOG(ERROR) << "Trx map Shared memory failed, remote_shm is null or addr is NULL.";
         return UBRING_ERR;
     }
-    _trx->remote_shm = *remote_shm;
+    RecordShm(&_trx->remote_shm, *remote_shm);
     _trx->ubr_rx.remote_tx_event_q.addr = remote_shm->addr + TX_EVENTQ_ADDR_OFFSET;
     _trx->ubr_rx.remote_tx_event_q.len = UBR_EVENTQ_LEN;
     _trx->ubr_tx.remote_rx_event_q.addr = remote_shm->addr + RX_EVENTQ_ADDR_OFFSET;
@@ -997,6 +1004,9 @@ RETURN_CODE UBRing::InitializeServerLegacyFormat()
 RETURN_CODE UBRing::UbrServerTrxInit(SHM* local_shm, SHM* remote_shm,
                                      UbrDataFormat format)
 {
+    if (ATOMIC_LOAD(_trx->device_fault)) {
+        return UBRING_ERR;
+    }
     RETURN_CODE rc = UbrTrxMapShm(local_shm, remote_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx map shared memory failed.";
@@ -1019,6 +1029,10 @@ RETURN_CODE UBRing::UbrServerTrxInit(SHM* local_shm, SHM* remote_shm,
         return UBRING_ERR;
     }
 
+    std::lock_guard<pthread_mutex_t> lock(UBRingManager::g_ubr_trx_mgr_mtx);
+    if (ATOMIC_LOAD(_trx->device_fault)) {
+        return UBRING_ERR;
+    }
     ((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->timeout =
         FLAGS_ub_connect_timeout_s;
     ((UbrDataStatusQMsg *)(_trx->ubr_rx.remote_data_status_q.addr))->timeout =
@@ -1029,6 +1043,7 @@ RETURN_CODE UBRing::UbrServerTrxInit(SHM* local_shm, SHM* remote_shm,
     _trx->ubr_tx.trx_state = UBR_STATE_CONNECTED;
     _trx->ubr_rx.trx_state = UBR_STATE_CONNECTED;
     _trx->data_format = format;
+    ATOMIC_STORE(_trx->initializing, false);
     return UBRING_OK;
 }
 
@@ -1080,32 +1095,32 @@ int UBRing::UbrPrepareIpcV2Format()
 
 int UBRing::UbrAllocateServerShm(SHM* remote_trx_shm, SHM* local_trx_shm,
                                  UbrDataFormat format) {
-    UbrSetSleepTask(UBR_TASK_ACCEPT_MAP_FRONT);
-    if (UNLIKELY((ShmRemoteMalloc(remote_trx_shm)) != UBRING_OK)) {
-        LOG(ERROR) << "Trx apply remote shared memory failed.";
-        return -1;
-    }
-
-    if (UNLIKELY((ShmLocalCalloc(local_trx_shm)) != UBRING_OK)) {
-        LOG(ERROR) << "Trx apply local shared memory failed.";
-        ShmRemoteFree(remote_trx_shm);
-        return -1;
-    }
-
-    UbrTrx **ubr_trx_ptr = &_trx;
-    if (UNLIKELY((UBRingManager::AcquireUbrTrxFromMgr(ubr_trx_ptr)) != UBRING_OK)) {
-        LOG(ERROR) << "Acquire ubrtrx failed.";
-        ShmRemoteFree(remote_trx_shm);
-        ShmLocalFree(local_trx_shm);
+    if (UBRingManager::AcquireUbrTrxFromMgr(&_trx) != UBRING_OK) {
         return -1;
     }
     _trx->type = TCP_TRX;
-    if (UNLIKELY((UbrServerTrxInit(
-            local_trx_shm, remote_trx_shm, format)) != UBRING_OK)) {
+    if (RegisterShmName(&_trx->remote_shm, remote_trx_shm->name) != UBRING_OK ||
+        RegisterShmName(&_trx->local_shm, local_trx_shm->name) != UBRING_OK) {
+        UbrTrxAbort();
+        return -1;
+    }
+    UbrSetSleepTask(UBR_TASK_ACCEPT_MAP_FRONT);
+    if (ShmRemoteMalloc(remote_trx_shm) != UBRING_OK) {
+        LOG(ERROR) << "Trx apply remote shared memory failed.";
+        UbrTrxAbort();
+        return -1;
+    }
+    RecordShm(&_trx->remote_shm, *remote_trx_shm);
+    if (ATOMIC_LOAD(_trx->device_fault) ||
+        ShmLocalCalloc(local_trx_shm) != UBRING_OK) {
+        LOG(ERROR) << "Trx apply local shared memory failed.";
+        UbrTrxAbort();
+        return -1;
+    }
+    RecordShm(&_trx->local_shm, *local_trx_shm);
+    if (UbrServerTrxInit(local_trx_shm, remote_trx_shm, format) != UBRING_OK) {
         LOG(ERROR) << "Server trx init failed.";
-        UbrTrxFreeShm(_trx);
-        UBRingManager::ReleaseUbrTrxFromMgr(_trx);
-        _trx = nullptr;
+        UbrTrxAbort();
         return -1;
     }
     return 0;
@@ -1122,7 +1137,7 @@ int UBRing::UbrAllocateLocalShm(SHM *local_trx_shm, const char *shm_name)
     RETURN_CODE rc = ApplyAndMapLocalShm(local_trx_shm, shm_name);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx apply or map local shared memory failed, local_name=" << shm_name;
-        _trx = nullptr;
+        UbrTrxAbort();
         return -1;
     }
     return 0;
@@ -1167,14 +1182,20 @@ void UBRing::InitializeClientRemoteLegacyFormat()
         (uint32_t)(_trx->ubr_tx.remote_data_q.len / UBR_MSG_LEN);
 }
 
-void UBRing::ActivateClientFormat()
+RETURN_CODE UBRing::ActivateClientFormat()
 {
+    std::lock_guard<pthread_mutex_t> lock(UBRingManager::g_ubr_trx_mgr_mtx);
+    if (ATOMIC_LOAD(_trx->device_fault)) {
+        return UBRING_ERR;
+    }
     // Only publish the connected states here. UbrMapRemoteShmAddTimer has
     // already started the timers; preserve that legacy ordering.
     ((UbrEventQMsg *)_trx->ubr_rx.remote_tx_event_q.addr)->flag = UBR_STATE_CONNECTED;
     ((UbrEventQMsg *)_trx->ubr_rx.local_rx_event_q.addr)->flag = UBR_STATE_CONNECTED;
     _trx->ubr_tx.trx_state = UBR_STATE_CONNECTED;
     _trx->ubr_rx.trx_state = UBR_STATE_CONNECTED;
+    ATOMIC_STORE(_trx->initializing, false);
+    return UBRING_OK;
 }
 
 RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *local_name,
@@ -1209,6 +1230,9 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
         LOG(ERROR) << "Connect Trx map shared memory failed, remote shm=" << remote_trx_shm.name;
         return rc;
     }
+    if (ATOMIC_LOAD(_trx->device_fault)) {
+        return UBRING_ERR;
+    }
     if (format == UBR_DATA_FORMAT_LEGACY_64) {
         InitializeClientRemoteLegacyFormat();
         rc = InitializeClientLocalLegacyFormat();
@@ -1228,7 +1252,6 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
 
     if (UNLIKELY(UbrAddTimer() != UBRING_OK)) {
         LOG(ERROR) << "Ubr add timer failed, local_name=" << local_name;
-        ShmRemoteFree(&_trx->remote_shm);
         return UBRING_ERR;
     }
 
@@ -1239,13 +1262,13 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
         LOG(ERROR) << "Local shm " << local_trx_shm->name << " wait for connect remote map timeout.";
         DeleteTimerSafe((uint32_t)_trx->hb_timer_fd);
         DeleteTimerSafe((uint32_t)_trx->timer_fd);
-        ShmRemoteFree(&_trx->remote_shm);
+        _trx->hb_timer_fd = 0;
+        _trx->timer_fd = 0;
         return UBRING_ERR_TIMEOUT;
     }
 
-    ActivateClientFormat();
     _trx->data_format = format;
-    return UBRING_OK;
+    return ActivateClientFormat();
 }
 
 RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_name)
@@ -1265,20 +1288,24 @@ RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_na
         return UBRING_ERR;
     }
 
+    if (RegisterShmName(&_trx->local_shm, local_trx_shm->name) != UBRING_OK) {
+        return UBRING_ERR;
+    }
     RETURN_CODE rc = ShmLocalCalloc(local_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx apply local shared memory failed, local shm name=" << local_trx_shm->name << ", rc=" << rc;
         if (rc == SHM_ERR_EXIST || rc == SHM_ERR_NOT_FOUND) {
             rc = UBR_ERR_ADDR_IN_USE;
         }
-        UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return rc;
+    }
+    RecordShm(&_trx->local_shm, *local_trx_shm);
+    if (ATOMIC_LOAD(_trx->device_fault)) {
+        return UBRING_ERR;
     }
     rc = UbrTrxMapLocalShm(local_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx map local shared memory failed, local shm name=" << local_trx_shm->name;
-        ShmLocalFree(local_trx_shm);
-        UBRingManager::ReleaseUbrTrxFromMgr(_trx);
         return rc;
     }
     ((UbrDataStatusQMsg *)_trx->ubr_tx.local_data_status_q.addr)->timeout =
@@ -1288,15 +1315,18 @@ RETURN_CODE UBRing::ApplyAndMapLocalShm(SHM *local_trx_shm, const char *local_na
 
 RETURN_CODE UBRing::ApplyAndMapRemoteShm(SHM *remote_trx_shm)
 {
+    if (RegisterShmName(&_trx->remote_shm, remote_trx_shm->name) != UBRING_OK) {
+        return UBRING_ERR;
+    }
     RETURN_CODE rc = ShmRemoteMalloc(remote_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx apply remote shared memory failed.";
         return rc;
     }
+    RecordShm(&_trx->remote_shm, *remote_trx_shm);
     rc = UbrTrxMapRemoteShm(remote_trx_shm);
     if (UNLIKELY(rc != UBRING_OK)) {
         LOG(ERROR) << "Trx map shared memory failed.";
-        ShmRemoteFree(remote_trx_shm);
         return rc;
     }
     return UBRING_OK;
@@ -1322,11 +1352,27 @@ RETURN_CODE UBRing::WritevHasEnoughSpace(size_t buf_len)
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type)
+RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx* trx, UbrCloseType close_type)
 {
     if (UNLIKELY(trx == nullptr)) {
         LOG(ERROR) << "Trx close failed, trx is null.";
         return UBRING_ERR;
+    }
+
+    {
+        std::lock_guard<pthread_mutex_t> lock(UBRingManager::g_ubr_trx_mgr_mtx);
+        if (ATOMIC_LOAD(trx->initializing)) {
+            ATOMIC_STORE(trx->device_fault, true);
+            return UBRING_REENTRY;
+        }
+    }
+    // Pin before publishing cleanup ownership to a closing ring.
+    ATOMIC_ADD(trx->ref_count, 1);
+    int expected = UBR_CLOSE_FIRST;
+    if (!ATOMIC_COMPARE_EXCHANGE_STRONG(
+            trx->close_state, expected, UBR_CLOSE_SECOND)) {
+        UBRingManager::ReleaseUbrTrxFromMgr(trx);
+        return UBRING_REENTRY;
     }
 
     UbrEventQMsg* local_tx_event_q = (UbrEventQMsg *)trx->ubr_tx.local_tx_event_q.addr;
@@ -1334,32 +1380,44 @@ RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx *trx, uint64_t start_time, UbrC
         local_tx_event_q->flag = UBR_STATE_CLOSING;
     }
 
-    if (close_type == UBR_SEND_CLOSE) {
-        DeleteTimerSafe((uint32_t)trx->timer_fd);
-    } else {
-        DeleteTimer((uint32_t)trx->timer_fd);
-    }
+    DeleteTimerSafe((uint32_t)trx->timer_fd);
     DeleteTimerSafe((uint32_t)trx->hb_timer_fd);
+    trx->timer_fd = 0;
+    trx->hb_timer_fd = 0;
 
     if (local_tx_event_q->flag == UBR_STATE_CLOSING) {
         local_tx_event_q->flag = UBR_STATE_CLOSED;
-        trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
     }
+    if (trx->ubr_rx.local_rx_event_q.addr != nullptr) {
+        ((UbrEventQMsg*)trx->ubr_rx.local_rx_event_q.addr)->flag = UBR_STATE_CLOSED;
+    }
+    trx->ubr_tx.trx_state = UBR_STATE_CLOSED;
+    trx->ubr_rx.trx_state = UBR_STATE_CLOSED;
 
     return UBRING_OK;
 }
 
-RETURN_CODE UBRing::ClearTrxResource(UbrTrx *trx, uint64_t start_time, UbrCloseType close_type, int op)
+RETURN_CODE UBRing::ClearTrxResource(UbrTrx* trx, UbrCloseType close_type)
 {
-    RETURN_CODE rc = UbrClearResourceCheck(trx, start_time, close_type);
+    RETURN_CODE rc = UbrClearResourceCheck(trx, close_type);
     if (rc != UBRING_OK) {
         return rc;
     }
 
+    if (close_type == UBR_SEND_CLOSE) {
+        UnlinkLocalShm(trx);
+    }
     rc = UbrAddAsynClearTimer(trx);
     if (rc != UBRING_OK) {
-        LOG(ERROR) << "Trx close, add " << trx->local_shm.name << " close clear timer failed.";
-        return UBRING_ERR;
+        LOG(WARNING) << "Trx close, clean up " << trx->local_shm.name
+                     << " synchronously after timer creation failed.";
+        const uint64_t deadline = GetCurNanoSeconds() +
+            static_cast<uint64_t>(FLAGS_ub_flying_io_timeout_s) * SEC_TO_NSEC;
+        for (uint64_t now = GetCurNanoSeconds(); now < deadline;
+             now = GetCurNanoSeconds()) {
+            bthread_usleep((deadline - now) / USEC_TO_NSEC + 1);
+        }
+        UbrAsynClearCallback(trx);
     }
 
     return UBRING_OK;

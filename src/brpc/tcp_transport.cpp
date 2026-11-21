@@ -81,7 +81,10 @@ void TcpTransport::ProcessEvent(bthread_attr_t attr) {
     }
 }
 void TcpTransport::QueueMessage(InputMessageClosure& input_msg,
-                                int* num_bthread_created, bool) {
+                                int* num_bthread_created, bool last_msg) {
+    if (last_msg) {
+        return;
+    }
     InputMessageBase* to_run_msg = input_msg.release();
     if (!to_run_msg) {
         return;

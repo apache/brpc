@@ -17,6 +17,8 @@
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 #include <gflags/gflags.h>
@@ -55,23 +57,31 @@ butil::atomic<uint64_t> g_total_bytes;
 butil::atomic<uint64_t> g_total_cnt;
 std::vector<std::string> g_servers;
 int rr_index = 0;
-volatile bool g_stop = false;
+std::atomic<bool> g_failed{false};
+std::atomic<int64_t> g_next_request_ns{0};
 
-butil::atomic<int64_t> g_token(10000);
-
-static void* GenerateToken(void* arg) {
-    int64_t start_time = butil::monotonic_time_ns();
-    int64_t accumulative_token = g_token.load(butil::memory_order_relaxed);
-    while (!g_stop) {
-        bthread_usleep(100000);
-        int64_t now = butil::monotonic_time_ns();
-        if (accumulative_token * 1000000000 / (now - start_time) < FLAGS_expected_qps) {
-            int64_t delta = FLAGS_expected_qps * (now - start_time) / 1000000000 - accumulative_token;
-            g_token.fetch_add(delta, butil::memory_order_relaxed);
-            accumulative_token += delta;
-        }
+static bool WaitForRequest(int64_t deadline) {
+    int64_t next = butil::monotonic_time_ns();
+    if (FLAGS_expected_qps > 0) {
+        const int64_t interval = 1000000000L / FLAGS_expected_qps;
+        int64_t previous = g_next_request_ns.load();
+        do {
+            next = std::max(previous, butil::monotonic_time_ns());
+        } while (!g_next_request_ns.compare_exchange_weak(
+            previous, next + interval));
     }
-    return nullptr;
+    while (!g_failed.load()) {
+        const int64_t now = butil::monotonic_time_ns();
+        if (now >= deadline) {
+            return false;
+        }
+        if (now >= next) {
+            return true;
+        }
+        bthread_usleep(std::min<int64_t>(
+            (std::min(next, deadline) - now) / 1000 + 1, 10000));
+    }
+    return false;
 }
 
 class PerformanceTest {
@@ -79,9 +89,6 @@ public:
     PerformanceTest(int attachment_size, bool echo_attachment)
         : _addr(nullptr)
         , _channel(nullptr)
-        , _start_time(0)
-        , _iterations(0)
-        , _stop(false)
     {
         if (attachment_size > 0) {
             _addr = malloc(attachment_size);
@@ -97,8 +104,6 @@ public:
         }
         delete _channel;
     }
-
-    inline bool IsStop() { return _stop; }
 
     int Init() {
         brpc::ChannelOptions options;
@@ -116,7 +121,7 @@ public:
             return -1;
         }
         
-        // Add retry mechanism for RPC call
+        // Warm up the connection before measuring requests.
         int retry = 3;
         while (retry > 0) {
             brpc::Controller cntl;
@@ -130,107 +135,79 @@ public:
             }
             LOG(WARNING) << "RPC call failed, retrying... (" << retry << " left): " << cntl.ErrorText();
             retry--;
-            bthread_usleep(1000000); // 100ms delay before retry
+            bthread_usleep(1000000);
         }
         LOG(ERROR) << "RPC call failed after multiple retries";
         return -1;
     }
 
-    struct RespClosure {
-        brpc::Controller* cntl;
-        test::PerfTestResponse* resp;
-        PerformanceTest* test;
-    };
-
-    void SendRequest() {
-        if (FLAGS_expected_qps > 0) {
-            while (g_token.load(butil::memory_order_relaxed) <= 0) {
-                bthread_usleep(10);
-            }
-            g_token.fetch_sub(1, butil::memory_order_relaxed);
-        }
-        RespClosure* closure = new RespClosure;
-        test::PerfTestRequest request;
-        closure->resp = new test::PerfTestResponse();
-        closure->cntl = new brpc::Controller();
-        request.set_echo_attachment(_echo_attachment);
-        closure->cntl->request_attachment().append(_attachment);
-        closure->test = this;
-        google::protobuf::Closure* done = brpc::NewCallback(&HandleResponse, closure);
-        test::PerfTestService_Stub stub(_channel);
-        stub.Test(closure->cntl, &request, closure->resp, done);
-    }
-
-    static void HandleResponse(RespClosure* closure) {
-        std::unique_ptr<brpc::Controller> cntl_guard(closure->cntl);
-        std::unique_ptr<test::PerfTestResponse> response_guard(closure->resp);
-        if (closure->cntl->Failed()) {
-            LOG(ERROR) << "RPC call failed: " << closure->cntl->ErrorText();
-            // RPCs in this example are expected to succeed. Silently ignoring
-            // failures would hide problems and invalidate the performance result.
-            closure->test->_stop = true;
-            return;
-        }
-
-        g_latency_recorder << closure->cntl->latency_us();
-        if (closure->resp->cpu_usage().size() > 0) {
-            g_server_cpu_recorder << atof(closure->resp->cpu_usage().c_str()) * 100;
-        }
-        g_total_bytes.fetch_add(closure->cntl->request_attachment().size(), butil::memory_order_relaxed);
-        g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
-
-        cntl_guard.reset(nullptr);
-        response_guard.reset(nullptr);
-
-        if (closure->test->_iterations == 0 && FLAGS_test_iterations > 0) {
-            closure->test->_stop = true;
-            return;
-        }
-        --closure->test->_iterations;
-        uint64_t last = g_last_time.load(butil::memory_order_relaxed);
-        uint64_t now = butil::gettimeofday_us();
-        if (now > last && now - last > 100000) {
-            if (g_last_time.exchange(now, butil::memory_order_relaxed) == last) {
-                g_client_cpu_recorder << 
-                    atof(bvar::Variable::describe_exposed("process_cpu_usage").c_str()) * 100;
-            }
-        }
-        if (now - closure->test->_start_time > FLAGS_test_seconds * 1000000u) {
-            closure->test->_stop = true;
-            return;
-        }
-        closure->test->SendRequest();
-    }
-
     static void* RunTest(void* arg) {
-        PerformanceTest* test = (PerformanceTest*)arg;
-        test->_start_time = butil::gettimeofday_us();
-        test->_iterations = FLAGS_test_iterations;
-        
-        for (int i = 0; i < FLAGS_queue_depth; ++i) {
-            test->SendRequest();
+        auto* self = static_cast<PerformanceTest*>(arg);
+        const int64_t deadline = butil::monotonic_time_ns() +
+            static_cast<int64_t>(FLAGS_test_seconds) * 1000000000L;
+        uint64_t sent = 0;
+        test::PerfTestService_Stub stub(self->_channel);
+        while (!g_failed.load() &&
+               (FLAGS_test_iterations == 0 ||
+                sent < static_cast<uint64_t>(FLAGS_test_iterations))) {
+            std::vector<brpc::Controller> cntls(FLAGS_queue_depth);
+            std::vector<test::PerfTestRequest> requests(FLAGS_queue_depth);
+            std::vector<test::PerfTestResponse> responses(FLAGS_queue_depth);
+            int pending = 0;
+            for (; pending < FLAGS_queue_depth; ++pending) {
+                if ((FLAGS_test_iterations > 0 &&
+                     sent >= static_cast<uint64_t>(FLAGS_test_iterations)) ||
+                    !WaitForRequest(deadline)) {
+                    break;
+                }
+                requests[pending].set_echo_attachment(self->_echo_attachment);
+                cntls[pending].request_attachment().append(self->_attachment);
+                stub.Test(&cntls[pending], &requests[pending],
+                          &responses[pending], brpc::DoNothing());
+                ++sent;
+            }
+            for (int i = 0; i < pending; ++i) {
+                brpc::Join(cntls[i].call_id());
+                if (cntls[i].Failed()) {
+                    LOG(ERROR) << "RPC call failed: " << cntls[i].ErrorText();
+                    g_failed.store(true);
+                } else if (self->_echo_attachment &&
+                           cntls[i].response_attachment() != self->_attachment) {
+                    LOG(ERROR) << "Echo attachment does not match request";
+                    g_failed.store(true);
+                } else {
+                    g_latency_recorder << cntls[i].latency_us();
+                    g_total_bytes.fetch_add(self->_attachment.size(),
+                                            butil::memory_order_relaxed);
+                    g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
+                    if (!responses[i].cpu_usage().empty()) {
+                        g_server_cpu_recorder <<
+                            atof(responses[i].cpu_usage().c_str()) * 100;
+                    }
+                }
+            }
+            if (pending == 0) {
+                break;
+            }
+            uint64_t last = g_last_time.load(butil::memory_order_relaxed);
+            const uint64_t now = butil::gettimeofday_us();
+            if (now > last && now - last > 100000 &&
+                g_last_time.exchange(now, butil::memory_order_relaxed) == last) {
+                g_client_cpu_recorder << atof(bvar::Variable::describe_exposed(
+                    "process_cpu_usage").c_str()) * 100;
+            }
         }
-
         return nullptr;
     }
 
 private:
     void* _addr;
     brpc::Channel* _channel;
-    uint64_t _start_time;
-    uint32_t _iterations;
-    volatile bool _stop;
     butil::IOBuf _attachment;
     bool _echo_attachment;
 };
 
-static void* DeleteTest(void* arg) {
-    PerformanceTest* test = (PerformanceTest*)arg;
-    delete test;
-    return nullptr;
-}
-
-void Test(int thread_num, int attachment_size) {
+bool Test(int thread_num, int attachment_size) {
     std::cout << "[Threads: " << thread_num
         << ", Depth: " << FLAGS_queue_depth
         << ", Attachment: " << attachment_size << "B"
@@ -248,19 +225,14 @@ void Test(int thread_num, int attachment_size) {
         tests.push_back(t);
     }
     uint64_t start_time = butil::gettimeofday_us();
-    bthread_t tid[thread_num];
-    if (FLAGS_expected_qps > 0) {
-        bthread_t tid;
-        bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL, GenerateToken, nullptr);
+    g_next_request_ns.store(butil::monotonic_time_ns());
+    std::vector<bthread_t> tid(thread_num);
+    for (int k = 0; k < thread_num; ++k) {
+        CHECK_EQ(0, bthread_start_background(
+            &tid[k], &BTHREAD_ATTR_NORMAL, PerformanceTest::RunTest, tests[k]));
     }
     for (int k = 0; k < thread_num; ++k) {
-        bthread_start_background(&tid[k], &BTHREAD_ATTR_NORMAL,
-                PerformanceTest::RunTest, tests[k]);
-    }
-    for (int k = 0; k < thread_num; ++k) {
-        while (!tests[k]->IsStop()) {
-            bthread_usleep(10000);
-        }
+        bthread_join(tid[k], nullptr);
     }
     uint64_t end_time = butil::gettimeofday_us();
     double throughput = g_total_bytes / 1.048576 / (end_time - start_time);
@@ -270,25 +242,29 @@ void Test(int thread_num, int attachment_size) {
             << ", 99th-Latency: " << g_latency_recorder.latency_percentile(0.99)
             << ", 99.9th-Latency: " << g_latency_recorder.latency_percentile(0.999)
             << ", Throughput: " << throughput << "MB/s"
-            << ", QPS: " << (g_total_cnt.load(butil::memory_order_relaxed) * 1000 / (end_time - start_time)) << "k"
+            << ", QPS: " << (g_total_cnt.load(butil::memory_order_relaxed) *
+                              1000000.0 / (end_time - start_time))
             << ", Server CPU-utilization: " << g_server_cpu_recorder.latency(10) << "%"
             << ", Client CPU-utilization: " << g_client_cpu_recorder.latency(10) << "%"
             << std::endl;
     } else {
         std::cout << " Throughput: " << throughput << "MB/s" << std::endl;
     }
-    g_stop = true;
-    for (int k = 0; k < thread_num; ++k) {
-        bthread_start_background(&tid[k], &BTHREAD_ATTR_NORMAL, DeleteTest, tests[k]);
+    for (auto* test : tests) {
+        delete test;
     }
-    for (int k = 0; k < thread_num; ++k) {
-        bthread_join(tid[k], nullptr);
-    }
+    return !g_failed.load();
 }
 
 int main(int argc, char* argv[]) {
     GFLAGS_NAMESPACE::ParseCommandLineFlags(&argc, &argv, true);
 
+    if (FLAGS_queue_depth <= 0 || FLAGS_test_seconds <= 0 ||
+        FLAGS_expected_qps < 0 || FLAGS_test_iterations < 0) {
+        LOG(ERROR) << "queue_depth and test_seconds must be positive; "
+                      "expected_qps and test_iterations must be nonnegative";
+        return 1;
+    }
     brpc::StartDummyServerAt(FLAGS_dummy_port);
 
     std::string::size_type pos1 = 0;
@@ -301,19 +277,27 @@ int main(int argc, char* argv[]) {
     g_servers.push_back(FLAGS_servers.substr(pos1));
 
     if (FLAGS_thread_num > 0 && FLAGS_attachment_size >= 0) {
-        Test(FLAGS_thread_num, FLAGS_attachment_size);
+        if (!Test(FLAGS_thread_num, FLAGS_attachment_size)) {
+            return 1;
+        }
     } else if (FLAGS_thread_num <= 0 && FLAGS_attachment_size >= 0) {
         for (int i = 1; i <= FLAGS_max_thread_num; i *= 2) {
-            Test(i, FLAGS_attachment_size);
+            if (!Test(i, FLAGS_attachment_size)) {
+                return 1;
+            }
         }
     } else if (FLAGS_thread_num > 0 && FLAGS_attachment_size < 0) {
         for (int i = 1; i <= 1024; i *= 4) {
-            Test(FLAGS_thread_num, i);
+            if (!Test(FLAGS_thread_num, i)) {
+                return 1;
+            }
         }
     } else {
         for (int j = 1; j <= 1024; j *= 4) {
             for (int i = 1; i <= FLAGS_max_thread_num; i *= 2) {
-                Test(i, j);
+                if (!Test(i, j)) {
+                    return 1;
+                }
             }
         }
     }
@@ -325,7 +309,7 @@ int main(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
     LOG(ERROR) << " brpc is not compiled with ubring. To enable it, please refer to the ubring documentation";
-    return 0;
+    return 1;
 }
 
 #endif
