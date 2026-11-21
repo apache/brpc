@@ -130,6 +130,51 @@ TEST_F(EventDispatcherTest, has_epollrdhup) {
     LOG(INFO) << brpc::has_epollrdhup;
 }
 
+TEST_F(EventDispatcherTest, start_stop_updates_running_state) {
+    brpc::EventDispatcher dispatcher;
+    ASSERT_EQ(0, dispatcher.Start(nullptr));
+    ASSERT_TRUE(dispatcher.Running());
+    dispatcher.Stop();
+    ASSERT_FALSE(dispatcher.Running());
+    dispatcher.Join();
+    ASSERT_FALSE(dispatcher.Running());
+}
+
+struct DispatcherStopRaceArgs {
+    brpc::EventDispatcher* dispatcher;
+    butil::atomic<bool> call_running;
+
+    DispatcherStopRaceArgs()
+        : dispatcher(nullptr)
+        , call_running(false) {}
+};
+
+void* call_dispatcher_running(void* arg) {
+    DispatcherStopRaceArgs* args = static_cast<DispatcherStopRaceArgs*>(arg);
+    while (!args->call_running.load(butil::memory_order_relaxed)) {
+    }
+    args->dispatcher->Running();
+    return nullptr;
+}
+
+// The relaxed handoff guarantees that Running() is called after Stop() without
+// creating a happens-before edge. Under TSAN, this reports the Running()/Stop()
+// race when _stop is non-atomic.
+TEST_F(EventDispatcherTest, running_is_safe_after_stop) {
+    brpc::EventDispatcher dispatcher;
+    ASSERT_EQ(0, dispatcher.Start(nullptr));
+
+    DispatcherStopRaceArgs args;
+    args.dispatcher = &dispatcher;
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr, call_dispatcher_running,
+                                &args));
+    dispatcher.Stop();
+    args.call_running.store(true, butil::memory_order_relaxed);
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+    dispatcher.Join();
+}
+
 TEST_F(EventDispatcherTest, versioned_ref) {
     butil::atomic<uint64_t> versioned_ref(2);
     versioned_ref.fetch_add(brpc::MakeVRef(0, -1),
@@ -647,7 +692,7 @@ void* stop_and_join(void* arg) {
     StopArgs* args = static_cast<StopArgs*>(arg);
     args->server->Stop(0);
     args->server->Join();
-    args->done.store(true, butil::memory_order_release);
+    args->done.store(true, butil::memory_order_relaxed);
     return nullptr;
 }
 
@@ -705,11 +750,11 @@ TEST_F(EventDispatcherTest, server_with_fewer_threads_than_dispatchers_can_quit)
     pthread_t th;
     ASSERT_EQ(0, pthread_create(&th, nullptr, stop_and_join, &args));
     int64_t deadline_us = butil::gettimeofday_us() + 10 * 1000000L;
-    while (!args.done.load(butil::memory_order_acquire) &&
+    while (!args.done.load(butil::memory_order_relaxed) &&
            butil::gettimeofday_us() < deadline_us) {
         usleep(10000);
     }
-    bool done = args.done.load(butil::memory_order_acquire);
+    bool done = args.done.load(butil::memory_order_relaxed);
     if (!done) {
         EXPECT_TRUE(done) << "Server::Stop()/Join() did not finish in 10s, "
                              "no worker available?";
