@@ -27,6 +27,8 @@ UBRing 支持两种共享内存后端，通过 `ub_shm_type` 参数控制：
 
 此模式使用 ubs-mem（Unified Block Storage Memory），这是来自 openEuler 的开源远端共享内存框架。它支持机架内节点之间的共享内存通信，类似于 RDMA 但部署要求更简单。
 
+共享内存段的创建模式同样为 0600，因此创建和映射同一共享内存段的进程需要以同一用户运行。
+
 **UBS-Mem 开源地址**: <https://atomgit.com/openeuler/ubs-mem>
 
 **所需库文件**:

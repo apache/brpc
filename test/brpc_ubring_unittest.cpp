@@ -830,7 +830,8 @@ TEST(UBRingConfigurationTest, time_flags_include_units_and_expected_defaults) {
 // Newly created segments must not be accessible to other users of the host.
 // The UBS backend allocates through the external ubsm SDK, which is not
 // available in unit tests, so only the constant it passes to
-// ubsmem_shmem_allocate is checked here.
+// ubsmem_shmem_allocate is checked here. Both backends therefore require the
+// peers of a segment to run as the same user (see docs/en/ubring.md).
 TEST(UBRingShmModeTest, segment_mode_is_owner_only) {
     EXPECT_EQ(0600, SHM_SEGMENT_MODE);
     EXPECT_EQ(SHM_SEGMENT_MODE, SHM_IPC_MODE);
@@ -876,8 +877,10 @@ TEST(UBRingShmModeTest, segment_mode_is_checked_under_umask_zero) {
     // process-wide and brpc tests run with background threads, so the check
     // runs in its own process: the child is exec'd right after fork() so that
     // no non-async-signal-safe code runs in a child of a multithreaded process.
-    char exe[PATH_MAX];
-    ASSERT_GT(butil::GetProcessAbsolutePath(exe, sizeof(exe)), 0);
+    char exe[PATH_MAX + 1];
+    const ssize_t exe_len = butil::GetProcessAbsolutePath(exe, sizeof(exe) - 1);
+    ASSERT_GT(exe_len, 0);
+    exe[exe_len] = '\0';
     std::string filter =
         "--gtest_filter=UBRingShmModeTest.creates_owner_only_segment";
     char* const child_argv[] = {exe, const_cast<char*>(filter.c_str()), nullptr};

@@ -26,6 +26,8 @@ The segments are created with mode 0600, so the client and the server must run a
 
 This mode uses ubs-mem (Unified Block Storage Memory), an open-source remote shared memory framework from openEuler. It enables shared memory communication across nodes in a rack, similar to RDMA but with simpler deployment requirements.
 
+The segments are also created with mode 0600, so the processes that create and map a segment must run as the same user.
+
 **UBS-Mem Open Source**: https://atomgit.com/openeuler/ubs-mem
 
 **Required Libraries**:
