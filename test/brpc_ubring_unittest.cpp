@@ -24,11 +24,13 @@
 #include <string>
 #include <thread>
 #include "butil/macros.h"
+#include "butil/process_util.h"
 #include "butil/sys_byteorder.h"
 #include "brpc/socket.h"
 
 #if BRPC_WITH_UBRING
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -834,46 +836,70 @@ TEST(UBRingShmModeTest, segment_mode_is_owner_only) {
     EXPECT_EQ(SHM_SEGMENT_MODE, SHM_IPC_MODE);
 }
 
-TEST(UBRingShmModeTest, ipc_segment_mode_and_peer_mapping) {
-    static std::atomic<uint32_t> name_sequence(0);
-    const std::string name = "/brpc_mode_" + std::to_string(getpid()) + "_" +
-        std::to_string(name_sequence.fetch_add(1, std::memory_order_relaxed));
-    brpc::ubring::SHM local_shm = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
-    ASSERT_LT(name.size(), sizeof(local_shm.name));
-    memcpy(local_shm.name, name.c_str(), name.size() + 1);
+namespace {
+// Only set in the child process spawned by the test below, which needs a fresh
+// single-threaded process to change its umask.
+const char kUmaskChildEnv[] = "BRPC_UBRING_UMASK_CHILD";
 
+std::string NewSegmentName() {
+    static std::atomic<uint32_t> name_sequence(0);
+    return "/brpc_mode_" + std::to_string(getpid()) + "_" +
+        std::to_string(name_sequence.fetch_add(1, std::memory_order_relaxed));
+}
+}  // namespace
+
+// Re-run in a fresh process with umask 0 by
+// segment_mode_is_checked_under_umask_zero; a plain run checks the ambient
+// umask of the test process.
+TEST(UBRingShmModeTest, creates_owner_only_segment) {
+    if (getenv(kUmaskChildEnv) != nullptr) {
+        umask(0);
+    }
+    const std::string name = NewSegmentName();
+    brpc::ubring::SHM shm = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_LT(name.size(), sizeof(shm.name));
+    memcpy(shm.name, name.c_str(), name.size() + 1);
+    ASSERT_EQ(0, brpc::ubring::IpcShmLocalMalloc(&shm));
+    ASSERT_NE(nullptr, shm.addr);
+
+    const int fd = shm_open(shm.name, O_RDONLY, 0);
+    ASSERT_GE(fd, 0);
+    struct stat st;
+    ASSERT_EQ(0, fstat(fd, &st));
+    close(fd);
+    EXPECT_EQ(mode_t(0600), st.st_mode & 0777);
+    EXPECT_EQ(0, brpc::ubring::IpcShmLocalFree(&shm));
+}
+
+TEST(UBRingShmModeTest, segment_mode_is_checked_under_umask_zero) {
     // A permissive umask must not widen the mode of a new segment. umask is
-    // process-wide, so this case runs in a child process and leaves the umask
-    // of this (possibly multi-threaded) process untouched. Only syscalls are
-    // used after the fork.
+    // process-wide and brpc tests run with background threads, so the check
+    // runs in its own process: the child is exec'd right after fork() so that
+    // no non-async-signal-safe code runs in a child of a multithreaded process.
+    char exe[PATH_MAX];
+    ASSERT_GT(butil::GetProcessAbsolutePath(exe, sizeof(exe)), 0);
+    std::string filter =
+        "--gtest_filter=UBRingShmModeTest.creates_owner_only_segment";
+    char* const child_argv[] = {exe, const_cast<char*>(filter.c_str()), nullptr};
+    ASSERT_EQ(0, setenv(kUmaskChildEnv, "1", 1));
     const pid_t pid = fork();
     ASSERT_GE(pid, 0);
     if (pid == 0) {
-        umask(0);
-        brpc::ubring::SHM child_shm = {nullptr, local_shm.len, 0, {0}, 0};
-        memcpy(child_shm.name, local_shm.name, sizeof(child_shm.name));
-        int child_rc = 1;
-        if (brpc::ubring::IpcShmLocalMalloc(&child_shm) == 0) {
-            const int child_fd = shm_open(child_shm.name, O_RDONLY, 0);
-            struct stat child_st;
-            if (child_fd >= 0 && fstat(child_fd, &child_st) == 0 &&
-                (child_st.st_mode & 0777) == 0600) {
-                child_rc = 0;
-            }
-            if (child_fd >= 0) {
-                close(child_fd);
-            }
-            munmap(child_shm.addr, child_shm.len);
-            shm_unlink(child_shm.name);
-        }
-        _exit(child_rc);
+        execv(exe, child_argv);
+        _exit(1);
     }
+    unsetenv(kUmaskChildEnv);
     int status = 0;
     ASSERT_EQ(pid, waitpid(pid, &status, 0));
     ASSERT_TRUE(WIFEXITED(status));
-    EXPECT_EQ(0, WEXITSTATUS(status))
-        << "A segment created under umask 0 is not 0600";
+    EXPECT_EQ(0, WEXITSTATUS(status));
+}
 
+TEST(UBRingShmModeTest, ipc_segment_mode_and_peer_mapping) {
+    const std::string name = NewSegmentName();
+    brpc::ubring::SHM local_shm = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
+    ASSERT_LT(name.size(), sizeof(local_shm.name));
+    memcpy(local_shm.name, name.c_str(), name.size() + 1);
     ASSERT_EQ(0, brpc::ubring::IpcShmLocalMalloc(&local_shm));
     ASSERT_NE(nullptr, local_shm.addr);
 
