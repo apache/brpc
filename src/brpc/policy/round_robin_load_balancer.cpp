@@ -30,11 +30,9 @@ bool RoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
     if (bg.server_list.capacity() < 128) {
         bg.server_list.reserve(128);
     }
-    std::map<ServerId, size_t>::iterator it = bg.server_map.find(id);
-    if (it != bg.server_map.end()) {
+    if (!bg.server_map.emplace(id, bg.server_list.size()).second) {
         return false;
     }
-    bg.server_map[id] = bg.server_list.size();
     bg.server_list.push_back(id);
     return true;
 }

@@ -39,6 +39,7 @@
 #include "brpc/policy/randomized_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
+#include "brpc/policy/dynpart_load_balancer.h"
 #include "brpc/policy/hasher.h"
 #include "echo.pb.h"
 #include "brpc/channel.h"
@@ -71,6 +72,22 @@ protected:
     virtual void TearDown() {
     };
 };
+
+TEST_F(LoadBalancerTest, RejectDuplicateServerRegistration) {
+    const brpc::ServerId id(1);
+    brpc::policy::RoundRobinLoadBalancer round_robin;
+    brpc::policy::RandomizedLoadBalancer randomized;
+    brpc::policy::DynPartLoadBalancer dynpart;
+    brpc::LoadBalancer* const load_balancers[] = {
+        &round_robin, &randomized, &dynpart};
+
+    for (size_t i = 0; i < ARRAY_SIZE(load_balancers); ++i) {
+        EXPECT_TRUE(load_balancers[i]->AddServer(id));
+        EXPECT_FALSE(load_balancers[i]->AddServer(id));
+        EXPECT_TRUE(load_balancers[i]->RemoveServer(id));
+        EXPECT_FALSE(load_balancers[i]->RemoveServer(id));
+    }
+}
 
 class UserTLS {};
 
