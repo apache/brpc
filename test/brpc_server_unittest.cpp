@@ -474,9 +474,11 @@ TEST_F(ServerTest, invalid_protocol_in_enabled_protocols) {
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
     brpc::Server server;
     brpc::ServerOptions opt;
-    opt.has_builtin_services = false;
     opt.enabled_protocols = "hehe baidu_std";
     ASSERT_EQ(-1, server.Start(ep, &opt));
+    // Unknown names are rejected before builtin services are added, so this
+    // error is not masked by the http/h2 requirement of builtin services.
+    ASSERT_EQ(0u, server._builtin_service_count);
 }
 
 class EchoServiceV1 : public v1::EchoService {

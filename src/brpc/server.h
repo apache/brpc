@@ -715,10 +715,10 @@ friend struct RevertServerStatus;
 
     int InitALPNOptions(const ServerSSLOptions* options);
 
-    // Fails if ServerOptions.enabled_protocols excludes both http and h2
-    // while features served through http/h2 (builtin services, restful
-    // services and http_master_service) are enabled.
-    int ValidateHttpOnlyFeatures() const;
+    // Fails if ServerOptions.enabled_protocols has unknown names, or excludes
+    // both http and h2 while features served through http/h2 (builtin
+    // services, restful services and http_master_service) are enabled.
+    int ValidateEnabledProtocols() const;
 
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();

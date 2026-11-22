@@ -719,14 +719,39 @@ static std::string JoinWithAnd(const std::vector<std::string>& strs) {
     return out;
 }
 
-int Server::ValidateHttpOnlyFeatures() const {
-    std::unordered_set<std::string> whitelist;
-    for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
-         sp; ++sp) {
-        whitelist.insert(std::string(sp.field(), sp.length()));
+static void ParseEnabledProtocols(const std::string& enabled_protocols,
+                                  std::unordered_set<std::string>* whitelist) {
+    for (butil::StringSplitter sp(enabled_protocols.c_str(), ' '); sp; ++sp) {
+        whitelist->insert(std::string(sp.field(), sp.length()));
     }
-    if (whitelist.empty() || whitelist.count("http") != 0 ||
-        whitelist.count("h2") != 0) {
+}
+
+int Server::ValidateEnabledProtocols() const {
+    std::unordered_set<std::string> whitelist;
+    ParseEnabledProtocols(_options.enabled_protocols, &whitelist);
+    if (whitelist.empty()) {
+        return 0;
+    }
+    const bool http_in_whitelist =
+        whitelist.count("http") != 0 || whitelist.count("h2") != 0;
+    std::vector<Protocol> protocols;
+    ListProtocols(&protocols);
+    for (size_t i = 0; i < protocols.size(); ++i) {
+        if (protocols[i].process_request != nullptr) {
+            whitelist.erase(protocols[i].name);
+        }
+    }
+    if (!whitelist.empty()) {
+        std::ostringstream err;
+        err << "ServerOptions.enabled_protocols has unknown protocols=`";
+        for (const auto& protocol : whitelist) {
+            err << protocol << ' ';
+        }
+        err << '\'';
+        LOG(ERROR) << err.str();
+        return -1;
+    }
+    if (http_in_whitelist) {
         return 0;
     }
     std::vector<std::string> features;
@@ -756,11 +781,7 @@ int Server::ValidateHttpOnlyFeatures() const {
 
 Acceptor* Server::BuildAcceptor() {
     std::unordered_set<std::string> whitelist;
-    for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
-         sp; ++sp) {
-        std::string protocol(sp.field(), sp.length());
-        whitelist.insert(protocol);
-    }
+    ParseEnabledProtocols(_options.enabled_protocols, &whitelist);
     const bool has_whitelist = !whitelist.empty();
     Acceptor* acceptor = new Acceptor(_keytable_pool);
     InputMessageHandler handler;
@@ -771,14 +792,10 @@ Acceptor* Server::BuildAcceptor() {
             // The protocol does not support server-side.
             continue;
         }
-        // Erase the name so that naming a served protocol in the whitelist
-        // does not become an "unknown protocol" below. rdma_handshake is
-        // always served since it only handles the transport level handshake
-        // and dispatches no request.
-        bool in_whitelist = (whitelist.erase(protocols[i].name) != 0);
-        if (has_whitelist && !in_whitelist &&
+        if (has_whitelist && whitelist.count(protocols[i].name) == 0 &&
             !is_rdma_handshake_protocol(protocols[i].name)) {
-            // the protocol is not allowed to serve.
+            // rdma_handshake is always served since it only handles the
+            // transport level handshake and dispatches no request.
             RPC_VLOG << "Skip protocol=" << protocols[i].name;
             continue;
         }
@@ -794,17 +811,6 @@ Acceptor* Server::BuildAcceptor() {
             delete acceptor;
             return nullptr;
         }
-    }
-    if (!whitelist.empty()) {
-        std::ostringstream err;
-        err << "ServerOptions.enabled_protocols has unknown protocols=`";
-        for (const auto& protocol : whitelist) {
-            err << protocol << ' ';
-        }
-        err << '\'';
-        delete acceptor;
-        LOG(ERROR) << err.str();
-        return nullptr;
     }
     return acceptor;
 }
@@ -1183,9 +1189,10 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 
     _concurrency = 0;
 
-    // Validate before adding builtin services, so that a failed Start() does
-    // not leave them registered and a retry with fixed options succeeds.
-    if (ValidateHttpOnlyFeatures() != 0) {
+    // Validate before adding builtin services, so that unknown protocol names
+    // are reported instead of being masked by the http/h2 check, and a failed
+    // Start() leaves no builtin services behind for a retry with fixed options.
+    if (ValidateEnabledProtocols() != 0) {
         return -1;
     }
 
