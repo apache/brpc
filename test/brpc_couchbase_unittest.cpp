@@ -91,6 +91,18 @@ TEST_F(CouchbaseUnitTest, RejectOversizedRequestKeysWithoutChangingBuffer) {
   EXPECT_EQ(65535u, butil::NetToHost32(header.total_body_length));
 }
 
+TEST_F(CouchbaseUnitTest, OversizedBucketReportsDeterministicError) {
+  brpc::CouchbaseOperations operations;
+  const brpc::CouchbaseOperations::Result result =
+      operations.selectBucket(std::string(65536, 'b'));
+
+  EXPECT_FALSE(result.success);
+  EXPECT_TRUE(result.value.empty());
+  EXPECT_EQ("Couchbase request exceeds protocol length limits",
+            result.error_message);
+  EXPECT_EQ(0, result.status_code);
+}
+
 TEST_F(CouchbaseUnitTest, ManifestJsonNesting) {
   brpc::CouchbaseManifestManager manager;
   brpc::CouchbaseManifestManager::CollectionManifest manifest;

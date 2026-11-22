@@ -2301,6 +2301,13 @@ CouchbaseOperations::Result CouchbaseOperations::authenticateAll(
     DEBUG_PRINT("Failed to create Authenticate request for user: " << username);
     delete new_channel;
     result.success = false;
+    result.value.clear();
+    result.status_code = 0;
+    if (!policy::ValidCouchbaseAuthLengths(username.size(), password.size())) {
+      result.error_message = "Couchbase request exceeds protocol length limits";
+    } else {
+      result.error_message = "Failed to create Couchbase authentication request";
+    }
     return result;
   }
   new_channel->CallMethod(nullptr, &cntl, &request, &response, nullptr);
@@ -2357,7 +2364,13 @@ CouchbaseOperations::Result CouchbaseOperations::selectBucket(
     DEBUG_PRINT(
         "Failed to create Select Bucket request for bucket: " << bucket_name);
     result.success = false;
-    result.value = "";
+    result.value.clear();
+    result.status_code = 0;
+    if (!ValidCouchbaseRequestLengths(bucket_name.size(), 0, 0, 0)) {
+      result.error_message = "Couchbase request exceeds protocol length limits";
+    } else {
+      result.error_message = "Failed to create Couchbase select bucket request";
+    }
     return result;
   }
   channel_->CallMethod(nullptr, &cntl, &request, &response, nullptr);
