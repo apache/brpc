@@ -780,6 +780,19 @@ TEST_F(ServerTest, removed_restful_services_do_not_require_http) {
     ASSERT_EQ(0, server.Join());
 }
 
+// The validation runs before builtin services are added, so a rejected
+// Start() can be retried on the same Server with fixed options.
+TEST_F(ServerTest, can_retry_start_after_protocols_rejection) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+    opt.has_builtin_services = false;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
 TEST_F(ServerTest, services_in_different_ns) {
     const int port = 9200;
     brpc::Server server1;
@@ -3109,6 +3122,15 @@ void CallEchoByHttpWithoutPb(const butil::EndPoint& ep, brpc::Controller* cntl) 
     ASSERT_EQ(0, chan.Init(ep, &copt));
     cntl->http_request().uri() = "/EchoService/Echo";
     chan.CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
+}
+
+TEST_F(ServerTest, enabled_protocols_must_include_http_for_http_master_service) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.http_master_service = new HttpMasterServiceImpl;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
 }
 
 TEST_F(ServerTest, master_services_are_not_served_on_internal_port) {

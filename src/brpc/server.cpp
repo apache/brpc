@@ -708,6 +708,52 @@ static bool HasRestfulServices(const Server::ServiceMap& services,
     return false;
 }
 
+static std::string JoinWithAnd(const std::vector<std::string>& strs) {
+    std::string out;
+    for (size_t i = 0; i < strs.size(); ++i) {
+        if (i != 0) {
+            out.append(i + 1 == strs.size() ? " and " : ", ");
+        }
+        out.append(strs[i]);
+    }
+    return out;
+}
+
+int Server::ValidateHttpOnlyFeatures() const {
+    std::unordered_set<std::string> whitelist;
+    for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
+         sp; ++sp) {
+        whitelist.insert(std::string(sp.field(), sp.length()));
+    }
+    if (whitelist.empty() || whitelist.count("http") != 0 ||
+        whitelist.count("h2") != 0) {
+        return 0;
+    }
+    std::vector<std::string> features;
+    std::vector<std::string> fixes;
+    if (_options.has_builtin_services) {
+        features.push_back("ServerOptions.has_builtin_services is true");
+        fixes.push_back("set ServerOptions.has_builtin_services=false");
+    }
+    if (HasRestfulServices(_fullname_service_map, _global_restful_map)) {
+        features.push_back("restful services are added");
+        fixes.push_back("remove the restful mappings");
+    }
+    if (_options.http_master_service != nullptr) {
+        features.push_back("ServerOptions.http_master_service is set");
+        fixes.push_back("clear ServerOptions.http_master_service");
+    }
+    if (features.empty()) {
+        return 0;
+    }
+    LOG(ERROR) << "ServerOptions.enabled_protocols=`"
+               << _options.enabled_protocols << "' enables neither http nor "
+               << "h2, but " << JoinWithAnd(features)
+               << ". They are served through http/h2, add `http' (or `h2') to "
+               << "enabled_protocols, or " << JoinWithAnd(fixes) << '.';
+    return -1;
+}
+
 Acceptor* Server::BuildAcceptor() {
     std::unordered_set<std::string> whitelist;
     for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
@@ -716,9 +762,6 @@ Acceptor* Server::BuildAcceptor() {
         whitelist.insert(protocol);
     }
     const bool has_whitelist = !whitelist.empty();
-    const bool http_in_whitelist =
-        has_whitelist &&
-        (whitelist.count("http") != 0 || whitelist.count("h2") != 0);
     Acceptor* acceptor = new Acceptor(_keytable_pool);
     InputMessageHandler handler;
     std::vector<Protocol> protocols;
@@ -759,40 +802,6 @@ Acceptor* Server::BuildAcceptor() {
             err << protocol << ' ';
         }
         err << '\'';
-        delete acceptor;
-        LOG(ERROR) << err.str();
-        return nullptr;
-    }
-    const bool has_builtin_services = _options.has_builtin_services;
-    const bool has_restful_services =
-        HasRestfulServices(_fullname_service_map, _global_restful_map);
-    if (has_whitelist && !http_in_whitelist &&
-        (has_builtin_services || has_restful_services)) {
-        // Serving neither http nor h2 makes builtin/restful services
-        // silently unreachable, reject the configuration instead.
-        std::ostringstream err;
-        err << "ServerOptions.enabled_protocols=`"
-            << _options.enabled_protocols << "' enables neither http nor h2, "
-            << "but ";
-        if (has_builtin_services && has_restful_services) {
-            err << "builtin and restful services are enabled";
-        } else if (has_builtin_services) {
-            err << "ServerOptions.has_builtin_services is true";
-        } else {
-            err << "restful services are enabled";
-        }
-        err << ". They are served through http/h2, add `http' (or `h2') to "
-            << "enabled_protocols, or ";
-        if (has_builtin_services) {
-            err << "set ServerOptions.has_builtin_services=false";
-        }
-        if (has_builtin_services && has_restful_services) {
-            err << " and ";
-        }
-        if (has_restful_services) {
-            err << "remove the restful mappings";
-        }
-        err << '.';
         delete acceptor;
         LOG(ERROR) << err.str();
         return nullptr;
@@ -1173,6 +1182,12 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     }
 
     _concurrency = 0;
+
+    // Validate before adding builtin services, so that a failed Start() does
+    // not leave them registered and a retry with fixed options succeeds.
+    if (ValidateHttpOnlyFeatures() != 0) {
+        return -1;
+    }
 
     if (_options.has_builtin_services &&
         _builtin_service_count <= 0 &&

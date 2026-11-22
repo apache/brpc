@@ -287,9 +287,9 @@ struct ServerOptions {
     // When this field is non-empty, only the listed protocols are served.
     // rdma_handshake is always served as it is a transport level handshake
     // dispatching no request; naming it here is allowed and changes nothing.
-    // Builtin and restful services are served through http/h2, so if either of
-    // them is enabled, http or h2 must be listed as well, otherwise
-    // Server::Start() fails.
+    // Builtin and restful services as well as http_master_service are served
+    // through http/h2, so if any of them is enabled, http or h2 must be listed
+    // as well, otherwise Server::Start() fails.
     // Default: empty (all protocols)
     std::string enabled_protocols;
 
@@ -714,6 +714,11 @@ friend struct RevertServerStatus;
     int InitializeOnce();
 
     int InitALPNOptions(const ServerSSLOptions* options);
+
+    // Fails if ServerOptions.enabled_protocols excludes both http and h2
+    // while features served through http/h2 (builtin services, restful
+    // services and http_master_service) are enabled.
+    int ValidateHttpOnlyFeatures() const;
 
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();

@@ -348,7 +348,7 @@ Server detects supported protocols automatically, without assignment from users.
 
 If you need more protocols, contact us.
 
-`ServerOptions.enabled_protocols` restricts the protocols to serve. It is a space-separated list of protocol names, and when it is non-empty only the listed protocols are served; an unknown name makes `Server::Start()` fail. `rdma_handshake` is always served as it is a transport level handshake dispatching no request, naming it in the list is allowed and changes nothing. Builtin services and restful services are served through http/h2, so when they are enabled (`ServerOptions.has_builtin_services` is true by default), `http` or `h2` must be listed as well, otherwise `Server::Start()` fails with an error explaining how to fix the configuration:
+`ServerOptions.enabled_protocols` restricts the protocols to serve. It is a space-separated list of protocol names, and when it is non-empty only the listed protocols are served; an unknown name makes `Server::Start()` fail. `rdma_handshake` is always served as it is a transport level handshake dispatching no request, naming it in the list is allowed and changes nothing. Builtin services, restful services and `ServerOptions.http_master_service` are served through http/h2, so when they are enabled (`ServerOptions.has_builtin_services` is true by default), `http` or `h2` must be listed as well, otherwise `Server::Start()` fails with an error explaining how to fix the configuration:
 
 ```c++
 ServerOptions options;
