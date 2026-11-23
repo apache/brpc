@@ -13,6 +13,23 @@
 
 #include <gtest/gtest.h>
 
+#if defined(THREAD_SANITIZER) || defined(__SANITIZE_THREAD__)
+#define BUTIL_ATOMICOPS_TEST_TSAN 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define BUTIL_ATOMICOPS_TEST_TSAN 1
+#endif
+#endif
+
+// On non-ARM64 platforms (e.g. Linux x86-64), atomicops.h only switches to
+// atomicops_internals_tsan.h when -DTHREAD_SANITIZER is defined; passing only
+// -fsanitize=thread leaves inline-assembly CAS and volatile stores invisible to
+// TSan.
+#if defined(BUTIL_ATOMICOPS_TEST_TSAN) && !defined(THREAD_SANITIZER) && \
+    !(defined(ARCH_CPU_ARM64) && defined(COMPILER_GCC))
+#define BUTIL_ATOMICOPS_TEST_UNINSTRUMENTED_TSAN 1
+#endif
+
 template <class AtomicType>
 static void TestAtomicIncrement() {
   // For now, we just test single threaded execution
@@ -261,6 +278,7 @@ static void TestLoad() {
   EXPECT_EQ(kVal2, butil::subtle::Release_Load(&value));
 }
 
+#if !defined(BUTIL_ATOMICOPS_TEST_UNINSTRUMENTED_TSAN)
 template <class AtomicType>
 static void TestMultiThreadedContention() {
   constexpr int kNumThreads = 8;
@@ -376,8 +394,9 @@ static void TestAcquireReleaseVisibility() {
 
   producer.join();
 }
+#endif  // !defined(BUTIL_ATOMICOPS_TEST_UNINSTRUMENTED_TSAN)
 
-#if !defined(THREAD_SANITIZER)
+#if !defined(BUTIL_ATOMICOPS_TEST_TSAN)
 template <class AtomicType>
 static void TestReleaseCompareAndSwapFailureOrdering() {
   struct alignas(64) PaddedAtomic {
@@ -488,22 +507,32 @@ TEST(AtomicOpsTest, Load) {
 }
 
 TEST(AtomicOpsTest, MultiThreadedContention) {
+#if defined(BUTIL_ATOMICOPS_TEST_UNINSTRUMENTED_TSAN)
+  GTEST_SKIP() << "Platform atomicops backend uses inline assembly/volatile "
+                  "without -DTHREAD_SANITIZER";
+#else
   TestMultiThreadedContention<butil::subtle::Atomic32>();
   TestMultiThreadedContention<butil::subtle::AtomicWord>();
 #ifdef ARCH_CPU_64_BITS
   TestMultiThreadedContention<butil::subtle::Atomic64>();
 #endif
+#endif
 }
 
 TEST(AtomicOpsTest, AcquireReleaseVisibility) {
+#if defined(BUTIL_ATOMICOPS_TEST_UNINSTRUMENTED_TSAN)
+  GTEST_SKIP() << "Platform atomicops backend uses inline assembly/volatile "
+                  "without -DTHREAD_SANITIZER";
+#else
   TestAcquireReleaseVisibility<butil::subtle::Atomic32>();
   TestAcquireReleaseVisibility<butil::subtle::AtomicWord>();
 #ifdef ARCH_CPU_64_BITS
   TestAcquireReleaseVisibility<butil::subtle::Atomic64>();
 #endif
+#endif
 }
 
-#if !defined(THREAD_SANITIZER)
+#if !defined(BUTIL_ATOMICOPS_TEST_TSAN)
 TEST(AtomicOpsTest, ReleaseCompareAndSwapFailureOrdering) {
   TestReleaseCompareAndSwapFailureOrdering<butil::subtle::Atomic32>();
   TestReleaseCompareAndSwapFailureOrdering<butil::subtle::AtomicWord>();
