@@ -48,6 +48,8 @@
 #include "brpc/handshake/handshake_adapter.h"
 #include "brpc/handshake/rdma_handshake_constants.h"
 #include "brpc/input_messenger.h"
+#include "brpc/nshead.h"
+#include "brpc/policy/nshead_protocol.h"
 #include "brpc/policy/transport_handshake_protocol.h"
 #include "brpc/protocol.h"
 #if BRPC_WITH_RDMA
@@ -1229,6 +1231,28 @@ TEST(TransportHandshakeTest, ubshm_probe_checks_the_encoded_size) {
     source.append(&unrelated_size, sizeof(unrelated_size));
     EXPECT_EQ(nullptr, HandshakeRegistration::MatchHello(source));
     EXPECT_EQ(4UL, source.size());
+}
+
+TEST(TransportHandshakeTest, tcp_server_leaves_nshead_to_its_rpc_parser) {
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    nshead_t header{};
+    header.magic_num = NSHEAD_MAGICNUM;
+    header.body_len = 1;
+    butil::IOBuf source;
+    source.append(&header, sizeof(header));
+    source.append("x", 1);
+
+    EXPECT_EQ(PARSE_ERROR_TRY_OTHERS, policy::ParseTransportHandshake(
+        &source, pair.socket.get(), false, nullptr).error());
+    EXPECT_EQ(sizeof(header) + header.body_len, source.size());
+    ParseResult parsed = policy::ParseNsheadMessage(
+        &source, pair.socket.get(), false, nullptr);
+    DestroyingPtr<InputMessageBase> message(parsed.message());
+    ASSERT_TRUE(parsed.is_ok());
+    ASSERT_TRUE(message);
+    EXPECT_TRUE(source.empty());
+    pair.socket->SetFailed();
 }
 
 TEST(TransportHandshakeTest,

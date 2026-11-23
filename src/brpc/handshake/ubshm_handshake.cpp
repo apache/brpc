@@ -18,11 +18,13 @@
 #include "brpc/handshake/ubshm_handshake.h"
 
 #include <errno.h>
+#include <cstddef>
 #include <cstdio>
 
 #include "butil/raw_pack.h"
 #include "butil/sys_byteorder.h"
 #include "brpc/adapter_transport.h"
+#include "brpc/nshead.h"
 #include "brpc/socket.h"
 
 #if BRPC_WITH_UBRING
@@ -59,7 +61,16 @@ static const FrameSpec& HelloFrameSpec() {
     return spec;
 }
 
-static bool MatchHelloLength(const butil::IOBuf& input) {
+static bool MatchHelloFields(const butil::IOBuf& input) {
+    if (input.size() >= sizeof(nshead_t)) {
+        // NSHEAD may share the UBSHM prefix. Its magic identifies its header.
+        unsigned int nshead_magic;
+        input.copy_to(&nshead_magic, sizeof(nshead_magic),
+                      offsetof(nshead_t, magic_num));
+        if (nshead_magic == NSHEAD_MAGICNUM) {
+            return false;
+        }
+    }
     uint16_t net_len;
     if (input.size() < MAGIC_LEN + sizeof(net_len)) {
         return true;
@@ -432,7 +443,7 @@ const HandshakeRegistration& GetUBShmHandshakeRegistration() {
 #endif
     static const HandshakeRegistration registration = {
         SOCKET_MODE_UBRING, &server, {&ubshm_wire::HelloFrameSpec()}, upgrade,
-        ubshm_wire::MatchHelloLength,
+        ubshm_wire::MatchHelloFields,
     };
     return registration;
 }
