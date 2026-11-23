@@ -281,6 +281,37 @@ cc_test(
     ],
 )
 
+config_setting(
+    name = "brpc_with_flatbuffers_and_rdma",
+    define_values = {
+        "BRPC_WITH_FLATBUFFERS": "true",
+        "BRPC_WITH_RDMA": "true",
+    },
+)
+
+# Requires real RDMA hardware; run only when this target is explicitly selected.
+cc_test(
+    name = "brpc_flatbuffers_rdma_unittest",
+    srcs = [
+        "brpc_flatbuffers_rdma_unittest.cpp",
+        ":flatbuffers_test_messages",
+    ],
+    copts = COPTS,
+    includes = ["."],
+    tags = [
+        "exclusive",
+        "manual",
+    ],
+    target_compatible_with = select({
+        ":brpc_with_flatbuffers_and_rdma": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//:brpc",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 # Textual inclusion fixes the two implementations' initialization order. Static
 # linking supplies the remaining brpc objects without duplicate flag definitions.
 cc_library(
@@ -321,6 +352,7 @@ generate_unittests(
             "brpc_collector_premain_unittest.cpp",
             "brpc_flatbuffers_unittest.cpp",
             "brpc_flatbuffers_protocol_unittest.cpp",
+            "brpc_flatbuffers_rdma_unittest.cpp",
         ],
     ),
     deps = [
