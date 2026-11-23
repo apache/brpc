@@ -1083,6 +1083,27 @@ TEST(RtmpTest, avc_seq_header_sps_exp_golomb) {
     ASSERT_EQ(80, avc.height);
 }
 
+// pic_width_in_mbs_minus1 is a ue(v) that decodes up to 2^31-2, and ParseSPS
+// computed (pic_width_in_mbs_minus1 + 1) * 16 in int. Here it is
+// ue(268435454), so the product overflowed (UB, width came out as -16) and the
+// record was accepted. It must be rejected instead.
+TEST(RtmpTest, avc_seq_header_sps_oversized_picture) {
+    butil::IOBuf buf;
+    const char head[6] = { 0x01, 0x42, 0x00, 0x1E, (char)0xff, (char)0xe1 };
+    buf.append(head, sizeof(head));
+    // Same fields as avc_seq_header_sps_exp_golomb, except that
+    // pic_width_in_mbs_minus1 = ue(2^28-2) and pic_height_in_map_units_minus1 = ue(0).
+    const char sps[12] = { 0x67, 0x42, 0x00, 0x1E, (char)0xdc, 0x00, 0x00, 0x00,
+                           0x3f, (char)0xff, (char)0xff, (char)0xff };
+    const char len_be[2] = { 0x00, (char)sizeof(sps) };
+    buf.append(len_be, sizeof(len_be));
+    buf.append(sps, sizeof(sps));
+    buf.push_back('\0'); // numPPS=0
+
+    brpc::AVCDecoderConfigurationRecord avc;
+    ASSERT_FALSE(avc.Create(buf).ok());
+}
+
 static void AppendBigEndian3Bytes(std::string* s, uint32_t v) {
     s->push_back((char)((v >> 16) & 0xFF));
     s->push_back((char)((v >> 8) & 0xFF));
