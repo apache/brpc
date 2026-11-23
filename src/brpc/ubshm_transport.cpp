@@ -205,7 +205,7 @@ void UBShmTransport::Debug(std::ostream &os) {}
 
 int UBShmTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
     if (serverOrNot) {
-        if (!OptionsAvailableOverUB(static_cast<const ServerOptions *>(_options))) {
+        if (!OptionsAvailableOverUB(static_cast<const ServerOptions*>(_options))) {
             return -1;
         }
         ubring::GlobalUBInitializeOrDie();
@@ -214,7 +214,7 @@ int UBShmTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
             return -1;
         }
     } else {
-        if (!OptionsAvailableForUB(static_cast<const ChannelOptions *>(_options))) {
+        if (!OptionsAvailableForUB(static_cast<const ChannelOptions*>(_options))) {
             return -1;
         }
         ubring::GlobalUBInitializeOrDie();

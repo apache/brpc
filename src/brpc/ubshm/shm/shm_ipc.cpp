@@ -141,37 +141,9 @@ RETURN_CODE IpcShmFree(SHM *shm)
     return UBRING_OK;
 }
 
-RETURN_CODE IpcShmLocalFree(SHM *shm)
-{
-    if (shm->addr == nullptr) {
-        LOG(INFO) << "IPC free local shm=" << shm->name << " already freed.";
-        return SHM_ERR_NOT_FOUND;
-    }
-
-    int ret = munmap(shm->addr, shm->len);
-    if (ret != UBRING_OK) {
-        LOG(WARNING) << "IPC unmap shm=" << shm->name << " failed, ret=" << ret;
-    } else {
-        shm->addr = nullptr;
-    }
-
-    ret = shm_unlink(shm->name);
-    if (ret != UBRING_OK) {
-        if (errno == EBUSY) {
-            LOG_EVERY_SECOND(ERROR) << "IPC delete shm=" << shm->name << " failed, ret=" << ret;
-            return SHM_ERR_RESOURCE_ATTACHED;
-        }
-        if (errno == ENOENT) {
-            LOG(INFO) << "IPC delete shm=" << shm->name << " already deleted by peer.";
-            shm->addr = nullptr;
-            return SHM_ERR_NOT_FOUND;
-        }
-        LOG_EVERY_SECOND(ERROR) << "IPC delete shm=" << shm->name << " failed, ret=" << ret;
-        return SHM_ERR;
-    }
-    shm->addr = nullptr;
-    LOG(INFO) << "IPC free local shm=" << shm->name << " success.";
-    return UBRING_OK;
+RETURN_CODE IpcShmLocalFree(SHM* shm) {
+    const RETURN_CODE rc = IpcShmMunmap(shm);
+    return rc == UBRING_OK ? IpcShmFree(shm) : rc;
 }
 
 RETURN_CODE IpcShmRemoteMalloc(SHM *shm)

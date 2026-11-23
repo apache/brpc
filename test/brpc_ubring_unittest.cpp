@@ -1114,6 +1114,30 @@ TEST_F(UBShmEndpointTest, repeated_ipc_unlink_keeps_mapping_for_unmap) {
     EXPECT_EQ(0, brpc::ubring::IpcShmMunmap(&shm));
 }
 
+TEST_F(UBShmEndpointTest, ipc_local_cleanup_retries_unmap_and_unlink_separately) {
+    using namespace brpc::ubring;
+    SHM shm = {nullptr, 4096, 0, {0}, 0};
+    snprintf(shm.name, sizeof(shm.name), "/brpc_ipc_cleanup_%d", getpid());
+    ASSERT_EQ(UBRING_OK, IpcShmLocalMalloc(&shm));
+    BRPC_SCOPE_EXIT {
+        IpcShmMunmap(&shm);
+        shm_unlink(shm.name);
+    };
+
+    SHM invalid_mapping = shm;
+    ++invalid_mapping.addr;
+    EXPECT_EQ(SHM_ERR, IpcShmLocalFree(&invalid_mapping));
+    EXPECT_EQ(shm.addr + 1, invalid_mapping.addr);
+    butil::fd_guard fd(shm_open(shm.name, O_RDONLY, 0));
+    ASSERT_GE(fd, 0);
+
+    ASSERT_EQ(UBRING_OK, IpcShmMunmap(&shm));
+    ASSERT_EQ(UBRING_OK, IpcShmLocalFree(&shm));
+    butil::fd_guard removed(shm_open(shm.name, O_RDONLY, 0));
+    EXPECT_EQ(-1, removed);
+    EXPECT_EQ(ENOENT, errno);
+}
+
 TEST_F(UBShmEndpointTest, reset_cleans_up_resources) {
     brpc::ubring::SHM local_trx_shm =
         {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
@@ -1564,6 +1588,7 @@ TEST_F(UBRingLifetimeTest, concurrent_device_events_share_cleanup_and_keep_ring_
 
 TEST_F(UBRingLifetimeTest, device_event_completes_an_active_close_once) {
     using namespace brpc::ubring;
+    FLAGS_ub_flying_io_timeout_s = 0;
     UbrTrx* trx = ring._trx;
     ATOMIC_ADD(trx->ref_count, 1);
     BRPC_SCOPE_EXIT { UBRingManager::ReleaseUbrTrxFromMgr(trx); };
@@ -1580,6 +1605,17 @@ TEST_F(UBRingLifetimeTest, device_event_completes_an_active_close_once) {
     EXPECT_EQ(nullptr, ring._trx);
     ASSERT_TRUE(WaitForUBCondition([&] { return GetActiveTimerNum() == timers; }));
     EXPECT_EQ(1, ATOMIC_LOAD(trx->ref_count));
+    EXPECT_EQ(nullptr, trx->local_shm.addr);
+}
+
+TEST_F(UBRingLifetimeTest, zero_cleanup_delay_releases_the_transaction) {
+    using namespace brpc::ubring;
+    FLAGS_ub_flying_io_timeout_s = 0;
+    FLAGS_ub_disconnect_timeout_s = 0;
+    EXPECT_EQ(UBRING_ERR_TIMEOUT, ring.UbrTrxClose());
+    EXPECT_EQ(nullptr, ring._trx);
+    ASSERT_TRUE(WaitForUBCondition([&] { return GetActiveTimerNum() == timers; }));
+    EXPECT_EQ(0u, UBRingManager::g_ubr_mgr.trx_num);
 }
 
 TEST_F(UBRingLifetimeTest, released_ipc_name_survives_old_mapping_cleanup) {
