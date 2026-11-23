@@ -169,10 +169,9 @@ TEST_F(CRC, fast_is_on) {
   EXPECT_EQ(sysctl_crc32, IsFastCrc32Supported());
   val = 0;
   len = sizeof(val);
-  const bool sysctl_pmull =
-      (sysctlbyname("hw.optional.arm.FEAT_PMULL", &val, &len, nullptr, 0) ==
-           0 &&
-       val != 0);
+  const bool sysctl_pmull = (sysctlbyname("hw.optional.arm.FEAT_PMULL", &val,
+                                          &len, nullptr, 0) == 0 &&
+                             val != 0);
 #if defined(__ARM_NEON)
   EXPECT_EQ(sysctl_crc32 && sysctl_pmull, IsArm64PmullSelectedForTest());
 #else
@@ -293,9 +292,10 @@ TEST_F(CRC, Arm64PmullStripeBoundaries) {
   }
   ASSERT_TRUE(IsArm64PmullSelectedForTest());
 
-  const size_t lengths[] = {0,    1,    7,    8,    15,   31,   63,   64,   65,
-                            191,  192,  193,  335,  336,  337,  383,  384,  385,
-                            1007, 1008, 1009, 1199, 1200, 1201, 2015, 2016, 2017};
+  const size_t lengths[] = {0,    1,    7,    8,    15,   31,   63,
+                            64,   65,   191,  192,  193,  335,  336,
+                            337,  383,  384,  385,  1007, 1008, 1009,
+                            1199, 1200, 1201, 2015, 2016, 2017};
   const uint32_t seeds[] = {0U, 0x9e3779b9U, 0xffffffffU};
   std::vector<char> storage(2017 + 16);
   for (size_t i = 0; i < storage.size(); ++i) {

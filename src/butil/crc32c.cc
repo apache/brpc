@@ -1004,8 +1004,7 @@ static inline uint16_t ArmLoadLe16(const uint8_t* ptr) {
 
 static inline uint32_t ArmLoadLe32(const uint8_t* ptr) {
 #if BUTIL_ARM64_BIG_ENDIAN
-  return static_cast<uint32_t>(ptr[0]) |
-         (static_cast<uint32_t>(ptr[1]) << 8) |
+  return static_cast<uint32_t>(ptr[0]) | (static_cast<uint32_t>(ptr[1]) << 8) |
          (static_cast<uint32_t>(ptr[2]) << 16) |
          (static_cast<uint32_t>(ptr[3]) << 24);
 #else
