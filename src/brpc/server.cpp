@@ -1279,6 +1279,12 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         LOG(ERROR) << "Only IPv4 address supports port range feature";
         return -1;
     }
+    // Acceptors cache the protocol handlers built from ServerOptions, which may
+    // change between Start()s of the same Server, so rebuild them.
+    delete _am;
+    _am = nullptr;
+    delete _internal_am;
+    _internal_am = nullptr;
     _listen_addr = endpoint;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
         _listen_addr.port = port;

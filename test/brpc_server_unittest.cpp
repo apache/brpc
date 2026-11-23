@@ -682,6 +682,55 @@ TEST_F(ServerTest, enabled_protocols_without_http_rejects_http) {
     ASSERT_EQ(0, server.Join());
 }
 
+// Acceptors cache the handlers derived from ServerOptions, so restarting the
+// same Server with a different whitelist must rebuild them.
+TEST_F(ServerTest, restart_rebuilds_acceptor_for_enabled_protocols) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(
+                  &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    {
+        brpc::ChannelOptions copt;
+        copt.protocol = "baidu_std";
+        brpc::Channel chan;
+        ASSERT_EQ(0, chan.Init(server.listen_address(), &copt));
+        brpc::Controller cntl;
+        test::EchoService_Stub stub(&chan);
+        stub.Echo(&cntl, &req, &res, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    }
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+
+    opt.enabled_protocols = "hulu_pbrpc";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    const butil::EndPoint ep = server.listen_address();
+    {
+        // baidu_std is no longer served.
+        brpc::ChannelOptions copt;
+        copt.protocol = "baidu_std";
+        copt.max_retry = 0;
+        brpc::Channel chan;
+        ASSERT_EQ(0, chan.Init(ep, &copt));
+        brpc::Controller cntl;
+        test::EchoService_Stub stub(&chan);
+        stub.Echo(&cntl, &req, &res, nullptr);
+        ASSERT_TRUE(cntl.Failed());
+    }
+    ExpectHttpNotServed(ep);
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
 // http (or h2) in the whitelist keeps builtin services reachable, and naming
 // rdma_handshake is allowed since it is a transport level handshake.
 TEST_F(ServerTest, enabled_protocols_with_http_serves_builtin_services) {
