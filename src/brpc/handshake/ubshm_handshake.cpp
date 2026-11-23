@@ -490,10 +490,7 @@ public:
         if (client_ip_port != nullptr) {
             *client_ip_port = '\0';
         }
-        const int result = snprintf(
-            local_trx_shm.name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
-            client_name, SERVER_SHM_NAME_SUFFIX);
-        if (UNLIKELY(result < 0)) {
+        if (!ubring::BuildServerShmName(client_name, local_trx_shm.name)) {
             _transport->DeactivateUpgrade();
             return STEP_FALLBACK;
         }

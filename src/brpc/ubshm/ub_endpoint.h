@@ -47,6 +47,11 @@ DECLARE_int32(ub_poller_num);
 DECLARE_bool(ub_edisp_unsched);
 DECLARE_bool(ub_disable_bthread);
 
+// Builds the server-side shared-memory name derived from a peer name.
+// Returns false when the result cannot fit in shm_name.
+bool BuildServerShmName(const char* peer_name,
+                        char (&shm_name)[SHM_MAX_NAME_BUFF_LEN]);
+
 class BAIDU_CACHELINE_ALIGNMENT UBShmEndpoint : public SocketUser {
 friend class Socket;
 friend class ::brpc::UBShmTransport;

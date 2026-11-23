@@ -22,8 +22,10 @@
 
 // Pause instruction to prevent excess processor bus usage, only works in GCC
 #ifndef cpu_relax
-#if defined(ARCH_CPU_ARM_FAMILY)
-#define cpu_relax() asm volatile("yield\n": : :"memory")
+#if defined(ARCH_CPU_ARM64)
+# define cpu_relax() asm volatile("isb\n": : :"memory")
+#elif defined(ARCH_CPU_ARM_FAMILY)
+# define cpu_relax() asm volatile("yield\n": : :"memory")
 #elif defined(ARCH_CPU_RISCV_FAMILY)
 // Use the pause hint (Zihintpause extension). Encoding 0x0100000F
 // (fence 0, 1) is a HINT on all RISC-V implementations: it never traps

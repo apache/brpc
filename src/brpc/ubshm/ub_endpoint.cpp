@@ -49,6 +49,17 @@ DEFINE_bool(ub_disable_bthread, false, "Disable bthread in UBRing polling mode."
 
 static const size_t IOBUF_IOV_MAX = 256;
 
+bool BuildServerShmName(const char* peer_name,
+                        char (&shm_name)[SHM_MAX_NAME_BUFF_LEN]) {
+    const int result = snprintf(shm_name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
+                                peer_name, SERVER_SHM_NAME_SUFFIX);
+    if (UNLIKELY(result < 0 || result >= SHM_MAX_NAME_BUFF_LEN)) {
+        LOG(WARNING) << "Build server shared memory name failed, ret=" << result;
+        return false;
+    }
+    return true;
+}
+
 UBShmEndpoint::UBShmEndpoint(Socket *s)
     : _socket(s), _socket_id(s ? s->id() : INVALID_SOCKET_ID),
       _ub_ring(nullptr), _poller_sid(INVALID_SOCKET_ID) {
