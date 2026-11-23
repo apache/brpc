@@ -227,6 +227,20 @@ public:
     }
 
 private:
+    class ScopedIo {
+    public:
+        explicit ScopedIo(UbrTrx* trx);
+        ~ScopedIo();
+        explicit operator bool() const { return _trx != nullptr; }
+
+    private:
+        DISALLOW_COPY_AND_ASSIGN(ScopedIo);
+        static void Release(UbrTrx* trx);
+        UbrTrx* _trx = nullptr;
+    };
+    static void FinishTrxCleanup(UbrTrx* trx);
+    int RecvLegacy(uint8_t* dest, uint32_t buf_len);
+    ssize_t ReadvLegacy(const iovec* iov, int iovcnt);
     ssize_t UbrIpcV2Writev(const struct iovec* iov, int iovcnt);
     ssize_t UbrIpcV2Readv(const struct iovec* iov, int iovcnt);
     RETURN_CODE IsIpcV2Readable(uint32_t ep_event);

@@ -42,6 +42,42 @@ DEFINE_int32(ub_hb_retry_cnt, 10,
 DEFINE_int32(ub_event_queue_timer_interval_us, 100,
              "UBRing disconnection check interval in microseconds.");
 
+namespace {
+// The upper bit hands cleanup to the last active I/O.
+constexpr int IO_CLEANUP_PENDING = 1 << 30;
+}  // namespace
+
+void UBRing::ScopedIo::Release(UbrTrx* trx) {
+    if (ATOMIC_SUB(trx->active_io, 1) == IO_CLEANUP_PENDING + 1) {
+        const int saved_errno = errno;
+        FinishTrxCleanup(trx);
+        errno = saved_errno;
+    }
+}
+
+UBRing::ScopedIo::ScopedIo(UbrTrx* trx) {
+    if (trx == nullptr || ATOMIC_LOAD(trx->close_state) != UBR_CLOSE_FIRST) {
+        return;
+    }
+    int count = ATOMIC_LOAD(trx->active_io);
+    while (count < IO_CLEANUP_PENDING) {
+        if (trx->active_io.compare_exchange_weak(count, count + 1)) {
+            if (ATOMIC_LOAD(trx->close_state) == UBR_CLOSE_FIRST) {
+                _trx = trx;
+            } else {
+                Release(trx);
+            }
+            return;
+        }
+    }
+}
+
+UBRing::ScopedIo::~ScopedIo() {
+    if (_trx != nullptr) {
+        Release(_trx);
+    }
+}
+
 UBRing::UBRing()
 {}
 UBRing::~UBRing()
@@ -98,16 +134,9 @@ RETURN_CODE UBRing::UbrTrxAbort() {
     DeleteTimerSafe(_trx->timer_fd);
     DeleteTimerSafe(_trx->hb_timer_fd);
     DeleteTimerSafe(_trx->clear_timer_fd);
-    if (UbrTrxFreeShm(_trx) == UBRING_OK) {
-        return ReleaseTrx();
-    }
-    // Transfer the ring reference when retry storage could not be acquired.
     UbrTrx* trx = _trx;
     _trx = nullptr;
-    trx->clear_timer_fd = -1;
-    if (UbrAddAsynClearTimer(trx) != UBRING_OK) {
-        UbrAsynClearCallback(trx);
-    }
+    UbrAsynClearCallback(trx);
     return UBRING_OK;
 }
 
@@ -329,12 +358,22 @@ void *UBRing::UbrAsynClearCallback(void *args)
         return nullptr;
     }
 
+    // Once cleanup is due, let the last in-flight operation unmap the
+    // queues. The cleanup reference stays with the transaction until then.
+    const int count = trx->active_io.fetch_or(IO_CLEANUP_PENDING);
+    if ((count & ~IO_CLEANUP_PENDING) == 0) {
+        FinishTrxCleanup(trx);
+    }
+    return nullptr;
+}
+
+void UBRing::FinishTrxCleanup(UbrTrx* trx) {
     while (UbrTrxFreeShm(trx) != UBRING_OK) {
         LOG_EVERY_SECOND(ERROR) << "Trx close, retry cleanup for "
                                << trx->local_shm.name;
         trx->clear_timer_fd = -1;
         if (UbrAddAsynClearTimer(trx) == UBRING_OK) {
-            return nullptr;
+            return;
         }
         bthread_usleep(static_cast<uint64_t>(FLAGS_ub_flying_io_timeout_s) *
                        SEC_TO_NSEC / USEC_TO_NSEC);
@@ -343,13 +382,17 @@ void *UBRing::UbrAsynClearCallback(void *args)
     if (UNLIKELY(UBRingManager::ReleaseUbrTrxFromMgr(trx) != UBRING_OK)) {
         LOG(ERROR) << "Trx close, release shm " << trx->local_shm.name << " trx failed.";
     }
-    return nullptr;
 }
 
 int UBRing::UbrTrxSend(const void *buf, uint32_t buf_len)
 {
     if (_trx == nullptr || _trx->data_format != UBR_DATA_FORMAT_LEGACY_64) {
         errno = EPROTONOSUPPORT;
+        return UBRING_ERR;
+    }
+    ScopedIo io(_trx);
+    if (!io) {
+        errno = ENOTCONN;
         return UBRING_ERR;
     }
     if (UNLIKELY(CheckTrxSendPreCheck(_trx) != UBRING_OK)) {
@@ -398,6 +441,10 @@ int UBRing::UbrTrxRecv(void *buf, uint32_t buf_len)
         errno = EPROTONOSUPPORT;
         return UBRING_ERR;
     }
+    ScopedIo io(_trx);
+    if (!io) {
+        return 0;
+    }
     RETURN_CODE rc = UBRING_OK;
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, buf, buf_len)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
@@ -408,7 +455,7 @@ int UBRing::UbrTrxRecv(void *buf, uint32_t buf_len)
     if (flag == UBR_MSG_CHUNK_NONE) {
         return UBRING_RETRY;
     }
-    return UbrTrxRecvBlockMode(static_cast<uint8_t *>(buf), buf_len);
+    return RecvLegacy(static_cast<uint8_t*>(buf), buf_len);
 }
 
 int UBRing::UbrTrxRecvBlockMode(uint8_t *dest, uint32_t buf_len)
@@ -417,11 +464,19 @@ int UBRing::UbrTrxRecvBlockMode(uint8_t *dest, uint32_t buf_len)
         errno = EPROTONOSUPPORT;
         return UBRING_ERR;
     }
+    ScopedIo io(_trx);
+    if (!io) {
+        return 0;
+    }
     RETURN_CODE rc = UBRING_OK;
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, dest, buf_len)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
     }
 
+    return RecvLegacy(dest, buf_len);
+}
+
+int UBRing::RecvLegacy(uint8_t* dest, uint32_t buf_len) {
     int32_t total_copied = 0;
     int32_t remaining_len = (int32_t)buf_len;
     bool not_eof_encountered = true;
@@ -559,6 +614,11 @@ ssize_t UBRing::UbrIpcV2Readv(const struct iovec* iov, int iovcnt)
 
 ssize_t UBRing::UbrTrxWritev(const struct iovec *iov, int iovcnt)
 {
+    ScopedIo io(_trx);
+    if (!io) {
+        errno = ENOTCONN;
+        return UBRING_ERR;
+    }
     if (UNLIKELY(CheckTrxSendPreCheck(_trx) != UBRING_OK)) {
         return UBRING_ERR;
     }
@@ -622,6 +682,10 @@ ssize_t UBRing::UbrTrxWritev(const struct iovec *iov, int iovcnt)
 
 ssize_t UBRing::UbrTrxReadv(const struct iovec *iov, int iovcnt)
 {
+    ScopedIo io(_trx);
+    if (!io) {
+        return _trx == nullptr ? UBRING_ERR : 0;
+    }
     RETURN_CODE rc = UBRING_OK;
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, iov, (uint32_t)iovcnt)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
@@ -640,7 +704,7 @@ ssize_t UBRing::UbrTrxReadv(const struct iovec *iov, int iovcnt)
         errno = EAGAIN;
         return -1;
     }
-    ssize_t nr = UbrTrxReadvBlockMode(iov, iovcnt);
+    ssize_t nr = ReadvLegacy(iov, iovcnt);
     if (UNLIKELY(nr == -1)) {
         LOG(ERROR) << "Non-blocking readv msg in failed, connection has been closed.";
         errno = EPIPE;
@@ -655,11 +719,19 @@ ssize_t UBRing::UbrTrxReadvBlockMode(const struct iovec *iov, int iovcnt)
         errno = EPROTONOSUPPORT;
         return UBRING_ERR;
     }
+    ScopedIo io(_trx);
+    if (!io) {
+        return 0;
+    }
     RETURN_CODE rc = UBRING_OK;
     if (UNLIKELY((rc = CheckTrxRecvParam(_trx, iov, (uint32_t)iovcnt)) != UBRING_OK)) {
         return (rc == UBR_NOT_CONNECTED) ? 0 : rc;
     }
 
+    return ReadvLegacy(iov, iovcnt);
+}
+
+ssize_t UBRing::ReadvLegacy(const iovec* iov, int iovcnt) {
     size_t remain_buf_len = 0;
     for (int i = 0; i < iovcnt; i++) {
         remain_buf_len += iov[i].iov_len;
@@ -676,8 +748,8 @@ ssize_t UBRing::UbrTrxReadvBlockMode(const struct iovec *iov, int iovcnt)
 
 RETURN_CODE UBRing::IsUbrTrxReadable(uint32_t ep_event)
 {
-    if (UNLIKELY(_trx == nullptr)) {
-        LOG(ERROR) << "The trx to be checked is NULL.";
+    ScopedIo io(_trx);
+    if (!io) {
         return UBRING_ERR;
     }
     if (UNLIKELY(_trx->local_shm.addr == nullptr)) {
@@ -717,8 +789,8 @@ RETURN_CODE UBRing::IsUbrTrxReadable(uint32_t ep_event)
 
 RETURN_CODE UBRing::IsUbrTrxWriteable(uint32_t ep_event)
 {
-    if (UNLIKELY(_trx == nullptr)) {
-        LOG(ERROR) << "The trx to be checked is NULL.";
+    ScopedIo io(_trx);
+    if (!io) {
         return UBRING_ERR;
     }
     if (UNLIKELY(_trx->local_shm.addr == nullptr)) {

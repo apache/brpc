@@ -1608,6 +1608,30 @@ TEST_F(UBRingLifetimeTest, device_event_completes_an_active_close_once) {
     EXPECT_EQ(nullptr, trx->local_shm.addr);
 }
 
+TEST_F(UBRingLifetimeTest, cleanup_waits_for_the_last_io) {
+    using namespace brpc::ubring;
+    UbrTrx* trx = ring._trx;
+    {
+        UBRing::ScopedIo read(trx);
+        ASSERT_TRUE(read);
+        {
+            UBRing::ScopedIo write(trx);
+            ASSERT_TRUE(write);
+            ASSERT_EQ(UBRING_OK,
+                      UBRing::UbrClearResourceCheck(trx, UBR_CALL_BACK_CLOSE));
+            UBRing::UbrAsynClearCallback(trx);
+            const UBRing::ScopedIo late(trx);
+            EXPECT_FALSE(late);
+        }
+        EXPECT_EQ(local.addr, trx->local_shm.addr);
+        EXPECT_NE(nullptr, trx->remote_shm.addr);
+        EXPECT_EQ(2, ATOMIC_LOAD(trx->ref_count));
+    }
+    EXPECT_EQ(nullptr, trx->local_shm.addr);
+    EXPECT_EQ(nullptr, trx->remote_shm.addr);
+    EXPECT_EQ(1, ATOMIC_LOAD(trx->ref_count));
+}
+
 TEST_F(UBRingLifetimeTest, zero_cleanup_delay_releases_the_transaction) {
     using namespace brpc::ubring;
     FLAGS_ub_flying_io_timeout_s = 0;

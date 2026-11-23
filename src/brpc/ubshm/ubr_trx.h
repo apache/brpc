@@ -158,6 +158,7 @@ typedef struct TagUbrTrx {
     bool remote_shm_released;
     AtomicInt close_cnt;
     AtomicInt close_state;
+    AtomicInt active_io;
 } UbrTrx;
 
 typedef struct TagFileLock {
