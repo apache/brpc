@@ -1265,6 +1265,19 @@ static inline Function Choose_Extend() {
   return (Function)ExtendImpl<SlowCRC32Functor>;
 }
 
+#if defined(__aarch64__)
+bool IsArm64PmullSelectedForTest() {
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
+  return Choose_Extend() == reinterpret_cast<Function>(Arm64ExtendCrc32Pmull);
+#else
+  return false;
+#endif
+}
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
+#undef BUTIL_ARM64_PMULL_ENABLED
+#endif
+#endif
+
 bool IsFastCrc32Supported() {
 #ifdef __SSE4_2__
   if (isSSE42()) return true;
