@@ -46,6 +46,7 @@
 #include "brpc/global.h"
 #include "brpc/handshake/handshake_io.h"
 #include "brpc/handshake/handshake_adapter.h"
+#include "brpc/handshake/rdma_handshake_constants.h"
 #include "brpc/input_messenger.h"
 #include "brpc/policy/transport_handshake_protocol.h"
 #include "brpc/protocol.h"
@@ -123,6 +124,7 @@ static void CheckPollerStartup(decltype(&bthread_start_background)& start) {
                         errno == EBUSY) {
                         ++rejected_reentry;
                     }
+                    Endpoint::PollingModeRelease(0);
                     ++released;
                 });
         };
@@ -492,6 +494,8 @@ public:
     }
     static void Process(InputMessageBase*) {}
     static bool StopReading(Socket* socket) {
+        EXPECT_EQ(InputMessengerProcessor::STREAM_NONE,
+                  socket->parsing_stream_type());
         return static_cast<TestUpgradeMessenger*>(socket->user())
             ->adapter.session.phase(butil::memory_order_acquire) == ESTABLISHED;
     }
@@ -654,14 +658,26 @@ TEST(HandshakeFrameTest,
     socket->SetFailed();
 }
 
-TEST(TransportHandshakeTest, socket_io_initializes_read_butex) {
+TEST(TransportHandshakeTest, socket_io_initializes_read_butex_on_first_read) {
     auto* reused = bthread::butex_create_checked<butil::atomic<int>>();
     reused->store(37, butil::memory_order_relaxed);
     bthread::butex_destroy(reused);
-    SocketHandshakeIO io;
-    EXPECT_EQ(0, io._read_butex->load(butil::memory_order_relaxed));
+    HandshakeSocketPair pair;
+    ASSERT_NO_FATAL_FAILURE(pair.Init());
+    SocketHandshakeIO io(pair.socket.get());
     io.NotifyReadable();
-    EXPECT_EQ(1, io._read_butex->load(butil::memory_order_relaxed));
+    EXPECT_EQ(nullptr, io._read_butex.load(butil::memory_order_relaxed));
+
+    ASSERT_EQ(1, write(pair.peer_fd, "x", 1));
+    char byte;
+    ASSERT_EQ(0, io.ReadExact(&byte, 1));
+    EXPECT_EQ('x', byte);
+    auto* butex = io._read_butex.load(butil::memory_order_relaxed);
+    ASSERT_NE(nullptr, butex);
+    EXPECT_EQ(0, butex->load(butil::memory_order_relaxed));
+    io.NotifyReadable();
+    EXPECT_EQ(1, butex->load(butil::memory_order_relaxed));
+    pair.socket->SetFailed();
 }
 
 TEST(TransportHandshakeTest, blocked_write_stops_after_socket_failure) {
@@ -806,7 +822,8 @@ TEST(TransportHandshakeTest, blocked_read_stops_after_socket_failure) {
     const int64_t wait_deadline = butil::gettimeofday_us() + 1000000;
     while (butil::gettimeofday_us() < wait_deadline) {
         // A nonzero wake count proves ReadExact reached its read butex.
-        if (bthread::butex_wake(io._read_butex, true) > 0) {
+        auto* butex = io._read_butex.load(butil::memory_order_acquire);
+        if (butex != nullptr && bthread::butex_wake(butex, true) > 0) {
             was_waiting = true;
             break;
         }
@@ -1065,7 +1082,6 @@ TEST_F(HandshakeSessionTest, client_resource_failure_falls_back_before_io) {
 TEST_F(HandshakeSessionTest, server_resumes_at_buffered_ack) {
     source.append("HSOK", 4);
 
-
     ASSERT_EQ(STEP_NEED_MORE,
               session.RunServer(io, protocols, &source, &transport, false));
     ASSERT_EQ(ACK_WAIT, session.phase(butil::memory_order_acquire));
@@ -1111,7 +1127,6 @@ TEST_F(HandshakeSessionTest, server_falls_back_without_consuming_other_magic) {
 }
 
 TEST_F(HandshakeSessionTest, server_enters_hello_phase_after_magic_matches) {
-
     source.append("H", 1);
     ASSERT_EQ(STEP_NEED_MORE,
               session.RunServer(io, protocols, &source, &transport, false));
@@ -1204,6 +1219,18 @@ TEST(TransportHandshakeTest, dispatches_magic_across_iobuf_blocks) {
     }
 }
 
+TEST(TransportHandshakeTest, ubshm_probe_checks_the_encoded_size) {
+    butil::IOBuf source;
+    source.append("UB", 2);
+    EXPECT_EQ(HandshakeRegistration::Find(SOCKET_MODE_UBRING)->server,
+              HandshakeRegistration::MatchHello(source));
+    // With NSHEAD id 0x4255 and version 0, the header starts with "UB\0\0".
+    const uint16_t unrelated_size = 0;
+    source.append(&unrelated_size, sizeof(unrelated_size));
+    EXPECT_EQ(nullptr, HandshakeRegistration::MatchHello(source));
+    EXPECT_EQ(4UL, source.size());
+}
+
 TEST(TransportHandshakeTest,
      plain_tcp_server_incrementally_rejects_ubshm_upgrade) {
     HandshakeSocketPair pair;
@@ -1284,7 +1311,7 @@ TEST(TransportHandshakeTest,
 }
 
 #if BRPC_WITH_URMA
-TEST(TransportHandshakeTest, urma_socket_skips_adapter_handshake_parser) {
+TEST(TransportHandshakeTest, urma_socket_preserves_rdma_tcp_fallback) {
     int fds[2];
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
     butil::fd_guard peer_fd(fds[1]);
@@ -1299,11 +1326,38 @@ TEST(TransportHandshakeTest, urma_socket_skips_adapter_handshake_parser) {
 
     butil::IOBuf source;
     source.append("PRPC", 4);
-    const ParseResult result = policy::ParseTransportHandshake(
+    ParseResult result = policy::ParseTransportHandshake(
         &source, socket.get(), false, nullptr);
-    ASSERT_FALSE(result.is_ok());
     EXPECT_EQ(PARSE_ERROR_TRY_OTHERS, result.error());
     EXPECT_EQ(4UL, source.size());
+    EXPECT_EQ(nullptr, socket->parsing_context());
+
+    const auto& spec = rdma::RdmaHelloFrameSpec(2);
+    std::string hello;
+    std::string payload(spec.min_frame_len - spec.magic_len - sizeof(uint16_t),
+                        '\0');
+    ASSERT_EQ(FRAME_OK, FrameCodec::Encode(spec, payload, &hello));
+    source.clear();
+    source.append(hello);
+    result = policy::ParseTransportHandshake(
+        &source, socket.get(), false, nullptr);
+    EXPECT_EQ(PARSE_ERROR_NOT_ENOUGH_DATA, result.error());
+    EXPECT_TRUE(source.empty());
+    ASSERT_NE(nullptr, socket->parsing_context());
+
+    char reply[rdma::HELLO_V2_MSG_LEN_MIN];
+    ASSERT_EQ(sizeof(reply), recv(peer_fd, reply, sizeof(reply), MSG_DONTWAIT));
+    EXPECT_EQ(0, memcmp(reply, "RDMA", spec.magic_len));
+    EXPECT_EQ(0xff, static_cast<unsigned char>(reply[6]));
+    EXPECT_EQ(0xff, static_cast<unsigned char>(reply[7]));
+
+    const uint32_t ack = 0;
+    source.append(&ack, sizeof(ack));
+    source.append("PRPC", 4);
+    result = policy::ParseTransportHandshake(
+        &source, socket.get(), false, nullptr);
+    EXPECT_EQ(PARSE_ERROR_TRY_OTHERS, result.error());
+    EXPECT_EQ("PRPC", source.to_string());
     EXPECT_EQ(nullptr, socket->parsing_context());
     socket->SetFailed();
 }

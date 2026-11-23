@@ -309,17 +309,14 @@ protected:
         _server.Join();
     }
 
-    Socket* GetSocketFromServer(size_t index) {
+    SocketUniquePtr GetSocketFromServer(size_t index) {
         std::vector<SocketId> sids;
         _server._am->ListConnections(&sids);
-        if (index >= sids.size()) {
-            return nullptr;
+        SocketUniquePtr socket;
+        if (index < sids.size()) {
+            Socket::Address(sids[index], &socket);
         }
-        SocketUniquePtr s;
-        if (Socket::Address(sids[index], &s) == 0) {
-            return s.get();
-        }
-        return nullptr;
+        return socket;
     }
 
     // Server-side connection creation and teardown are asynchronous.
@@ -2115,7 +2112,7 @@ TEST_F(RdmaTest, v2_server_preserves_coalesced_ack_after_extension) {
     ASSERT_NO_FATAL_FAILURE(ConnectToServer(&sockfd));
     Socket* s = WaitForServerSocket();
     ASSERT_NE(nullptr, s);
-    ASSERT_TRUE(s != NULL);
+    ASSERT_TRUE(s != nullptr);
     ASSERT_HANDSHAKE_PHASE(handshake::UNINITIALIZED, s);
 
     // Build a v2 hello with msg_len = 48 (40 base + 8B zero tail).
@@ -3461,7 +3458,9 @@ TEST_F(RdmaTest, channel_option_invalid) {
     ASSERT_EQ(-1, channel.Init(g_ep, &chan_options));
 }
 
+static const int E2E_ROUND_NUM = 3;
 static const int E2E_RPC_NUM = 32;
+static const size_t E2E_ATTACH_SIZE[] = { 0, 4096, 128 * 1024 };
 
 static void ShutdownClientConnection(Controller& cntl) {
     SocketUniquePtr s;
@@ -3511,6 +3510,17 @@ static int SendEchoRpcs(Channel& channel, int rpc_num, size_t attach_size,
     return succeeded;
 }
 
+static void SendEchoRpcsInRounds(Channel& channel) {
+    for (int round = 0; round < E2E_ROUND_NUM; ++round) {
+        for (size_t i = 0; i < arraysize(E2E_ATTACH_SIZE); ++i) {
+            ASSERT_EQ(E2E_RPC_NUM,
+                      SendEchoRpcs(channel, E2E_RPC_NUM, E2E_ATTACH_SIZE[i]))
+                    << "round=" << round
+                    << " attach_size=" << E2E_ATTACH_SIZE[i];
+        }
+    }
+}
+
 TEST_F(RdmaRpcTest, rdma_client_to_rdma_server) {
     if (!FLAGS_rdma_test_enable) {
         return;
@@ -3522,18 +3532,10 @@ TEST_F(RdmaRpcTest, rdma_client_to_rdma_server) {
     ChannelOptions chan_options;
     chan_options.socket_mode = SOCKET_MODE_RDMA;
     chan_options.connect_timeout_ms = 500;
-    chan_options.timeout_ms = 500;
+    chan_options.timeout_ms = 5000;
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
-    Controller cntl;
-    test::EchoRequest req;
-    test::EchoResponse res;
-    req.set_message(__FUNCTION__);
-    google::protobuf::Closure* done = DoNothing();
-    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
-    // usleep(100000);
-    bthread_id_join(cntl.call_id());
-    ASSERT_EQ(0, cntl.ErrorCode());
+    ASSERT_NO_FATAL_FAILURE(SendEchoRpcsInRounds(channel));
 
     // Check the negotiated v3 data path on both ends of the connection.
     SocketUniquePtr client_socket;
@@ -3581,17 +3583,10 @@ TEST_F(RdmaRpcTest, tcp_client_to_tcp_server) {
     Channel channel;
     ChannelOptions chan_options;
     chan_options.connect_timeout_ms = 500;
-    chan_options.timeout_ms = 500;
+    chan_options.timeout_ms = 5000;
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
-    Controller cntl;
-    test::EchoRequest req;
-    test::EchoResponse res;
-    req.set_message(__FUNCTION__);
-    google::protobuf::Closure* done = DoNothing();
-    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
-    bthread_id_join(cntl.call_id());
-    ASSERT_EQ(0, cntl.ErrorCode());
+    ASSERT_NO_FATAL_FAILURE(SendEchoRpcsInRounds(channel));
 
     StopServer();
 }
@@ -3602,17 +3597,10 @@ TEST_F(RdmaRpcTest, tcp_client_to_rdma_server) {
     Channel channel;
     ChannelOptions chan_options;
     chan_options.connect_timeout_ms = 500;
-    chan_options.timeout_ms = 500;
+    chan_options.timeout_ms = 5000;
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
-    Controller cntl;
-    test::EchoRequest req;
-    test::EchoResponse res;
-    req.set_message(__FUNCTION__);
-    google::protobuf::Closure* done = DoNothing();
-    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
-    bthread_id_join(cntl.call_id());
-    ASSERT_EQ(0, cntl.ErrorCode());
+    ASSERT_NO_FATAL_FAILURE(SendEchoRpcsInRounds(channel));
 
     StopServer();
 }
@@ -3624,17 +3612,10 @@ TEST_F(RdmaRpcTest, rdma_client_to_tcp_server) {
     ChannelOptions chan_options;
     chan_options.socket_mode = SOCKET_MODE_RDMA;
     chan_options.connect_timeout_ms = 500;
-    chan_options.timeout_ms = 500;
+    chan_options.timeout_ms = 5000;
     chan_options.max_retry = 0;
     ASSERT_EQ(0, channel.Init(g_ep, &chan_options));
-    Controller cntl;
-    test::EchoRequest req;
-    test::EchoResponse res;
-    req.set_message(__FUNCTION__);
-    google::protobuf::Closure* done = DoNothing();
-    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
-    bthread_id_join(cntl.call_id());
-    ASSERT_FALSE(cntl.Failed());
+    ASSERT_NO_FATAL_FAILURE(SendEchoRpcsInRounds(channel));
 
     StopServer();
 }
@@ -3741,8 +3722,8 @@ TEST_F(RdmaRpcTest, send_rpcs_in_one_qp) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
     }
@@ -3761,8 +3742,8 @@ TEST_F(RdmaRpcTest, send_rpcs_in_one_qp) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
     }
@@ -3780,8 +3761,8 @@ TEST_F(RdmaRpcTest, send_rpcs_in_one_qp) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_TRUE(0 == cntl[i].ErrorCode() || EOVERCROWDED == cntl[i].ErrorCode())
             << "req[" << i << "] " << berror(cntl[i].ErrorCode());
@@ -3789,8 +3770,9 @@ TEST_F(RdmaRpcTest, send_rpcs_in_one_qp) {
 
     SocketUniquePtr s;
     ASSERT_EQ(0, Socket::Address(cntl[0]._single_server_id, &s));
-    Socket* m = GetSocketFromServer(0);
-    DumpRdmaEndpointInfo(s.get(), m);
+    SocketUniquePtr m = GetSocketFromServer(0);
+    DumpRdmaEndpointInfo(s.get(), m.get());
+    m.reset();
 
     StopServer();
 }
@@ -3897,8 +3879,8 @@ TEST_F(RdmaRpcTest, send_rpcs_as_pooled_connection) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
     }
@@ -3938,8 +3920,8 @@ TEST_F(RdmaRpcTest, send_rpcs_as_short_connection) {
         if (cntl[i].ErrorCode() == ERPCTIMEDOUT) {
             SocketUniquePtr s;
             ASSERT_EQ(0, Socket::Address(cntl[i]._single_server_id, &s));
-            Socket* m = GetSocketFromServer(0);
-            DumpRdmaEndpointInfo(s.get(), m);
+            SocketUniquePtr m = GetSocketFromServer(0);
+            DumpRdmaEndpointInfo(s.get(), m.get());
         }
         ASSERT_EQ(0, cntl[i].ErrorCode()) << "req[" << i << "]";
     }

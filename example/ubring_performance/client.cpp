@@ -142,52 +142,61 @@ public:
     }
 
     static void* RunTest(void* arg) {
-        auto* self = static_cast<PerformanceTest*>(arg);
         const int64_t deadline = butil::monotonic_time_ns() +
             static_cast<int64_t>(FLAGS_test_seconds) * 1000000000L;
-        uint64_t sent = 0;
+        RunState state{static_cast<PerformanceTest*>(arg), deadline};
+        std::vector<bthread_t> slots(FLAGS_queue_depth - 1);
+        for (auto& tid : slots) {
+            CHECK_EQ(0, bthread_start_background(
+                &tid, &BTHREAD_ATTR_NORMAL, RunSlot, &state));
+        }
+        RunSlot(&state);
+        for (const auto tid : slots) {
+            bthread_join(tid, nullptr);
+        }
+        return nullptr;
+    }
+
+private:
+    struct RunState {
+        PerformanceTest* test;
+        int64_t deadline;
+        std::atomic<uint64_t> next_iteration{0};
+    };
+
+    static void* RunSlot(void* arg) {
+        auto* state = static_cast<RunState*>(arg);
+        PerformanceTest* self = state->test;
         test::PerfTestService_Stub stub(self->_channel);
-        while (!g_failed.load() &&
-               (FLAGS_test_iterations == 0 ||
-                sent < static_cast<uint64_t>(FLAGS_test_iterations))) {
-            std::vector<brpc::Controller> cntls(FLAGS_queue_depth);
-            std::vector<test::PerfTestRequest> requests(FLAGS_queue_depth);
-            std::vector<test::PerfTestResponse> responses(FLAGS_queue_depth);
-            int pending = 0;
-            for (; pending < FLAGS_queue_depth; ++pending) {
-                if ((FLAGS_test_iterations > 0 &&
-                     sent >= static_cast<uint64_t>(FLAGS_test_iterations)) ||
-                    !WaitForRequest(deadline)) {
-                    break;
-                }
-                requests[pending].set_echo_attachment(self->_echo_attachment);
-                cntls[pending].request_attachment().append(self->_attachment);
-                stub.Test(&cntls[pending], &requests[pending],
-                          &responses[pending], brpc::DoNothing());
-                ++sent;
-            }
-            for (int i = 0; i < pending; ++i) {
-                brpc::Join(cntls[i].call_id());
-                if (cntls[i].Failed()) {
-                    LOG(ERROR) << "RPC call failed: " << cntls[i].ErrorText();
-                    g_failed.store(true);
-                } else if (self->_echo_attachment &&
-                           cntls[i].response_attachment() != self->_attachment) {
-                    LOG(ERROR) << "Echo attachment does not match request";
-                    g_failed.store(true);
-                } else {
-                    g_latency_recorder << cntls[i].latency_us();
-                    g_total_bytes.fetch_add(self->_attachment.size(),
-                                            butil::memory_order_relaxed);
-                    g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
-                    if (!responses[i].cpu_usage().empty()) {
-                        g_server_cpu_recorder <<
-                            atof(responses[i].cpu_usage().c_str()) * 100;
-                    }
-                }
-            }
-            if (pending == 0) {
+        while (FLAGS_test_iterations == 0 ||
+               state->next_iteration.fetch_add(1, std::memory_order_relaxed) <
+                   static_cast<uint64_t>(FLAGS_test_iterations)) {
+            if (!WaitForRequest(state->deadline)) {
                 break;
+            }
+            brpc::Controller cntl;
+            test::PerfTestRequest request;
+            test::PerfTestResponse response;
+            request.set_echo_attachment(self->_echo_attachment);
+            cntl.request_attachment().append(self->_attachment);
+            stub.Test(&cntl, &request, &response, nullptr);
+            if (cntl.Failed()) {
+                LOG(ERROR) << "RPC call failed: " << cntl.ErrorText();
+                g_failed.store(true);
+                break;
+            }
+            if (self->_echo_attachment &&
+                cntl.response_attachment() != self->_attachment) {
+                LOG(ERROR) << "Echo attachment does not match request";
+                g_failed.store(true);
+                break;
+            }
+            g_latency_recorder << cntl.latency_us();
+            g_total_bytes.fetch_add(self->_attachment.size(),
+                                    butil::memory_order_relaxed);
+            g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
+            if (!response.cpu_usage().empty()) {
+                g_server_cpu_recorder << atof(response.cpu_usage().c_str()) * 100;
             }
             uint64_t last = g_last_time.load(butil::memory_order_relaxed);
             const uint64_t now = butil::gettimeofday_us();
@@ -200,7 +209,6 @@ public:
         return nullptr;
     }
 
-private:
     void* _addr;
     brpc::Channel* _channel;
     butil::IOBuf _attachment;

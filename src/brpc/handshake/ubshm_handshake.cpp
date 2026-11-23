@@ -59,6 +59,15 @@ static const FrameSpec& HelloFrameSpec() {
     return spec;
 }
 
+static bool MatchHelloLength(const butil::IOBuf& input) {
+    uint16_t net_len;
+    if (input.size() < MAGIC_LEN + sizeof(net_len)) {
+        return true;
+    }
+    input.copy_to(&net_len, sizeof(net_len), MAGIC_LEN);
+    return butil::NetToHost16(net_len) == HELLO_LEN;
+}
+
 static const FrameSpec& AckFrameSpec() {
     static const FrameSpec spec(
         nullptr, 0, ACK_LEN, ACK_LEN, FrameSpec::FIXED);
@@ -348,10 +357,9 @@ class UBShmClientHandshakeTransport : public HandshakeTransport {
 public:
     UBShmClientHandshakeTransport(
         UBShmTransport* transport, ubring::SHM* local_shm,
-        const char* shm_name, ubring::UBShmHandshakeAdapter* protocol,
-        Socket* socket)
+        const char* shm_name, ubring::UBShmHandshakeAdapter* protocol)
         : _transport(transport), _local_shm(local_shm),
-          _shm_name(shm_name), _protocol(protocol), _socket(socket) {}
+          _shm_name(shm_name), _protocol(protocol) {}
 
     StepResult PrepareResources() override {
         if (_transport->PrepareUpgradeResources(
@@ -376,19 +384,13 @@ public:
     }
     void OnFallback() override { _transport->DeactivateUpgrade(); }
 
-    void OnFailed() override {
-        const int error = errno != 0 ? errno : EPROTO;
-        _transport->DeactivateUpgrade();
-        _socket->SetFailed(error, "Fail to complete ubring handshake from %s: %s",
-                           _socket->description().c_str(), berror(error));
-    }
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
 
 private:
     UBShmTransport* _transport;
     ubring::SHM* _local_shm;
     const char* _shm_name;
     ubring::UBShmHandshakeAdapter* _protocol;
-    Socket* _socket;
 };
 
 int RunUBShmClientHandshake(Transport* high_speed, Socket* socket,
@@ -402,7 +404,7 @@ int RunUBShmClientHandshake(Transport* high_speed, Socket* socket,
     ubring::UBShmHandshakeAdapter wire(
         ubring::PreferredDataFormatForShmType(ubring::GetShmType()));
     UBShmClientHandshakeTransport participant(
-        transport, &local_shm, shm_name.c_str(), &wire, socket);
+        transport, &local_shm, shm_name.c_str(), &wire);
     const auto result = session.RunClient(session.socket_io(), &wire, &participant);
     if (result == STEP_OK) {
         transport->FinishUpgrade();
@@ -430,6 +432,7 @@ const HandshakeRegistration& GetUBShmHandshakeRegistration() {
 #endif
     static const HandshakeRegistration registration = {
         SOCKET_MODE_UBRING, &server, {&ubshm_wire::HelloFrameSpec()}, upgrade,
+        ubshm_wire::MatchHelloLength,
     };
     return registration;
 }

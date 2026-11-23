@@ -32,7 +32,7 @@ namespace brpc {
 namespace policy {
 
 ParseResult ParseTransportHandshake(butil::IOBuf* source, Socket* socket,
-                                     bool read_eof, const void* arg);
+                                    bool read_eof, const void* arg);
 
 // Upgrade handshakes are completed inline by the parser. This placeholder is
 // required for server-side protocol registration and must never be invoked.

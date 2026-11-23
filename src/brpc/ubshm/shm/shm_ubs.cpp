@@ -50,7 +50,7 @@ DEFINE_int32(ub_flying_io_timeout_s, 5,
              "when the link is disconnected.");
 BRPC_VALIDATE_GFLAG(ub_flying_io_timeout_s, brpc::PositiveInteger);
 char g_region_name[MAX_REGION_NAME_DESC_LENGTH] = {0};
-int g_shm_timer_fd = 0;
+int g_shm_timer_fd = -1;
 ShmList *g_shm_list = nullptr;
 static RETURN_CODE UbsShmInterfacesLoad(void);
 char hostname[MAX_HOST_NAME_DESC_LENGTH];
@@ -166,6 +166,7 @@ static RETURN_CODE ReleaseUbsShmLocked(ShmList* list, SHM* shm,
             if (node->shm.addr == task->shm.addr &&
                 node->shm.len == task->shm.len &&
                 strcmp(node->shm.name, task->shm.name) == 0) {
+                node->unmap |= task->unmap;
                 node->deallocate |= task->deallocate;
                 free(task);
                 shm->addr = nullptr;
@@ -258,7 +259,7 @@ RETURN_CODE UbsShmLocalMalloc(SHM* shm) {
     return UBRING_OK;
 }
 
-RETURN_CODE UbsShmMunmap(SHM *shm) {
+RETURN_CODE UbsShmMunmap(SHM* shm) {
     return ReleaseUbsShm(shm, false);
 }
 
@@ -287,7 +288,7 @@ RETURN_CODE UbsShmFree(SHM *shm)
     return UBRING_OK;
 }
 
-RETURN_CODE UbsShmLocalFree(SHM *shm) {
+RETURN_CODE UbsShmLocalFree(SHM* shm) {
     return ReleaseUbsShm(shm, true);
 }
 
@@ -315,7 +316,7 @@ RETURN_CODE UbsShmLocalMmap(SHM *shm, int prot)
     return UBRING_OK;
 }
 
-RETURN_CODE UbsShmRemoteFree(SHM *shm) {
+RETURN_CODE UbsShmRemoteFree(SHM* shm) {
     return ReleaseUbsShm(shm, false);
 }
 
@@ -396,7 +397,7 @@ RETURN_CODE UbsShmInit(void)
 
 RETURN_CODE UbsShmFini(void) {
     DeleteTimerSafe(g_shm_timer_fd);
-    g_shm_timer_fd = 0;
+    g_shm_timer_fd = -1;
     if (g_shm_list != nullptr) {
         UbsShmCallback(g_shm_list);
         if (g_shm_list->size != 0) {
@@ -416,7 +417,7 @@ RETURN_CODE UbsShmFini(void) {
     return UBRING_OK;
 }
 
-void *UbsShmCallback(void* args) {
+void* UbsShmCallback(void* args) {
     auto* list = static_cast<ShmList*>(args);
     if (list == nullptr) {
         return nullptr;
@@ -488,8 +489,8 @@ RETURN_CODE InitShmTimer(ShmList **shm_list)
 
 RETURN_CODE DestroyShmTimer(ShmList *shm_list)
 {
-    DeleteTimerSafe((uint32_t)g_shm_timer_fd);
-    g_shm_timer_fd = 0;
+    DeleteTimerSafe(g_shm_timer_fd);
+    g_shm_timer_fd = -1;
     if (shm_list == nullptr) {
         LOG(WARNING) << "Shm list is null.";
         return UBRING_ERR;

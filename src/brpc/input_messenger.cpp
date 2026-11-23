@@ -125,9 +125,6 @@ void InputMessenger::OnNewMessagesUntil(
     InputMessageClosure last_msg;
     bool read_eof = false;
     while (!read_eof) {
-        if (stop_reading != nullptr && stop_reading(m)) {
-            return;
-        }
         const int64_t received_us = butil::cpuwide_time_us();
         const int64_t base_realtime = butil::gettimeofday_us() - received_us;
 
@@ -158,7 +155,8 @@ void InputMessenger::OnNewMessagesUntil(
         }
 
         if (processor.ProcessNewMessage(nr, read_eof, received_us,
-                                        base_realtime, last_msg) < 0) {
+                                        base_realtime, last_msg) < 0 ||
+            (stop_reading != nullptr && stop_reading(m))) {
             return;
         }
     }

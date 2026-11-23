@@ -33,11 +33,11 @@ DECLARE_bool(usercode_in_pthread);
 
 extern SocketVarsCollector *g_vars;
 
-UBShmTransport *UBShmTransport::Get(const Socket *socket) {
+UBShmTransport* UBShmTransport::Get(const Socket* socket) {
     const AdapterTransport *adapter = AdapterTransport::Get(socket);
-    Transport *transport = adapter->high_speed_transport();
-    CHECK(transport != NULL);
-    return static_cast<UBShmTransport *>(transport);
+    Transport* transport = adapter->high_speed_transport();
+    CHECK(transport != nullptr);
+    return static_cast<UBShmTransport*>(transport);
 }
 
 void UBShmTransport::Init(Socket* socket, const SocketOptions& options) {
@@ -73,21 +73,21 @@ void UBShmTransport::SetHighSpeedAvailable(bool available) {
     _ub_state = available ? UB_ON : UB_OFF;
 }
 
-int UBShmTransport::PrepareUpgradeResources(ubring::SHM *local_trx_shm,
-                                            const char *shm_name) {
+int UBShmTransport::PrepareUpgradeResources(ubring::SHM* local_trx_shm,
+                                            const char* shm_name) {
     return _ub_ep->AllocateClientResources(local_trx_shm, shm_name);
 }
 
-int UBShmTransport::NegotiateUpgradeResources(ubring::SHM *local_trx_shm,
-                                              const char *shm_name,
+int UBShmTransport::NegotiateUpgradeResources(ubring::SHM* local_trx_shm,
+                                              const char* shm_name,
                                               uint64_t remote_shm_len,
                                               ubring::UbrDataFormat format) {
     return _ub_ep->_ub_ring->UbrMapRemoteShm(
         local_trx_shm, shm_name, remote_shm_len, format);
 }
 
-int UBShmTransport::PrepareServerUpgradeResources(ubring::SHM *remote_trx_shm,
-                                                  ubring::SHM *local_trx_shm,
+int UBShmTransport::PrepareServerUpgradeResources(ubring::SHM* remote_trx_shm,
+                                                  ubring::SHM* local_trx_shm,
                                                   ubring::UbrDataFormat format) {
     return _ub_ep->AllocateServerResources(
         remote_trx_shm, local_trx_shm, format);
@@ -106,18 +106,18 @@ void UBShmTransport::DeactivateUpgrade() {
 }
 
 void UBShmTransport::FinishUpgrade() {
-    if (_ub_ep != NULL && _ub_ep->_ub_ring != NULL) {
+    if (_ub_ep != nullptr && _ub_ep->_ub_ring != nullptr) {
         _ub_ep->_ub_ring->UbrUnlinkLocalShm();
     }
 }
 
-int UBShmTransport::CutFromIOBuf(butil::IOBuf *buf) {
-    butil::IOBuf *data[1] = {buf};
+int UBShmTransport::CutFromIOBuf(butil::IOBuf* buf) {
+    butil::IOBuf* data[1] = {buf};
     return static_cast<int>(CutFromIOBufList(data, 1));
 }
 
-ssize_t UBShmTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
-    CHECK(_ub_ep != NULL);
+ssize_t UBShmTransport::CutFromIOBufList(butil::IOBuf** buf, size_t ndata) {
+    CHECK(_ub_ep != nullptr);
     return _ub_ep->CutFromIOBufList(buf, ndata);
 }
 
@@ -210,7 +210,7 @@ int UBShmTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
         }
         ubring::GlobalUBInitializeOrDie();
         if (!ubring::InitPollingModeWithTag(
-                static_cast<const ServerOptions *>(_options)->bthread_tag)) {
+                static_cast<const ServerOptions*>(_options)->bthread_tag)) {
             return -1;
         }
     } else {

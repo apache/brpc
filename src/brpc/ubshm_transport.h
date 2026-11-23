@@ -29,9 +29,9 @@ namespace handshake {
 struct HandshakeRegistration;
 }
 class UBShmTransport : public Transport {
-    friend class TransportFactory;
-    friend struct handshake::HandshakeRegistration;
-    friend class ubring::UBShmEndpoint;
+friend class TransportFactory;
+friend struct handshake::HandshakeRegistration;
+friend class ubring::UBShmEndpoint;
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;

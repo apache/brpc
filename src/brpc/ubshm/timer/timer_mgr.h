@@ -67,7 +67,7 @@ void CloseTimerFd(int fd);
 
 // Wait for an active callback before closing its descriptor. Self-cancellation
 // closes the descriptor when the callback returns.
-void DeleteTimerSafe(uint32_t fd);
+void DeleteTimerSafe(int fd);
 void DeleteTimer(uint32_t fd);
 }
 }

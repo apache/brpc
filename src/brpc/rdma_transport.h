@@ -27,9 +27,9 @@
 
 namespace brpc {
 class RdmaTransport : public Transport {
-    friend class TransportFactory;
-    friend struct handshake::HandshakeRegistration;
-    friend class rdma::RdmaEndpoint;
+friend class TransportFactory;
+friend struct handshake::HandshakeRegistration;
+friend class rdma::RdmaEndpoint;
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;

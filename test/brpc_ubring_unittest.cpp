@@ -882,7 +882,7 @@ TEST(UBShmHandshakeAdapterTest, disabled_hello_requests_tcp_fallback) {
     brpc::ubring::UBShmHandshakeAdapter adapter;
     std::string payload;
     ASSERT_EQ(brpc::handshake::STEP_OK,
-              adapter.BuildHello(false, 0, NULL, &payload));
+              adapter.BuildHello(false, 0, nullptr, &payload));
     brpc::ubring::HelloMessage decoded{};
     EXPECT_EQ(brpc::handshake::STEP_FALLBACK,
               adapter.ParseHello(payload, &decoded));
@@ -1185,6 +1185,9 @@ TEST_F(UBShmEndpointTest, repeated_close_preserves_deferred_cleanup_timer) {
         SHM local = {nullptr, 4 * 1024 * 1024, 0, {0}, 0};
         ASSERT_EQ(0, ring.UbrAllocateLocalShm(&local, "close_once"));
         UbrTrx& trx = *ring._trx;
+        EXPECT_EQ(-1, trx.timer_fd);
+        EXPECT_EQ(-1, trx.hb_timer_fd);
+        EXPECT_EQ(-1, trx.clear_timer_fd);
         reinterpret_cast<UbrEventQMsg*>(trx.ubr_tx.local_tx_event_q.addr)
             ->flag = UBR_STATE_CONNECTED;
         trx.initializing = false;
@@ -2148,7 +2151,7 @@ protected:
         ASSERT_NE(nullptr, list);
         ASSERT_EQ(0, pthread_mutex_init(&list->shm_lock, nullptr));
         g_shm_list = list;
-        g_shm_timer_fd = 0;
+        g_shm_timer_fd = -1;
         FLAGS_ub_flying_io_timeout_s = 1;
         ubs_cleanup = &state;
         SetShmType(SHM_TYPE_UBS);
@@ -2312,6 +2315,23 @@ TEST_F(UbsCleanupTest, retry_resumes_at_deallocate_and_accepts_already_deleted_n
     EXPECT_EQ(0u, list->size);
     EXPECT_EQ(1, state.unmaps.load());
     EXPECT_EQ(3, state.deallocates.load());
+}
+
+TEST_F(UbsCleanupTest, retry_unmaps_a_reused_address_before_deallocation) {
+    using namespace brpc::ubring;
+    state.unmap_error.store(0);
+    state.deallocate_error.store(UBSM_ERR_IN_USING);
+    SHM original = Mapping();
+    SHM remapped = original;
+    ASSERT_EQ(UBRING_OK, UbsShmLocalFree(&original));
+    ASSERT_EQ(1u, list->size);
+    ASSERT_EQ(1, state.unmaps.load());
+    ASSERT_EQ(UBRING_OK, UbsShmRemoteFree(&remapped));
+    state.deallocate_error.store(0);
+    UbsShmCallback(list);
+    EXPECT_EQ(0u, list->size);
+    EXPECT_EQ(2, state.unmaps.load());
+    EXPECT_EQ(2, state.deallocates.load());
 }
 
 TEST_F(UbsCleanupTest, remote_retry_keeps_distinct_mappings_and_never_deallocates) {
@@ -2614,6 +2634,22 @@ TEST_F(UbsCleanupTest, device_faults_during_server_construction_abort_the_upgrad
     }
 }
 
+TEST_F(UbsCleanupTest, fault_on_reused_name_reaches_the_open_transaction) {
+    using namespace brpc::ubring;
+    UbrTrx* closing = nullptr;
+    UbrTrx* opening = nullptr;
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&closing));
+    BRPC_SCOPE_EXIT { UBRingManager::ReleaseUbrTrxFromMgr(closing); };
+    ASSERT_EQ(UBRING_OK, UBRingManager::AcquireUbrTrxFromMgr(&opening));
+    BRPC_SCOPE_EXIT { UBRingManager::ReleaseUbrTrxFromMgr(opening); };
+    closing->close_state = UBR_CLOSE_SECOND;
+    strcpy(closing->local_shm.name, "ubs_reused");
+    strcpy(opening->local_shm.name, "ubs_reused");
+    EXPECT_EQ(UBRING_OK, UBRingManager::UbEventCallback("ubs_reused"));
+    EXPECT_TRUE(ATOMIC_LOAD(opening->device_fault));
+    EXPECT_FALSE(ATOMIC_LOAD(closing->device_fault));
+}
+
 TEST_F(UbsCleanupTest, device_fault_before_client_negotiation_prevents_activation) {
     using namespace brpc::ubring;
     std::vector<uint8_t> bytes(4 * 1024 * 1024);
@@ -2669,7 +2705,7 @@ TEST_F(UbsCleanupTest, finalize_retains_failed_tasks_until_sdk_recovery) {
     EXPECT_EQ(0, state.finalizes.load());
     EXPECT_NE(nullptr, g_shm_list);
     DeleteTimerSafe(g_shm_timer_fd);
-    g_shm_timer_fd = 0;
+    g_shm_timer_fd = -1;
     state.unmap_error.store(0);
     EXPECT_EQ(UBRING_OK, UbsShmFini());
     EXPECT_EQ(nullptr, g_shm_list);

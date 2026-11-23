@@ -33,13 +33,12 @@ namespace handshake {
 static const int WAIT_TIMEOUT_MS = 50;
 
 SocketHandshakeIO::SocketHandshakeIO(Socket* socket)
-    : _socket(socket)
-    , _read_butex(bthread::butex_create_checked<butil::atomic<int> >()) {
-    _read_butex->store(0, butil::memory_order_relaxed);
-}
+    : _socket(socket) {}
 
 SocketHandshakeIO::~SocketHandshakeIO() {
-    bthread::butex_destroy(_read_butex);
+    if (auto* butex = _read_butex.load(butil::memory_order_relaxed)) {
+        bthread::butex_destroy(butex);
+    }
 }
 
 void SocketHandshakeIO::Reset(Socket* socket) {
@@ -47,8 +46,10 @@ void SocketHandshakeIO::Reset(Socket* socket) {
 }
 
 void SocketHandshakeIO::NotifyReadable() {
-    _read_butex->fetch_add(1, butil::memory_order_release);
-    bthread::butex_wake(_read_butex);
+    if (auto* butex = _read_butex.load(butil::memory_order_acquire)) {
+        butex->fetch_add(1, butil::memory_order_release);
+        bthread::butex_wake(butex);
+    }
 }
 
 int SocketHandshakeIO::GetWaitDeadline(timespec* deadline) const {
@@ -72,9 +73,16 @@ int SocketHandshakeIO::ReadExact(void* data, size_t len) {
     CHECK(data != nullptr);
     CHECK(_socket != nullptr);
     const int fd = _socket->fd();
+    // Each handshake has a single reader. Notifiers may run concurrently.
+    auto* butex = _read_butex.load(butil::memory_order_relaxed);
+    if (butex == nullptr) {
+        butex = bthread::butex_create_checked<butil::atomic<int>>();
+        butex->store(0, butil::memory_order_relaxed);
+        _read_butex.store(butex, butil::memory_order_release);
+    }
     size_t received = 0;
     while (received < len) {
-        const int expected = _read_butex->load(butil::memory_order_acquire);
+        const int expected = butex->load(butil::memory_order_acquire);
         timespec duetime;
         if (GetWaitDeadline(&duetime) != 0) {
             return -1;
@@ -88,7 +96,7 @@ int SocketHandshakeIO::ReadExact(void* data, size_t len) {
             if (errno != EAGAIN) {
                 return -1;
             }
-            if (bthread::butex_wait(_read_butex, expected, &duetime) < 0 &&
+            if (bthread::butex_wait(butex, expected, &duetime) < 0 &&
                 errno != EWOULDBLOCK && errno != ETIMEDOUT) {
                 return -1;
             }
@@ -105,6 +113,13 @@ int SocketHandshakeIO::ReadExact(void* data, size_t len) {
 int SocketHandshakeIO::WriteAll(const void* data, size_t len) {
     CHECK(data != nullptr);
     CHECK(_socket != nullptr);
+    if (len != 0 && _socket->is_ssl()) {
+        butil::IOBuf frame;
+        if (frame.append(data, len) != 0) {
+            return -1;
+        }
+        return _socket->Write(&frame);
+    }
     const int fd = _socket->fd();
     size_t written = 0;
     while (written < len) {

@@ -127,6 +127,9 @@ RETURN_CODE UBRingManager::AcquireUbrTrxFromMgr(UbrTrx **trx) {
             memset(&g_ubr_mgr.trx_mgr[i], 0, sizeof(UbrTrx));
             g_ubr_mgr.trx_mgr_unit_status[i] = UBR_MGR_UNIT_USED;
             *trx = &g_ubr_mgr.trx_mgr[i];
+            (*trx)->timer_fd = -1;
+            (*trx)->hb_timer_fd = -1;
+            (*trx)->clear_timer_fd = -1;
             (*trx)->trx_mgr_index = i;
             (*trx)->ubr_id = g_ubr_trx_num;
             (*trx)->ref_count = 1;
@@ -259,6 +262,7 @@ int32_t UBRingManager::UbEventCallback(const char *shm_name)
     }
     LOG(INFO) << "Ub event callback is processing. shm_name=" << shm_name;
     UbrTrx* trx = nullptr;
+    bool already_closing = false;
     {
         LOCK_GUARD(g_ubr_trx_mgr_mtx);
         for (uint32_t i = 0; i < g_ubr_mgr.trx_cap; ++i) {
@@ -268,6 +272,10 @@ int32_t UBRingManager::UbEventCallback(const char *shm_name)
             UbrTrx* candidate = &g_ubr_mgr.trx_mgr[i];
             if (strcmp(candidate->local_shm.name, shm_name) == 0 ||
                 strcmp(candidate->remote_shm.name, shm_name) == 0) {
+                if (ATOMIC_LOAD(candidate->close_state) != UBR_CLOSE_FIRST) {
+                    already_closing = true;
+                    continue;
+                }
                 ATOMIC_STORE(candidate->device_fault, true);
                 if (ATOMIC_LOAD(candidate->initializing)) {
                     return UBRING_OK;
@@ -280,7 +288,7 @@ int32_t UBRingManager::UbEventCallback(const char *shm_name)
         }
     }
     if (trx == nullptr) {
-        return UBRING_ERR;
+        return already_closing ? UBRING_OK : UBRING_ERR;
     }
     const RETURN_CODE rc = UBRing::UbrPassiveClearTrx(trx);
     ReleaseUbrTrxFromMgr(trx);

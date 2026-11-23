@@ -19,6 +19,7 @@
 
 #include <errno.h>
 #include <limits>
+#include <new>
 #include <string>
 
 #include "butil/logging.h"
@@ -362,8 +363,6 @@ protected:
     HandshakeSession* GetSession(Socket* socket) const override;
 
 private:
-    StepResult RunFallbackServerHandshake(
-        butil::IOBuf* source, Socket* socket);
 #if BRPC_WITH_RDMA
     StepResult RunRdmaServerHandshake(
         butil::IOBuf* source, Socket* socket);
@@ -527,6 +526,7 @@ const HandshakeRegistration& GetRdmaHandshakeRegistration() {
     static const HandshakeRegistration registration = {
         SOCKET_MODE_RDMA, &server,
         {&rdma::RdmaHelloFrameSpec(2), &rdma::RdmaHelloFrameSpec(3)}, upgrade,
+        nullptr,
     };
     return registration;
 }
@@ -536,15 +536,14 @@ HandshakeSession* RdmaServerHandshakeAdapter::GetSession(
     return AdapterTransport::Get(socket)->handshake_session();
 }
 
-StepResult RdmaServerHandshakeAdapter::RunFallbackServerHandshake(
-    butil::IOBuf* source, Socket* socket) {
+static StepResult RunRdmaFallbackServerHandshake(
+    butil::IOBuf* source, HandshakeSession* session) {
     RdmaFallbackProtocol v2(2);
     RdmaFallbackProtocol v3(3);
     std::vector<HandshakeProtocol*> protocols;
     protocols.push_back(&v2);
     protocols.push_back(&v3);
     FallbackHandshakeTransport transport;
-    auto* session = GetSession(socket);
     return session->RunServer(
         session->socket_io(), protocols, source, &transport, false);
 }
@@ -632,7 +631,42 @@ StepResult RdmaServerHandshakeAdapter::RunServerStep(
         return RunRdmaServerHandshake(source, socket);
     }
 #endif
-    return RunFallbackServerHandshake(source, socket);
+    return RunRdmaFallbackServerHandshake(source, GetSession(socket));
+}
+
+// Transports outside AdapterTransport only retain state while waiting for ACK.
+struct RdmaFallbackContext : Destroyable {
+    explicit RdmaFallbackContext(Socket* socket) : session(socket) {}
+    void Destroy() override { delete this; }
+    HandshakeSession session;
+};
+
+ParseResult ParseRdmaFallbackHandshake(butil::IOBuf* source, Socket* socket) {
+    auto* context = static_cast<RdmaFallbackContext*>(socket->parsing_context());
+    std::unique_ptr<RdmaFallbackContext> local;
+    if (context == nullptr) {
+        if (source->empty() || HandshakeRegistration::MatchHello(*source) !=
+                                   GetRdmaHandshakeRegistration().server) {
+            return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+        }
+        local.reset(new (std::nothrow) RdmaFallbackContext(socket));
+        if (!local) {
+            return MakeParseError(PARSE_ERROR_NO_RESOURCE);
+        }
+        context = local.get();
+    }
+    const StepResult result =
+        RunRdmaFallbackServerHandshake(source, &context->session);
+    if (result == STEP_NEED_MORE) {
+        if (local && context->session.phase(butil::memory_order_acquire) ==
+                         ACK_WAIT) {
+            socket->reset_parsing_context(local.release());
+        }
+        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
+    }
+    socket->reset_parsing_context(nullptr);
+    return MakeParseError(result == STEP_ERROR ? PARSE_ERROR_ABSOLUTELY_WRONG
+                                               : PARSE_ERROR_TRY_OTHERS);
 }
 
 }  // namespace handshake

@@ -144,6 +144,7 @@ protected:
     // call callbacks.
     static void OnNewMessages(Socket* m);
     // Stop draining the TCP fd when a parser changes the transport state.
+    // stop_reading runs after input processing releases the parsing guard.
     static void OnNewMessagesUntil(Socket* m, bool (*stop_reading)(Socket*));
     
 private:

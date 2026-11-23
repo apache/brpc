@@ -71,6 +71,7 @@ struct HandshakeRegistration {
     HandshakeAdapter* server;
     std::initializer_list<const FrameSpec*> hello_frames;
     const Upgrade* upgrade;
+    bool (*match_hello_fields)(const butil::IOBuf&);
 
     static const HandshakeRegistration* Find(SocketMode mode);
     static HandshakeAdapter* MatchHello(const butil::IOBuf& input);

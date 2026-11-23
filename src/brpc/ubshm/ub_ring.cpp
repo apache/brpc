@@ -104,7 +104,7 @@ RETURN_CODE UBRing::UbrTrxAbort() {
     // Transfer the ring reference when retry storage could not be acquired.
     UbrTrx* trx = _trx;
     _trx = nullptr;
-    trx->clear_timer_fd = 0;
+    trx->clear_timer_fd = -1;
     if (UbrAddAsynClearTimer(trx) != UBRING_OK) {
         UbrAsynClearCallback(trx);
     }
@@ -197,8 +197,8 @@ RETURN_CODE UBRing::UbrAddTimer() {
     }
 
     if (UNLIKELY(UbrAddHBTimer() != UBRING_OK)) {
-        DeleteTimerSafe((uint32_t)_trx->timer_fd);
-        _trx->timer_fd = 0;
+        DeleteTimerSafe(_trx->timer_fd);
+        _trx->timer_fd = -1;
         LOG(ERROR) << "Ubr " << _trx->local_shm.name << " add heartbeat timer failed.";
         return UBRING_ERR;
     }
@@ -292,7 +292,7 @@ RETURN_CODE UBRing::UbrAddAsynClearTimer(UbrTrx *trx) {
         return UBRING_ERR;
     }
 
-    if (trx->clear_timer_fd > 0) {
+    if (trx->clear_timer_fd >= 0) {
         return UBRING_OK;
     }
 
@@ -322,7 +322,7 @@ void *UBRing::UbrAsynClearCallback(void *args)
     while (UbrTrxFreeShm(trx) != UBRING_OK) {
         LOG_EVERY_SECOND(ERROR) << "Trx close, retry cleanup for "
                                << trx->local_shm.name;
-        trx->clear_timer_fd = 0;
+        trx->clear_timer_fd = -1;
         if (UbrAddAsynClearTimer(trx) == UBRING_OK) {
             return nullptr;
         }
@@ -1261,10 +1261,10 @@ RETURN_CODE UBRing::UbrMapRemoteShmAddTimer(SHM *local_trx_shm, const char *loca
     uint32_t timeout = ((UbrDataStatusQMsg *)(_trx->ubr_tx.local_data_status_q.addr))->timeout;
     if (HasTimedOut(start_time, timeout) != UBRING_OK) {
         LOG(ERROR) << "Local shm " << local_trx_shm->name << " wait for connect remote map timeout.";
-        DeleteTimerSafe((uint32_t)_trx->hb_timer_fd);
-        DeleteTimerSafe((uint32_t)_trx->timer_fd);
-        _trx->hb_timer_fd = 0;
-        _trx->timer_fd = 0;
+        DeleteTimerSafe(_trx->hb_timer_fd);
+        DeleteTimerSafe(_trx->timer_fd);
+        _trx->hb_timer_fd = -1;
+        _trx->timer_fd = -1;
         return UBRING_ERR_TIMEOUT;
     }
 
@@ -1382,10 +1382,10 @@ RETURN_CODE UBRing::UbrClearResourceCheck(UbrTrx* trx, UbrCloseType close_type)
         local_tx_event_q->flag = UBR_STATE_CLOSING;
     }
 
-    DeleteTimerSafe((uint32_t)trx->timer_fd);
-    DeleteTimerSafe((uint32_t)trx->hb_timer_fd);
-    trx->timer_fd = 0;
-    trx->hb_timer_fd = 0;
+    DeleteTimerSafe(trx->timer_fd);
+    DeleteTimerSafe(trx->hb_timer_fd);
+    trx->timer_fd = -1;
+    trx->hb_timer_fd = -1;
 
     if (local_tx_event_q->flag == UBR_STATE_CLOSING) {
         local_tx_event_q->flag = UBR_STATE_CLOSED;

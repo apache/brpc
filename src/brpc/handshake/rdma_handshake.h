@@ -24,6 +24,7 @@ namespace brpc {
 namespace handshake {
 
 const HandshakeRegistration& GetRdmaHandshakeRegistration();
+ParseResult ParseRdmaFallbackHandshake(butil::IOBuf* source, Socket* socket);
 
 }  // namespace handshake
 }  // namespace brpc

@@ -60,7 +60,7 @@ bool BuildServerShmName(const char* peer_name,
     return true;
 }
 
-UBShmEndpoint::UBShmEndpoint(Socket *s)
+UBShmEndpoint::UBShmEndpoint(Socket* s)
     : _socket(s), _socket_id(s ? s->id() : INVALID_SOCKET_ID),
       _ub_ring(nullptr), _poller_sid(INVALID_SOCKET_ID) {
 }
@@ -141,8 +141,8 @@ ssize_t UBShmEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
     return nw;
 }
 
-int UBShmEndpoint::AllocateClientResources(ubring::SHM *local_trx_shm,
-                                           const char *shm_name) {
+int UBShmEndpoint::AllocateClientResources(ubring::SHM* local_trx_shm,
+                                           const char* shm_name) {
     if (BAIDU_UNLIKELY(g_skip_ub_init)) {
         // For UT
         return 0;
@@ -159,7 +159,7 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM *local_trx_shm,
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         delete _ub_ring;
-        _ub_ring = NULL;
+        _ub_ring = nullptr;
         _poller_sid = INVALID_SOCKET_ID;
         errno = saved_errno;
         return -1;
@@ -169,7 +169,7 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM *local_trx_shm,
         const int saved_errno = errno;
         DeallocateResources();
         delete _ub_ring;
-        _ub_ring = NULL;
+        _ub_ring = nullptr;
         _poller_sid = INVALID_SOCKET_ID;
         errno = saved_errno;
         return ret;
@@ -196,7 +196,7 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm,
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         delete _ub_ring;
-        _ub_ring = NULL;
+        _ub_ring = nullptr;
         _poller_sid = INVALID_SOCKET_ID;
         errno = saved_errno;
         return -1;
@@ -207,7 +207,7 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm,
         const int saved_errno = errno;
         DeallocateResources();
         delete _ub_ring;
-        _ub_ring = NULL;
+        _ub_ring = nullptr;
         _poller_sid = INVALID_SOCKET_ID;
         errno = saved_errno;
         return ret;
@@ -259,7 +259,7 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t ep_event) {
     if (Socket::Address(ep->_socket_id, &s) < 0) {
         return;
     }
-    UBShmTransport *ub_transport = UBShmTransport::Get(s.get());
+    UBShmTransport* ub_transport = UBShmTransport::Get(s.get());
     CHECK(ep == ub_transport->_ub_ep);
 
     InputMessageClosure last_msg;
@@ -316,7 +316,7 @@ void UBShmEndpoint::PollOut(UBShmEndpoint* ep, uint32_t ep_event) {
     if (Socket::Address(ep->_socket_id, &s) < 0) {
         return;
     }
-    UBShmTransport *ub_transport = UBShmTransport::Get(s.get());
+    UBShmTransport* ub_transport = UBShmTransport::Get(s.get());
     CHECK(ep == ub_transport->_ub_ep);
     if (ep->IsWritable()) {
         s->WakeAsEpollOut();
@@ -359,6 +359,15 @@ std::vector<UBShmEndpoint::PollerGroup> UBShmEndpoint::_poller_groups;
 decltype(&bthread_start_background) StartPollingThread = bthread_start_background;
 
 void UBShmEndpoint::PollerGroup::Stop(std::unique_lock<bthread::Mutex>& lock) {
+    // A poller callback cannot join its own group.
+    const bthread_t self = bthread_self();
+    if (self != INVALID_BTHREAD) {
+        for (const auto& poller : pollers) {
+            if (poller.tid == self) {
+                return;
+            }
+        }
+    }
     if (stopping) {
         stopped.wait(lock, [this] { return !stopping; });
         return;
@@ -368,13 +377,15 @@ void UBShmEndpoint::PollerGroup::Stop(std::unique_lock<bthread::Mutex>& lock) {
     }
     stopping = true;
     lock.unlock();
-    for (auto& poller : pollers) {
+    for (const auto& poller : pollers) {
         if (poller.tid != INVALID_BTHREAD) {
             bthread_join(poller.tid, nullptr);
-            poller.tid = INVALID_BTHREAD;
         }
     }
     lock.lock();
+    for (auto& poller : pollers) {
+        poller.tid = INVALID_BTHREAD;
+    }
     stopping = false;
     stopped.notify_all();
 }

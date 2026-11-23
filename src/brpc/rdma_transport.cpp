@@ -112,12 +112,12 @@ void RdmaTransport::DeactivateUpgrade() {
     }
 }
 
-int RdmaTransport::CutFromIOBuf(butil::IOBuf *buf) {
-    butil::IOBuf *data[1] = {buf};
+int RdmaTransport::CutFromIOBuf(butil::IOBuf* buf) {
+    butil::IOBuf* data[1] = {buf};
     return static_cast<int>(CutFromIOBufList(data, 1));
 }
 
-ssize_t RdmaTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
+ssize_t RdmaTransport::CutFromIOBufList(butil::IOBuf** buf, size_t ndata) {
     CHECK(_rdma_ep != nullptr);
     return _rdma_ep->CutFromIOBufList(buf, ndata);
 }
@@ -210,17 +210,17 @@ void RdmaTransport::Debug(std::ostream &os) {
 int RdmaTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
     if (serverOrNot) {
         if (!OptionsAvailableOverRdma(
-                static_cast<const ServerOptions *>(_options))) {
+                static_cast<const ServerOptions*>(_options))) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
         if (!rdma::InitPollingModeWithTag(
-                static_cast<const ServerOptions *>(_options)->bthread_tag)) {
+                static_cast<const ServerOptions*>(_options)->bthread_tag)) {
             return -1;
         }
     } else {
         if (!OptionsAvailableForRdma(
-                static_cast<const ChannelOptions *>(_options))) {
+                static_cast<const ChannelOptions*>(_options))) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();

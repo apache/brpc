@@ -85,6 +85,9 @@ private:
     static void OnUpgradeComplete(int error, void* arg) {
         ApplicationConnectTask* task =
             static_cast<ApplicationConnectTask*>(arg);
+        if (error == 0 && task->socket->Failed()) {
+            error = EFAILEDSOCKET;
+        }
         if (error != 0 || !task->app_connect) {
             std::unique_ptr<ApplicationConnectTask> owned(task);
             task->done(error, task->data);
@@ -122,7 +125,8 @@ const AdapterTransport* AdapterTransport::Get(const Socket* socket) {
 }
 
 bool AdapterTransport::upgrade_capable(SocketMode mode) const {
-    return _socket->socket_mode() == mode && _high_speed_transport &&
+    return _socket->socket_mode() == mode && !_socket->is_ssl() &&
+           _high_speed_transport &&
            _upgrade->ready(_high_speed_transport.get());
 }
 
@@ -136,7 +140,7 @@ int AdapterTransport::StartClientUpgradeImpl(
     const Socket* socket, void (*done)(int, void*), void* data,
     StartBackground start_background) {
     AdapterTransport* adapter = Get(const_cast<Socket*>(socket));
-    ClientHandshakeTask* task = new ClientHandshakeTask{adapter, done, data, SocketUniquePtr()};
+    auto* task = new ClientHandshakeTask{adapter, done, data, SocketUniquePtr()};
     if (Socket::Address(socket->id(), &task->socket) != 0) {
         delete task;
         errno = EFAILEDSOCKET;
@@ -185,14 +189,20 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         task->done(EPROTO, task->data);
         return nullptr;
     }
-    if (!adapter->_upgrade->available()) {
+    int error = 0;
+    if (socket->Failed()) {
+        error = EFAILEDSOCKET;
+        adapter->_handshake.MarkFailed();
+    } else if (adapter->_upgrade->available()) {
+        error = adapter->_upgrade->run_client(
+            adapter->_high_speed_transport.get(), socket, adapter->_handshake);
+    } else {
         adapter->FallbackToTcp();
-        task->done(0, task->data);
-        return nullptr;
     }
-
-    int error = adapter->_upgrade->run_client(
-        adapter->_high_speed_transport.get(), socket, adapter->_handshake);
+    if (error == 0 && socket->Failed()) {
+        adapter->_handshake.MarkFailed();
+        error = EFAILEDSOCKET;
+    }
     if (error == 0 && adapter->handshake_phase() == handshake::ESTABLISHED) {
         error = adapter->StartUpgradeReceive();
         if (error != 0) {
@@ -219,7 +229,7 @@ void AdapterTransport::Init(Socket* socket, const SocketOptions& options) {
         }
     }
     _handshake.Reset(socket);
-    _tcp_transport.reset(new TcpTransport);
+    _tcp_transport = std::make_unique<TcpTransport>();
     _tcp_transport->Init(socket, options);
 
     if (_upgrade) {
@@ -280,7 +290,7 @@ ssize_t AdapterTransport::CutFromIOBufList(
 }
 
 int AdapterTransport::WaitEpollOut(butil::atomic<int>* epollout_butex,
-                                    bool pollin, timespec duetime) {
+                                  bool pollin, timespec duetime) {
     return ActiveTransport()->WaitEpollOut(
         epollout_butex, pollin, duetime);
 }
@@ -344,19 +354,20 @@ void AdapterTransport::OnNewMessagesAfterUpgrade(Socket* socket) {
     }
 
     InputMessenger::OnNewMessagesUntil(socket, [](Socket* s) {
-        return Get(s)->handshake_phase() == handshake::ESTABLISHED;
-    });
-
-    if (adapter->handshake_phase() == handshake::ESTABLISHED) {
-        const int error = adapter->StartUpgradeReceive();
-        if (error != 0) {
-            socket->SetFailed(
-                error, "Fail to start upgrade receive events from %s: %s",
-                socket->description().c_str(), berror(error));
-            return;
+        AdapterTransport* transport = Get(s);
+        if (transport->handshake_phase() != handshake::ESTABLISHED) {
+            return false;
         }
-        adapter->CheckUnexpectedTcpData();
-    }
+        const int error = transport->StartUpgradeReceive();
+        if (error == 0) {
+            transport->CheckUnexpectedTcpData();
+        } else {
+            s->SetFailed(
+                error, "Fail to start upgrade receive events from %s: %s",
+                s->description().c_str(), berror(error));
+        }
+        return true;
+    });
 }
 
 void AdapterTransport::OnNewDataFromTcp(Socket* socket) {

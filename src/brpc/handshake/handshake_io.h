@@ -59,7 +59,7 @@ private:
     int GetWaitDeadline(timespec* deadline) const;
 
     Socket* _socket;
-    butil::atomic<int>* _read_butex;
+    butil::atomic<butil::atomic<int>*> _read_butex{nullptr};
 
     DISALLOW_COPY_AND_ASSIGN(SocketHandshakeIO);
 };

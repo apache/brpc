@@ -256,8 +256,10 @@ void *TimerEpoll(void *args) {
     return nullptr;
 }
 
-void DeleteTimerSafe(uint32_t fd) {
-    DeleteTimerInner(fd);
+void DeleteTimerSafe(int fd) {
+    if (fd >= 0) {
+        DeleteTimerInner(fd);
+    }
 }
 
 void DeleteTimer(uint32_t fd) {

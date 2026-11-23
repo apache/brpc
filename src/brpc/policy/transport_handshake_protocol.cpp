@@ -19,17 +19,16 @@
 
 #include "butil/logging.h"
 #include "brpc/adapter_transport.h"
+#include "brpc/handshake/rdma_handshake.h"
 #include "brpc/socket.h"
 
 namespace brpc {
 namespace policy {
 
 ParseResult ParseTransportHandshake(butil::IOBuf* source, Socket* socket,
-                                     bool /*read_eof*/, const void* /*arg*/) {
-    // URMA still uses its own Transport. Do not cast it to AdapterTransport
-    // when this globally registered parser is tried during protocol detection.
+                                    bool /*read_eof*/, const void* /*arg*/) {
     if (socket->socket_mode() == SOCKET_MODE_URMA) {
-        return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+        return handshake::ParseRdmaFallbackHandshake(source, socket);
     }
     return AdapterTransport::Get(socket)->ProcessUpgradeReadable(source);
 }

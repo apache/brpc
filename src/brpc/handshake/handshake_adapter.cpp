@@ -66,7 +66,9 @@ const HandshakeRegistration* HandshakeRegistration::Find(SocketMode mode) {
 HandshakeAdapter* HandshakeRegistration::MatchHello(const butil::IOBuf& input) {
     for (const auto* registration : Registrations()) {
         for (const auto* frame : registration->hello_frames) {
-            if (MatchesMagic(input, *frame)) {
+            if (MatchesMagic(input, *frame) &&
+                (!registration->match_hello_fields ||
+                 registration->match_hello_fields(input))) {
                 return registration->server;
             }
         }

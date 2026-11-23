@@ -1117,6 +1117,15 @@ std::vector<RqConnection::PollerGroup> RqConnection::_poller_groups;
 decltype(&bthread_start_background) StartPollingThread = bthread_start_background;
 
 void RqConnection::PollerGroup::Stop(std::unique_lock<bthread::Mutex>& lock) {
+    // A poller callback cannot join its own group.
+    const bthread_t self = bthread_self();
+    if (self != INVALID_BTHREAD) {
+        for (const auto& poller : pollers) {
+            if (poller.tid == self) {
+                return;
+            }
+        }
+    }
     if (stopping) {
         stopped.wait(lock, [this] { return !stopping; });
         return;
@@ -1126,13 +1135,15 @@ void RqConnection::PollerGroup::Stop(std::unique_lock<bthread::Mutex>& lock) {
     }
     stopping = true;
     lock.unlock();
-    for (auto& poller : pollers) {
+    for (const auto& poller : pollers) {
         if (poller.tid != INVALID_BTHREAD) {
             bthread_join(poller.tid, nullptr);
-            poller.tid = INVALID_BTHREAD;
         }
     }
     lock.lock();
+    for (auto& poller : pollers) {
+        poller.tid = INVALID_BTHREAD;
+    }
     stopping = false;
     stopped.notify_all();
 }
