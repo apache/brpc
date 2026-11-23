@@ -121,6 +121,29 @@ TEST_F(CRC, Extend) {
             Extend(Value("hello ", 6), "world", 5));
 }
 
+TEST_F(CRC, ChunkIndependence) {
+  const unsigned char data[20] = {
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
+      0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
+  };
+  const char* bytes = reinterpret_cast<const char*>(data);
+  const size_t chunk_sizes[] = {1, 2, 3, 4, 7, 8, 16};
+  for (size_t len = 1; len <= sizeof(data); ++len) {
+    const uint32_t expected = ReferenceExtend(0, bytes, len);
+    ASSERT_EQ(expected, Value(bytes, len)) << "len=" << len;
+    for (size_t ci = 0; ci < sizeof(chunk_sizes) / sizeof(chunk_sizes[0]);
+         ++ci) {
+      const size_t step = chunk_sizes[ci];
+      uint32_t chained = 0;
+      for (size_t pos = 0; pos < len; pos += step) {
+        const size_t n = (pos + step <= len) ? step : (len - pos);
+        chained = Extend(chained, bytes + pos, n);
+      }
+      ASSERT_EQ(expected, chained) << "len=" << len << " step=" << step;
+    }
+  }
+}
+
 TEST_F(CRC, Mask) {
   uint32_t crc = Value("foo", 3);
   ASSERT_NE(crc, Mask(crc));

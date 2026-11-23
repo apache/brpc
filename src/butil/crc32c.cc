@@ -313,21 +313,6 @@ static const uint32_t table3_[256] = {
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
-#if defined(__aarch64__)
-static inline uint16_t DecodeFixed16(const char* ptr) {
-#if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
-  // Load the raw bytes
-  uint16_t result;
-  memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
-  return result;
-#else
-  return static_cast<uint16_t>(
-      static_cast<uint16_t>(static_cast<unsigned char>(ptr[0])) |
-      (static_cast<uint16_t>(static_cast<unsigned char>(ptr[1])) << 8));
-#endif
-}
-#endif  // defined(__aarch64__)
-
 static inline uint32_t DecodeFixed32(const char* ptr) {
 #if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
     // Load the raw bytes
@@ -971,6 +956,50 @@ static constexpr uint32_t ComputeCrc32cShiftConst(size_t bytes) {
   return c;
 }
 
+#if (defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) ||                  \
+    defined(__AARCH64EB__) || defined(__ARM_BIG_ENDIAN)
+#define BUTIL_ARM64_BIG_ENDIAN 1
+#else
+#define BUTIL_ARM64_BIG_ENDIAN 0
+#endif
+
+static inline uint16_t ArmLoadLe16(const uint8_t* ptr) {
+#if BUTIL_ARM64_BIG_ENDIAN
+  return static_cast<uint16_t>(static_cast<uint16_t>(ptr[0]) |
+                               (static_cast<uint16_t>(ptr[1]) << 8));
+#else
+  uint16_t result;
+  memcpy(&result, ptr, sizeof(result));
+  return result;
+#endif
+}
+
+static inline uint32_t ArmLoadLe32(const uint8_t* ptr) {
+#if BUTIL_ARM64_BIG_ENDIAN
+  return static_cast<uint32_t>(ptr[0]) |
+         (static_cast<uint32_t>(ptr[1]) << 8) |
+         (static_cast<uint32_t>(ptr[2]) << 16) |
+         (static_cast<uint32_t>(ptr[3]) << 24);
+#else
+  uint32_t result;
+  memcpy(&result, ptr, sizeof(result));
+  return result;
+#endif
+}
+
+static inline uint64_t ArmLoadLe64(const uint8_t* ptr) {
+#if BUTIL_ARM64_BIG_ENDIAN
+  const uint64_t lo = ArmLoadLe32(ptr);
+  const uint64_t hi = ArmLoadLe32(ptr + 4);
+  return (hi << 32) | lo;
+#else
+  uint64_t result;
+  memcpy(&result, ptr, sizeof(result));
+  return result;
+#endif
+}
+
 BUTIL_CRC32_TARGET_CRC
 static uint32_t Arm64ExtendCrc32(uint32_t crc, const char* buf, size_t size) {
   const uint8_t* p = reinterpret_cast<const uint8_t*>(buf);
@@ -982,36 +1011,36 @@ static uint32_t Arm64ExtendCrc32(uint32_t crc, const char* buf, size_t size) {
       --size;
     }
     if (reinterpret_cast<uintptr_t>(p) & 2) {
-      c = ArmCrc32ch(c, DecodeFixed16(reinterpret_cast<const char*>(p)));
+      c = ArmCrc32ch(c, ArmLoadLe16(p));
       p += 2;
       size -= 2;
     }
     if (reinterpret_cast<uintptr_t>(p) & 4) {
-      c = ArmCrc32cw(c, DecodeFixed32(reinterpret_cast<const char*>(p)));
+      c = ArmCrc32cw(c, ArmLoadLe32(p));
       p += 4;
       size -= 4;
     }
   }
 
   while (size >= 32) {
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p)));
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 8)));
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 16)));
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 24)));
+    c = ArmCrc32cd(c, ArmLoadLe64(p));
+    c = ArmCrc32cd(c, ArmLoadLe64(p + 8));
+    c = ArmCrc32cd(c, ArmLoadLe64(p + 16));
+    c = ArmCrc32cd(c, ArmLoadLe64(p + 24));
     p += 32;
     size -= 32;
   }
   while (size >= 8) {
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p)));
+    c = ArmCrc32cd(c, ArmLoadLe64(p));
     p += 8;
     size -= 8;
   }
   if (size & 4) {
-    c = ArmCrc32cw(c, DecodeFixed32(reinterpret_cast<const char*>(p)));
+    c = ArmCrc32cw(c, ArmLoadLe32(p));
     p += 4;
   }
   if (size & 2) {
-    c = ArmCrc32ch(c, DecodeFixed16(reinterpret_cast<const char*>(p)));
+    c = ArmCrc32ch(c, ArmLoadLe16(p));
     p += 2;
   }
   if (size & 1) {
@@ -1032,12 +1061,12 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
       --size;
     }
     if (reinterpret_cast<uintptr_t>(p) & 2) {
-      c = ArmCrc32ch(c, DecodeFixed16(reinterpret_cast<const char*>(p)));
+      c = ArmCrc32ch(c, ArmLoadLe16(p));
       p += 2;
       size -= 2;
     }
     if (reinterpret_cast<uintptr_t>(p) & 4) {
-      c = ArmCrc32cw(c, DecodeFixed32(reinterpret_cast<const char*>(p)));
+      c = ArmCrc32cw(c, ArmLoadLe32(p));
       p += 4;
       size -= 4;
     }
@@ -1058,9 +1087,9 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
     const uint8_t* p1 = p + kLargeStripeBytes;
     const uint8_t* p2 = p + 2 * kLargeStripeBytes;
     for (size_t i = 0; i < kLargeStripeBytes / 8; ++i) {
-      crc0 = ArmCrc32cd(crc0, DecodeFixed64(reinterpret_cast<const char*>(p0)));
-      crc1 = ArmCrc32cd(crc1, DecodeFixed64(reinterpret_cast<const char*>(p1)));
-      crc2 = ArmCrc32cd(crc2, DecodeFixed64(reinterpret_cast<const char*>(p2)));
+      crc0 = ArmCrc32cd(crc0, ArmLoadLe64(p0));
+      crc1 = ArmCrc32cd(crc1, ArmLoadLe64(p1));
+      crc2 = ArmCrc32cd(crc2, ArmLoadLe64(p2));
       p0 += 8;
       p1 += 8;
       p2 += 8;
@@ -1087,9 +1116,9 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
     const uint8_t* p1 = p + kSmallStripeBytes;
     const uint8_t* p2 = p + 2 * kSmallStripeBytes;
     for (size_t i = 0; i < kSmallStripeBytes / 8; ++i) {
-      crc0 = ArmCrc32cd(crc0, DecodeFixed64(reinterpret_cast<const char*>(p0)));
-      crc1 = ArmCrc32cd(crc1, DecodeFixed64(reinterpret_cast<const char*>(p1)));
-      crc2 = ArmCrc32cd(crc2, DecodeFixed64(reinterpret_cast<const char*>(p2)));
+      crc0 = ArmCrc32cd(crc0, ArmLoadLe64(p0));
+      crc1 = ArmCrc32cd(crc1, ArmLoadLe64(p1));
+      crc2 = ArmCrc32cd(crc2, ArmLoadLe64(p2));
       p0 += 8;
       p1 += 8;
       p2 += 8;
@@ -1102,24 +1131,24 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
   }
 
   while (size >= 32) {
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p)));
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 8)));
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 16)));
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p + 24)));
+    c = ArmCrc32cd(c, ArmLoadLe64(p));
+    c = ArmCrc32cd(c, ArmLoadLe64(p + 8));
+    c = ArmCrc32cd(c, ArmLoadLe64(p + 16));
+    c = ArmCrc32cd(c, ArmLoadLe64(p + 24));
     p += 32;
     size -= 32;
   }
   while (size >= 8) {
-    c = ArmCrc32cd(c, DecodeFixed64(reinterpret_cast<const char*>(p)));
+    c = ArmCrc32cd(c, ArmLoadLe64(p));
     p += 8;
     size -= 8;
   }
   if (size & 4) {
-    c = ArmCrc32cw(c, DecodeFixed32(reinterpret_cast<const char*>(p)));
+    c = ArmCrc32cw(c, ArmLoadLe32(p));
     p += 4;
   }
   if (size & 2) {
-    c = ArmCrc32ch(c, DecodeFixed16(reinterpret_cast<const char*>(p)));
+    c = ArmCrc32ch(c, ArmLoadLe16(p));
     p += 2;
   }
   if (size & 1) {
@@ -1143,6 +1172,7 @@ uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char* buf,
   return Arm64ExtendCrc32ForTest(crc, buf, size);
 }
 
+#undef BUTIL_ARM64_BIG_ENDIAN
 #undef BUTIL_CRC32_TARGET_CRC
 #undef BUTIL_CRC32_TARGET_CRC_PMULL
 #endif  // defined(__aarch64__)
