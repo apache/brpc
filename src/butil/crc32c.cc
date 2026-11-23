@@ -18,6 +18,23 @@
 #include <nmmintrin.h>
 #endif
 #if defined(__aarch64__)
+#if defined(__ARM_NEON)
+#define BUTIL_ARM64_PMULL_ENABLED 1
+#endif
+#if defined(__clang__)
+#pragma clang attribute push(__attribute__((target("crc"))), \
+                             apply_to = function)
+#elif defined(__GNUC__)
+#pragma GCC push_options
+#pragma GCC target("+crc")
+#endif
+#include <arm_acle.h>
+#if defined(__clang__)
+#pragma clang attribute pop
+#elif defined(__GNUC__)
+#pragma GCC pop_options
+#endif
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
 #if defined(__clang__)
 #pragma clang attribute push(__attribute__((target("crc,aes"))), \
                              apply_to = function)
@@ -25,13 +42,13 @@
 #pragma GCC push_options
 #pragma GCC target("+crc+crypto")
 #endif
-#include <arm_acle.h>
 #include <arm_neon.h>
 #if defined(__clang__)
 #pragma clang attribute pop
 #elif defined(__GNUC__)
 #pragma GCC pop_options
 #endif
+#endif  // defined(BUTIL_ARM64_PMULL_ENABLED)
 #if defined(__linux__)
 #include <asm/hwcap.h>
 #include <sys/auxv.h>
@@ -843,13 +860,19 @@ static bool isSSE42() {
 #if defined(__aarch64__)
 #if defined(__clang__)
 #define BUTIL_CRC32_TARGET_CRC __attribute__((target("crc")))
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
 #define BUTIL_CRC32_TARGET_CRC_PMULL __attribute__((target("crc,aes")))
+#endif
 #elif defined(__GNUC__)
 #define BUTIL_CRC32_TARGET_CRC __attribute__((target("+crc")))
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
 #define BUTIL_CRC32_TARGET_CRC_PMULL __attribute__((target("+crc+crypto")))
+#endif
 #else
 #define BUTIL_CRC32_TARGET_CRC
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
 #define BUTIL_CRC32_TARGET_CRC_PMULL
+#endif
 #endif
 
 static bool isArmCrc32() {
@@ -873,6 +896,7 @@ static bool isArmCrc32() {
   return supported;
 }
 
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
 static bool isArmPmull() {
   static const bool supported = []() {
 #if defined(__linux__)
@@ -894,6 +918,7 @@ static bool isArmPmull() {
   }();
   return supported;
 }
+#endif  // defined(BUTIL_ARM64_PMULL_ENABLED)
 
 BUTIL_CRC32_TARGET_CRC
 static inline uint32_t ArmCrc32cb(uint32_t crc, uint8_t data) {
@@ -939,6 +964,7 @@ static inline uint32_t ArmCrc32cd(uint32_t crc, uint64_t data) {
 #endif
 }
 
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
 BUTIL_CRC32_TARGET_CRC_PMULL
 static inline uint64_t ArmVmullP64(uint64_t a, uint64_t b) {
   return static_cast<uint64_t>(
@@ -955,6 +981,7 @@ static constexpr uint32_t ComputeCrc32cShiftConst(size_t bytes) {
   }
   return c;
 }
+#endif  // defined(BUTIL_ARM64_PMULL_ENABLED)
 
 #if (defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
      __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) ||                  \
@@ -1049,6 +1076,7 @@ static uint32_t Arm64ExtendCrc32(uint32_t crc, const char* buf, size_t size) {
   return c ^ 0xffffffffU;
 }
 
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
 BUTIL_CRC32_TARGET_CRC_PMULL
 static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
                                       size_t size) {
@@ -1156,6 +1184,7 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
   }
   return c ^ 0xffffffffU;
 }
+#endif  // defined(BUTIL_ARM64_PMULL_ENABLED)
 
 uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char* buf, size_t size) {
   if (isArmCrc32()) {
@@ -1166,15 +1195,19 @@ uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char* buf, size_t size) {
 
 uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char* buf,
                                       size_t size) {
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
   if (isArmCrc32() && isArmPmull()) {
     return Arm64ExtendCrc32Pmull(crc, buf, size);
   }
+#endif
   return Arm64ExtendCrc32ForTest(crc, buf, size);
 }
 
 #undef BUTIL_ARM64_BIG_ENDIAN
 #undef BUTIL_CRC32_TARGET_CRC
+#if defined(BUTIL_CRC32_TARGET_CRC_PMULL)
 #undef BUTIL_CRC32_TARGET_CRC_PMULL
+#endif
 #endif  // defined(__aarch64__)
 
 typedef uint32_t (*Function)(uint32_t, const char*, size_t);
@@ -1196,9 +1229,11 @@ static inline Function Choose_Extend() {
 #endif
 #if defined(__aarch64__)
   if (isArmCrc32()) {
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
     if (isArmPmull()) {
       return (Function)Arm64ExtendCrc32Pmull;
     }
+#endif
     return (Function)Arm64ExtendCrc32;
   }
 #endif
