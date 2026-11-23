@@ -330,6 +330,11 @@ TEST(BaiduTimeTest, cpu_frequency_scale_accuracy_and_monotonicity) {
 
 TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
 #if BUTIL_USE_CPU_FREQUENCY
+#if defined(__aarch64__)
+    // On AArch64, CNTFRQ_EL0 is architectural so read_invariant_cpu_frequency()
+    // must populate a positive frequency rather than silently falling back.
+    ASSERT_GT(butil::detail::invariant_cpu_freq, 0);
+#endif
     if (butil::detail::invariant_cpu_freq > 0) {
         ASSERT_GT(butil::detail::invariant_cpu_freq_mult, static_cast<uint64_t>(0));
         // 1. Direct cycle-bracket check: regardless of OS scheduling or whether
@@ -359,11 +364,13 @@ TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
 
     int64_t freq = butil::detail::invariant_cpu_freq;
 #if defined(__aarch64__)
+#if !BUTIL_USE_CPU_FREQUENCY
     if (freq <= 0) {
         // Exercise the hardware CNTFRQ_EL0 rate even when built with default
         // WITH_CPU_FREQUENCY=OFF.
         __asm__ __volatile__("mrs %0, cntfrq_el0" : "=r"(freq));
     }
+#endif
     ASSERT_GT(freq, 0);
 #else
     if (freq <= 0) {
@@ -411,7 +418,7 @@ TEST(BaiduTimeTest, cpuwide_time_with_cpu_frequency) {
     volatile uint64_t vfreq = static_cast<uint64_t>(freq);
     volatile uint64_t vmult = mult;
     volatile uint32_t vshift = shift;
-    uint64_t dep = butil::detail::clock_cycles();
+    uint64_t dep = static_cast<uint64_t>(butil::monotonic_time_ns());
     butil::Timer t_div, t_mul;
     t_div.start();
     for (size_t i = 0; i < N; ++i) {
