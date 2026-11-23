@@ -348,6 +348,7 @@ static void TestAcquireReleaseVisibility() {
   volatile AtomicType turn = 0;
   uint64_t payload_a = 0;
   uint64_t payload_b = 0;
+  std::atomic<bool> producer_done(false);
 
   std::thread producer([&]() {
     for (int i = 1; i <= kHandoffs; ++i) {
@@ -361,16 +362,32 @@ static void TestAcquireReleaseVisibility() {
       payload_a = static_cast<uint64_t>(i) * 0x9e3779b97f4a7c15ULL;
       payload_b = ~payload_a;
       if ((i & 1) == 0) {
-        EXPECT_EQ(static_cast<AtomicType>(0),
-                  butil::subtle::Release_CompareAndSwap(&turn, 0, 1));
+        const AtomicType prev =
+            butil::subtle::Release_CompareAndSwap(&turn, 0, 1);
+        if (prev != 0) {
+          EXPECT_EQ(static_cast<AtomicType>(0), prev);
+          break;
+        }
       } else {
         butil::subtle::Release_Store(&turn, 1);
       }
     }
+    producer_done.store(true, std::memory_order_release);
   });
 
   for (int i = 1; i <= kHandoffs; ++i) {
+    bool producer_exited = false;
     while (butil::subtle::Acquire_Load(&turn) != 1) {
+      if (producer_done.load(std::memory_order_acquire) &&
+          butil::subtle::Acquire_Load(&turn) != 1) {
+        ADD_FAILURE() << "Producer exited before publishing turn=1 at round "
+                      << i;
+        producer_exited = true;
+        break;
+      }
+    }
+    if (producer_exited) {
+      break;
     }
     const uint64_t obs_a = payload_a;
     const uint64_t obs_b = payload_b;
@@ -385,8 +402,13 @@ static void TestAcquireReleaseVisibility() {
       break;
     }
     if ((i & 1) == 0) {
-      EXPECT_EQ(static_cast<AtomicType>(1),
-                butil::subtle::Release_CompareAndSwap(&turn, 1, 0));
+      const AtomicType prev =
+          butil::subtle::Release_CompareAndSwap(&turn, 1, 0);
+      if (prev != 1) {
+        butil::subtle::Release_Store(&turn, -1);
+        EXPECT_EQ(static_cast<AtomicType>(1), prev);
+        break;
+      }
     } else {
       butil::subtle::Release_Store(&turn, 0);
     }
