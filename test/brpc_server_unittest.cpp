@@ -3182,6 +3182,8 @@ TEST_F(ServerTest, enabled_protocols_must_include_http_for_http_master_service) 
     opt.http_master_service = new HttpMasterServiceImpl;
     opt.enabled_protocols = "baidu_std";
     ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+    // The rejected Start() did not adopt the pointer, the caller still owns it.
+    delete opt.http_master_service;
 }
 
 TEST_F(ServerTest, master_services_are_not_served_on_internal_port) {

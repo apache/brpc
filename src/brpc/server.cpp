@@ -726,9 +726,9 @@ static void ParseEnabledProtocols(const std::string& enabled_protocols,
     }
 }
 
-int Server::ValidateEnabledProtocols() const {
+int Server::ValidateEnabledProtocols(const ServerOptions& options) const {
     std::unordered_set<std::string> whitelist;
-    ParseEnabledProtocols(_options.enabled_protocols, &whitelist);
+    ParseEnabledProtocols(options.enabled_protocols, &whitelist);
     if (whitelist.empty()) {
         return 0;
     }
@@ -756,7 +756,7 @@ int Server::ValidateEnabledProtocols() const {
     }
     std::vector<std::string> features;
     std::vector<std::string> fixes;
-    if (_options.has_builtin_services) {
+    if (options.has_builtin_services) {
         features.push_back("ServerOptions.has_builtin_services is true");
         fixes.push_back("set ServerOptions.has_builtin_services=false");
     }
@@ -764,7 +764,7 @@ int Server::ValidateEnabledProtocols() const {
         features.push_back("restful services are added");
         fixes.push_back("remove the restful mappings");
     }
-    if (_options.http_master_service != nullptr) {
+    if (options.http_master_service != nullptr) {
         features.push_back("ServerOptions.http_master_service is set");
         fixes.push_back("clear ServerOptions.http_master_service");
     }
@@ -772,7 +772,7 @@ int Server::ValidateEnabledProtocols() const {
         return 0;
     }
     LOG(ERROR) << "ServerOptions.enabled_protocols=`"
-               << _options.enabled_protocols << "' enables neither http nor "
+               << options.enabled_protocols << "' enables neither http nor "
                << "h2, but " << JoinWithAnd(features)
                << ". They are served through http/h2, add `http' (or `h2') to "
                << "enabled_protocols, or " << JoinWithAnd(fixes) << '.';
@@ -1025,6 +1025,13 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                    << FLAGS_task_group_ntags << ")";
         return -1;
     }
+    // Validate `enabled_protocols' before copy_and_fill_server_options below
+    // adopts the pointers in the user-provided options, so that a rejected
+    // configuration does not transfer their ownership to this server.
+    if (ValidateEnabledProtocols(real_opt) != 0) {
+        return -1;
+    }
+
     int ret = TransportFactory::ContextInitOrDie(real_opt.socket_mode, true, &real_opt);
     if (ret != 0) {
         LOG(ERROR) << "Fail to initialize transport context for server, ret=" << ret;
@@ -1188,13 +1195,6 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     }
 
     _concurrency = 0;
-
-    // Validate before adding builtin services, so that unknown protocol names
-    // are reported instead of being masked by the http/h2 check, and a failed
-    // Start() leaves no builtin services behind for a retry with fixed options.
-    if (ValidateEnabledProtocols() != 0) {
-        return -1;
-    }
 
     if (_options.has_builtin_services &&
         _builtin_service_count <= 0 &&

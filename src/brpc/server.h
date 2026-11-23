@@ -718,7 +718,7 @@ friend struct RevertServerStatus;
     // Fails if ServerOptions.enabled_protocols has unknown names, or excludes
     // both http and h2 while features served through http/h2 (builtin
     // services, restful services and http_master_service) are enabled.
-    int ValidateEnabledProtocols() const;
+    int ValidateEnabledProtocols(const ServerOptions& options) const;
 
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();
