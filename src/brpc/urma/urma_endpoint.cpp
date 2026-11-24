@@ -73,6 +73,7 @@ DECLARE_bool(urma_poller_yield);
 
 // ---- Constants shared with the handshake module ----
 static const int WAIT_TIMEOUT_MS = 50;
+static const int64_t ACK_FLUSH_DELAY_US = 1000;
 static const size_t HELLO_ACK_LEN = 4;
 static const uint32_t HELLO_ACK_URMA_OK = 0x1;
 static const size_t IOBUF_BLOCK_HEADER_LEN = sizeof(butil::IOBuf::Block);
@@ -182,6 +183,7 @@ void UrmaEndpoint::Reset() {
     _remote_rq_window_size.store(0, butil::memory_order_relaxed);
     _sq_window_size.store(0, butil::memory_order_relaxed);
     _new_rq_wrs.store(0, butil::memory_order_relaxed);
+    _send_post_blocked.store(false, butil::memory_order_relaxed);
     _sq_imm_window_size = 0;
     _sq_current = 0;
     _sq_sent = 0;
@@ -535,6 +537,7 @@ int UrmaEndpoint::AllocateResources() {
 
 void UrmaEndpoint::DeallocateResources() {
     std::unique_lock<butil::Mutex> lock(_cq_mutex);
+    _ack_flush_scheduled = false;
     if (FLAGS_urma_use_polling) {
         PollerRemoveCqSid();
     }
@@ -698,6 +701,7 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         errno = ENOTCONN;
         return -1;
     }
+    _send_post_blocked.store(false, butil::memory_order_relaxed);
     const bool copy_send = FLAGS_urma_copy_send;
     int max_sge = GetUrmaMaxSge();
     if (max_sge < 1) {
@@ -736,6 +740,9 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         for (size_t i = current;
              i < ndata && this_len < max_len &&
              sge_index < static_cast<size_t>(max_sge); ++i) {
+            if (from[i]->empty()) {
+                continue;
+            }
             const auto* data = reinterpret_cast<const UrmaIOBuf*>(from[i]);
             const ssize_t n =
                 copy_send ? static_cast<ssize_t>(
@@ -800,6 +807,7 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             _sq_window_size.fetch_add(1, butil::memory_order_relaxed);
             to->clear();
             if (rc == URMA_EAGAIN) {
+                _send_post_blocked.store(true, butil::memory_order_relaxed);
                 errno = EAGAIN;
                 return total_len ? total_len : -1;
             }
@@ -836,7 +844,8 @@ ssize_t UrmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
 }
 
 bool UrmaEndpoint::IsWritable() const {
-    return _remote_rq_window_size.load(butil::memory_order_relaxed) > 0 &&
+    return !_send_post_blocked.load(butil::memory_order_relaxed) &&
+           _remote_rq_window_size.load(butil::memory_order_relaxed) > 0 &&
            _sq_window_size.load(butil::memory_order_relaxed) > 0;
 }
 
@@ -954,6 +963,10 @@ int UrmaEndpoint::SendImm(uint32_t imm) {
         const int provider_errno = errno;
         ++_sq_imm_window_size;
         _new_rq_wrs.fetch_add(imm, butil::memory_order_relaxed);
+        if (status == URMA_EAGAIN) {
+            errno = EAGAIN;
+            return -1;
+        }
         LOG(WARNING) << "Failed to post URMA credit ACK: status=" << status
                      << " provider_errno=" << provider_errno
                      << " (" << berror(provider_errno) << ')'
@@ -974,13 +987,67 @@ int UrmaEndpoint::SendImm(uint32_t imm) {
 }
 
 int UrmaEndpoint::SendAck(int num) {
-    const uint16_t old =
-        _new_rq_wrs.fetch_add(num, butil::memory_order_relaxed);
-    if (old + num > _remote_window_capacity / 2 &&
-        _sq_imm_window_size > 0) {
-        return SendImm(_new_rq_wrs.exchange(0, butil::memory_order_relaxed));
+    const uint16_t pending =
+        _new_rq_wrs.fetch_add(num, butil::memory_order_relaxed) + num;
+    if (pending == 0 || _sq_imm_window_size == 0) {
+        return 0;
     }
+    if (pending > _remote_window_capacity / 2) {
+        return FlushAck();
+    }
+    // The peer's SQ may run out before we reach our RQ-based threshold.
+    return ScheduleAckFlush();
+}
+
+int UrmaEndpoint::FlushAck() {
+    if (_sq_imm_window_size == 0) {
+        return 0;
+    }
+    if (SendImm(_new_rq_wrs.exchange(0, butil::memory_order_relaxed)) == 0) {
+        return 0;
+    }
+    return errno == EAGAIN ? ScheduleAckFlush() : -1;
+}
+
+int UrmaEndpoint::ScheduleAckFlush() {
+    if (_ack_flush_scheduled) {
+        return 0;
+    }
+    bthread_t tid;
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    attr.tag = bthread_self_tag();
+    const int rc = bthread_start_background(
+        &tid, &attr, RunAckFlush, reinterpret_cast<void*>(_cq_sid));
+    if (rc != 0) {
+        errno = rc;
+        return -1;
+    }
+    _ack_flush_scheduled = true;
     return 0;
+}
+
+void* UrmaEndpoint::RunAckFlush(void* arg) {
+    bthread_usleep(ACK_FLUSH_DELAY_US);
+    const auto cq_sid = reinterpret_cast<SocketId>(arg);
+    SocketUniquePtr carrier;
+    if (Socket::Address(cq_sid, &carrier) != 0) {
+        return nullptr;
+    }
+    const auto* user = static_cast<const UrmaCqSocketUser*>(carrier->user());
+    SocketUniquePtr owner;
+    if (!user || Socket::Address(user->owner_id, &owner) != 0) {
+        return nullptr;
+    }
+    auto* transport = static_cast<UrmaTransport*>(owner->_transport.get());
+    UrmaEndpoint* ep = transport->_urma_ep;
+    std::unique_lock<butil::Mutex> lock(ep->_cq_mutex);
+    if (ep->_cq_sid == cq_sid && !owner->Failed()) {
+        ep->_ack_flush_scheduled = false;
+        if (ep->FlushAck() != 0) {
+            owner->SetFailed(errno, "Fail to flush URMA receive credits");
+        }
+    }
+    return nullptr;
 }
 
 ssize_t UrmaEndpoint::HandleCompletion(const urma_cr_t& cr) {
