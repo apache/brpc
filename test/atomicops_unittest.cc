@@ -349,14 +349,16 @@ static void TestAcquireReleaseVisibility() {
   uint64_t payload_a = 0;
   uint64_t payload_b = 0;
   std::atomic<bool> producer_done(false);
+  std::atomic<bool> consumer_done(false);
 
   std::thread producer([&]() {
     for (int i = 1; i <= kHandoffs; ++i) {
-      AtomicType t = butil::subtle::Acquire_Load(&turn);
-      while (t == 1) {
-        t = butil::subtle::Acquire_Load(&turn);
+      while (butil::subtle::Acquire_Load(&turn) == 1) {
+        if (consumer_done.load(std::memory_order_acquire)) {
+          break;
+        }
       }
-      if (t < 0) {
+      if (consumer_done.load(std::memory_order_acquire)) {
         break;
       }
       payload_a = static_cast<uint64_t>(i) * 0x9e3779b97f4a7c15ULL;
@@ -396,7 +398,6 @@ static void TestAcquireReleaseVisibility() {
     const uint64_t expected_b = ~expected_a;
     EXPECT_EQ(static_cast<AtomicType>(1), butil::subtle::Release_Load(&turn));
     if (obs_a != expected_a || obs_b != expected_b) {
-      butil::subtle::Release_Store(&turn, -1);
       EXPECT_EQ(expected_a, obs_a);
       EXPECT_EQ(expected_b, obs_b);
       break;
@@ -405,7 +406,6 @@ static void TestAcquireReleaseVisibility() {
       const AtomicType prev =
           butil::subtle::Release_CompareAndSwap(&turn, 1, 0);
       if (prev != 1) {
-        butil::subtle::Release_Store(&turn, -1);
         EXPECT_EQ(static_cast<AtomicType>(1), prev);
         break;
       }
@@ -414,6 +414,7 @@ static void TestAcquireReleaseVisibility() {
     }
   }
 
+  consumer_done.store(true, std::memory_order_release);
   producer.join();
 }
 #endif  // !defined(BUTIL_ATOMICOPS_TEST_UNINSTRUMENTED_TSAN)
