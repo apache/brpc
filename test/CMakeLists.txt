@@ -378,6 +378,13 @@ foreach(BRPC_UT ${BRPC_UNITTESTS})
         add_test(NAME brpc_urma_transport_rtp_stress_unittest
                  COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp
                          --gtest_shuffle --gtest_random_seed=92 --gtest_repeat=20)
+        foreach(polling false true)
+            add_test(NAME brpc_urma_transport_credit_${polling}_unittest
+                     COMMAND ${BRPC_UT_WE} --urma_tp_type=rtp
+                             --urma_use_polling=${polling}
+                             --urma_sq_size=16 --urma_rq_size=128
+                             --gtest_filter=*exchanges_zero_copy_payloads_and_receive_credits*)
+        endforeach()
     endif()
 endforeach()
 

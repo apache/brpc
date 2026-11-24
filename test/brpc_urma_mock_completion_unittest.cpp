@@ -34,7 +34,8 @@ namespace urma {
 class UrmaRecoveryTestPeer {
 public:
     static ssize_t Send(Socket* socket, urma_jetty_t* jetty,
-                        urma_target_jetty_t* target, butil::IOBuf** buffers) {
+                        urma_target_jetty_t* target, butil::IOBuf** buffers,
+                        size_t count) {
         UrmaEndpoint endpoint(socket);
         UrmaResource resource;
         resource.jetty = jetty;
@@ -44,11 +45,57 @@ public:
         endpoint._sq_window_size.store(4, butil::memory_order_relaxed);
         endpoint._remote_rq_window_size.store(4, butil::memory_order_relaxed);
         endpoint._remote_recv_block_size = 4;
-        const ssize_t sent = endpoint.CutFromIOBufList(buffers, 2);
+        const ssize_t sent = endpoint.CutFromIOBufList(buffers, count);
+        if (errno == EAGAIN) {
+            EXPECT_FALSE(endpoint.IsWritable());
+        }
         endpoint._resource = nullptr;
         resource.jetty = nullptr;
         resource.remote_jetty = nullptr;
         return sent;
+    }
+
+    static void CheckAckBackpressure(Socket* socket, urma_jetty_t* jetty,
+                                     urma_target_jetty_t* target,
+                                     urma_jfr_t* recv_queue, urma_jfc_t* recv_cq) {
+        UrmaResource resource;
+        UrmaEndpoint endpoint(socket);
+        resource.jetty = jetty;
+        resource.remote_jetty = target;
+        endpoint._resource = &resource;
+        endpoint._sq_imm_window_size = 1;
+        endpoint._state.store(UrmaEndpoint::ESTABLISHED,
+                              butil::memory_order_release);
+        uint64_t epoch = 0;
+        GlobalUrmaRecoveryPolicy().AllowNewConnection("", &epoch);
+        endpoint._recovery_epoch.store(epoch, butil::memory_order_relaxed);
+        const auto before = GetUrmaRecoveryStatus();
+        EXPECT_EQ(-1, endpoint.SendImm(2));
+        EXPECT_EQ(EAGAIN, errno);
+        EXPECT_EQ(1, endpoint._sq_imm_window_size);
+        EXPECT_EQ(2, endpoint._new_rq_wrs.load(butil::memory_order_relaxed));
+        const auto reason = static_cast<size_t>(UrmaFailureReason::SEND_POST);
+        EXPECT_EQ(before.failures[reason],
+                  GetUrmaRecoveryStatus().failures[reason]);
+
+        char data[1]{};
+        urma_sge_t sge{};
+        sge.addr = reinterpret_cast<uint64_t>(data);
+        sge.len = sizeof(data);
+        urma_jfr_wr_t recv{};
+        recv.src.sge = &sge;
+        recv.src.num_sge = 1;
+        urma_jfr_wr_t* bad = nullptr;
+        EXPECT_EQ(URMA_SUCCESS, urma_post_jfr_wr(recv_queue, &recv, &bad));
+        EXPECT_EQ(0, endpoint.FlushAck());
+        EXPECT_EQ(0, endpoint._new_rq_wrs.load(butil::memory_order_relaxed));
+        urma_cr_t completion{};
+        EXPECT_EQ(1, urma_poll_jfc(recv_cq, 1, &completion));
+        EXPECT_EQ(2u, completion.imm_data);
+
+        endpoint._resource = nullptr;
+        resource.jetty = nullptr;
+        resource.remote_jetty = nullptr;
     }
 };
 
@@ -58,7 +105,7 @@ public:
 namespace {
 
 class UrmaMockCompletionTest : public testing::Test {
-   protected:
+protected:
     void SetUp() override {
         urma_init_attr_t attr{};
         const auto status = urma_init(&attr);
@@ -88,6 +135,8 @@ class UrmaMockCompletionTest : public testing::Test {
         rq.jfc = _recv_cq;
         _recv_queue = urma_create_jfr(_context, &rq);
         ASSERT_NE(nullptr, _recv_queue);
+        EXPECT_NE(0u, _recv_queue->jfr_id.id);
+        EXPECT_EQ(_recv_cq, _recv_queue->jfr_cfg.jfc);
         urma_jetty_cfg_t cfg{};
         cfg.jfs_cfg.jfc = _send_cq;
         cfg.shared.jfr = _recv_queue;
@@ -167,7 +216,8 @@ TEST_F(UrmaMockCompletionTest, provider_backpressure_keeps_unsent_suffix) {
     ASSERT_EQ(0, head.append_user_data_with_meta(payload, 6, [](void*) {}, meta));
     ASSERT_EQ(0, tail.append_user_data_with_meta(payload + 6, 5,
                                                 [](void*) {}, meta));
-    butil::IOBuf* buffers[] = {&head, &tail};
+    butil::IOBuf empty;
+    butil::IOBuf* buffers[] = {&empty, &head, &empty, &tail};
 
     char received[4]{};
     urma_sge_t sge{};
@@ -180,15 +230,26 @@ TEST_F(UrmaMockCompletionTest, provider_backpressure_keeps_unsent_suffix) {
     ASSERT_EQ(URMA_SUCCESS, urma_post_jfr_wr(_recv_queue, &recv, &bad));
 
     EXPECT_EQ(4, brpc::urma::UrmaRecoveryTestPeer::Send(
-                     socket.get(), _sender, _target, buffers));
+                     socket.get(), _sender, _target, buffers, 4));
     EXPECT_EQ("abcd", std::string(received, sizeof(received)));
     EXPECT_EQ("ef", head.to_string());
     EXPECT_EQ("ghijk", tail.to_string());
     EXPECT_EQ(-1, brpc::urma::UrmaRecoveryTestPeer::Send(
-                      socket.get(), _sender, _target, buffers));
+                      socket.get(), _sender, _target, buffers, 4));
     EXPECT_EQ(EAGAIN, errno);
     EXPECT_EQ("ef", head.to_string());
     EXPECT_EQ("ghijk", tail.to_string());
+    socket->SetFailed();
+}
+
+TEST_F(UrmaMockCompletionTest, credit_ack_can_retry_after_provider_backpressure) {
+    brpc::SocketId sid;
+    ASSERT_EQ(0, brpc::Socket::Create(brpc::SocketOptions(), &sid));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(sid, &socket));
+
+    brpc::urma::UrmaRecoveryTestPeer::CheckAckBackpressure(
+        socket.get(), _sender, _target, _recv_queue, _recv_cq);
     socket->SetFailed();
 }
 

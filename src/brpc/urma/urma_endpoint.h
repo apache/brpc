@@ -235,15 +235,16 @@ private:
     // Send a pure-ACK URMA_OPC_SEND_IMM WR with no payload. @imm carries the
     // number of receive WRs reposted for peer-side flow-control credit.
     int SendImm(uint32_t imm);
-    // Batched credit ack: if _new_rq_wrs is above the threshold, flush it via
-    // a standalone SendImm. @num is the number of new recv WRs to add.
+    // Return @num newly posted receive credits in a batch or on a delay.
     int SendAck(int num);
+    int FlushAck();
+    int ScheduleAckFlush();
+    static void* RunAckFlush(void* arg);
 
     // Handle one completion record. For SEND completions: reclaim the SQ
     // window and wake the writer. For RECV completions: cut the payload into
     // the URMA input processor, repost the recv WR, and ack. Returns bytes
-    // received
-    // (0 for send completions), or -1 on error (errno set).
+    // received (0 for send completions), or -1 on error (errno set).
     ssize_t HandleCompletion(const urma_cr_t& cr);
 
     // Queue received bytes for InputMessenger. CQ receive completions can
@@ -324,6 +325,8 @@ private:
     butil::atomic<uint16_t> _remote_rq_window_size{0};  // WRs we can send
     butil::atomic<uint16_t> _sq_window_size{0};          // WRs we can post
     butil::atomic<uint16_t> _new_rq_wrs{0};              // new recv WRs (to ack)
+    butil::atomic<bool> _send_post_blocked{false};
+    bool _ack_flush_scheduled{false};  // guarded by _cq_mutex
     uint16_t _sq_imm_window_size{0};                     // budget for pure-ack WRs
 
     // SQ producer / consumer indices.
