@@ -217,6 +217,41 @@ TEST(NamingServiceTest, wrong_name) {
     ASSERT_EQ(ARRAY_SIZE(address_list) - 4, servers.size());
 }
 
+TEST(NamingServiceTest, comment_after_address_is_not_tag) {
+    const char* lines[] = {
+        "# This line is ignored",
+        "10.24.234.17:8080 tag1  # a comment",
+        "10.24.234.17:8090 tag2  # another instance",
+        "10.24.234.18:8080  # a comment without tag",
+        "10.24.234.18:8080  # same instance as last line",
+        "10.24.234.19:8080 #"
+    };
+    butil::TempFile tmp_file;
+    {
+        FILE* fp = fopen(tmp_file.fname(), "w");
+        ASSERT_TRUE(fp != nullptr);
+        for (size_t i = 0; i < ARRAY_SIZE(lines); ++i) {
+            ASSERT_TRUE(fprintf(fp, "%s\n", lines[i]));
+        }
+        fclose(fp);
+    }
+    const char* expected_servers[][2] = {
+        {"10.24.234.17:8080", "tag1"},
+        {"10.24.234.17:8090", "tag2"},
+        {"10.24.234.18:8080", ""},
+        {"10.24.234.19:8080", ""}
+    };
+    std::vector<brpc::ServerNode> servers;
+    brpc::policy::FileNamingService fns;
+    ASSERT_EQ(0, fns.GetServers(tmp_file.fname(), &servers));
+    ASSERT_EQ(ARRAY_SIZE(expected_servers), servers.size());
+    for (size_t i = 0; i < servers.size(); ++i) {
+        ASSERT_STREQ(expected_servers[i][0],
+                     butil::endpoint2str(servers[i].addr).c_str()) << "i=" << i;
+        ASSERT_EQ(expected_servers[i][1], servers[i].tag) << "i=" << i;
+    }
+}
+
 class UserNamingServiceImpl : public test::UserNamingService {
 public:
     UserNamingServiceImpl() : list_names_count(0), touch_count(0) {}

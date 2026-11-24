@@ -46,7 +46,8 @@ bool SplitIntoServerAndTag(const butil::StringPiece& line,
     }
     if (i != line.size()) {
         for (++i; i < line.size() && isspace(line[i]); ++i) {}
-        if (i < line.size()) {
+        // A '#' right after the address starts a comment, not a tag.
+        if (i < line.size() && line[i] != '#') {
             tag_start = line.data() + i;
             tag_size = 1;
             // find start of comments.
