@@ -1370,13 +1370,163 @@ TEST(RtmpTest, reject_unauthenticated_connection) {
     // RTMP messages are handled inside the parser and never reach
     // InputMessenger's authentication hook. With ServerOptions.auth set the
     // connection must be rejected before any handshaking happens.
+    std::string c0c1(1 + 1536, '\0');  // simple handshaking
+    c0c1[0] = '\x03';                  // C0 (version)
     butil::IOBuf buf;
-    buf.append("\x03", 1);  // C0 (version)
+    buf.append(c0c1.data(), c0c1.size());
     brpc::ParseResult pr = brpc::policy::ParseRtmpMessage(
         &buf, socket.get(), false, &server);
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
     ASSERT_EQ(nullptr, socket->parsing_context());
 
+    server.Stop(0);
+    server.Join();
+}
+
+// Create a socket for ParseRtmpMessage to respond the handshaking on. The
+// returned fd is the peer end which receives the responses.
+static brpc::SocketId CreatePairedSocket(int* peer_fd) {
+    int fds[2];
+    EXPECT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    *peer_fd = fds[0];
+    brpc::SocketId socket_id;
+    brpc::SocketOptions socket_options;
+    socket_options.fd = fds[1];
+    EXPECT_EQ(0, brpc::Socket::Create(socket_options, &socket_id));
+    return socket_id;
+}
+
+TEST(RtmpTest, payload_starting_with_c0_version_tries_others) {
+    PlayingDummyService rtmp_service;
+    brpc::Server server;
+    brpc::ServerOptions server_opt;
+    server_opt.rtmp_service = &rtmp_service;
+    ASSERT_EQ(0, server.Start(0, &server_opt));
+
+    int peer_fd = -1;
+    const brpc::SocketId socket_id = CreatePairedSocket(&peer_fd);
+    butil::fd_guard peer_guard(peer_fd);
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+
+    // A frame of another protocol sharing the port, which starts with the rtmp
+    // version by accident, must not be captured by rtmp.
+    butil::IOBuf buf;
+    std::string payload(1 + 1536, '\x03');
+    buf.append(payload.data(), payload.size());
+    brpc::ParseResult pr = brpc::policy::ParseRtmpMessage(
+        &buf, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, pr.error());
+    ASSERT_EQ(nullptr, socket->parsing_context());
+
+    // A single 0x03 byte is not enough to tell whether it is rtmp.
+    butil::IOBuf shorter;
+    shorter.append("\x03", 1);
+    pr = brpc::policy::ParseRtmpMessage(&shorter, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
+    ASSERT_EQ(nullptr, socket->parsing_context());
+
+    // The version field of C1 is checked as soon as it is available, so a
+    // non-rtmp payload shorter than C0+C1 falls through without waiting for
+    // all of them to arrive.
+    butil::IOBuf partial;
+    std::string partial_payload(100, '\x03');
+    partial.append(partial_payload.data(), partial_payload.size());
+    pr = brpc::policy::ParseRtmpMessage(&partial, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, pr.error());
+    ASSERT_EQ(nullptr, socket->parsing_context());
+
+    ASSERT_EQ(0, socket->SetFailed());
+    socket.reset();
+    server.Stop(0);
+    server.Join();
+}
+
+TEST(RtmpTest, simple_handshake_accepted_after_c0c1_complete) {
+    PlayingDummyService rtmp_service;
+    brpc::Server server;
+    brpc::ServerOptions server_opt;
+    server_opt.rtmp_service = &rtmp_service;
+    ASSERT_EQ(0, server.Start(0, &server_opt));
+
+    int peer_fd = -1;
+    const brpc::SocketId socket_id = CreatePairedSocket(&peer_fd);
+    butil::fd_guard peer_guard(peer_fd);
+    timeval tv = { 2, 0 };
+    ASSERT_EQ(0, setsockopt(peer_guard, SOL_SOCKET, SO_RCVTIMEO,
+                            &tv, sizeof(tv)));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+
+    // Simple handshaking: C0(version) + C1(time, zero-version, random)
+    std::string c0c1(1 + 1536, '\0');
+    c0c1[0] = '\x03';
+
+    // A fragmented C0+C1 must not claim the connection.
+    butil::IOBuf buf;
+    buf.append(c0c1.data(), 100);
+    brpc::ParseResult pr = brpc::policy::ParseRtmpMessage(
+        &buf, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
+    ASSERT_EQ(nullptr, socket->parsing_context());
+
+    // The connection is accepted once C0+C1 is completed, and S0+S1+S2 is
+    // written back. ParseRtmpMessage still waits for C2 at this moment.
+    buf.append(c0c1.data() + 100, c0c1.size() - 100);
+    pr = brpc::policy::ParseRtmpMessage(&buf, socket.get(), false, &server);
+    ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error());
+    ASSERT_NE(nullptr, socket->parsing_context());
+
+    char s0s1s2[1 + 1536 + 1536];
+    size_t nread = 0;
+    while (nread < sizeof(s0s1s2)) {
+        const ssize_t nr = HANDLE_EINTR(read(
+            peer_guard, s0s1s2 + nread, sizeof(s0s1s2) - nread));
+        ASSERT_GT(nr, 0);
+        nread += nr;
+    }
+    ASSERT_EQ(0x03, (uint8_t)s0s1s2[0]);
+
+    ASSERT_EQ(0, socket->SetFailed());
+    socket.reset();
+    server.Stop(0);
+    server.Join();
+}
+
+TEST(RtmpTest, complex_handshake_c1_is_accepted) {
+    PlayingDummyService rtmp_service;
+    brpc::Server server;
+    brpc::ServerOptions server_opt;
+    server_opt.rtmp_service = &rtmp_service;
+    ASSERT_EQ(0, server.Start(0, &server_opt));
+
+    int peer_fd = -1;
+    const brpc::SocketId socket_id = CreatePairedSocket(&peer_fd);
+    butil::fd_guard peer_guard(peer_fd);
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(socket_id, &socket));
+
+    // C1 of the complex handshaking is verified by adobe_hs::C1::Load after
+    // the connection is claimed, sniffing only checks its version field.
+    // The all-zero C1 fails the verification and falls back to the simple
+    // handshaking, which is not relevant here.
+    std::string c0c1(1 + 1536, '\0');
+    c0c1[0] = '\x03';                        // C0 (version)
+    char* const version = &c0c1[1 + 4];      // C1.version
+    version[0] = '\x80';
+    version[1] = '\x00';
+    version[2] = '\x07';
+    version[3] = '\x02';                     // adobe_hs::FP_VERSION
+
+    butil::IOBuf buf;
+    buf.append(c0c1.data(), c0c1.size());
+    const brpc::ParseResult pr = brpc::policy::ParseRtmpMessage(
+        &buf, socket.get(), false, &server);
+    ASSERT_NE(nullptr, socket->parsing_context());
+    ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, pr.error()); // waiting C2
+
+    ASSERT_EQ(0, socket->SetFailed());
+    socket.reset();
     server.Stop(0);
     server.Join();
 }
