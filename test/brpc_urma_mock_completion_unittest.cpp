@@ -105,7 +105,7 @@ public:
 namespace {
 
 class UrmaMockCompletionTest : public testing::Test {
-   protected:
+protected:
     void SetUp() override {
         urma_init_attr_t attr{};
         const auto status = urma_init(&attr);

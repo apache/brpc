@@ -234,8 +234,7 @@ private:
     // Send a pure-ACK URMA_OPC_SEND_IMM WR with no payload. @imm carries the
     // number of receive WRs reposted for peer-side flow-control credit.
     int SendImm(uint32_t imm);
-    // Batched credit ack: if _new_rq_wrs is above the threshold, flush it via
-    // a standalone SendImm. @num is the number of new recv WRs to add.
+    // Return @num newly posted receive credits in a batch or on a delay.
     int SendAck(int num);
     int FlushAck();
     int ScheduleAckFlush();
@@ -244,8 +243,7 @@ private:
     // Handle one completion record. For SEND completions: reclaim the SQ
     // window and wake the writer. For RECV completions: cut the payload into
     // the URMA input processor, repost the recv WR, and ack. Returns bytes
-    // received
-    // (0 for send completions), or -1 on error (errno set).
+    // received (0 for send completions), or -1 on error (errno set).
     ssize_t HandleCompletion(const urma_cr_t& cr);
 
     // Queue received bytes for InputMessenger. CQ receive completions can

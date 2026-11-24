@@ -389,12 +389,12 @@ urma_status_t urma_delete_jfr(urma_jfr_t* jfr) {
     return URMA_SUCCESS;
 }
 
-urma_target_seg_t *urma_register_seg(urma_context_t *ctx, urma_seg_cfg_t *cfg) {
+urma_target_seg_t* urma_register_seg(urma_context_t* ctx, urma_seg_cfg_t* cfg) {
     std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
     if (!ctx || !cfg || context_map.find(ctx) == context_map.end()) {
         return nullptr;
     }
-    urma_target_seg_t *seg = new urma_target_seg_t{};
+    auto* seg = new urma_target_seg_t{};
     memset(&seg->seg.ubva.eid, 0, sizeof(urma_eid_t));
     seg->seg.ubva.eid.raw[0] = 1;
     seg->seg.ubva.uasid = 0;
@@ -541,8 +541,8 @@ urma_status_t urma_modify_jetty(urma_jetty_t *jetty, urma_jetty_attr_t *attr) {
     return URMA_SUCCESS;
 }
 
-urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
-                                      urma_jfs_wr_t **bad_wr) {
+urma_status_t urma_post_jetty_send_wr(urma_jetty_t* jetty, urma_jfs_wr_t* wr,
+                                     urma_jfs_wr_t** bad_wr) {
     // Protect the target, pending receive buffer and both completion queues
     // from teardown until delivery and notification are complete.
     std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
