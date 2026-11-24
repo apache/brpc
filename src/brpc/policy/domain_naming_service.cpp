@@ -51,7 +51,8 @@ int DomainNamingService::GetServers(const char* dns_name,
         const char* close = strchr(dns_name, ']');
         if (close == nullptr ||
             static_cast<size_t>(close - dns_name) + 1 >= sizeof(buf) ||
-            (close[1] != '\0' && close[1] != ':' && close[1] != '/')) {
+            (close[1] != '\0' && close[1] != ':' && close[1] != '/' &&
+             close[1] != '?' && close[1] != '#')) {
             LOG(ERROR) << "Invalid ipv6 address in `" << dns_name << '\'';
             return -1;
         }
@@ -73,12 +74,18 @@ int DomainNamingService::GetServers(const char* dns_name,
     if (dns_name[i] == ':') {
         ++i;
         char* end = nullptr;
-        port = strtol(dns_name + i, &end, 10);
+        const long parsed_port = strtol(dns_name + i, &end, 10);
         if (end == dns_name + i) {
             LOG(ERROR) << "No port after colon in `" << dns_name << '\'';
             return -1;
-        } else if (*end != '\0') {
-            if (*end != '/') {
+        }
+        if (parsed_port < 0 || parsed_port > 65535) {
+            LOG(ERROR) << "Invalid port=" << parsed_port << " in `" << dns_name << '\'';
+            return -1;
+        }
+        port = static_cast<int>(parsed_port);
+        if (*end != '\0') {
+            if (*end != '/' && *end != '?' && *end != '#') {
                 LOG(ERROR) << "Invalid content=`" << end << "' after port="
                            << port << " in `" << dns_name << '\'';
                 return -1;

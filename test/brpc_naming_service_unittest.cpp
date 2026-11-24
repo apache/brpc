@@ -185,6 +185,29 @@ TEST(NamingServiceTest, domain_with_ipv6_address) {
     ASSERT_EQ(1u, servers.size());
     ASSERT_STREQ("[::1]:80", butil::endpoint2str(servers[0].addr).c_str());
 
+    ASSERT_EQ(0, dns.GetServers("[::1]?q=1", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[::1]:80", butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(0, dns.GetServers("[::1]#part", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[::1]:80", butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(0, dns.GetServers("[::1]:8080#part", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[::1]:8080", butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(0, dns.GetServers("[::1]:8080?q=1", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[::1]:8080", butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(0, dns.GetServers("[::1]:65535", &servers));
+    ASSERT_EQ(1u, servers.size());
+    ASSERT_STREQ("[::1]:65535", butil::endpoint2str(servers[0].addr).c_str());
+
+    ASSERT_EQ(-1, dns.GetServers("[::1]:4294967377", &servers));
+    ASSERT_EQ(-1, dns.GetServers("[::1]:-4294967215", &servers));
+    ASSERT_EQ(-1, dns.GetServers("[::1]:99999999999999999999999999", &servers));
     ASSERT_EQ(-1, dns.GetServers("[::1", &servers));
     ASSERT_EQ(-1, dns.GetServers("[::1]:", &servers));
     ASSERT_EQ(-1, dns.GetServers("[::1]1234", &servers));
