@@ -2987,6 +2987,45 @@ TEST_F(HttpTest, h2_continuation_must_continue_a_header_block) {
     AppendH2Frame(&frames, brpc::policy::H2_FRAME_DATA, END_STREAM, 5, body);
     pr = brpc::policy::ParseH2Message(&frames, _socket.get(), false, &_server);
     ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
+
+    // Same for a frame type this side does not know: it has no handler, so
+    // the continuity check has to run before the handler is looked up for
+    // the connection to be closed with GOAWAY(PROTOCOL_ERROR) rather than
+    // by the unknown-type path. The case above left stream 5's header block
+    // open on a connection that a real peer would have seen closed, start
+    // from no open block so the GOAWAY below can only come from stream 7.
+    ctx->_expect_continuation_stream_id = 0;
+    int bytes_in_pipe = 0;
+    ASSERT_EQ(0, ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe));
+    if (bytes_in_pipe > 0) {
+        butil::IOPortal drained;
+        ASSERT_EQ((ssize_t)bytes_in_pipe,
+                  drained.append_from_file_descriptor(_pipe_fds[0],
+                                                      bytes_in_pipe));
+    }
+    frames.clear();
+    AppendH2Frame(&frames, brpc::policy::H2_FRAME_HEADERS, 0, 7, part1);
+    AppendH2Frame(&frames, (brpc::policy::H2FrameType)0x63, 0, 7, body);
+    pr = brpc::policy::ParseH2Message(&frames, _socket.get(), false, &_server);
+    ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, pr.error());
+    ASSERT_EQ(0, ioctl(_pipe_fds[0], FIONREAD, &bytes_in_pipe));
+    ASSERT_EQ((int)(brpc::policy::FRAME_HEAD_SIZE + 8), bytes_in_pipe);
+    butil::IOPortal goaway_buf;
+    ASSERT_EQ((ssize_t)bytes_in_pipe,
+              goaway_buf.append_from_file_descriptor(_pipe_fds[0],
+                                                     bytes_in_pipe));
+    // Frame head is payload_size(3) | type(1) | flags(1) | stream_id(4),
+    // the GOAWAY payload is last-stream-id(4) | error code(4).
+    char goawaybuf[brpc::policy::FRAME_HEAD_SIZE + 8];
+    ASSERT_EQ(sizeof(goawaybuf), goaway_buf.copy_to(goawaybuf,
+                                                    sizeof(goawaybuf)));
+    ASSERT_EQ(brpc::policy::H2_FRAME_GOAWAY,
+              (brpc::policy::H2FrameType)goawaybuf[3]);
+    uint32_t error_code = 0;
+    memcpy(&error_code, goawaybuf + brpc::policy::FRAME_HEAD_SIZE + 4,
+           sizeof(error_code));
+    ASSERT_EQ((uint32_t)brpc::H2_PROTOCOL_ERROR,
+              butil::NetToHost32(error_code));
 }
 
 TEST_F(HttpTest, http2_server_enforces_max_concurrent_streams) {
