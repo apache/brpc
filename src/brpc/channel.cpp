@@ -16,6 +16,7 @@
 // under the License.
 
 
+#include <arpa/inet.h>                               // inet_pton
 #include <inttypes.h>
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
@@ -346,7 +347,16 @@ static int CreateSocketSSLContext(const ChannelOptions& options,
 static void SetHttpsPeerName(const std::string& host,
                              ChannelOptions* options) {
     ChannelSSLOptions* ssl = options->mutable_ssl_options();
-    if (ssl->sni_name.empty()) {
+    std::string peer_name = host;
+    if (host.size() > 2 && host.front() == '[' && host.back() == ']') {
+        peer_name = host.substr(1, host.size() - 2);
+    }
+    // IP literals are verified against IP subjectAltName entries, and
+    // RFC 6066 does not permit IP literals in the SNI HostName field.
+    unsigned char address[sizeof(struct in6_addr)];
+    const bool is_ip = inet_pton(AF_INET, peer_name.c_str(), address) == 1 ||
+                       inet_pton(AF_INET6, peer_name.c_str(), address) == 1;
+    if (ssl->sni_name.empty() && !is_ip) {
         ssl->sni_name = host;
     }
     VerifyOptions& verify = ssl->verify;
@@ -354,7 +364,7 @@ static void SetHttpsPeerName(const std::string& host,
         verify.verify_mode != VerifyMode::VERIFY_NONE &&
         verify.expected_peer_name.empty()) {
         if (SupportsPeerNameVerification()) {
-            verify.expected_peer_name = host;
+            verify.expected_peer_name = is_ip ? peer_name : host;
         } else {
             LOG_ONCE(WARNING)
                 << "The TLS backend does not support server identity "
