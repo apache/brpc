@@ -590,6 +590,18 @@ butil::Status AVCDecoderConfigurationRecord::Create(const butil::IOBuf& buf) {
 }
 
 butil::Status AVCDecoderConfigurationRecord::Create(const void* data, size_t len) {
+    // Parse into a copy and commit only on success, so that a rejected
+    // header leaves *this untouched. TsWriter keeps muxing with its record
+    // after a failed Create(), and AVCNaluIterator CHECKs length_size_minus1.
+    AVCDecoderConfigurationRecord tmp(*this);
+    butil::Status st = tmp.Parse(data, len);
+    if (st.ok()) {
+        *this = std::move(tmp);
+    }
+    return st;
+}
+
+butil::Status AVCDecoderConfigurationRecord::Parse(const void* data, size_t len) {
     butil::StringPiece buf((const char*)data, len);
     if (buf.size() < 6) {
         return butil::Status(EINVAL, "Length=%lu is not long enough",
