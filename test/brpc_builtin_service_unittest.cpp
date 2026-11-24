@@ -171,6 +171,40 @@ void CheckTraceId(const brpc::Controller& cntl,
     ASSERT_TRUE(pos != std::string::npos) << expect_str;
 }
 
+void CheckCreatedTimeNearNow(const brpc::Controller& cntl) {
+    const std::string& content = cntl.response_attachment().to_string();
+    const std::size_t header = content.find("CreatedTime");
+    ASSERT_NE(std::string::npos, header) << content;
+    const std::size_t header_end = content.find('\n', header);
+    ASSERT_NE(std::string::npos, header_end) << content;
+    const std::size_t col_end = content.find('|', header_end);
+    ASSERT_NE(std::string::npos, col_end) << content;
+    const std::string created =
+        content.substr(header_end + 1, col_end - header_end - 1);
+    int year = 0, month = 0, day = 0;
+    int hour = 0, minute = 0, second = 0, usec = 0;
+    ASSERT_EQ(7, sscanf(created.c_str(), "%d/%d/%d-%d:%d:%d.%d",
+                        &year, &month, &day, &hour, &minute, &second, &usec))
+        << "created=" << created;
+
+    struct tm tm_val;
+    memset(&tm_val, 0, sizeof(tm_val));
+    tm_val.tm_year = year - 1900;
+    tm_val.tm_mon = month - 1;
+    tm_val.tm_mday = day;
+    tm_val.tm_hour = hour;
+    tm_val.tm_min = minute;
+    tm_val.tm_sec = second;
+    tm_val.tm_isdst = -1;
+    const time_t created_s = mktime(&tm_val);
+    ASSERT_GE(created_s, 0) << "created=" << created;
+
+    const int64_t created_us = (int64_t)created_s * 1000000L + usec;
+    const int64_t diff_us = butil::gettimeofday_us() - created_us;
+    ASSERT_LT(diff_us, 600 * 1000000L) << "CreatedTime=" << created;
+    ASSERT_GT(diff_us, -600 * 1000000L) << "CreatedTime=" << created;
+}
+
 class BuiltinServiceTest : public ::testing::Test{
 protected:
     BuiltinServiceTest(){};
@@ -275,6 +309,9 @@ protected:
             CheckContent(cntl, buf);
         }
         CheckFieldInContent(cntl, "channel_connection_count: ", 0);
+        if (!use_html) {
+            CheckCreatedTimeNearNow(cntl);
+        }
 
         close(cfd);
         StopAndJoin();

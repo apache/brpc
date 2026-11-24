@@ -20,6 +20,7 @@
 #include <iomanip>
 #include <netinet/tcp.h>
 #include <gflags/gflags.h>
+#include "butil/time.h"
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/controller.h"           // Controller
 #include "brpc/socket_map.h"           // SocketMapList
@@ -244,7 +245,9 @@ void ConnectionsService::PrintConnections(
                 }
             }
             ptr->GetStat(&stat);
-            PrintRealDateTime(os, ptr->_reset_fd_real_us);
+            const int64_t reset_fd_to_now_us =
+                butil::cpuwide_time_us() - ptr->_reset_fd_real_us;
+            PrintRealDateTime(os, butil::gettimeofday_us() - reset_fd_to_now_us);
             int rttfd = ptr->fd();
             if (rttfd < 0 && first_sub != nullptr) {
                 rttfd = first_sub->fd();
