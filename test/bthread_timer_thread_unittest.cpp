@@ -18,7 +18,9 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <algorithm>
+#include <atomic>
 #include <string>
+#include <thread>
 #include <vector>
 #include "bthread/sys_futex.h"
 #include "bthread/timer_thread.h"
@@ -292,6 +294,111 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
 }
 
 static void noop_routine(void*) {}
+
+void count_routine(void* arg) {
+    static_cast<std::atomic<int>*>(arg)->fetch_add(1,
+                                                   std::memory_order_release);
+}
+
+class TimerThreadStopGuard {
+public:
+    explicit TimerThreadStopGuard(bthread::TimerThread* timer_thread)
+        : _timer_thread(timer_thread) {}
+
+    ~TimerThreadStopGuard() {
+        _timer_thread->stop_and_join();
+    }
+
+private:
+    bthread::TimerThread* _timer_thread;
+};
+
+TEST(TimerThreadTest, sparse_buckets_execute_tasks) {
+    bthread::TimerThread timer_thread;
+    bthread::TimerThreadOptions options;
+    options.num_buckets = 1024;
+    ASSERT_EQ(0, timer_thread.start(&options));
+
+    std::atomic<int> completed(0);
+    TimerThreadStopGuard stop_timer(&timer_thread);
+    const int kTasks = 64;
+    for (int i = 0; i < kTasks; ++i) {
+        ASSERT_NE(bthread::TimerThread::INVALID_TASK_ID,
+                  timer_thread.schedule(count_routine, &completed,
+                                        butil::microseconds_from_now(1)));
+        for (int retry = 0;
+             retry < 1000 && completed.load(std::memory_order_acquire) <= i;
+             ++retry) {
+            bthread_usleep(1000);
+        }
+        ASSERT_EQ(i + 1, completed.load(std::memory_order_acquire));
+    }
+}
+
+TEST(TimerThreadTest, later_task_without_wakeup_is_executed) {
+    bthread::TimerThread timer_thread;
+    bthread::TimerThreadOptions options;
+    options.num_buckets = 1;
+    ASSERT_EQ(0, timer_thread.start(&options));
+
+    std::atomic<int> completed(0);
+    TimerThreadStopGuard stop_timer(&timer_thread);
+    ASSERT_NE(bthread::TimerThread::INVALID_TASK_ID,
+              timer_thread.schedule(count_routine, &completed,
+                                    butil::microseconds_from_now(100000)));
+
+    // Give the timer thread time to move the first task into its heap. The
+    // later task does not update the global earliest deadline or wake it.
+    bthread_usleep(5000);
+    ASSERT_NE(bthread::TimerThread::INVALID_TASK_ID,
+              timer_thread.schedule(count_routine, &completed,
+                                    butil::microseconds_from_now(100000)));
+    for (int retry = 0;
+         retry < 1000 && completed.load(std::memory_order_acquire) != 2;
+         ++retry) {
+        bthread_usleep(1000);
+    }
+    ASSERT_EQ(2, completed.load(std::memory_order_acquire));
+}
+
+// All producers use one bucket so Bucket::schedule() overlaps the timer
+// thread's consume_tasks(). This is primarily a TSAN regression for the
+// bucket-head publication race; the completion count also keeps it a normal
+// concurrent scheduling test.
+TEST(TimerThreadTest, concurrent_schedule_single_bucket) {
+    bthread::TimerThread timer_thread;
+    bthread::TimerThreadOptions options;
+    options.num_buckets = 1;
+    ASSERT_EQ(0, timer_thread.start(&options));
+
+    const int kProducers = 4;
+    const int kTasksPerProducer = 100000;
+    std::atomic<bool> start(false);
+    std::atomic<int> scheduled(0);
+    std::vector<std::thread> producers;
+    producers.reserve(kProducers);
+    for (int i = 0; i < kProducers; ++i) {
+        producers.emplace_back([&] {
+            while (!start.load(std::memory_order_acquire)) {
+            }
+            for (int j = 0; j < kTasksPerProducer; ++j) {
+                if (timer_thread.schedule(noop_routine, nullptr,
+                                          butil::microseconds_from_now(1)) !=
+                    bthread::TimerThread::INVALID_TASK_ID) {
+                    scheduled.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+    start.store(true, std::memory_order_release);
+    for (auto& producer : producers) {
+        producer.join();
+    }
+
+    EXPECT_EQ(kProducers * kTasksPerProducer,
+              scheduled.load(std::memory_order_relaxed));
+    timer_thread.stop_and_join();
+}
 
 // RAII helper: set a gflag for the duration of a test and restore its previous
 // value on scope exit, so tests don't leak configuration into later tests and

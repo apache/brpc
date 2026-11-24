@@ -98,7 +98,8 @@ class BAIDU_CACHELINE_ALIGNMENT TimerThread::Bucket {
 public:
     Bucket()
         : _nearest_run_time(std::numeric_limits<int64_t>::max())
-        , _task_head(nullptr) {
+        , _task_head(nullptr)
+        , _has_tasks(false) {
     }
 
     ~Bucket() {}
@@ -121,6 +122,7 @@ private:
     FastPthreadMutex _mutex;
     int64_t _nearest_run_time;
     Task* _task_head;
+    butil::atomic<bool> _has_tasks;
 };
 
 // Utilies for making and extracting TaskId.
@@ -190,19 +192,18 @@ int TimerThread::start(const TimerThreadOptions* options_in) {
 }
 
 TimerThread::Task* TimerThread::Bucket::consume_tasks() {
-    Task* head = nullptr;
-    if (_task_head) { // NOTE: schedule() and consume_tasks() are sequenced
-        // by TimerThread._nearest_run_time and fenced by TimerThread._mutex.
-        // We can avoid touching the mutex and related cacheline when the
-        // bucket is actually empty.
-        BAIDU_SCOPED_LOCK(_mutex);
-        if (_task_head) {
-            head = _task_head;
-            _task_head = nullptr;
-            _nearest_run_time = std::numeric_limits<int64_t>::max();
-        }
+    if (!_has_tasks.load(butil::memory_order_acquire)) {
+        return nullptr;
     }
-    return head;
+    BAIDU_SCOPED_LOCK(_mutex);
+    if (_task_head) {
+        Task* head = _task_head;
+        _task_head = nullptr;
+        _has_tasks.store(false, butil::memory_order_release);
+        _nearest_run_time = std::numeric_limits<int64_t>::max();
+        return head;
+    }
+    return nullptr;
 }
 
 TimerThread::Bucket::ScheduleResult
@@ -230,6 +231,7 @@ TimerThread::Bucket::schedule(void (*fn)(void*), void* arg,
         BAIDU_SCOPED_LOCK(_mutex);
         task->next = _task_head;
         _task_head = task;
+        _has_tasks.store(true, butil::memory_order_release);
         if (task->run_time < _nearest_run_time) {
             _nearest_run_time = task->run_time;
             earlier = true;
