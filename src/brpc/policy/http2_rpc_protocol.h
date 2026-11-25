@@ -301,6 +301,11 @@ friend class H2Context;
     bool _remote_ended;
     bool _response_committed;
     bool _rst_received;
+    // Server side only. The first header block of a request is its header
+    // section, any later one is the trailer section (RFC 9113 section 8.1),
+    // which ConsumeHeaders() keeps out of the request header.
+    bool _header_section_received;
+    bool _in_trailer_section;
     H2Error _rst_error;
     butil::atomic<int64_t> _remote_window_left;
     butil::atomic<int64_t> _deferred_window_update;

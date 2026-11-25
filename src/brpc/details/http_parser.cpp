@@ -1565,6 +1565,14 @@ size_t http_parser_execute (http_parser *parser,
         }
 
         if (ch == ':') {
+          if (parser->header_state == h_transfer_encoding) {
+            /* Multiple `Transfer-Encoding` headers are one list (RFC 7230
+             * 3.2.2), so `chunked` from an earlier line is no longer final.
+             * Clear it here rather than at value start so that an empty
+             * value also resets it.
+             */
+            parser->flags &= ~F_CHUNKED;
+          }
           parser->state = s_header_value_discard_ws;
           CALLBACK_DATA(header_field);
           break;
@@ -2116,6 +2124,15 @@ size_t http_parser_execute (http_parser *parser,
         if (ch == CR) {
           parser->state = s_chunk_size_almost_done;
           break;
+        }
+        /* RFC 9112 7.1.1 allows no CTL other than HTAB in a chunk extension.
+         * A bare LF here used to be skipped as part of the extension, while
+         * a peer that ends the chunk-size line at LF reads the next bytes as
+         * chunk data, so the two disagree about where the request ends.
+         */
+        if (ch == LF || !IS_HEADER_CHAR(ch)) {
+          SET_ERRNO(HPE_INVALID_CHUNK_SIZE);
+          goto error;
         }
         break;
       }

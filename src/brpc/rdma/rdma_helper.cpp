@@ -26,10 +26,13 @@
 #include "butil/fd_guard.h"
 #include "butil/fd_utility.h"                     // butil::make_non_blocking
 #include "butil/logging.h"
+#include "butil/scoped_lock.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rdma_helper.h"
+#include "brpc/rdma/srq_receive_pool.h"
+#include "brpc/rdma/srq_worker.h"
 
 
 namespace butil {
@@ -59,6 +62,8 @@ ibv_pd* (*IbvAllocPd)(ibv_context*) = nullptr;
 int (*IbvDeallocPd)(ibv_pd*) = nullptr;
 ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int) = nullptr;
 int (*IbvDestroyCq)(ibv_cq*) = nullptr;
+ibv_srq* (*IbvCreateSrq)(ibv_pd*, ibv_srq_init_attr*) = nullptr;
+int (*IbvDestroySrq)(ibv_srq*) = nullptr;
 ibv_qp* (*IbvCreateQp)(ibv_pd*, ibv_qp_init_attr*) = nullptr;
 int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask) = nullptr;
 int (*IbvQueryQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask, ibv_qp_init_attr*) = nullptr;
@@ -88,7 +93,7 @@ static int g_max_sge = 0;
 static uint32_t g_vendor_id = 0;
 static uint8_t g_port_num = 1;
 
-static int g_comp_vector_index = 0;
+static butil::atomic<uint32_t> g_comp_vector_index(0);
 
 butil::atomic<bool> g_rdma_available(false);
 
@@ -98,15 +103,16 @@ DEFINE_string(rdma_device, "", "The name of the HCA device used "
 DEFINE_int32(rdma_port, 1, "The port number to use. For RoCE, it is always 1.");
 DEFINE_int32(rdma_gid_index, -1, "The GID index to use. -1 means using the last one.");
 
-// static const size_t SYSFS_SIZE = 4096;
 static ibv_device** g_devices = nullptr;
 static ibv_context* g_context = nullptr;
 static SocketId g_async_socket;
 static ibv_pd* g_pd = nullptr;
 static std::vector<ibv_mr*>* g_mrs = nullptr; // mr registered by brpc
 
-static butil::FlatMap<void*, ibv_mr*>* g_user_mrs;  // mr registered by user
-static butil::Mutex* g_user_mrs_lock = nullptr;
+// A user buffer can outlive GlobalRelease(). Keep the lock valid for its
+// deleter and hold it through verbs operations before releasing the PD.
+static pthread_mutex_t g_user_mrs_lock = PTHREAD_MUTEX_INITIALIZER;
+static butil::FlatMap<void*, ibv_mr*>* g_user_mrs = nullptr;
 
 // Store the original IOBuf memalloc and memdealloc functions
 static void* (*g_mem_alloc)(size_t) = nullptr;
@@ -135,18 +141,24 @@ static void GlobalRelease() {
 
     RdmaEndpoint::GlobalRelease();
 
-    if (g_user_mrs_lock) {
-        BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
-        for (butil::FlatMap<void*, ibv_mr*>::iterator it = g_user_mrs->begin();
-                it != g_user_mrs->end(); ++it) {
-            IbvDeregMr(it->second);
-        }
-        g_user_mrs->clear();
-        delete g_user_mrs;
-        g_user_mrs = nullptr;
+    SrqReceivePool::RetryDeregistrations();
+    if (SrqWorkerCount() != 0 || SrqReceivePool::RegisteredBytes() != 0) {
+        // Business-owned IOBufs and quarantined DMA references may outlive
+        // workers. Keep their PD, context and registered memory valid.
+        LOG(WARNING) << "Retaining RDMA context for outstanding SRQ references";
+        return;
     }
-    delete g_user_mrs_lock;
-    g_user_mrs_lock = nullptr;
+
+    {
+        BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+        if (g_user_mrs != nullptr) {
+            for (const auto& entry : *g_user_mrs) {
+                IbvDeregMr(entry.second);
+            }
+            delete g_user_mrs;
+            g_user_mrs = nullptr;
+        }
+    }
 
     if (g_mrs) {
         for (size_t i = 0; i < g_mrs->size(); ++i) {
@@ -257,89 +269,35 @@ static bool FindRdmaGid(ibv_context* context) {
 static void OnRdmaAsyncEvent(Socket* m) {
     int progress = Socket::PROGRESS_INIT;
     do {
+        // One edge may cover many events. Drain the fd before resetting the
+        // Socket event counter, otherwise QP destruction can wait forever for
+        // a LAST_WQE event left unread on an already-readable fd.
         ibv_async_event event;
-        if (IbvGetAsyncEvent(g_context, &event) != 0) {
-            break;
-        }
-        LOG(WARNING) << "rdma async event: " << IbvEventTypeStr(event.event_type);
-        switch (event.event_type) {
-        case IBV_EVENT_QP_REQ_ERR:
-        case IBV_EVENT_QP_ACCESS_ERR:
-        case IBV_EVENT_QP_FATAL: {
-            SocketId sid = (SocketId)event.element.qp->qp_context;
-            SocketUniquePtr s;
-            if (Socket::Address(sid, &s) == 0) {
-                s->SetFailed(ERDMA, "QP fatal error");
-                LOG(WARNING) << "Receive a QP fatal error on " << s->description();
+        while (IbvGetAsyncEvent(g_context, &event) == 0) {
+            if (event.event_type != IBV_EVENT_QP_LAST_WQE_REACHED &&
+                event.event_type != IBV_EVENT_SRQ_LIMIT_REACHED) {
+                LOG(WARNING) << "rdma async event: "
+                             << IbvEventTypeStr(event.event_type);
             }
-            // NOTE:
-            // We must ack the async event here, before `s' is recycled.
-            // Otherwise there will be an deadlock.
-            // Please check the use of ibv_ack_async_event at:
-            // http://www.rdmamojo.com/2012/08/16/ibv_ack_async_event/
+            if (DispatchRdmaAsyncEvent(&event)) {
+                continue;
+            }
+            switch (event.event_type) {
+            case IBV_EVENT_LID_CHANGE:
+                FindRdmaLid();
+                break;
+            case IBV_EVENT_GID_CHANGE:
+                FindRdmaGid(g_context);
+                break;
+            case IBV_EVENT_DEVICE_FATAL:
+                GlobalDisableRdma();
+                break;
+            default:
+                break;
+            }
             IbvAckAsyncEvent(&event);
-            break;
         }
-        case IBV_EVENT_CQ_ERR: {
-            LOG(WARNING) << "CQ overruns, the connection will be stopped.";
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_COMM_EST:
-        case IBV_EVENT_SQ_DRAINED:
-        case IBV_EVENT_QP_LAST_WQE_REACHED: {
-            // just ignore the event
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_SRQ_ERR:
-        case IBV_EVENT_SRQ_LIMIT_REACHED: {
-            // SRQ not used, should not happen
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_LID_CHANGE: {
-            FindRdmaLid();
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_PATH_MIG:
-        case IBV_EVENT_PATH_MIG_ERR:
-        case IBV_EVENT_PKEY_CHANGE:
-        case IBV_EVENT_SM_CHANGE:
-        case IBV_EVENT_CLIENT_REREGISTER: {
-            // for IB only, we haven't test these events carefully
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_PORT_ACTIVE:
-        case IBV_EVENT_PORT_ERR: {
-            // Port up/down will lead these two events.
-            // The port error is recoverable.
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_GID_CHANGE: {
-            FindRdmaGid(g_context);
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        case IBV_EVENT_DEVICE_FATAL: {
-            // because the memory resources are related to rdma device
-            // we view this error unrecoverable
-            GlobalDisableRdma();
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        default:
-            // should not happen
-            IbvAckAsyncEvent(&event);
-            break;
-        }
-        if (!m->MoreReadEvents(&progress)) {
-            break;
-        }
-    } while (true);
+    } while (m->MoreReadEvents(&progress));
 }
 
 #define LoadSymbol(handle, func, symbol)                 \
@@ -390,6 +348,8 @@ static int ReadRdmaDynamicLib() {
     LoadSymbol(g_handle_ibverbs, IbvDeallocPd, "ibv_dealloc_pd");
     LoadSymbol(g_handle_ibverbs, IbvCreateCq, "ibv_create_cq");
     LoadSymbol(g_handle_ibverbs, IbvDestroyCq, "ibv_destroy_cq");
+    LoadSymbol(g_handle_ibverbs, IbvCreateSrq, "ibv_create_srq");
+    LoadSymbol(g_handle_ibverbs, IbvDestroySrq, "ibv_destroy_srq");
     LoadSymbol(g_handle_ibverbs, IbvCreateQp, "ibv_create_qp");
     LoadSymbol(g_handle_ibverbs, IbvModifyQp, "ibv_modify_qp");
     LoadSymbol(g_handle_ibverbs, IbvQueryQp, "ibv_query_qp");
@@ -535,11 +495,15 @@ static void GlobalRdmaInitializeOrDieImpl() {
         ExitWithError();
     }
 
-    g_user_mrs_lock = new butil::Mutex;
-    g_user_mrs = new butil::FlatMap<void*, ibv_mr*>();
-    if (g_user_mrs->init(65536) < 0) {
+    auto user_mrs = new butil::FlatMap<void*, ibv_mr*>();
+    if (user_mrs->init(65536) < 0) {
         PLOG(WARNING) << "Fail to initialize g_user_mrs";
+        delete user_mrs;
         ExitWithError();
+    }
+    {
+        BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+        g_user_mrs = user_mrs;
     }
     g_mrs = new std::vector<ibv_mr*>;
 
@@ -565,8 +529,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     if (RdmaEndpoint::GlobalInitialize() < 0) {
-        LOG(ERROR) << "rdma_recv_block_type incorrect "
-                   << "(valid value: default/large/huge)";
+        PLOG(ERROR) << "Fail to initialize RDMA endpoint";
         ExitWithError();
     }
 
@@ -603,6 +566,11 @@ void GlobalRdmaInitializeOrDie() {
 }
 
 uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
+    BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+    if (!g_user_mrs || !IsRdmaAvailable()) {
+        errno = ENODEV;
+        return 0;
+    }
     ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_RELAXED_ORDERING);
     if (!mr) {
         PLOG(WARNING) << "Do not support IBV_ACCESS_RELAXED_ORDERING for RDMA!!!";
@@ -612,37 +580,29 @@ uint32_t RegisterMemoryForRdma(void* buf, size_t len) {
             return 0;
         }
     }
-    {
-        BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
-        if (!g_user_mrs->insert(buf, mr)) {
-            LOG(WARNING) << "Fail to insert to user mr maps (now there are "
-                         << g_user_mrs->size() << " mrs already";
-        } else {
-            return mr->lkey;
-        }
+    if (g_user_mrs->insert(buf, mr)) {
+        return mr->lkey;
     }
-    if(IbvDeregMr(mr)) {
+    LOG(WARNING) << "Fail to insert to user mr maps (now there are "
+                 << g_user_mrs->size() << " mrs already";
+    if (IbvDeregMr(mr)) {
         PLOG(ERROR) << "Failed to deregister memory";
     }
     return 0;
 }
 
 void DeregisterMemoryForRdma(void* buf) {
-    ibv_mr* mr = nullptr;
-    {
-        BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
-        ibv_mr** mr_ptr = g_user_mrs->seek(buf);
-        if (mr_ptr) {
-            mr = *mr_ptr;
-            g_user_mrs->erase(buf);
-        }
+    BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+    if (g_user_mrs == nullptr) {
+        return;
     }
-    if (mr) {
-        if (IbvDeregMr(mr)) {
-            PLOG(ERROR) << "Failed to deregister memory at: " << mr->addr;
-        }
-    } else {
+    ibv_mr* mr = nullptr;
+    if (g_user_mrs->erase(buf, &mr) == 0) {
         LOG(WARNING) << "Try to deregister a buffer which is not registered";
+        return;
+    }
+    if (IbvDeregMr(mr) != 0) {
+        PLOG(ERROR) << "Failed to deregister memory at: " << buf;
     }
 }
 
@@ -655,15 +615,11 @@ uint32_t GetRdmaVendorId() {
 }
 
 int GetRdmaCompVector() {
-    if (!g_context) {
+    if (!g_context || g_context->num_comp_vectors <= 0) {
         return 0;
     }
-    // g_comp_vector_index is not an atomic variable. If more than
-    // one CQ is created at the same time, some CQs will share the
-    // same index. However, this vector is only used to assign an
-    // event queue for the CQ. Sharing the same event queue is not
-    // a problem.
-    return (g_comp_vector_index++) % g_context->num_comp_vectors;
+    return g_comp_vector_index.fetch_add(1, butil::memory_order_relaxed) %
+        g_context->num_comp_vectors;
 }
 
 ibv_context* GetRdmaContext() {
@@ -675,7 +631,10 @@ ibv_pd* GetRdmaPd() {
 }
 
 uint32_t GetLKey(void* buf) {
-    BAIDU_SCOPED_LOCK(*g_user_mrs_lock);
+    BAIDU_SCOPED_LOCK(g_user_mrs_lock);
+    if (!g_user_mrs) {
+        return 0;
+    }
     ibv_mr** mr_ptr = g_user_mrs->seek(buf);
     if (mr_ptr) {
         return (*mr_ptr)->lkey;
@@ -715,10 +674,13 @@ void GlobalDisableRdma() {
 
 bool SupportedByRdma(std::string protocol) {
     if (protocol.compare("baidu_std") == 0) {
-        // Since rdma is used for high performance scenario,
-        // we consider baidu_std for the only protocol to support.
         return true;
     }
+#if BRPC_WITH_FLATBUFFERS
+    if (protocol.compare("fb_rpc") == 0) {
+        return true;
+    }
+#endif // BRPC_WITH_FLATBUFFERS
     return false;
 }
 

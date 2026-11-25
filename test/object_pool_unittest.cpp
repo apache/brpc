@@ -28,6 +28,7 @@
 namespace {
 struct MyObject {};
 struct FreeChunkCountObject {};
+struct DescribeRaceObject {};
 
 template <size_t Size, size_t MaxSize, size_t MaxItem = 1024>
 struct BlockSizeLimitedObject {
@@ -126,6 +127,47 @@ TEST_F(ObjectPoolTest, change_config) {
     std::cout << describe_objects<MyObject>() << std::endl;
 }
 
+struct DescribeObjectsArgs {
+    std::atomic<bool>* started;
+    std::atomic<bool>* done;
+};
+
+const size_t kDescribeRaceObjectCount = 100000;
+
+void* create_objects_while_describing(void* arg) {
+    DescribeObjectsArgs* args = static_cast<DescribeObjectsArgs*>(arg);
+    args->started->store(true, std::memory_order_release);
+    for (size_t i = 0; i < kDescribeRaceObjectCount; ++i) {
+        (void)get_object<DescribeRaceObject>();
+    }
+    args->done->store(true, std::memory_order_release);
+    return nullptr;
+}
+
+TEST_F(ObjectPoolTest, describe_while_creating_objects) {
+    // Keep the pool alive while the worker's LocalPool is being destroyed.
+    DescribeRaceObject* guard = get_object<DescribeRaceObject>();
+    ASSERT_NE(nullptr, guard);
+    std::atomic<bool> started(false);
+    std::atomic<bool> done(false);
+    DescribeObjectsArgs args = { &started, &done };
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr,
+                                create_objects_while_describing, &args));
+    while (!started.load(std::memory_order_acquire)) {
+    }
+    while (!done.load(std::memory_order_acquire)) {
+        describe_objects<DescribeRaceObject>();
+    }
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+    // The count assertion catches non-atomic or incomplete publication on
+    // regular builds; TSan additionally detects the concurrent access race.
+    ASSERT_EQ(kDescribeRaceObjectCount + 1,
+              describe_objects<DescribeRaceObject>().item_num);
+    return_object(guard);
+    clear_objects<DescribeRaceObject>();
+}
+
 template <typename T>
 void check_block_capacity(size_t expected_capacity) {
     typedef typename ObjectPool<T>::Block Block;
@@ -138,6 +180,7 @@ void check_block_capacity(size_t expected_capacity) {
     }
 
     clear_objects<T>();
+    EXPECT_EQ(0u, describe_objects<T>().total_size);
     EXPECT_EQ(expected_capacity, describe_objects<T>().block_item_num);
     std::vector<T*> objects;
     for (size_t i = 0; i < expected_capacity; ++i) {
@@ -147,9 +190,11 @@ void check_block_capacity(size_t expected_capacity) {
         objects.push_back(obj);
     }
     EXPECT_EQ(1u, describe_objects<T>().block_num);
+    EXPECT_EQ(sizeof(Block::items), describe_objects<T>().total_size);
     T* next = get_object<T>();
     ASSERT_TRUE(next);
     EXPECT_EQ(2u, describe_objects<T>().block_num);
+    EXPECT_EQ(2 * sizeof(Block::items), describe_objects<T>().total_size);
     EXPECT_EQ(0, return_object(next));
     EXPECT_EQ(next, get_object<T>());
     EXPECT_EQ(0, return_object(next));
@@ -157,7 +202,27 @@ void check_block_capacity(size_t expected_capacity) {
         EXPECT_EQ('x', obj->data[0]);
         EXPECT_EQ(0, return_object(obj));
     }
+    EXPECT_EQ(2 * sizeof(Block::items), describe_objects<T>().total_size);
     clear_objects<T>();
+    EXPECT_EQ(0u, describe_objects<T>().total_size);
+}
+
+TEST_F(ObjectPoolTest, total_size_counts_slot_storage) {
+    clear_objects<char>();
+    EXPECT_EQ(0u, describe_objects<char>().total_size);
+    char* obj = get_object<char>();
+    ASSERT_TRUE(obj);
+    const ObjectPoolInfo info = describe_objects<char>();
+    EXPECT_EQ(1u, info.item_num);
+#ifdef BUTIL_USE_ASAN
+    EXPECT_EQ(2048u, info.total_size);
+#else
+    EXPECT_EQ(256u, info.total_size);
+#endif
+    EXPECT_EQ(0, return_object(obj));
+    EXPECT_EQ(info.total_size, describe_objects<char>().total_size);
+    clear_objects<char>();
+    EXPECT_EQ(0u, describe_objects<char>().total_size);
 }
 
 TEST_F(ObjectPoolTest, block_size_limit_includes_slot_padding) {
