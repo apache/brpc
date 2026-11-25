@@ -303,7 +303,7 @@ void Series<FixedVector<T,N>, Op>::describe(std::ostream& os,
             os << butil::StringPiece(sp.field(), sp.length());
             ++sp;
         } else {
-            os << "FixedVector[" << j << ']';
+            os << "Vector[" << j << ']';
         }
         os << "\",\"data\":[";
         for (int i = 0; i < 30; ++i, ++c) {
