@@ -193,13 +193,78 @@ UBShmEndpoint::~UBShmEndpoint() {
 }
 
 void UBShmEndpoint::Reset() {
+    // The ring is destroyed by DeallocateResources() or by the poller that
+    // still uses it.
     DeallocateResources();
 
-    delete _ub_ring;
-    _ub_ring = nullptr;
     _poller_sid = INVALID_SOCKET_ID;
+    _poller = nullptr;
     _negotiated_data_format = UBR_DATA_FORMAT_NONE;
     _state = UNINIT;
+}
+
+// `ring' is not used any more, either because the endpoint never handed it to
+// a poller or because its last user just returned it.
+static void DestroyRing(UBRing* ring) {
+    if (ring == nullptr) {
+        return;
+    }
+    ring->UbrTrxClose();
+    delete ring;
+}
+
+static void* DestroyRingInBthread(void* arg) {
+    DestroyRing(static_cast<UBRing*>(arg));
+    return nullptr;
+}
+
+// Closing the trx may wait for the peer to acknowledge the close, which must
+// not happen in the poller or in a callback of the ring: hand the ring to a
+// bthread instead.
+static void DestroyRingLater(UBRing* ring) {
+    if (ring == nullptr) {
+        return;
+    }
+    bthread_t tid;
+    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+    bthread_attr_set_name(&attr, "UBDestroyRing");
+    if (bthread_start_background(&tid, &attr, DestroyRingInBthread, ring) != 0) {
+        PLOG(WARNING) << "Fail to start bthread to destroy the ring";
+        DestroyRing(ring);
+    }
+}
+
+bool UBShmEndpoint::AcquireRing(UBRing** ring) {
+    _ring_ref.fetch_add(1, butil::memory_order_seq_cst);
+    // The acquire load pairs with the release store in
+    // AllocateClientResources()/AllocateServerResources(), which publish the
+    // ring before they hand it out.
+    if (_ring_closed.load(butil::memory_order_acquire)) {
+        ReleaseRing();
+        return false;
+    }
+    *ring = _ub_ring.load(butil::memory_order_acquire);
+    if (BAIDU_UNLIKELY(*ring == nullptr)) {
+        ReleaseRing();
+        return false;
+    }
+    return true;
+}
+
+void UBShmEndpoint::ReleaseRing() {
+    if (_ring_ref.fetch_sub(1, butil::memory_order_seq_cst) != 1) {
+        return;
+    }
+    // The seq_cst load pairs with the seq_cst store of _ring_retired in
+    // DeallocateResources(): when it sees the retired ring, the ring is not
+    // destroyed by the endpoint.
+    if (_ring_retired.load(butil::memory_order_seq_cst) == nullptr) {
+        return;
+    }
+    // The endpoint gave up the ring and nobody uses it now. Closing the trx
+    // may wait for the peer, so it must not be done here: this is called by
+    // the poller and by the sending path.
+    DestroyRingLater(_ring_retired.exchange(nullptr, butil::memory_order_seq_cst));
 }
 
 void UBConnect::StartConnect(const Socket* socket,
@@ -514,9 +579,15 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
             ub_transport->_ub_state = UBShmTransport::UB_OFF;
         } else {
             ep->_state = C_MAP_REMOTE_SHM;
-            if (ep->_ub_ring->UbrMapRemoteShm(
+            bool mapped = false;
+            UBRing* ring = nullptr;
+            if (ep->AcquireRing(&ring)) {
+                mapped = ring->UbrMapRemoteShm(
                     &local_trx_shm, shm_name, remote_msg.len,
-                    selected_format) < 0) {
+                    selected_format) == 0;
+                ep->ReleaseRing();
+            }
+            if (!mapped) {
                 LOG(WARNING) << "Fail to map the remote shm, fallback to tcp:"
                              << s->description();
                 ub_transport->_ub_state = UBShmTransport::UB_OFF;
@@ -545,7 +616,11 @@ void* UBShmEndpoint::ProcessHandshakeAtClient(void* arg) {
     if (ub_transport->_ub_state == UBShmTransport::UB_ON) {
         ep->_negotiated_data_format = selected_format;
         ep->_state = ESTABLISHED;
-        ep->_ub_ring->UbrUnlinkLocalShm();
+        UBRing* ring = nullptr;
+        if (ep->AcquireRing(&ring)) {
+            ring->UbrUnlinkLocalShm();
+            ep->ReleaseRing();
+        }
         LOG_IF(INFO, FLAGS_ub_trace_verbose) 
             << "Client handshake ends (use ubring) on " << s->description();
     } else {
@@ -736,7 +811,11 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
             ub_transport->_ub_state = UBShmTransport::UB_ON;
             ep->_negotiated_data_format = selected_format;
             ep->_state = ESTABLISHED;
-            ep->_ub_ring->UbrUnlinkLocalShm();
+            UBRing* ring = nullptr;
+            if (ep->AcquireRing(&ring)) {
+                ring->UbrUnlinkLocalShm();
+                ep->ReleaseRing();
+            }
             LOG_IF(INFO, FLAGS_ub_trace_verbose) 
                 << "Server handshake ends (use ubring) on " << s->description();
         }
@@ -751,16 +830,22 @@ void* UBShmEndpoint::ProcessHandshakeAtServer(void* arg) {
     return nullptr;
 }
 
-bool UBShmEndpoint::IsWritable() const {
+static inline bool IsRingWritable(UBRing* ring) {
+    return ring->IsUbrTrxWriteable(EPOLLET) == 0;
+}
+
+bool UBShmEndpoint::IsWritable() {
     if (BAIDU_UNLIKELY(g_skip_ub_init)) {
         // Just for UT
         return false;
     }
-    auto ret = _ub_ring->IsUbrTrxWriteable(EPOLLET);
-    if (ret == 0) {
-        return true;
+    UBRing* ring = nullptr;
+    if (!AcquireRing(&ring)) {
+        return false;
     }
-    return false;
+    const bool writable = IsRingWritable(ring);
+    ReleaseRing();
+    return writable;
 }
 
 ssize_t UBShmEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
@@ -784,9 +869,16 @@ ssize_t UBShmEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
         }
     }
 
+    UBRing* ring = nullptr;
+    if (BAIDU_UNLIKELY(!AcquireRing(&ring))) {
+        // The endpoint is being released.
+        errno = EPIPE;
+        return -1;
+    }
     ssize_t nw = 0;
     errno = 0;
-    nw = _ub_ring->UbrTrxWritev(vec, nvec);
+    nw = ring->UbrTrxWritev(vec, nvec);
+    ReleaseRing();
     if (UNLIKELY(nw == -1)) {
         if (errno == EMSGSIZE) {
             LOG(ERROR) << "Non-blocking send msg failed, message is larger than ubring capacity.";
@@ -817,21 +909,25 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM* local_trx_shm, const cha
         return 0;
     }
 
-    CHECK(_ub_ring == nullptr);
+    CHECK(_ub_ring.load(butil::memory_order_relaxed) == nullptr);
     // TODO: Pooling management
-    _ub_ring = new UBRing();
+    UBRing* ring = new UBRing();
+    _ub_ring.store(ring, butil::memory_order_relaxed);
 
     SocketOptions options;
-    options.user = this;
+    // The poller resolves the endpoint from the owning Socket, see PollerUser.
+    options.user = new PollerUser(_socket_id);
     options.keytable_pool = _socket->_keytable_pool;
     if (Socket::Create(options, &_poller_sid) < 0) {
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
-    int ret = _ub_ring->UbrAllocateLocalShm(local_trx_shm, shm_name);
+    int ret = ring->UbrAllocateLocalShm(local_trx_shm, shm_name);
     if (ret != 0) {
         return ret;
     }
+    // Publish the ring to the poller before the ADD below reaches it.
+    _ring_closed.store(false, butil::memory_order_release);
     PollerRegisterEvent(PollerSidOp::ADD, EPOLLIN);
     return 0;
 }
@@ -844,53 +940,62 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm,
         return 0;
     }
 
-    CHECK(_ub_ring == nullptr);
+    CHECK(_ub_ring.load(butil::memory_order_relaxed) == nullptr);
     // TODO: Pooling management
-    _ub_ring = new UBRing();
+    UBRing* ring = new UBRing();
+    _ub_ring.store(ring, butil::memory_order_relaxed);
 
     SocketOptions options;
-    options.user = this;
+    // The poller resolves the endpoint from the owning Socket, see PollerUser.
+    options.user = new PollerUser(_socket_id);
     options.keytable_pool = _socket->_keytable_pool;
     if (Socket::Create(options, &_poller_sid) < 0) {
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
-    int ret = _ub_ring->UbrAllocateServerShm(
+    int ret = ring->UbrAllocateServerShm(
         remote_trx_shm, local_trx_shm, format);
     if (ret != 0) {
         return ret;
     }
+    // Publish the ring to the poller before the ADD below reaches it.
+    _ring_closed.store(false, butil::memory_order_release);
     PollerRegisterEvent(PollerSidOp::ADD, EPOLLIN);
     return ret;
 }
 
 void UBShmEndpoint::DeallocateResources() {
-    if (!_ub_ring) {
+    // Take the ring out first so that nobody starts to use it any more.
+    UBRing* ring = _ub_ring.exchange(nullptr, butil::memory_order_seq_cst);
+    if (ring == nullptr) {
         return;
     }
+    // The poller may be inside PollIn() of this endpoint right now, so the
+    // ring is not destroyed here but by its last user.
+    _ring_closed.store(true, butil::memory_order_seq_cst);
     PollerRegisterEvent(PollerSidOp::REMOVE);
-    _ub_ring->UbrTrxClose();
     if (INVALID_SOCKET_ID != _poller_sid) {
         SocketUniquePtr s;
         if (Socket::Address(_poller_sid, &s) == 0) {
-            s->_user = nullptr;
             s->_fd = -1;
             s->SetFailed();
         }
     }
-}
-
-void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t ep_event) {
-    SocketUniquePtr s;
-    if (Socket::Address(ep->_socket_id, &s) < 0) {
+    _ring_retired.store(ring, butil::memory_order_seq_cst);
+    if (_ring_ref.load(butil::memory_order_seq_cst) != 0) {
         return;
     }
-    auto* ub_transport = static_cast<UBShmTransport*>(s->_transport.get());
-    CHECK(ep == ub_transport->_ub_ep);
+    ring = _ring_retired.exchange(nullptr, butil::memory_order_seq_cst);
+    // DestroyRing() may wait for the peer to acknowledge the close, which is
+    // acceptable here: the caller is the thread that releases the endpoint,
+    // not the poller, because a poller in flight keeps a reference.
+    DestroyRing(ring);
+}
 
+void UBShmEndpoint::PollIn(Socket* s, UBRing* ring, uint32_t ep_event) {
     InputMessageClosure last_msg;
     while (true) {
-        int ret = ep->_ub_ring->IsUbrTrxReadable(ep_event);
+        int ret = ring->IsUbrTrxReadable(ep_event);
         if (ret < 0) {
             return;
         }
@@ -902,7 +1007,7 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t ep_event) {
             const int64_t base_realtime = butil::gettimeofday_us() - received_us;
 
             const ssize_t nr = processor.read_buf().append_from_reader(
-                ep->_ub_ring, processor.OnceReadSize());
+                ring, processor.OnceReadSize());
             if (nr <= 0) {
                 if (0 == nr) {
                     // Set `read_eof' flag and proceed to feed EOF into `Protocol'
@@ -936,17 +1041,10 @@ void UBShmEndpoint::PollIn(UBShmEndpoint* ep, uint32_t ep_event) {
     }
 }
 
-void UBShmEndpoint::PollOut(UBShmEndpoint* ep, uint32_t ep_event) {
-    SocketUniquePtr s;
-    if (Socket::Address(ep->_socket_id, &s) < 0) {
-        return;
-    }
-    auto* ub_transport = static_cast<UBShmTransport*>(s->_transport.get());
-    CHECK(ep == ub_transport->_ub_ep);
-    if (ep->IsWritable()) {
+void UBShmEndpoint::PollOut(Socket* s, UBRing* ring) {
+    if (IsRingWritable(ring)) {
         s->WakeAsEpollOut();
     }
-
 }
 
 int UBShmEndpoint::GlobalInitialize() {
@@ -1000,22 +1098,37 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
                 }
             }
             for (const auto& poller_sid : poller_sids) {
-                SocketUniquePtr s;
-                if (Socket::Address(poller_sid.sid, &s) < 0) {
+                SocketUniquePtr poller_socket;
+                if (Socket::Address(poller_sid.sid, &poller_socket) < 0) {
                     continue;
                 }
-                UBShmEndpoint* ep = static_cast<UBShmEndpoint*>(s->user());
-                if (!ep) {
+                auto* user = static_cast<PollerUser*>(poller_socket->user());
+                if (user == nullptr) {
+                    continue;
+                }
+                // Resolve the endpoint from the owning Socket and keep that
+                // Socket referenced: the endpoint may be released concurrently
+                // by Reset() and must not be dereferenced directly.
+                SocketUniquePtr owner;
+                if (Socket::Address(user->owner_id, &owner) < 0) {
+                    continue;
+                }
+                auto* transport =
+                    static_cast<UBShmTransport*>(owner->_transport.get());
+                UBShmEndpoint* ep = transport->GetUBShmEp();
+                UBRing* ring = nullptr;
+                if (!ep->AcquireRing(&ring)) {
                     continue;
                 }
 
                 if (poller_sid.events & EPOLLIN) {
-                    PollIn(ep, poller_sid.events);
+                    PollIn(owner.get(), ring, poller_sid.events);
                 }
 
                 if (poller_sid.events & EPOLLOUT) {
-                    PollOut(ep, poller_sid.events);
+                    PollOut(owner.get(), ring);
                 }
+                ep->ReleaseRing();
             }
             if (poller->callback) {
                 poller->callback();
@@ -1061,13 +1174,20 @@ void UBShmEndpoint::PollingModeRelease(bthread_tag_t tag) {
 
 void UBShmEndpoint::PollerRegisterEvent(PollerSidOp::OpType op,
                                         uint32_t events) {
-    auto index = butil::fmix32(_poller_sid) % FLAGS_ub_poller_num;
-    auto& group = _poller_groups[bthread_self_tag()];
-    auto& pollers = group.pollers;
-    auto& poller = pollers[index];
-    if (INVALID_SOCKET_ID != _poller_sid) {
-        poller.op_queue.Enqueue(PollerSidOp{_poller_sid, events, op});
+    if (INVALID_SOCKET_ID == _poller_sid) {
+        return;
     }
+    if (op == PollerSidOp::ADD && _poller == nullptr) {
+        // Pick the poller of _poller_sid once. bthread_self_tag() may name
+        // another poller group when MOD/REMOVE run in a different bthread, so
+        // the ops below must use the poller recorded here instead.
+        auto& pollers = _poller_groups[bthread_self_tag()].pollers;
+        _poller = &pollers[butil::fmix32(_poller_sid) % FLAGS_ub_poller_num];
+    }
+    if (_poller == nullptr) {
+        return;
+    }
+    _poller->op_queue.Enqueue(PollerSidOp{_poller_sid, events, op});
 }
 
 }  // namespace ubring

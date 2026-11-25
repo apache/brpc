@@ -38,6 +38,7 @@
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/ubr_msg.h"
 #include "brpc/ubshm/ubr_msg_v2.h"
+#include "brpc/ubshm_transport.h"
 
 namespace brpc {
 namespace ubring {
@@ -883,6 +884,78 @@ protected:
 private:
     GFLAGS_NAMESPACE::FlagSaver _flag_saver;
 };
+
+// The teardown of a UBRing is asynchronous when a poller is still using it, so
+// a test that owns the only trx must wait for it before it allocates again or
+// finishes.
+bool WaitForTrxRelease() {
+    for (int i = 0; i < 5000; ++i) {
+        UbrTrx* trx = nullptr;
+        if (UBRingManager::AcquireUbrTrxFromMgr(&trx) == 0) {
+            UBRingManager::ReleaseUbrTrxFromMgr(trx);
+            return true;
+        }
+        bthread_usleep(1000);
+    }
+    return false;
+}
+
+// Returns the endpoint of a Socket created in SOCKET_MODE_UBRING. The Socket
+// keeps the endpoint alive.
+UBShmEndpoint* EndpointOf(Socket* s) {
+    return static_cast<UBShmTransport*>(s->_transport.get())->GetUBShmEp();
+}
+
+// Creates and releases ubring endpoints from another bthread, so that the
+// poller polls an endpoint while it is released.
+void* ChurnEndpoints(void* arg) {
+    int* failures = static_cast<int*>(arg);
+    static std::atomic<uint32_t> name_sequence(0);
+    for (int i = 0; i < 200 && *failures == 0; ++i) {
+        if (!WaitForTrxRelease()) {
+            ++*failures;
+            break;
+        }
+        SocketOptions options;
+        options.socket_mode = SOCKET_MODE_UBRING;
+        SocketId id = INVALID_SOCKET_ID;
+        if (Socket::Create(options, &id) != 0) {
+            ++*failures;
+            break;
+        }
+        {
+            SocketUniquePtr s;
+            if (Socket::Address(id, &s) != 0) {
+                ++*failures;
+                continue;
+            }
+            UBShmEndpoint* ep = EndpointOf(s.get());
+            SHM local_trx_shm =
+                {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)s->fd()};
+            const std::string name = "UBRING_ut_churn_" +
+                std::to_string(getpid()) + "_" +
+                std::to_string(name_sequence.fetch_add(
+                    1, std::memory_order_relaxed));
+            if (ep->AllocateClientResources(&local_trx_shm, name.c_str()) != 0) {
+                ++*failures;
+                continue;
+            }
+            // Let the poller poll the endpoint before it is released.
+            bthread_usleep(100);
+        }
+        SocketUniquePtr s;
+        if (Socket::Address(id, &s) != 0) {
+            ++*failures;
+            continue;
+        }
+        if (i % 2 == 0) {
+            // The health check path: reset the endpoint, the socket lives on.
+            EndpointOf(s.get())->Reset();
+        }
+        s->SetFailed();
+    }
+    return nullptr;
+}
 }  // namespace ubring
 }  // namespace brpc
 
@@ -990,6 +1063,89 @@ TEST(UBRingRecvChunkHeaderTest, crafted_chunk_is_rejected) {
     chunk.header[UBR_MSG_CUR_INDEX] = 0;
     EXPECT_TRUE(brpc::ubring::UBRing::IsRecvChunkHeaderValid(
         chunk.header[UBR_MSG_LEN_INDEX], chunk.header[UBR_MSG_CUR_INDEX]));
+}
+
+// The ring is read by the poller and written by the sender while Reset() may
+// run in a health-check bthread, so the endpoint only hands it out until it is
+// released, and the ring is destroyed by its last user.
+TEST_F(UBShmEndpointOneTrxTest, ring_lifetime_is_bounded_by_its_users) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
+    brpc::ubring::UBRing* ring = nullptr;
+    EXPECT_FALSE(_ep->AcquireRing(&ring));
+    EXPECT_FALSE(_ep->IsWritable());
+    butil::IOBuf buf;
+    butil::IOBuf* blocks[] = {&buf};
+    errno = 0;
+    EXPECT_EQ(-1, _ep->CutFromIOBufList(blocks, 1));
+    EXPECT_EQ(EPIPE, errno);
+
+    brpc::ubring::SHM local_trx_shm =
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+    ASSERT_EQ(0, _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_ring"));
+    ASSERT_TRUE(_ep->AcquireRing(&ring));
+    ASSERT_NE(nullptr, ring);
+    EXPECT_EQ(ring, _ep->_ub_ring.load(butil::memory_order_relaxed));
+    _ep->ReleaseRing();
+
+    // Reset() while the ring is in use must not destroy it, and must stop the
+    // endpoint from handing it out again.
+    ASSERT_TRUE(_ep->AcquireRing(&ring));
+    _ep->Reset();
+    EXPECT_FALSE(_ep->AcquireRing(&ring));
+    EXPECT_FALSE(_ep->IsWritable());
+    _ep->ReleaseRing();
+    EXPECT_TRUE(brpc::ubring::WaitForTrxRelease());
+}
+
+// The poller of an endpoint is chosen when the event is added. Later ops must
+// use the same poller even when they run in a bthread of another poller group,
+// otherwise the stale socket id stays in the original poller set.
+TEST_F(UBShmEndpointTest, poller_of_add_serves_later_operations) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
+    brpc::ubring::SHM local_trx_shm =
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+    ASSERT_EQ(0, _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_op"));
+
+    auto& pollers =
+        brpc::ubring::UBShmEndpoint::_poller_groups[bthread_self_tag()].pollers;
+    ASSERT_FALSE(pollers.empty());
+    brpc::ubring::UBShmEndpoint::Poller* derived =
+        &pollers[butil::fmix32(_ep->_poller_sid) % pollers.size()];
+    ASSERT_EQ(derived, _ep->_poller);
+    brpc::ubring::UBShmEndpoint::PollerSidOp op;
+    while (derived->op_queue.Dequeue(op)) {
+    }
+
+    // Pretend that the events were added to another poller: a REMOVE must
+    // still be delivered there.
+    brpc::ubring::UBShmEndpoint::Poller other;
+    _ep->_poller = &other;
+    _ep->PollerRegisterEvent(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE);
+    ASSERT_TRUE(other.op_queue.Dequeue(op));
+    EXPECT_EQ(_ep->_poller_sid, op.sid);
+    EXPECT_EQ(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE, op.type);
+    EXPECT_FALSE(derived->op_queue.TryDequeue(op));
+
+    _ep->Reset();
+    EXPECT_EQ(nullptr, _ep->_poller);
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, _ep->_poller_sid);
+}
+
+TEST_F(UBShmEndpointOneTrxTest, poller_survives_endpoint_teardown) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
+    ASSERT_EQ(0, brpc::ubring::UBShmEndpoint::PollingModeInitialize(
+                     bthread_self_tag(), nullptr, nullptr, nullptr));
+    int failures = 0;
+    bthread_t tid;
+    ASSERT_EQ(0, bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+                                          brpc::ubring::ChurnEndpoints,
+                                          &failures));
+    ASSERT_EQ(0, bthread_join(tid, nullptr));
+    EXPECT_EQ(0, failures);
+    EXPECT_TRUE(brpc::ubring::WaitForTrxRelease());
 }
 
 #else
