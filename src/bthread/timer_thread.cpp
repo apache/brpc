@@ -123,6 +123,12 @@ public:
     // This function is called in timer thread.
     Task* consume_tasks();
 
+#if defined(UNIT_TEST)
+    void force_empty_hint_once_for_test() {
+        _force_empty_hint_once.store(true, butil::memory_order_relaxed);
+    }
+#endif
+
 private:
     FastPthreadMutex _mutex;
     int64_t _nearest_run_time;
@@ -228,8 +234,7 @@ TimerThread::Task* TimerThread::Bucket::consume_tasks() {
 
 #if defined(UNIT_TEST)
 void TimerThread::force_empty_bucket_hint_once_for_test(size_t bucket) {
-    _buckets[bucket]._force_empty_hint_once.store(
-        true, butil::memory_order_relaxed);
+    _buckets[bucket].force_empty_hint_once_for_test();
 }
 #endif
 
