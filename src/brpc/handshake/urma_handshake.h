@@ -42,6 +42,14 @@ StepResult RunUrmaFallbackServerHandshake(butil::IOBuf* source, Socket* socket);
 #include "brpc/transport_handshake.h"
 
 namespace brpc {
+
+class UrmaTransport;
+
+namespace handshake {
+int RunUrmaClientHandshake(UrmaTransport* transport, HandshakeSession& session,
+                           HandshakeIO& io);
+}  // namespace handshake
+
 namespace urma {
 
 class UrmaEndpoint;

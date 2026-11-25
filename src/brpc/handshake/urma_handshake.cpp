@@ -383,14 +383,10 @@ private:
     urma::UrmaHandshakeAdapter* _protocol;
 };
 
-int RunUrmaClientHandshake(Transport* high_speed, Socket*,
-                           HandshakeSession& session) {
-    auto* transport = static_cast<UrmaTransport*>(high_speed);
-    auto protocol = urma::CreateClientHandshakeAdapter(transport->GetUrmaEp());
-    UrmaClientHandshakeTransport participant(transport, protocol.get());
-    const auto result = session.RunClient(session.socket_io(), protocol.get(),
-                                          &participant);
-    return result == STEP_ERROR ? errno : 0;
+int RunRegisteredUrmaClientHandshake(Transport* high_speed, Socket*,
+                                     HandshakeSession& session) {
+    return RunUrmaClientHandshake(static_cast<UrmaTransport*>(high_speed),
+                                  session, session.socket_io());
 }
 
 int StartUrmaReceive(Transport* high_speed) {
@@ -467,10 +463,18 @@ protected:
 
 }  // namespace
 
+int RunUrmaClientHandshake(UrmaTransport* transport, HandshakeSession& session,
+                           HandshakeIO& io) {
+    auto protocol = urma::CreateClientHandshakeAdapter(transport->GetUrmaEp());
+    UrmaClientHandshakeTransport participant(transport, protocol.get());
+    const auto result = session.RunClient(io, protocol.get(), &participant);
+    return result == STEP_ERROR ? errno : 0;
+}
+
 const HandshakeRegistration& GetUrmaHandshakeRegistration() {
     static UrmaServerHandshakeAdapter server;
     static const auto upgrade = HandshakeRegistration::ForTransport<UrmaTransport>(
-        urma::IsUrmaAvailable, RunUrmaClientHandshake, StartUrmaReceive);
+        urma::IsUrmaAvailable, RunRegisteredUrmaClientHandshake, StartUrmaReceive);
     static const HandshakeRegistration registration = {
         SOCKET_MODE_URMA, &server,
         {&UrmaHelloFrameSpec(2), &UrmaHelloFrameSpec(3)}, &upgrade, nullptr,

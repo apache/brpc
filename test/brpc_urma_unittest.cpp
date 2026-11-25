@@ -1043,16 +1043,8 @@ static void CheckUrmaFallbackCleanup(bool zerocopy) {
                 adapter->high_speed_transport());
             ScriptedUrmaHandshakeIO io;
             io.input = frame;
-            adapter->handshake_session()->SetIOForTest(&io);
-            std::promise<int> connected;
-            auto ready = connected.get_future();
-            ASSERT_EQ(0, AdapterTransport::StartClientUpgrade(socket.get(),
-                [](int error, void* data) {
-                    static_cast<std::promise<int>*>(data)->set_value(error);
-                }, &connected));
-            ASSERT_EQ(std::future_status::ready,
-                      ready.wait_for(std::chrono::seconds(3)));
-            EXPECT_EQ(0, ready.get());
+            EXPECT_EQ(0, handshake::RunUrmaClientHandshake(
+                transport, *adapter->handshake_session(), io));
             EXPECT_EQ(handshake::FALLBACK_TCP, adapter->handshake_phase());
             auto* endpoint = transport->GetUrmaEp();
             EXPECT_EQ(nullptr, endpoint->_resource);
@@ -1117,19 +1109,11 @@ static void CheckUrmaFailureErrno() {
     SocketUniquePtr socket;
     ASSERT_EQ(0, Socket::Address(id, &socket));
     auto* adapter = AdapterTransport::Get(socket.get());
-    auto* endpoint = static_cast<UrmaTransport*>(
-        adapter->high_speed_transport())->GetUrmaEp();
+    auto* transport = static_cast<UrmaTransport*>(adapter->high_speed_transport());
+    auto* endpoint = transport->GetUrmaEp();
     CleanupErrnoUrmaHandshakeIO io(endpoint);
-    adapter->handshake_session()->SetIOForTest(&io);
-    std::promise<int> connected;
-    auto ready = connected.get_future();
-    ASSERT_EQ(0, AdapterTransport::StartClientUpgrade(socket.get(),
-        [](int error, void* data) {
-            static_cast<std::promise<int>*>(data)->set_value(error);
-        }, &connected));
-    ASSERT_EQ(std::future_status::ready,
-              ready.wait_for(std::chrono::seconds(3)));
-    EXPECT_EQ(EIO, ready.get());
+    EXPECT_EQ(EIO, handshake::RunUrmaClientHandshake(
+        transport, *adapter->handshake_session(), io));
     EXPECT_EQ(handshake::FAILED, adapter->handshake_phase());
     EXPECT_TRUE(endpoint->_sbuf.empty());
     EXPECT_TRUE(endpoint->_rbuf.empty());
@@ -1846,10 +1830,7 @@ static int RunUrmaHandshakeInterop(int version, bool polling, bool zerocopy,
                                          ->high_speed_transport())->GetUrmaEp();
     handshake::HandshakeSession* session = peer == UrmaInteropPeer::LEGACY_CLIENT
         ? nullptr : AdapterTransport::Get(client.get())->handshake_session();
-    UrmaDelayedAckIO delayed(session ? &session->_socket_io : nullptr);
-    if (order == UrmaFirstPacket::BEFORE_LAST_ACK_BYTE) {
-        session->SetIOForTest(&delayed);
-    }
+    UrmaDelayedAckIO delayed(session ? &session->socket_io() : nullptr);
     std::promise<int> connected;
     auto ready = connected.get_future();
     auto done = [](int error, void* data) {
@@ -1857,6 +1838,14 @@ static int RunUrmaHandshakeInterop(int version, bool polling, bool zerocopy,
     };
     if (peer == UrmaInteropPeer::LEGACY_CLIENT) {
         client->_app_connect->StartConnect(client.get(), done, &connected);
+    } else if (order == UrmaFirstPacket::BEFORE_LAST_ACK_BYTE) {
+        auto* adapter = AdapterTransport::Get(client.get());
+        auto* transport = static_cast<UrmaTransport*>(adapter->high_speed_transport());
+        int error = handshake::RunUrmaClientHandshake(transport, *session, delayed);
+        if (error == 0 && adapter->handshake_phase() == handshake::ESTABLISHED) {
+            error = adapter->StartUpgradeReceive();
+        }
+        done(error, &connected);
     } else if (AdapterTransport::StartClientUpgrade(client.get(), done, &connected) != 0) {
         return 37;
     }
