@@ -235,6 +235,7 @@ private:
     // number of receive WRs reposted for peer-side flow-control credit.
     int SendImm(uint32_t imm);
     // Return @num newly posted receive credits in a batch or on a delay.
+    // The caller holds _cq_mutex while managing pending credits and flushes.
     int SendAck(int num);
     int FlushAck();
     int ScheduleAckFlush();
