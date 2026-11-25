@@ -19,6 +19,9 @@
 #include <gflags/gflags.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -313,6 +316,80 @@ private:
     bthread::TimerThread* _timer_thread;
 };
 
+class TimerWaitGate {
+public:
+    void arrive() {
+        std::unique_lock<std::mutex> lock(_mutex);
+        const int arrival = ++_arrivals;
+        _cv.notify_all();
+        if (arrival > 2) {
+            return;
+        }
+        _cv.wait(lock, [this, arrival] { return _released >= arrival; });
+    }
+
+    bool wait_for_arrivals(int target) {
+        std::unique_lock<std::mutex> lock(_mutex);
+        return _cv.wait_for(lock, std::chrono::seconds(1), [this, target] {
+            return _arrivals >= target;
+        });
+    }
+
+    void release(int arrival) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _released = std::max(_released, arrival);
+        _cv.notify_all();
+    }
+
+    void release_all() { release(std::numeric_limits<int>::max()); }
+
+    ~TimerWaitGate() { release_all(); }
+
+private:
+    std::mutex _mutex;
+    std::condition_variable _cv;
+    int _arrivals = 0;
+    int _released = 0;
+};
+
+void block_before_timer_wait(void* arg) {
+    static_cast<TimerWaitGate*>(arg)->arrive();
+}
+
+class ScopedTimerWaitHook {
+public:
+    ScopedTimerWaitHook(bthread::TimerThread* timer_thread,
+                        TimerWaitGate* gate)
+        : _timer_thread(timer_thread) {
+        _timer_thread->_before_wait_hook = block_before_timer_wait;
+        _timer_thread->_before_wait_hook_arg = gate;
+    }
+
+    ~ScopedTimerWaitHook() {
+        _timer_thread->_before_wait_hook = nullptr;
+        _timer_thread->_before_wait_hook_arg = nullptr;
+    }
+
+private:
+    bthread::TimerThread* _timer_thread;
+};
+
+class TimerThreadHookStopGuard {
+public:
+    TimerThreadHookStopGuard(bthread::TimerThread* timer_thread,
+                             TimerWaitGate* gate)
+        : _timer_thread(timer_thread), _gate(gate) {}
+
+    ~TimerThreadHookStopGuard() {
+        _gate->release_all();
+        _timer_thread->stop_and_join();
+    }
+
+private:
+    bthread::TimerThread* _timer_thread;
+    TimerWaitGate* _gate;
+};
+
 TEST(TimerThreadTest, sparse_buckets_execute_tasks) {
     bthread::TimerThread timer_thread;
     bthread::TimerThreadOptions options;
@@ -335,30 +412,52 @@ TEST(TimerThreadTest, sparse_buckets_execute_tasks) {
     }
 }
 
-TEST(TimerThreadTest, later_task_without_wakeup_is_executed) {
+TEST(TimerThreadTest, later_empty_bucket_publication_survives_stale_hint) {
     bthread::TimerThread timer_thread;
     bthread::TimerThreadOptions options;
     options.num_buckets = 1;
+    std::atomic<int> completed(0);
+    TimerWaitGate gate;
+    ScopedTimerWaitHook wait_hook(&timer_thread, &gate);
+    // Construct this last: its destructor releases the hook gate and joins
+    // the timer before the hook or gate can be destroyed.
+    TimerThreadHookStopGuard stop_timer(&timer_thread, &gate);
     ASSERT_EQ(0, timer_thread.start(&options));
 
-    std::atomic<int> completed(0);
-    TimerThreadStopGuard stop_timer(&timer_thread);
+    // Stop the timer at its first empty wait. After it is released, scheduling
+    // the anchor wakes it and moves the anchor into the private heap.
+    ASSERT_TRUE(gate.wait_for_arrivals(1));
+    gate.release(1);
     ASSERT_NE(bthread::TimerThread::INVALID_TASK_ID,
               timer_thread.schedule(count_routine, &completed,
-                                    butil::microseconds_from_now(100000)));
+                                    butil::milliseconds_from_now(200)));
 
-    // Give the timer thread time to move the first task into its heap. The
-    // later task does not update the global earliest deadline or wake it.
-    bthread_usleep(5000);
+    // The second gate is after the timer has scanned the empty bucket and
+    // selected the anchor as its heap deadline. The later task therefore does
+    // not change _nearest_run_time. It must still publish a wake sequence,
+    // otherwise this scan-to-wait window can lose the bucket publication.
+    ASSERT_TRUE(gate.wait_for_arrivals(2));
+    int signals_before;
+    {
+        BAIDU_SCOPED_LOCK(timer_thread._mutex);
+        signals_before = timer_thread._nsignals;
+    }
     ASSERT_NE(bthread::TimerThread::INVALID_TASK_ID,
               timer_thread.schedule(count_routine, &completed,
-                                    butil::microseconds_from_now(100000)));
-    for (int retry = 0;
-         retry < 1000 && completed.load(std::memory_order_acquire) != 2;
-         ++retry) {
-        bthread_usleep(1000);
+                                    butil::milliseconds_from_now(400)));
+    {
+        BAIDU_SCOPED_LOCK(timer_thread._mutex);
+        EXPECT_EQ(signals_before + 1, timer_thread._nsignals);
     }
-    ASSERT_EQ(2, completed.load(std::memory_order_acquire));
+    // Model a legal stale false from the atomic fast-path load. The task stays
+    // linked in the bucket, and the publication protocol must ensure a later
+    // scan consumes it instead of leaving the timer asleep indefinitely.
+    timer_thread.force_empty_bucket_hint_once_for_test(0);
+    gate.release(2);
+
+    ASSERT_TRUE(WaitUntil([&completed] {
+        return completed.load(std::memory_order_acquire) == 2;
+    }));
 }
 
 // All producers use one bucket so Bucket::schedule() overlaps the timer
