@@ -23,6 +23,7 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
+#include <openssl/x509.h>
 
 #include "butil/sha1.h"
 
@@ -36,6 +37,32 @@ bool Sha256Bytes(const unsigned char* data, size_t len, unsigned char out[32]) {
     unsigned int digest_len = 0;
     return EVP_Digest(data, len, out, &digest_len, EVP_sha256(), nullptr) == 1
         && digest_len == 32;
+}
+
+// Parses a PEM-encoded public key and returns its DER encoding, or an empty
+// string when |pem| is not a parseable public key.
+std::string PublicKeyDer(const butil::StringPiece& pem) {
+    if (pem.empty()) {
+        return std::string();
+    }
+    BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
+    if (bio == nullptr) {
+        return std::string();
+    }
+    EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    if (pkey == nullptr) {
+        return std::string();
+    }
+    unsigned char* der = nullptr;
+    const int len = i2d_PUBKEY(pkey, &der);
+    EVP_PKEY_free(pkey);
+    if (len <= 0 || der == nullptr) {
+        return std::string();
+    }
+    std::string out(reinterpret_cast<const char*>(der), static_cast<size_t>(len));
+    OPENSSL_free(der);
+    return out;
 }
 
 }  // namespace
@@ -175,6 +202,12 @@ std::string CachingSha2PasswordRsaEncrypt(
     EVP_PKEY_CTX_free(ctx);
     EVP_PKEY_free(pkey);
     return out;
+}
+
+bool ServerPublicKeyMatches(const butil::StringPiece& server_pubkey_pem,
+                            const butil::StringPiece& pinned_pubkey_pem) {
+    const std::string server_der = PublicKeyDer(server_pubkey_pem);
+    return !server_der.empty() && server_der == PublicKeyDer(pinned_pubkey_pem);
 }
 
 std::string CachingSha2PasswordCleartext(const butil::StringPiece& password) {

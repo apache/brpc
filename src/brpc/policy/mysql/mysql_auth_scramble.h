@@ -79,6 +79,14 @@ std::string CachingSha2PasswordRsaEncrypt(
         const butil::StringPiece& salt,
         const butil::StringPiece& password);
 
+// Returns true when |server_pubkey_pem| and |pinned_pubkey_pem| encode the
+// same public key.  Both sides are parsed and compared in their DER form,
+// so PEM formatting differences (line wrapping, PKCS#1 vs
+// SubjectPublicKeyInfo) do not cause false mismatches.  Returns false when
+// either blob is not a parseable public key.
+bool ServerPublicKeyMatches(const butil::StringPiece& server_pubkey_pem,
+                            const butil::StringPiece& pinned_pubkey_pem);
+
 // Computes the caching_sha2_password "secure transport" payload: the
 // raw password bytes followed by a single NUL terminator.  Safe to
 // send only when the underlying channel is already protected
@@ -100,6 +108,10 @@ std::string CachingSha2PasswordCleartext(const butil::StringPiece& password);
 //                   |salt| and |server_pubkey_pem| are ignored.
 //   is_ssl=false -> CachingSha2PasswordRsaEncrypt(
 //                       server_pubkey_pem, salt, password)
+//                   The caller MUST verify server_pubkey_pem against a
+//                   pinned key with ServerPublicKeyMatches() first (see
+//                   MysqlAuthenticator::set_server_public_key), otherwise
+//                   an in-band key from a man-in-the-middle would be used.
 //
 // |is_ssl| is intentionally NOT defaulted: every caller must state
 // whether the underlying channel is secure (SSL/unix-socket/shared-mem),

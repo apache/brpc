@@ -35,6 +35,7 @@ using brpc::policy::mysql::CachingSha2PasswordRsaEncrypt;
 using brpc::policy::mysql::CachingSha2PasswordScramble;
 using brpc::policy::mysql::CachingSha2PasswordSlowPath;
 using brpc::policy::mysql::NativePasswordScramble;
+using brpc::policy::mysql::ServerPublicKeyMatches;
 using brpc::policy::mysql::kCachingSha2PasswordResponseLen;
 using brpc::policy::mysql::kNativePasswordResponseLen;
 using brpc::policy::mysql::kSaltLen;
@@ -515,6 +516,48 @@ TEST(MysqlCachingSha2SlowPathTest, IsSslFalseRejectsBadPubKey) {
         butil::StringPiece(salt),
         butil::StringPiece("not-a-pem-blob"),
         /*is_ssl=*/false).empty());
+}
+
+TEST(MysqlServerPublicKeyMatchesTest, SameKeyMatches) {
+    EXPECT_TRUE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece(kTestPubKeyPem)));
+}
+
+// PKCS#1 ("RSA PUBLIC KEY") and SubjectPublicKeyInfo ("PUBLIC KEY")
+// encode the same key differently; the comparison is on the parsed key.
+TEST(MysqlServerPublicKeyMatchesTest, Pkcs1AndSpkiEncodingsOfSameKeyMatch) {
+    BIO* bio = BIO_new_mem_buf(kTestPrivKeyPem,
+                               static_cast<int>(sizeof(kTestPrivKeyPem) - 1));
+    ASSERT_NE(nullptr, bio);
+    EVP_PKEY* pkey = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    ASSERT_NE(nullptr, pkey);
+    RSA* rsa = EVP_PKEY_get1_RSA(pkey);
+    ASSERT_NE(nullptr, rsa);
+    BIO* out = BIO_new(BIO_s_mem());
+    ASSERT_NE(nullptr, out);
+    ASSERT_EQ(1, PEM_write_bio_RSAPublicKey(out, rsa));
+    char* data = nullptr;
+    const long len = BIO_get_mem_data(out, &data);
+    const std::string pkcs1_pem(data, len);
+    EXPECT_TRUE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem), butil::StringPiece(pkcs1_pem)));
+    EXPECT_TRUE(ServerPublicKeyMatches(
+        butil::StringPiece(pkcs1_pem), butil::StringPiece(kTestPubKeyPem)));
+    BIO_free(out);
+    RSA_free(rsa);
+    EVP_PKEY_free(pkey);
+}
+
+TEST(MysqlServerPublicKeyMatchesTest, InvalidKeysDoNotMatch) {
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem), butil::StringPiece("")));
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(""), butil::StringPiece(kTestPubKeyPem)));
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece(kTestPrivKeyPem)));
 }
 
 }  // namespace

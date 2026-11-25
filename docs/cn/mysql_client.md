@@ -1,6 +1,6 @@
 [MySQL](https://www.mysql.com/)是著名的开源的关系型数据库，为了使用户更快捷地访问mysql并充分利用bthread的并发能力，brpc直接支持mysql协议。示例程序：[example/mysql_c++](https://github.com/brpc/brpc/tree/master/example/mysql_c++/)
 
-**注意**：只支持MySQL 4.1 及之后的版本的文本协议，支持事务，支持Prepared statement。目前支持的鉴权方式为mysql_native_password，使用事务的时候不支持single模式。
+**注意**：只支持MySQL 4.1 及之后的版本的文本协议，支持事务，支持Prepared statement。目前支持的鉴权方式为mysql_native_password和caching_sha2_password，使用事务的时候不支持single模式。
 
 相比使用[libmysqlclient](https://dev.mysql.com/downloads/connector/c/)(官方client)的优势有：
 
@@ -87,6 +87,21 @@ const MysqlReply::Row& MysqlReply::next() const;
 // 结果集中每个字段的操作
 const MysqlReply::Field& MysqlReply::Row::field(const uint64_t index) const;
 ```
+
+# caching_sha2_password 全量认证
+
+使用 caching_sha2_password 时，如果服务端要求全量认证（perform_full_authentication），
+密码需要加密后发送。非TLS连接下，服务端提供的RSA公钥来自尚未认证的连接，可能被中间人替换，
+因此brpc默认拒绝该场景，需要显式固定服务端公钥（PEM格式，可通过可信渠道提前获取）：
+
+```c++
+brpc::policy::MysqlAuthenticator* auth =
+    new brpc::policy::MysqlAuthenticator(user, password, schema);
+auth->set_server_public_key(server_public_key_pem);
+options.auth = auth;
+```
+
+使用TLS连接时不需要固定公钥。
 
 # 事务操作
 
