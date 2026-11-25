@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cerrno>
 #include <cstdlib>
 #include <unordered_set>
 #include <vector>
@@ -52,13 +53,21 @@ void VerifyGcPreservesAddedIds(bool churn) {
     ListOfABAFreeId<int, TestIdTraits> aba_list;
     std::vector<int> accepted;
     unsigned int seed = 12345;
+    size_t max_cap = 0;
     for (int id = 1000; id < 2000; ++id) {
+        size_t before_cap = 0;
+        aba_list.get_sizes(&before_cap, 1);
+        if (before_cap > max_cap) {
+            max_cap = before_cap;
+        }
         TestIdTraits::id_set.insert(id);
         int rc = aba_list.add(id);
-        if (rc != 0) {
+        if (before_cap > TestIdTraits::MAX_ENTRIES && rc == EAGAIN) {
             TestIdTraits::id_set.erase(id);
             continue;
         }
+        ASSERT_EQ(rc, 0) << "unexpected add() failure at id=" << id
+                         << ", before_cap=" << before_cap;
         accepted.push_back(id);
         if (churn && (rand_r(&seed) % 4 == 0) && !accepted.empty()) {
             TestIdTraits::id_set.erase(accepted[rand_r(&seed) % accepted.size()]);
@@ -71,6 +80,8 @@ void VerifyGcPreservesAddedIds(bool churn) {
             }
         }
     }
+    const size_t init_gc_size = TestIdTraits::INIT_GC_SIZE;
+    EXPECT_GT(max_cap, init_gc_size);
     TestIdTraits::id_set.clear();
 }
 
