@@ -4,7 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <unordered_set>
+#include <vector>
 
 #include "bthread/list_of_abafree_id.h"
 
@@ -42,5 +44,38 @@ TEST(AbaListTest, TestGc) {
     size_t cnts[1];
     aba_list.get_sizes(cnts, 1);
     EXPECT_EQ(cnts[0], (size_t)96);
+    TestIdTraits::id_set.clear();
+}
+
+void VerifyGcPreservesAddedIds(bool churn) {
+    TestIdTraits::id_set.clear();
+    ListOfABAFreeId<int, TestIdTraits> aba_list;
+    std::vector<int> accepted;
+    unsigned int seed = 12345;
+    for (int id = 1000; id < 2000; ++id) {
+        TestIdTraits::id_set.insert(id);
+        int rc = aba_list.add(id);
+        if (rc != 0) {
+            TestIdTraits::id_set.erase(id);
+            continue;
+        }
+        accepted.push_back(id);
+        if (churn && (rand_r(&seed) % 4 == 0) && !accepted.empty()) {
+            TestIdTraits::id_set.erase(accepted[rand_r(&seed) % accepted.size()]);
+        }
+        std::unordered_set<int> seen;
+        aba_list.apply([&](int x) { seen.insert(x); });
+        for (int a : accepted) {
+            if (TestIdTraits::id_set.count(a) > 0) {
+                ASSERT_EQ(seen.count(a), 1u) << "lost live id=" << a << " after add(" << id << ")";
+            }
+        }
+    }
+    TestIdTraits::id_set.clear();
+}
+
+TEST(AbaListTest, TestGcPreservesAddedIds) {
+    VerifyGcPreservesAddedIds(false);
+    VerifyGcPreservesAddedIds(true);
 }
 } // namespace bthread
