@@ -1023,13 +1023,14 @@ int UrmaEndpoint::ScheduleAckFlush() {
     bthread_t tid;
     bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
     attr.tag = bthread_self_tag();
+    _ack_flush_scheduled = true;
     const int rc = bthread_start_background(
         &tid, &attr, RunAckFlush, reinterpret_cast<void*>(_cq_sid));
     if (rc != 0) {
+        _ack_flush_scheduled = false;
         errno = rc;
         return -1;
     }
-    _ack_flush_scheduled = true;
     return 0;
 }
 
