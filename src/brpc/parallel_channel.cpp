@@ -21,6 +21,7 @@
 #include "butil/atomicops.h"
 #include "butil/time.h"
 #include "butil/macros.h"
+#include "butil/thread_local.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/parallel_channel.h"
 
@@ -34,7 +35,7 @@ struct Memory {
     int size;
     void* ptr;
 };
-static __thread Memory tls_cached_pchan_mem = { 0, nullptr };
+static BUTIL_THREAD_LOCAL(Memory, tls_cached_pchan_mem, { 0, nullptr });
 #endif
 
 class ParallelChannelDone : public google::protobuf::Closure {
@@ -105,13 +106,13 @@ public:
         void* mem = nullptr;
         int memsize = 0;
 #ifdef BRPC_CACHE_PCHAN_MEM
-        Memory pchan_mem = tls_cached_pchan_mem;
+        Memory pchan_mem = tls_cached_pchan_mem();
         if (pchan_mem.size >= req_size) {  // use tls if it's big enough
             mem = pchan_mem.ptr;
             memsize = pchan_mem.size;
             pchan_mem.size = 0;
             pchan_mem.ptr = nullptr;
-            tls_cached_pchan_mem = pchan_mem;
+            tls_cached_pchan_mem() = pchan_mem;
         } else {
             mem = malloc(req_size);
             memsize = req_size;
@@ -161,7 +162,7 @@ public:
                 d->sub_done(i)->~SubDone();
             }
 #ifdef BRPC_CACHE_PCHAN_MEM
-            Memory pchan_mem = tls_cached_pchan_mem;
+            Memory pchan_mem = tls_cached_pchan_mem();
             if (pchan_mem.size != 0) {
                 // free the memory if tls already has sth.
                 d->~ParallelChannelDone();
@@ -170,7 +171,7 @@ public:
                 pchan_mem.size = d->_memsize;
                 pchan_mem.ptr = d;
                 d->~ParallelChannelDone();
-                tls_cached_pchan_mem = pchan_mem;
+                tls_cached_pchan_mem() = pchan_mem;
             }
 #else
             d->~ParallelChannelDone();

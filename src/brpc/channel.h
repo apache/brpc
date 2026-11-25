@@ -23,6 +23,7 @@
 // on internal structures, use opaque pointers instead.
 
 #include <ostream>                          // std::ostream
+#include "butil/config.h"
 #include "bthread/errno.h"                  // Redefine errno
 #include "butil/intrusive_ptr.hpp"          // butil::intrusive_ptr
 #include "butil/ptr_container.h"
@@ -40,6 +41,12 @@
 #include "brpc/socket_mode.h"
 
 namespace brpc {
+#if BRPC_WITH_FLATBUFFERS
+namespace flatbuffers {
+class Message;
+class MethodDescriptor;
+}  // namespace flatbuffers
+#endif
 
 struct ChannelOptions {
     // Constructed with default options.
@@ -228,6 +235,18 @@ public:
                     google::protobuf::Message* response,
                     google::protobuf::Closure* done);
 
+#if BRPC_WITH_FLATBUFFERS
+    // Issues an fb_rpc call. Generated stubs reach it through the adapter
+    // returned by flatbuffers::NewChannelAdapter(); Channel does not inherit
+    // flatbuffers::RpcChannel, so its layout does not depend on the option.
+    // The descriptor is borrowed and must remain valid until the RPC finishes.
+    void FBCallMethod(const flatbuffers::MethodDescriptor* method,
+                      google::protobuf::RpcController* controller,
+                      const flatbuffers::Message* request,
+                      flatbuffers::Message* response,
+                      google::protobuf::Closure* done);
+#endif
+
     // Get current options.
     const ChannelOptions& options() const { return _options; }
 
@@ -237,6 +256,13 @@ public:
     int Weight();
 
     int CheckHealth();
+
+private:
+    void CallMethodInternal(const google::protobuf::MethodDescriptor* method,
+                            google::protobuf::RpcController* controller,
+                            const google::protobuf::Message* request,
+                            google::protobuf::Message* response,
+                            google::protobuf::Closure* done, bool is_fb);
 
 protected:
     bool SingleServer() const { return _lb.get() == nullptr; }

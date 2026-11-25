@@ -144,6 +144,7 @@ protected:
     // call callbacks.
     static void OnNewMessages(Socket* m);
     // Stop draining the TCP fd when a parser changes the transport state.
+    // stop_reading runs after input processing releases the parsing guard.
     static void OnNewMessagesUntil(Socket* m, bool (*stop_reading)(Socket*));
     
 private:
@@ -151,6 +152,9 @@ private:
     // User-supplied scissors and handlers.
     // the index of handler is exactly the same as the protocol
     InputMessageHandler* _handlers;
+    // Order in which handlers are tried on a connection whose protocol is
+    // not known yet. A permutation of [0, _capacity), fixed once allocated.
+    int* _probe_order;
     // Max added protocol type
     butil::atomic<int> _max_index;
     bool _non_protocol;

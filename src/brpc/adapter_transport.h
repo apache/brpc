@@ -22,24 +22,18 @@
 
 #include "brpc/socket_mode.h"
 #include "brpc/transport.h"
-#include "brpc/transport_handshake.h"
+#include "brpc/handshake/handshake_adapter.h"
 #include "brpc/parse_result.h"
 
 namespace brpc {
 
 class TcpTransport;
-class RdmaTransport;
-class UBShmTransport;
-class UrmaTransport;
 
 // The top-level Transport installed in Socket. It starts on TcpTransport and
-// may switch to an independent RDMA/URMA/UBSHM Transport after a successful
+// may switch to a high-speed Transport after a successful
 // handshake. TCP remains usable before negotiation and after fallback.
 class AdapterTransport : public Transport {
 friend class TransportFactory;
-friend class RdmaTransport;
-friend class UBShmTransport;
-friend class UrmaTransport;
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
     void Release() override;
@@ -57,7 +51,6 @@ public:
     int handshake_phase() const {
         return _handshake.phase(butil::memory_order_acquire);
     }
-    int handshake_version() const { return _handshake.protocol_version(); }
     handshake::HandshakeSession* handshake_session() { return &_handshake; }
     Transport* high_speed_transport() const {
         return _high_speed_transport.get();
@@ -73,21 +66,17 @@ public:
                                   void (*done)(int, void*), void* data);
 
     ParseResult ProcessUpgradeReadable(butil::IOBuf* source);
-    void CompleteConnection(handshake::Phase terminal_phase);
-    bool connection_completed() const {
-        return _connection_completed.load(butil::memory_order_acquire) != 0;
-    }
 
     static void OnNewDataFromTcp(Socket* socket);
 
 private:
-    explicit AdapterTransport(SocketMode mode);
+    explicit AdapterTransport(
+        const handshake::HandshakeRegistration::Upgrade* upgrade);
     ~AdapterTransport() override;
 
     Transport* ActiveTransport() const;
-    void SetHighSpeedAvailable(bool available);
+    int StartUpgradeReceive();
     void FallbackToTcp();
-    void TryReadOnTcp();
     void ProcessTcpEvent();
     void CheckUnexpectedTcpData();
     static void OnNewMessagesAfterUpgrade(Socket* socket);
@@ -98,11 +87,10 @@ private:
                                       void (*done)(int, void*), void* data,
                                       StartBackground start_background);
 
-    SocketMode _mode;
+    const handshake::HandshakeRegistration::Upgrade* const _upgrade;
     handshake::HandshakeSession _handshake;
     std::unique_ptr<TcpTransport> _tcp_transport;
     std::unique_ptr<Transport> _high_speed_transport;
-    butil::atomic<int> _connection_completed;
 };
 
 }  // namespace brpc

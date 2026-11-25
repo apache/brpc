@@ -256,15 +256,18 @@ void *TimerEpoll(void *args) {
     return nullptr;
 }
 
-void DeleteTimerSafe(uint32_t fd) {
-    DeleteTimerInner(fd);
+void DeleteTimerSafe(int fd) {
+    if (fd >= 0) {
+        DeleteTimerInner(fd);
+    }
 }
 
 void DeleteTimer(uint32_t fd) {
     DeleteTimerInner(fd);
 }
 
-int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args) {
+int32_t TimerStart(const itimerspec* time, void* (*cb)(void*), void* args,
+                   int* registered_fd) {
     BAIDU_SCOPED_LOCK(g_timer_mutex);
     if (g_epoll_fd == -1) {
         LOG(ERROR) << "Timer epoll/kqueue encountered internal error.";
@@ -347,6 +350,9 @@ int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args) {
         return -1;
     }
 
+    if (registered_fd != nullptr) {
+        *registered_fd = timer_fd;
+    }
     return timer_fd;
 }
 

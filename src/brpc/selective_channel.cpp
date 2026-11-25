@@ -24,6 +24,7 @@
 #include "brpc/details/controller_private_accessor.h"        // RPCSender
 #include "brpc/errno.pb.h"                           // ERESPONSE
 #include "brpc/nonreflectable_message.h"
+#include "butil/memory/scope_guard.h"
 #include "brpc/selective_channel.h"
 #include "brpc/global.h"
 
@@ -188,19 +189,30 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
     }
     BAIDU_SCOPED_LOCK(_mutex);
     if (_chan_map.find(sub_channel) != _chan_map.end()) {
+        // Duplicate: no new registration is created. Ownership is decided by
+        // the first successful registration, so ignore this call's ownership,
+        // don't delete (still referenced by the live registration) and don't
+        // reassign (a failing call should have no side effect).
         LOG(ERROR) << "Duplicated sub_channel=" << sub_channel;
         return -1;
     }
     SubChannel* sub_chan = new SubChannel;
     sub_chan->chan = sub_channel;
     sub_chan->ownership = subopt.ownership;
+    // The socket is deliberately left user-detached during Create so that
+    // any early failure path never triggers BeforeRecycle. This scope guard
+    // centralises the matching cleanup for those paths. It is dismissed
+    // right after set_user below, where ownership fully transfers to the
+    // socket and subsequent failures rely on SetFailed-driven recycling.
+    auto cleanup_subchan = butil::MakeScopeGuard([&]() noexcept {
+        sub_chan->BeforeRecycle(nullptr);
+    });
+
     SocketId sock_id;
     SocketOptions options;
-    options.user = sub_chan;
     options.health_check_interval_s = FLAGS_channel_check_interval;
 
     if (Socket::Create(options, &sock_id) != 0) {
-        delete sub_chan;
         LOG(ERROR) << "Fail to create fake socket for sub channel";
         return -1;
     }
@@ -210,17 +222,25 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
         LOG(ERROR) << "Fail to address SocketId=" << sock_id;
         return -1;
     }
+    // The socket is fully created and referenced by `ptr'. Attach sub_chan
+    // now; from here on, failures SetFailed() the socket and its recycling
+    // runs SubChannel::BeforeRecycle, deleting sub_chan (and chan iff
+    // OWNS_CHANNEL).
+    ptr->set_user(sub_chan);
+    cleanup_subchan.dismiss();
+    auto cleanup_socket = butil::MakeScopeGuard([&]() noexcept {
+        // sub_chan will be deleted when the socket is recycled.
+        ptr->SetFailed();
+        // Permanently prevent revival before releasing the HC reference.
+        ptr->ReleaseAdditionalReference();
+        ptr->ReleaseHCRelatedReference();
+    });
     if (rc > 0 && !ptr->HCEnabled()) {
-        LOG(ERROR) << "Health check of SocketId="
-                   << sock_id << " is disabled";
+        LOG(ERROR) << "Health check of SocketId=" << sock_id << " is disabled";
         return -1;
     }
     if (!AddServer(ServerId(sock_id, subopt.tag))) {
         LOG(ERROR) << "Duplicated sub_channel=" << sub_channel;
-        // sub_chan will be deleted when the socket is recycled.
-        ptr->SetFailed();
-        // Cancel health checking.
-        ptr->ReleaseHCRelatedReference();
         return -1;
     }
     // The health-check-related reference has been held on created.
@@ -229,6 +249,7 @@ int ChannelBalancer::AddChannel(ChannelBase* sub_channel,
         handle->id = sock_id;
         handle->tag = subopt.tag;
     }
+    cleanup_socket.dismiss();
     return 0;
 }
 
@@ -244,9 +265,9 @@ void ChannelBalancer::RemoveAndDestroyChannel(const SelectiveChannel::ChannelHan
             BAIDU_SCOPED_LOCK(_mutex);
             CHECK_EQ(1UL, _chan_map.erase(sub->chan));
         }
-        if (rc == 0) {
-            ptr->ReleaseAdditionalReference();
-        }
+        // Even a failed socket must be marked as permanently removed before
+        // releasing the HC reference, otherwise a concurrent HC can revive it.
+        ptr->ReleaseAdditionalReference();
         // Cancel health checking.
         ptr->ReleaseHCRelatedReference();
     }
@@ -573,6 +594,11 @@ int SelectiveChannel::AddChannel(ChannelBase* sub_channel,
         static_cast<schan::ChannelBalancer*>(_chan._lb.get());
     if (lb == nullptr) {
         LOG(ERROR) << "You must call Init() to initialize a SelectiveChannel";
+        // The ownership contract applies to every failure: take over an
+        // OWNS_CHANNEL sub channel even though it was never registered.
+        if (option.ownership == OWNS_CHANNEL) {
+            delete sub_channel;
+        }
         return -1;
     }
     return lb->AddChannel(sub_channel, option, handle);

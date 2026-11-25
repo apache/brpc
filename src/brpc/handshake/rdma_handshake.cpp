@@ -19,6 +19,7 @@
 
 #include <errno.h>
 #include <limits>
+#include <new>
 #include <string>
 
 #include "butil/logging.h"
@@ -36,15 +37,15 @@
 #include <gflags/gflags.h>
 
 #include "brpc/rdma_transport.h"
+#include "brpc/rdma/rdma_helper.h"
+#include "brpc/rdma/srq_worker.h"
 
 namespace brpc {
 namespace rdma {
 
-DEFINE_int32(rdma_client_handshake_version, 2,
-             "RDMA handshake protocol version used by client. "
-             "2 = legacy 'RDMA' magic (default, compatible with all servers); "
-             "3 = new 'RDM3' protobuf-based handshake "
-             "(MUST only be enabled after target servers support v3).");
+DEFINE_int32(rdma_client_handshake_version, 3,
+             "Deprecated and ignored. Retained for command-line compatibility. "
+             "Clients always start with v3 and retry v2 once if the peer rejects v3.");
 DECLARE_bool(rdma_trace_verbose);
 
 extern const uint16_t MIN_QP_SIZE;
@@ -74,16 +75,6 @@ void RdmaHandshakeAdapter::PrepareClientEce() {
 
 const handshake::FrameSpec& RdmaHandshakeAdapter::AckFrameSpec() const {
     return RdmaAckFrameSpec();
-}
-
-handshake::StepResult RdmaHandshakeAdapter::BuildHello(
-    bool enabled, std::string* payload) {
-    return BuildLocalHello(enabled, payload);
-}
-
-handshake::StepResult RdmaHandshakeAdapter::ParseHello(
-    const std::string& payload) {
-    return ParseRemoteHello(payload, &_remote);
 }
 
 namespace v2_wire {
@@ -179,12 +170,7 @@ static handshake::StepResult ParsePayload(
 
 }  // namespace v2_wire
 
-const handshake::FrameSpec&
-RdmaClientHandshakeAdapterV2::HelloFrameSpec() const {
-    return RdmaHelloFrameSpec(2);
-}
-
-handshake::StepResult RdmaClientHandshakeAdapterV2::BuildLocalHello(
+handshake::StepResult RdmaClientHandshakeAdapterV2::BuildHello(
     bool enabled, std::string* payload) {
     CHECK(enabled);
     ParsedHello local{};
@@ -194,17 +180,7 @@ handshake::StepResult RdmaClientHandshakeAdapterV2::BuildLocalHello(
     return v2_wire::SerializePayload(msg, payload);
 }
 
-handshake::StepResult RdmaClientHandshakeAdapterV2::ParseRemoteHello(
-    const std::string& payload, ParsedHello* remote) {
-    return v2_wire::ParsePayload(payload, remote);
-}
-
-const handshake::FrameSpec&
-RdmaServerHandshakeAdapterV2::HelloFrameSpec() const {
-    return RdmaHelloFrameSpec(2);
-}
-
-handshake::StepResult RdmaServerHandshakeAdapterV2::BuildLocalHello(
+handshake::StepResult RdmaServerHandshakeAdapterV2::BuildHello(
     bool enabled, std::string* payload) {
     v2_wire::HelloMessage msg{};
     msg.msg_len = HELLO_V2_MSG_LEN_MIN;
@@ -216,14 +192,9 @@ handshake::StepResult RdmaServerHandshakeAdapterV2::BuildLocalHello(
     return v2_wire::SerializePayload(msg, payload);
 }
 
-handshake::StepResult RdmaServerHandshakeAdapterV2::ParseRemoteHello(
-    const std::string& payload, ParsedHello* remote) {
-    return v2_wire::ParsePayload(payload, remote);
-}
-
 namespace v3_wire {
 
-static bool ValidRdmaHello(const RdmaHello& msg) {
+bool ValidRdmaHello(const RdmaHello& msg) {
     if (msg.gid().size() != sizeof(ibv_gid)) {
         return false;
     }
@@ -232,8 +203,20 @@ static bool ValidRdmaHello(const RdmaHello& msg) {
         msg.lid() > max_uint16) {
         return false;
     }
-    if (msg.block_size() < MIN_BLOCK_SIZE || msg.sq_size() < MIN_QP_SIZE ||
-        msg.rq_size() < MIN_QP_SIZE) {
+    if (msg.block_size() < MIN_BLOCK_SIZE || msg.sq_size() < MIN_QP_SIZE) {
+        return false;
+    }
+    if (msg.srq_protocol() == 1) {
+        if (msg.rq_size() != 0 || msg.fc_window() < 4 ||
+            msg.fc_window() > max_uint16) {
+            return false;
+        }
+    } else if (msg.srq_protocol() != 0 || msg.has_fc_window() ||
+               msg.rq_size() < MIN_QP_SIZE) {
+        return false;
+    }
+    if (msg.has_mtu() &&
+        (msg.mtu() < IBV_MTU_256 || msg.mtu() > IBV_MTU_4096)) {
         return false;
     }
     return msg.qp_num() != 0 || g_skip_rdma_init;
@@ -247,6 +230,13 @@ static void FillLocalRdmaHello(const ParsedHello& local, RdmaHello* msg) {
     msg->set_gid(reinterpret_cast<const char*>(local.gid.raw),
                  sizeof(local.gid.raw));
     msg->set_qp_num(local.qp_num);
+    if (local.srq_protocol != 0) {
+        msg->set_srq_protocol(local.srq_protocol);
+        msg->set_fc_window(local.fc_window);
+    }
+    if (local.path_mtu.has_value()) {
+        msg->set_mtu(*local.path_mtu);
+    }
     if (FLAGS_rdma_ece && local.ece.has_value()) {
         RdmaEce* ece = msg->mutable_ece();
         ece->set_vendor_id(local.ece->vendor_id);
@@ -255,13 +245,18 @@ static void FillLocalRdmaHello(const ParsedHello& local, RdmaHello* msg) {
     }
 }
 
-static void TranslateHello(const RdmaHello& msg, ParsedHello* out) {
+void TranslateHello(const RdmaHello& msg, ParsedHello* out) {
+    out->srq_protocol = msg.srq_protocol();
+    out->fc_window = msg.fc_window();
     out->block_size = msg.block_size();
     out->sq_size = static_cast<uint16_t>(msg.sq_size());
     out->rq_size = static_cast<uint16_t>(msg.rq_size());
     out->lid = static_cast<uint16_t>(msg.lid());
     fast_memcpy(out->gid.raw, msg.gid().data(), sizeof(out->gid.raw));
     out->qp_num = msg.qp_num();
+    if (msg.has_mtu()) {
+        out->path_mtu = msg.mtu();
+    }
     if (FLAGS_rdma_ece && msg.has_ece()) {
         ibv_ece ece;
         ece.vendor_id = msg.ece().vendor_id();
@@ -306,33 +301,19 @@ static void FillDisabledHello(RdmaHello* msg) {
 
 }  // namespace v3_wire
 
-const handshake::FrameSpec&
-RdmaClientHandshakeAdapterV3::HelloFrameSpec() const {
-    return RdmaHelloFrameSpec(3);
-}
-
-handshake::StepResult RdmaClientHandshakeAdapterV3::BuildLocalHello(
+handshake::StepResult RdmaClientHandshakeAdapterV3::BuildHello(
     bool enabled, std::string* payload) {
     CHECK(enabled);
     PrepareClientEce();
     ParsedHello local{};
     FillLocalHello(&local);
+    local.path_mtu = GetRdmaActiveMtu();
     RdmaHello msg;
     v3_wire::FillLocalRdmaHello(local, &msg);
     return v3_wire::SerializePayload(msg, payload);
 }
 
-handshake::StepResult RdmaClientHandshakeAdapterV3::ParseRemoteHello(
-    const std::string& payload, ParsedHello* remote) {
-    return v3_wire::ParsePayload(payload, remote);
-}
-
-const handshake::FrameSpec&
-RdmaServerHandshakeAdapterV3::HelloFrameSpec() const {
-    return RdmaHelloFrameSpec(3);
-}
-
-handshake::StepResult RdmaServerHandshakeAdapterV3::BuildLocalHello(
+handshake::StepResult RdmaServerHandshakeAdapterV3::BuildHello(
     bool enabled, std::string* payload) {
     RdmaHello msg;
     if (enabled) {
@@ -345,19 +326,15 @@ handshake::StepResult RdmaServerHandshakeAdapterV3::BuildLocalHello(
     return v3_wire::SerializePayload(msg, payload);
 }
 
-handshake::StepResult RdmaServerHandshakeAdapterV3::ParseRemoteHello(
-    const std::string& payload, ParsedHello* remote) {
-    return v3_wire::ParsePayload(payload, remote);
+handshake::StepResult RdmaHandshakeAdapter::ParseHello(
+    const std::string& payload) {
+    return _version == 2 ? v2_wire::ParsePayload(payload, &_remote)
+                         : v3_wire::ParsePayload(payload, &_remote);
 }
 
 std::unique_ptr<RdmaHandshakeAdapter> CreateClientHandshakeAdapter(
     RdmaEndpoint* ep) {
-    if (FLAGS_rdma_client_handshake_version == 3) {
-        return std::unique_ptr<RdmaHandshakeAdapter>(
-            new RdmaClientHandshakeAdapterV3(ep));
-    }
-    return std::unique_ptr<RdmaHandshakeAdapter>(
-        new RdmaClientHandshakeAdapterV2(ep));
+    return std::make_unique<RdmaClientHandshakeAdapterV3>(ep);
 }
 
 std::vector<std::unique_ptr<RdmaHandshakeAdapter> >
@@ -376,7 +353,7 @@ CreateServerHandshakeAdapters(RdmaEndpoint* ep) {
 namespace brpc {
 namespace handshake {
 
-class RdmaServerHandshakeAdapter : public StandardHandshakeAdapter {
+class RdmaServerHandshakeAdapter : public HandshakeAdapter {
 public:
     RdmaServerHandshakeAdapter() = default;
 
@@ -386,8 +363,6 @@ protected:
     HandshakeSession* GetSession(Socket* socket) const override;
 
 private:
-    StepResult RunFallbackServerHandshake(
-        butil::IOBuf* source, Socket* socket);
 #if BRPC_WITH_RDMA
     StepResult RunRdmaServerHandshake(
         butil::IOBuf* source, Socket* socket);
@@ -444,9 +419,116 @@ private:
     int _version;
 };
 
-HandshakeAdapter* GetRdmaServerHandshakeAdapter() {
-    static RdmaServerHandshakeAdapter adapter;
-    return &adapter;
+#if BRPC_WITH_RDMA
+namespace {
+
+class RdmaClientHandshakeTransport : public HandshakeTransport {
+public:
+    RdmaClientHandshakeTransport(
+        RdmaTransport* transport, Socket* socket)
+        : _transport(transport), _socket(socket), _protocol(nullptr) {}
+
+    void OnProtocolSelected(HandshakeProtocol* protocol) override {
+        _protocol = static_cast<rdma::RdmaHandshakeAdapter*>(protocol);
+    }
+
+    HandshakeProtocol* RetryClientHello(
+        HandshakeProtocol* protocol, bool hello_sent,
+        FrameResult frame, const std::string& magic) override {
+        if (protocol->ProtocolVersion() != 3) {
+            return nullptr;
+        }
+        const bool retry = hello_sent
+            ? ((frame == FRAME_IO_ERROR && magic.empty() &&
+                (errno == EEOF || errno == ECONNRESET)) ||
+               (frame == FRAME_NOT_MINE &&
+                magic == rdma::HELLO_MAGIC))
+            : (errno == EPIPE || errno == ECONNRESET);
+        if (!retry) {
+            return nullptr;
+        }
+        LOG_IF(INFO, rdma::FLAGS_rdma_trace_verbose)
+            << "Retry RDMA handshake with v2 on " << _socket->description();
+        auto* ep = _transport->GetRdmaEp();
+        if (ep->ReconnectForHandshake() != 0) {
+            return nullptr;
+        }
+        _retry_protocol = std::make_unique<rdma::RdmaClientHandshakeAdapterV2>(ep);
+        return _retry_protocol.get();
+    }
+
+    StepResult PrepareResources() override {
+        const bool use_srq = _protocol->ProtocolVersion() == 3 &&
+                             rdma::FLAGS_rdma_use_srq;
+        const auto mode = use_srq ? rdma::RdmaQueueMode::SHARED_RQ
+                                  : rdma::RdmaQueueMode::PRIVATE_RQ;
+        if (_transport->PrepareUpgradeResources(mode) == 0) {
+            return STEP_OK;
+        }
+        errno = 0;
+        return STEP_FALLBACK;
+    }
+
+    StepResult NegotiateResources() override {
+        return _transport->NegotiateUpgradeResources(
+                   _protocol->remote(), false) == 0
+            ? STEP_OK : STEP_FALLBACK;
+    }
+
+    void OnEstablished() override { _transport->ActivateUpgrade(); }
+
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+
+    // AfterAppConnected applies the socket's connection timeout policy.
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
+
+private:
+    RdmaTransport* _transport;
+    Socket* _socket;
+    rdma::RdmaHandshakeAdapter* _protocol;
+    std::unique_ptr<rdma::RdmaClientHandshakeAdapterV2> _retry_protocol;
+};
+
+int RunRdmaClientHandshake(Transport* high_speed, Socket* socket,
+                           HandshakeSession& session) {
+    auto* transport = static_cast<RdmaTransport*>(high_speed);
+    auto protocol = transport->CreateClientHandshakeAdapter();
+    CHECK(protocol != nullptr);
+    RdmaClientHandshakeTransport participant(transport, socket);
+    const auto result = session.RunClient(session.socket_io(), protocol.get(),
+                                          &participant);
+    return result == STEP_ERROR ? errno : 0;
+}
+
+int StartRdmaReceive(Transport* high_speed) {
+    auto* transport = static_cast<RdmaTransport*>(high_speed);
+    if (transport->StartUpgradeEvents() >= 0) {
+        return 0;
+    }
+    const int error = errno != 0 ? errno : ERDMA;
+    transport->DeactivateUpgrade();
+    return error;
+}
+
+}  // namespace
+#endif
+
+const HandshakeRegistration& GetRdmaHandshakeRegistration() {
+    static RdmaServerHandshakeAdapter server;
+#if BRPC_WITH_RDMA
+    static const auto operations =
+        HandshakeRegistration::ForTransport<RdmaTransport>(
+            rdma::IsRdmaAvailable, RunRdmaClientHandshake, StartRdmaReceive);
+    const auto* const upgrade = &operations;
+#else
+    const HandshakeRegistration::Upgrade* upgrade = nullptr;
+#endif
+    static const HandshakeRegistration registration = {
+        SOCKET_MODE_RDMA, &server,
+        {&rdma::RdmaHelloFrameSpec(2), &rdma::RdmaHelloFrameSpec(3)}, upgrade,
+        nullptr,
+    };
+    return registration;
 }
 
 HandshakeSession* RdmaServerHandshakeAdapter::GetSession(
@@ -454,17 +536,16 @@ HandshakeSession* RdmaServerHandshakeAdapter::GetSession(
     return AdapterTransport::Get(socket)->handshake_session();
 }
 
-StepResult RdmaServerHandshakeAdapter::RunFallbackServerHandshake(
-    butil::IOBuf* source, Socket* socket) {
-    IOBufHandshakeInput input(source);
+static StepResult RunRdmaFallbackServerHandshake(
+    butil::IOBuf* source, HandshakeSession* session) {
     RdmaFallbackProtocol v2(2);
     RdmaFallbackProtocol v3(3);
     std::vector<HandshakeProtocol*> protocols;
     protocols.push_back(&v2);
     protocols.push_back(&v3);
     FallbackHandshakeTransport transport;
-    return GetSession(socket)->RunServer(
-        protocols, &input, &transport, false);
+    return session->RunServer(
+        session->socket_io(), protocols, source, &transport, false);
 }
 
 #if BRPC_WITH_RDMA
@@ -480,7 +561,14 @@ public:
     }
 
     StepResult PrepareResources() override {
-        if (_transport->PrepareUpgradeResources() == 0) {
+        const bool use_srq = _protocol->remote().srq_protocol == 1;
+        if (use_srq && !rdma::FLAGS_rdma_use_srq) {
+            _transport->DeactivateUpgrade();
+            return STEP_FALLBACK;
+        }
+        const auto mode = use_srq ? rdma::RdmaQueueMode::SHARED_RQ
+                                  : rdma::RdmaQueueMode::PRIVATE_RQ;
+        if (_transport->PrepareUpgradeResources(mode) == 0) {
             return STEP_OK;
         }
         PLOG(WARNING) << "Fail to allocate rdma resources, fallback to tcp:"
@@ -528,10 +616,10 @@ StepResult RdmaServerHandshakeAdapter::RunRdmaServerHandshake(
     for (size_t i = 0; i < protocols.size(); ++i) {
         protocol_ptrs.push_back(protocols[i].get());
     }
-    IOBufHandshakeInput input(source);
     RdmaServerHandshakeTransport participant(transport, socket, source);
-    return GetSession(socket)->RunServer(
-        protocol_ptrs, &input, &participant, false);
+    auto* session = GetSession(socket);
+    return session->RunServer(
+        session->socket_io(), protocol_ptrs, source, &participant, false);
 }
 #endif
 
@@ -543,7 +631,7 @@ StepResult RdmaServerHandshakeAdapter::RunServerStep(
         return RunRdmaServerHandshake(source, socket);
     }
 #endif
-    return RunFallbackServerHandshake(source, socket);
+    return RunRdmaFallbackServerHandshake(source, GetSession(socket));
 }
 
 }  // namespace handshake

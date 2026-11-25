@@ -22,7 +22,7 @@
 
 namespace {
 
-BAIDU_THREAD_LOCAL int * dummy = nullptr;
+BUTIL_THREAD_LOCAL(int*, dummy, nullptr);
 const size_t NTHREAD = 8;
 static bool processed[NTHREAD+1];
 static bool deleted[NTHREAD+1];
@@ -64,6 +64,7 @@ protected:
 };
 
 
+// Test the legacy native TLS keyword on pthreads (no bthread suspension).
 BAIDU_THREAD_LOCAL void* x;
 
 void* foo(void* arg) {
@@ -111,9 +112,9 @@ TEST_F(BaiduThreadLocalTest, get_thread_local) {
 
 void delete_dummy(void* arg) {
     *(bool*)arg = true;
-    if (dummy) {
-        delete dummy;
-        dummy = nullptr;
+    if (dummy()) {
+        delete dummy();
+        dummy() = nullptr;
     } else {
         printf("dummy is NULL\n");
     }
@@ -122,8 +123,8 @@ void delete_dummy(void* arg) {
 void* proc_dummy(void* arg) {
     bool *p = (bool*)arg;
     *p = true;
-    EXPECT_TRUE(dummy == nullptr);
-    dummy = new int(p - processed);
+    EXPECT_TRUE(dummy() == nullptr);
+    dummy() = new int(p - processed);
     butil::thread_atexit(delete_dummy, deleted + (p - processed));
     return nullptr;
 }

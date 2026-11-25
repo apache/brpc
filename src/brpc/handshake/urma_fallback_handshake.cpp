@@ -25,6 +25,12 @@
 namespace brpc {
 namespace handshake {
 
+const FrameSpec& UrmaHelloFrameSpec(int version) {
+    static const FrameSpec v2("URMA", 4, 86, 4096, FrameSpec::U16_TOTAL_LENGTH);
+    static const FrameSpec v3("URM3", 4, 8, 4104, FrameSpec::U32_BODY_LENGTH);
+    return version == 3 ? v3 : v2;
+}
+
 // This codec needs neither liburma nor its SDK headers. A TCP-only server
 // still recognizes the URMA control frames and replies with a disabled Hello.
 class UrmaFallbackProtocol : public FallbackHandshakeProtocol {
@@ -34,11 +40,7 @@ public:
     int ProtocolVersion() const override { return _version; }
     bool AckDisabledHello() const override { return false; }
     const FrameSpec& HelloFrameSpec() const override {
-        static const FrameSpec v2("URMA", 4, 86, 4096,
-                                  FrameSpec::U16_TOTAL_LENGTH);
-        static const FrameSpec v3("URM3", 4, 8, 4104,
-                                  FrameSpec::U32_BODY_LENGTH);
-        return _version == 3 ? v3 : v2;
+        return UrmaHelloFrameSpec(_version);
     }
     const FrameSpec& AckFrameSpec() const override {
         static const FrameSpec spec(nullptr, 0, 4, 4, FrameSpec::FIXED);
@@ -88,14 +90,14 @@ StepResult RunUrmaFallbackServerHandshake(butil::IOBuf* source, Socket* socket) 
     UrmaFallbackProtocol v2(2);
     UrmaFallbackProtocol v3(3);
     std::vector<HandshakeProtocol*> protocols{&v2, &v3};
-    IOBufHandshakeInput input(source);
     FallbackHandshakeTransport transport;
-    return AdapterTransport::Get(socket)->handshake_session()->RunServer(
-        protocols, &input, &transport, false);
+    auto* session = AdapterTransport::Get(socket)->handshake_session();
+    return session->RunServer(session->socket_io(), protocols, source,
+                              &transport, false);
 }
 
 #if !BRPC_WITH_URMA
-class UrmaFallbackServerAdapter : public StandardHandshakeAdapter {
+class UrmaFallbackServerAdapter : public HandshakeAdapter {
 protected:
     StepResult RunServerStep(butil::IOBuf* source, Socket* socket) override {
         return RunUrmaFallbackServerHandshake(source, socket);
@@ -105,9 +107,13 @@ protected:
     }
 };
 
-HandshakeAdapter* GetUrmaServerHandshakeAdapter() {
-    static UrmaFallbackServerAdapter adapter;
-    return &adapter;
+const HandshakeRegistration& GetUrmaHandshakeRegistration() {
+    static UrmaFallbackServerAdapter server;
+    static const HandshakeRegistration registration = {
+        SOCKET_MODE_URMA, &server,
+        {&UrmaHelloFrameSpec(2), &UrmaHelloFrameSpec(3)}, nullptr, nullptr,
+    };
+    return registration;
 }
 #endif
 

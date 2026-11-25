@@ -25,7 +25,7 @@ namespace handshake {
 
 // Returns the adapter used by the common transport-handshake policy parser.
 // The concrete server executor is private to the implementation.
-HandshakeAdapter* GetUBShmServerHandshakeAdapter();
+const HandshakeRegistration& GetUBShmHandshakeRegistration();
 
 }  // namespace handshake
 }  // namespace brpc

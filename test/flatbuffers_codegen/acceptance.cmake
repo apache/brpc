@@ -16,7 +16,7 @@
 # under the License.
 
 if(NOT DEFINED CXX_STANDARD)
-    set(CXX_STANDARD 14)
+    set(CXX_STANDARD 17)
 endif()
 separate_arguments(compiler_flags NATIVE_COMMAND "${CXX_FLAGS}")
 message(STATUS "Codegen compiler: ${CXX}; flags: ${CXX_FLAGS}; C++${CXX_STANDARD}")

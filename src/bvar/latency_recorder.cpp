@@ -113,10 +113,10 @@ int CDF::describe_series(
     return 0;
 }
 
-// Return random int value with expectation = `dval'
-static int64_t double_to_random_int(double dval) {
+// Return random int value with expectation = `dval'.
+int64_t double_to_random_int(double dval, double random) {
     int64_t ival = static_cast<int64_t>(dval);
-    if (dval > ival + butil::fast_rand_double()) {
+    if (dval > ival + random) {
         ival += 1;
     }
     return ival;
@@ -129,7 +129,8 @@ static int64_t get_window_recorder_qps(void* arg) {
     if (s.time_us <= 0) {
         return 0;
     }
-    return double_to_random_int(s.data.num * 1000000.0 / s.time_us);
+    return double_to_random_int(
+        s.data.num * 1000000.0 / s.time_us, butil::fast_rand_double());
 }
 
 static int64_t get_recorder_count(void* arg) {
@@ -209,7 +210,8 @@ int64_t LatencyRecorder::qps(time_t window_size) const {
     if (s.time_us <= 0) {
         return 0;
     }
-    return detail::double_to_random_int(s.data.num * 1000000.0 / s.time_us);
+    return detail::double_to_random_int(
+        s.data.num * 1000000.0 / s.time_us, butil::fast_rand_double());
 }
 
 int LatencyRecorder::expose(const butil::StringPiece& prefix1,

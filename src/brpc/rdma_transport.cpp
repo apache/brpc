@@ -36,19 +36,13 @@ RdmaTransport* RdmaTransport::Get(const Socket* socket) {
     return static_cast<RdmaTransport*>(transport);
 }
 
-void RdmaTransport::Init(Socket *socket, const SocketOptions &options) {
+void RdmaTransport::Init(Socket* socket, const SocketOptions& options) {
     CHECK(_rdma_ep == nullptr);
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = nullptr;
     _rdma_state = RDMA_UNKNOWN;
-    _rdma_ep = new (std::nothrow) rdma::RdmaEndpoint(socket);
-    if (!_rdma_ep) {
-        const int saved_errno = errno != 0 ? errno : ENOMEM;
-        errno = saved_errno;
-        PLOG(WARNING) << "Fail to create RdmaEndpoint, disable RDMA upgrade";
-        _rdma_state = RDMA_OFF;
-    }
+    _rdma_ep = new rdma::RdmaEndpoint(socket);
 }
 
 void RdmaTransport::Release() {
@@ -75,13 +69,21 @@ void RdmaTransport::SetHighSpeedAvailable(bool available) {
     _rdma_state = available ? RDMA_ON : RDMA_OFF;
 }
 
-int RdmaTransport::PrepareUpgradeResources() {
-    return _rdma_ep->AllocateResources();
+int RdmaTransport::PrepareUpgradeResources(rdma::RdmaQueueMode mode) {
+    if (_rdma_ep->_queue_mode != mode) {
+        _rdma_ep->DeallocateResources();
+        _rdma_ep->SelectQueueMode(mode);
+    }
+    return _rdma_ep->_connection ? 0 : _rdma_ep->AllocateResources();
 }
 
 int RdmaTransport::NegotiateUpgradeResources(
-    const rdma::RdmaConnectionInfo &remote, bool server) {
-    _rdma_ep->ApplyRemoteInfo(remote);
+    const rdma::ParsedHello& remote, bool server) {
+    if ((_rdma_ep->_queue_mode == rdma::RdmaQueueMode::SHARED_RQ) !=
+        (remote.srq_protocol == 1)) {
+        errno = EPROTO;
+        return -1;
+    }
     return _rdma_ep->BringUpQp(remote, server);
 }
 
@@ -110,12 +112,12 @@ void RdmaTransport::DeactivateUpgrade() {
     }
 }
 
-int RdmaTransport::CutFromIOBuf(butil::IOBuf *buf) {
-    butil::IOBuf *data[1] = {buf};
+int RdmaTransport::CutFromIOBuf(butil::IOBuf* buf) {
+    butil::IOBuf* data[1] = {buf};
     return static_cast<int>(CutFromIOBufList(data, 1));
 }
 
-ssize_t RdmaTransport::CutFromIOBufList(butil::IOBuf **buf, size_t ndata) {
+ssize_t RdmaTransport::CutFromIOBufList(butil::IOBuf** buf, size_t ndata) {
     CHECK(_rdma_ep != nullptr);
     return _rdma_ep->CutFromIOBufList(buf, ndata);
 }
@@ -208,17 +210,17 @@ void RdmaTransport::Debug(std::ostream &os) {
 int RdmaTransport::ContextInitOrDie(bool serverOrNot, const void* _options) {
     if (serverOrNot) {
         if (!OptionsAvailableOverRdma(
-                static_cast<const ServerOptions *>(_options))) {
+                static_cast<const ServerOptions*>(_options))) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();
         if (!rdma::InitPollingModeWithTag(
-                static_cast<const ServerOptions *>(_options)->bthread_tag)) {
+                static_cast<const ServerOptions*>(_options)->bthread_tag)) {
             return -1;
         }
     } else {
         if (!OptionsAvailableForRdma(
-                static_cast<const ChannelOptions *>(_options))) {
+                static_cast<const ChannelOptions*>(_options))) {
             return -1;
         }
         rdma::GlobalRdmaInitializeOrDie();

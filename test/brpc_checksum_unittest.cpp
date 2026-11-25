@@ -50,6 +50,18 @@ TEST_F(ChecksumAttachmentTest, verify_succeeds_when_body_only) {
     EXPECT_TRUE(brpc::policy::Crc32cVerify(verify_in));
 }
 
+TEST_F(ChecksumAttachmentTest, verify_rejects_invalid_checksum_lengths) {
+    brpc::Controller cntl;
+    butil::IOBuf body;
+    body.append("request body");
+    brpc::ChecksumIn in{&body, &cntl, nullptr};
+    brpc::ControllerPrivateAccessor accessor(&cntl);
+    for (size_t size : {size_t(0), size_t(3), size_t(5)}) {
+        accessor.set_checksum_value(std::string(size, '\0'));
+        EXPECT_FALSE(brpc::policy::Crc32cVerify(in)) << "size=" << size;
+    }
+}
+
 TEST_F(ChecksumAttachmentTest, verify_succeeds_when_attachment_included) {
     brpc::Controller cntl;
     butil::IOBuf body;

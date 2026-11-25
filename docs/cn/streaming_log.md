@@ -86,7 +86,7 @@ streaming log的日志等级与glog映射关系如下：
 
 | streaming log | glog                 | 使用场景                                     |
 | ------------- | -------------------- | ---------------------------------------- |
-| FATAL         | FATAL (coredump)     | 致命错误。但由于百度内大部分FATAL实际上非致命，所以streaming log的FATAL默认不像glog那样直接coredump，除非打开了[-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) |
+| FATAL         | FATAL (coredump)     | 致命错误。但由于百度内大部分FATAL实际上非致命，所以streaming log的FATAL默认不像glog那样直接coredump，除非打开了[-crash_on_fatal_log](http://localhost:8765/flags/crash_on_fatal_log) |
 | ERROR         | ERROR                | 不致命的错误。                                  |
 | WARNING       | WARNING              | 不常见的分支。                                  |
 | NOTICE        | -                    | 一般来说你不应该使用NOTICE，它用于打印重要的业务日志，若要使用务必和检索端同学确认。glog没有NOTICE。 |

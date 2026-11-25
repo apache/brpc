@@ -4,6 +4,9 @@
 
 #include "butil/memory/scoped_ptr.h"
 
+#include <type_traits>
+#include <utility>
+
 #include "butil/basictypes.h"
 #include <gtest/gtest.h>
 
@@ -35,6 +38,9 @@ class ConDecLogger : public ConDecLoggerParent {
   DISALLOW_COPY_AND_ASSIGN(ConDecLogger);
 };
 
+struct ArrayBase {};
+struct ArrayDerived : ArrayBase {};
+
 struct CountingDeleter {
   explicit CountingDeleter(int* count) : count_(count) {}
   inline void operator()(double* ptr) const {
@@ -47,6 +53,46 @@ struct CountingDeleter {
 struct CountingDeleterChild : public CountingDeleter {
   explicit CountingDeleterChild(int* count) : CountingDeleter(count) {}
 };
+
+struct NestedNode;
+
+struct NestedNodeDeletionState {
+  int parent_deletes = 0;
+  int child_deletes = 0;
+};
+
+struct NestedNodeDeleter {
+  NestedNodeDeleter(NestedNodeDeletionState* state, bool deletes_child)
+      : state(state), deletes_child(deletes_child) {}
+
+  void operator()(NestedNode* node) const;
+
+  NestedNodeDeletionState* state;
+  bool deletes_child;
+};
+
+struct NestedNode {
+  explicit NestedNode(const NestedNodeDeleter& next_deleter)
+      : next(nullptr, next_deleter) {}
+
+  ~NestedNode() {
+    // Make stale reads of an embedded source deleter deterministic.
+    next.get_deleter().state = nullptr;
+  }
+
+  scoped_ptr<NestedNode, NestedNodeDeleter> next;
+};
+
+void NestedNodeDeleter::operator()(NestedNode* node) const {
+  if (state != nullptr) {
+    if (deletes_child) {
+      ++state->child_deletes;
+    } else {
+      ++state->parent_deletes;
+    }
+  }
+  delete node;
+}
 
 class OverloadedNewAndDelete {
  public:
@@ -77,7 +123,7 @@ int OverloadedNewAndDelete::g_new_count = 0;
 int OverloadedNewAndDelete::g_delete_count = 0;
 
 scoped_ptr<ConDecLogger> PassThru(scoped_ptr<ConDecLogger> logger) {
-  return logger.Pass();
+  return logger;
 }
 
 void GrabAndDrop(scoped_ptr<ConDecLogger> logger) {
@@ -89,10 +135,32 @@ scoped_ptr<ConDecLogger> TestReturnOfType(int* constructed) {
   return scoped_ptr<ConDecLogger>(new ConDecLogger(constructed));
 }
 
-scoped_ptr<ConDecLoggerParent> UpcastUsingPassAs(
+scoped_ptr<ConDecLoggerParent> UpcastOnReturn(
     scoped_ptr<ConDecLogger> object) {
-  return object.PassAs<ConDecLoggerParent>();
+  return object;
 }
+
+static_assert(std::is_move_constructible<scoped_ptr<int>>::value,
+              "scoped_ptr must be move constructible");
+static_assert(std::is_move_assignable<scoped_ptr<int>>::value,
+              "scoped_ptr must be move assignable");
+static_assert(!std::is_copy_constructible<scoped_ptr<int>>::value,
+              "scoped_ptr must not be copy constructible");
+static_assert(!std::is_copy_assignable<scoped_ptr<int>>::value,
+              "scoped_ptr must not be copy assignable");
+static_assert(
+    std::is_constructible<scoped_ptr<ConDecLoggerParent>,
+                          scoped_ptr<ConDecLogger>&&>::value,
+    "scoped_ptr must support safe pointer conversions");
+static_assert(
+    std::is_constructible<scoped_ptr<const ConDecLogger>,
+                          scoped_ptr<ConDecLogger>&&>::value,
+    "scoped_ptr must support adding const");
+static_assert(std::is_move_constructible<scoped_ptr<int[]>>::value,
+              "array scoped_ptr must be move constructible");
+static_assert(!std::is_constructible<scoped_ptr<ArrayBase[]>,
+                                     scoped_ptr<ArrayDerived[]>&&>::value,
+              "array scoped_ptr must reject derived-to-base conversion");
 
 }  // namespace
 
@@ -176,7 +244,7 @@ TEST(ScopedPtrTest, ScopedPtrDepthSubtyping) {
     EXPECT_EQ(1, constructed);
     EXPECT_TRUE(scoper.get());
 
-    scoped_ptr<ConDecLoggerParent> scoper_parent(scoper.Pass());
+    scoped_ptr<ConDecLoggerParent> scoper_parent(std::move(scoper));
     EXPECT_EQ(1, constructed);
     EXPECT_TRUE(scoper_parent.get());
     EXPECT_FALSE(scoper.get());
@@ -194,7 +262,7 @@ TEST(ScopedPtrTest, ScopedPtrDepthSubtyping) {
     EXPECT_TRUE(scoper.get());
 
     scoped_ptr<ConDecLoggerParent> scoper_parent;
-    scoper_parent = scoper.Pass();
+    scoper_parent = std::move(scoper);
     EXPECT_EQ(1, constructed);
     EXPECT_TRUE(scoper_parent.get());
     EXPECT_FALSE(scoper.get());
@@ -207,7 +275,7 @@ TEST(ScopedPtrTest, ScopedPtrDepthSubtyping) {
     EXPECT_EQ(1, constructed);
     EXPECT_TRUE(scoper.get());
 
-    scoped_ptr<const ConDecLogger> scoper_const(scoper.Pass());
+    scoped_ptr<const ConDecLogger> scoper_const(std::move(scoper));
     EXPECT_EQ(1, constructed);
     EXPECT_TRUE(scoper_const.get());
     EXPECT_FALSE(scoper.get());
@@ -225,7 +293,7 @@ TEST(ScopedPtrTest, ScopedPtrDepthSubtyping) {
     EXPECT_TRUE(scoper.get());
 
     scoped_ptr<const ConDecLogger> scoper_const;
-    scoper_const = scoper.Pass();
+    scoper_const = std::move(scoper);
     EXPECT_EQ(1, constructed);
     EXPECT_TRUE(scoper_const.get());
     EXPECT_FALSE(scoper.get());
@@ -249,7 +317,7 @@ TEST(ScopedPtrTest, ScopedPtrDepthSubtyping) {
     EXPECT_EQ(0, alternate_deletes);
 
     // Test this compiles and correctly overwrites the deleter state.
-    scoper = scoper_child.Pass();
+    scoper = std::move(scoper_child);
     EXPECT_TRUE(scoper);
     EXPECT_FALSE(scoper_child);
     EXPECT_EQ(1, deletes);
@@ -265,7 +333,8 @@ TEST(ScopedPtrTest, ScopedPtrDepthSubtyping) {
     EXPECT_TRUE(scoper_child);
     EXPECT_EQ(1, deletes);
     EXPECT_EQ(1, alternate_deletes);
-    scoped_ptr<double, CountingDeleter> scoper_construct(scoper_child.Pass());
+    scoped_ptr<double, CountingDeleter> scoper_construct(
+        std::move(scoper_child));
     EXPECT_TRUE(scoper_construct);
     EXPECT_FALSE(scoper_child);
     EXPECT_EQ(1, deletes);
@@ -361,13 +430,13 @@ TEST(ScopedPtrTest, ScopedPtrWithArray) {
     }
     EXPECT_EQ(kNumLoggers, constructed);
 
-    // Test Pass() with constructor;
-    scoped_ptr<ConDecLogger[]> scoper2(scoper.Pass());
+    // Test move construction.
+    scoped_ptr<ConDecLogger[]> scoper2(std::move(scoper));
     EXPECT_EQ(kNumLoggers, constructed);
 
-    // Test Pass() with assignment;
+    // Test move assignment.
     scoped_ptr<ConDecLogger[]> scoper3;
-    scoper3 = scoper2.Pass();
+    scoper3 = std::move(scoper2);
     EXPECT_EQ(kNumLoggers, constructed);
     EXPECT_FALSE(scoper);
     EXPECT_FALSE(scoper2);
@@ -376,34 +445,34 @@ TEST(ScopedPtrTest, ScopedPtrWithArray) {
   EXPECT_EQ(0, constructed);
 }
 
-TEST(ScopedPtrTest, PassBehavior) {
+TEST(ScopedPtrTest, MoveBehavior) {
   int constructed = 0;
   {
     ConDecLogger* logger = new ConDecLogger(&constructed);
     scoped_ptr<ConDecLogger> scoper(logger);
     EXPECT_EQ(1, constructed);
 
-    // Test Pass() with constructor;
-    scoped_ptr<ConDecLogger> scoper2(scoper.Pass());
+    // Test move construction.
+    scoped_ptr<ConDecLogger> scoper2(std::move(scoper));
     EXPECT_EQ(1, constructed);
 
-    // Test Pass() with assignment;
+    // Test move assignment.
     scoped_ptr<ConDecLogger> scoper3;
-    scoper3 = scoper2.Pass();
+    scoper3 = std::move(scoper2);
     EXPECT_EQ(1, constructed);
     EXPECT_FALSE(scoper.get());
     EXPECT_FALSE(scoper2.get());
     EXPECT_TRUE(scoper3.get());
   }
 
-  // Test uncaught Pass() does not leak.
+  // Explicit reset releases ownership immediately.
   {
     ConDecLogger* logger = new ConDecLogger(&constructed);
     scoped_ptr<ConDecLogger> scoper(logger);
     EXPECT_EQ(1, constructed);
 
-    // Should auto-destruct logger by end of scope.
-    scoper.Pass();
+    scoper.reset();
+    EXPECT_EQ(0, constructed);
     EXPECT_FALSE(scoper.get());
   }
   EXPECT_EQ(0, constructed);
@@ -415,10 +484,54 @@ TEST(ScopedPtrTest, PassBehavior) {
     EXPECT_EQ(1, constructed);
 
     // Should auto-destruct logger by end of scope.
-    GrabAndDrop(scoper.Pass());
+    GrabAndDrop(std::move(scoper));
     EXPECT_FALSE(scoper.get());
   }
   EXPECT_EQ(0, constructed);
+}
+
+TEST(ScopedPtrTest, SelfMoveAssignmentPreservesOwnership) {
+  int constructed = 0;
+  scoped_ptr<ConDecLogger> scoper(new ConDecLogger(&constructed));
+  ConDecLogger* original = scoper.get();
+
+  auto& same_owner = scoper;
+  scoper = std::move(same_owner);
+
+  EXPECT_EQ(original, scoper.get());
+  EXPECT_EQ(1, constructed);
+}
+
+TEST(ScopedPtrTest, MoveAssignmentFromNestedOwnerPreservesDeleter) {
+  NestedNodeDeletionState state;
+  NestedNodeDeleter parent_deleter(&state, false);
+  NestedNodeDeleter child_deleter(&state, true);
+  {
+    scoped_ptr<NestedNode, NestedNodeDeleter> head(
+        new NestedNode(child_deleter), parent_deleter);
+    head->next.reset(new NestedNode(child_deleter));
+    NestedNode* child = head->next.get();
+
+    head = std::move(head->next);
+
+    EXPECT_EQ(child, head.get());
+    EXPECT_EQ(&state, head.get_deleter().state);
+    EXPECT_TRUE(head.get_deleter().deletes_child);
+    EXPECT_EQ(1, state.parent_deletes);
+    EXPECT_EQ(0, state.child_deletes);
+  }
+  EXPECT_EQ(1, state.parent_deletes);
+  EXPECT_EQ(1, state.child_deletes);
+}
+
+TEST(ScopedPtrTest, ArraySelfMoveAssignmentPreservesOwnership) {
+  scoped_ptr<int[]> scoper(new int[2]);
+  int* original = scoper.get();
+
+  auto& same_owner = scoper;
+  scoper = std::move(same_owner);
+
+  EXPECT_EQ(original, scoper.get());
 }
 
 TEST(ScopedPtrTest, ReturnTypeBehavior) {
@@ -430,7 +543,7 @@ TEST(ScopedPtrTest, ReturnTypeBehavior) {
     scoped_ptr<ConDecLogger> scoper(logger);
     EXPECT_EQ(1, constructed);
 
-    PassThru(scoper.Pass());
+    PassThru(std::move(scoper));
     EXPECT_FALSE(scoper.get());
   }
   EXPECT_EQ(0, constructed);
@@ -442,7 +555,7 @@ TEST(ScopedPtrTest, ReturnTypeBehavior) {
     EXPECT_EQ(1, constructed);
 
     // Should auto-destruct logger by end of scope.
-    PassThru(scoper.Pass());
+    PassThru(std::move(scoper));
     EXPECT_FALSE(scoper.get());
   }
   EXPECT_EQ(0, constructed);
@@ -455,7 +568,7 @@ TEST(ScopedPtrTest, ReturnTypeBehavior) {
   EXPECT_EQ(0, constructed);
 }
 
-TEST(ScopedPtrTest, PassAs) {
+TEST(ScopedPtrTest, ConvertingMoveOnReturn) {
   int constructed = 0;
   {
     scoped_ptr<ConDecLogger> scoper(new ConDecLogger(&constructed));
@@ -463,7 +576,7 @@ TEST(ScopedPtrTest, PassAs) {
     EXPECT_TRUE(scoper.get());
 
     scoped_ptr<ConDecLoggerParent> scoper_parent;
-    scoper_parent = UpcastUsingPassAs(scoper.Pass());
+    scoper_parent = UpcastOnReturn(std::move(scoper));
     EXPECT_EQ(1, constructed);
     EXPECT_TRUE(scoper_parent.get());
     EXPECT_FALSE(scoper.get());
@@ -524,7 +637,7 @@ TEST(ScopedPtrTest, CustomDeleter) {
     scoper.get_deleter()(&dummy_value);
     EXPECT_EQ(3, deletes);
 
-    // Deleter can be assigned into (matches C++11 unique_ptr<> spec).
+    // Deleter can be assigned into (matches the std::unique_ptr spec).
     scoper.get_deleter() = CountingDeleter(&alternate_deletes);
     scoper.reset(&dummy_value);
     EXPECT_EQ(0, alternate_deletes);
@@ -546,11 +659,11 @@ TEST(ScopedPtrTest, CustomDeleter) {
     EXPECT_EQ(0, deletes);
     EXPECT_EQ(0, alternate_deletes);
 
-    // Pass the second deleter through a constructor and an operator=. Then
+    // Move the second deleter through a constructor and an operator=. Then
     // reinitialize the empty scopers to ensure that each one is deleting
     // properly.
-    scoped_ptr<double, CountingDeleter> scoper3(scoper2.Pass());
-    scoper = scoper3.Pass();
+    scoped_ptr<double, CountingDeleter> scoper3(std::move(scoper2));
+    scoper = std::move(scoper3);
     EXPECT_EQ(1, deletes);
 
     scoper2.reset(&dummy_value2);
@@ -587,7 +700,7 @@ TEST(ScopedPtrTest, CustomDeleter) {
 }
 
 // Sanity check test for overloaded new and delete operators. Does not do full
-// coverage of reset/release/Pass() operations as that is redundant with the
+// coverage of reset/release/move operations as that is redundant with the
 // above.
 TEST(ScopedPtrTest, OverloadedNewAndDelete) {
   {
@@ -595,7 +708,7 @@ TEST(ScopedPtrTest, OverloadedNewAndDelete) {
     scoped_ptr<OverloadedNewAndDelete> scoper(new OverloadedNewAndDelete());
     EXPECT_TRUE(scoper.get());
 
-    scoped_ptr<OverloadedNewAndDelete> scoper2(scoper.Pass());
+    scoped_ptr<OverloadedNewAndDelete> scoper2(std::move(scoper));
   }
   EXPECT_EQ(1, OverloadedNewAndDelete::delete_count());
   EXPECT_EQ(1, OverloadedNewAndDelete::new_count());

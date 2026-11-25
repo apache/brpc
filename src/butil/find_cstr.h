@@ -103,58 +103,58 @@ struct StringMapThreadLocalTemp {
     }
 };
 
-extern thread_local StringMapThreadLocalTemp tls_stringmap_temp;
+StringMapThreadLocalTemp& tls_stringmap_temp();
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::const_iterator
 find_cstr(const std::map<std::string, T, C, A>& m, const char* key) {
-    return m.find(*tls_stringmap_temp.get_string(key));
+    return m.find(*tls_stringmap_temp().get_string(key));
 }
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::iterator
 find_cstr(std::map<std::string, T, C, A>& m, const char* key) {
-    return m.find(*tls_stringmap_temp.get_string(key));
+    return m.find(*tls_stringmap_temp().get_string(key));
 }
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::const_iterator
 find_cstr(const std::map<std::string, T, C, A>& m,
           const char* key, size_t length) {
-    return m.find(*tls_stringmap_temp.get_string(key, length));
+    return m.find(*tls_stringmap_temp().get_string(key, length));
 }
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::iterator
 find_cstr(std::map<std::string, T, C, A>& m,
           const char* key, size_t length) {
-    return m.find(*tls_stringmap_temp.get_string(key, length));
+    return m.find(*tls_stringmap_temp().get_string(key, length));
 }
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::const_iterator
 find_lowered_cstr(const std::map<std::string, T, C, A>& m, const char* key) {
-    return m.find(*tls_stringmap_temp.get_lowered_string(key));
+    return m.find(*tls_stringmap_temp().get_lowered_string(key));
 }
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::iterator
 find_lowered_cstr(std::map<std::string, T, C, A>& m, const char* key) {
-    return m.find(*tls_stringmap_temp.get_lowered_string(key));
+    return m.find(*tls_stringmap_temp().get_lowered_string(key));
 }
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::const_iterator
 find_lowered_cstr(const std::map<std::string, T, C, A>& m,
                   const char* key, size_t length) {
-    return m.find(*tls_stringmap_temp.get_lowered_string(key, length));
+    return m.find(*tls_stringmap_temp().get_lowered_string(key, length));
 }
 
 template <typename T, typename C, typename A>
 typename std::map<std::string, T, C, A>::iterator
 find_lowered_cstr(std::map<std::string, T, C, A>& m,
                   const char* key, size_t length) {
-    return m.find(*tls_stringmap_temp.get_lowered_string(key, length));
+    return m.find(*tls_stringmap_temp().get_lowered_string(key, length));
 }
 
 }  // namespace butil

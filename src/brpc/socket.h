@@ -23,6 +23,7 @@
 #include <deque>                               // std::deque
 #include <set>                                 // std::set
 #include "butil/atomicops.h"                    // butil::atomic
+#include "butil/containers/optional.h"          // butil::optional
 #include "bthread/types.h"                      // bthread_id_t
 #include "butil/iobuf.h"                        // butil::IOBuf, IOPortal
 #include "butil/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
@@ -56,6 +57,8 @@ class ChannelBalancer;
 }
 namespace rdma {
 class RdmaEndpoint;
+class SrqConnection;
+class RqConnection;
 }
 
 namespace urma {
@@ -309,7 +312,7 @@ struct SocketOptions {
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    std::shared_ptr<SocketKeepaliveOptions> keepalive_options;
+    butil::optional<SocketKeepaliveOptions> keepalive_options;
     // https://github.com/apache/brpc/issues/1154
     // https://github.com/grpc/grpc/pull/16419/files
     // Only linux supports TCP_USER_TIMEOUT.
@@ -334,6 +337,8 @@ friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class rdma::RdmaEndpoint;
+friend class rdma::SrqConnection;
+friend class rdma::RqConnection;
 friend class ubring::UBShmEndpoint;
 friend class UBShmTransport;
 friend class urma::UrmaEndpoint;
@@ -359,6 +364,7 @@ public:
     // NOTE: User cannot create Socket from constructor. Use Create()
     // instead. It's public just because of requirement of ResourcePool.
     explicit Socket(Forbidden);
+    DISALLOW_COPY_AND_ASSIGN(Socket);
     ~Socket();
 
     // Write `msg' into this Socket and clear it. The `msg' should be an
@@ -475,6 +481,13 @@ public:
 
     // `user' parameter passed to Create().
     SocketUser* user() const { return _user; }
+
+    // Attach the SocketUser after creation. Only safe before the SocketId
+    // is published to other threads (e.g. right after a successful
+    // Create+Address). Callers creating a socket with a null user and
+    // attaching it here get a single cleanup rule: creation failures never
+    // run SocketUser::BeforeRecycle, so the call site disposes the user.
+    void set_user(SocketUser* user) { _user = user; }
 
     // `conn' parameter passed to Create()
     void set_conn(SocketConnection* conn) { _conn = conn; }
@@ -666,6 +679,21 @@ public:
     void fail_me_at_server_stop() { _fail_me_at_server_stop = true; }
     bool shall_fail_me_at_server_stop() const { return _fail_me_at_server_stop; }
 
+    // Track references held by deferred responses waiting for peer activity
+    // (such as HTTP/2 WINDOW_UPDATE). Unlike fail_me_at_server_stop(), these
+    // references are allowed to drain gracefully on Server.Stop(), but must
+    // trigger SetFailed() when the socket becomes idle so NotifyOnFailed()
+    // callbacks can clean up buffered state and release the socket.
+    void AddIdleFailRef() {
+        _idle_fail_ref_count.fetch_add(1, butil::memory_order_relaxed);
+    }
+    void ReleaseIdleFailRef() {
+        _idle_fail_ref_count.fetch_sub(1, butil::memory_order_relaxed);
+    }
+    bool shall_fail_me_at_idle_timeout() const {
+        return _idle_fail_ref_count.load(butil::memory_order_relaxed) > 0;
+    }
+
     // Tag the socket so that the response coming back from socket will be
     // parsed progressively. For example: in HTTP, the RPC may end w/o reading
     // the body part fully.
@@ -688,7 +716,7 @@ public:
     }
 
     // Returns true if the remote side is overcrowded.
-    bool is_overcrowded() const { return _overcrowded; }
+    bool is_overcrowded() const;
 
     bthread_keytable_pool_t* keytable_pool() const { return _keytable_pool; }
 
@@ -696,8 +724,6 @@ public:
     HttpMethod http_request_method() const { return _http_request_method; }
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(Socket);
-
     int ConductError(bthread_id_t);
     int StartWrite(WriteRequest*, const WriteOptions&);
 
@@ -718,6 +744,9 @@ private:
     // Hold the health-checking-related
     // reference on created.
     void HoldHCRelatedRef();
+
+    // Copy connection configuration for pooled and short sockets.
+    SocketOptions GetSubSocketOptions() const;
 
     static int Status(SocketId, int32_t* nref = nullptr);  // for unit-test.
 
@@ -756,8 +785,10 @@ private:
     // true, EPOLLIN event will also be included and EPOLL_CTL_MOD will
     // be used instead of EPOLL_CTL_ADD. Note that spurious wakeups may
     // occur when this function returns, so make sure to check whether fd
-    // is writable or not even when it returns 0
-    int WaitEpollOut(int fd, bool pollin, const timespec* abstime);
+    // is writable or not even when it returns 0. If `check_failed' is true,
+    // SetFailed() cancels the wait with ECANCELED, including failures that
+    // precede the wait. Leave it false for health checks on failed sockets.
+    int WaitEpollOut(int fd, bool pollin, const timespec* abstime, bool check_failed);
 
     // [Not thread-safe] Establish a tcp connection to `remote_side()'
     // If `on_connect' is nullptr, this function blocks current thread
@@ -767,8 +798,10 @@ private:
     // Returns the socket fd on success, -1 otherwise
     int DoConnect(const timespec* abstime,
                   int (*on_connect)(int fd, int err, void* data), void* data);
+    // `check_failed' only applies to synchronous connects (on_connect == nullptr).
     int Connect(const timespec* abstime,
-                int (*on_connect)(int fd, int err, void* data), void* data);
+                int (*on_connect)(int fd, int err, void* data), void* data,
+                bool check_failed = false);
 
     int CheckConnected(int sockfd);
 
@@ -913,6 +946,10 @@ private:
     // Initialized by SocketOptions.app_connect.
     std::shared_ptr<AppConnect> _app_connect;
 
+    // Absolute CLOCK_REALTIME deadline for the current connection attempt,
+    // including transport handshakes/reconnects. -1 means no deadline.
+    int64_t _connect_deadline_us;
+
     IOEvent<Socket> _io_event;
 
     // Last chosen index of the protocol as a heuristic value to avoid
@@ -933,6 +970,13 @@ private:
 
     // Saved context for parsing, reset before trying other protocols.
     butil::atomic<Destroyable*> _parsing_context;
+    // DebugSocket() describes _parsing_context outside the bthread parsing
+    // messages, which may reset or release the context at the same time.
+    // Both hold this mutex, so that the context is not destroyed while
+    // being described. Describe() runs under the mutex and must not reset
+    // the parsing context of the socket. initialize_parsing_context() does
+    // not need it: it never destroys a context set in the socket.
+    butil::Mutex _parsing_context_mutex;
 
     // The stream whose data the handlers are currently cutting.
     butil::atomic<InputMessengerProcessor::StreamType> _parsing_stream_type;
@@ -980,7 +1024,7 @@ private:
     SSL* _ssl_session;               // owner
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
-    // Requested provider: SOCKET_MODE_TCP, SOCKET_MODE_RDMA or another mode.
+    // Requested transport for this connection.
     SocketMode _socket_mode;
     // The top-level AdapterTransport, which selects TCP or the requested
     // accelerated Transport.
@@ -990,10 +1034,8 @@ private:
     ConnectionType _connection_type_for_progressive_read;
     butil::atomic<bool> _controller_released_socket;
 
-    // True if the socket is too full to write.
-    volatile bool _overcrowded;
-
     bool _fail_me_at_server_stop;
+    butil::atomic<int32_t> _idle_fail_ref_count;
 
     // Set by SetLogOff
     butil::atomic<bool> _logoff_flag;
@@ -1034,8 +1076,8 @@ private:
 
     // Socket keepalive related options.
     // Refer to `SocketKeepaliveOptions' for details.
-    // non-nullptr means that keepalive is on.
-    std::shared_ptr<SocketKeepaliveOptions> _keepalive_options;
+    // An engaged value means that keepalive is on.
+    butil::optional<SocketKeepaliveOptions> _keepalive_options;
 
     // Only linux supports TCP_USER_TIMEOUT.
     // When the value is greater than 0, it specifies the maximum

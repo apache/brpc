@@ -23,7 +23,7 @@ option(WITH_MESALINK "With MesaLink" OFF)
 option(WITH_BORINGSSL "With BoringSSL" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
-option(WITH_FLATBUFFERS "With FlatBuffers message support (headers only)" OFF)
+option(WITH_FLATBUFFERS "With FlatBuffers message and RPC support (headers only)" OFF)
 option(WITH_BTHREAD_TRACER "With bthread tracer supported" OFF)
 option(WITH_SNAPPY "With snappy" OFF)
 option(WITH_RDMA "With RDMA" OFF)
@@ -76,6 +76,11 @@ set(BRPC_COMMON_INCLUDE_DIRS
 )
 set(BRPC_COMMON_LINK_OPTIONS)
 set(BRPC_CXX_STANDARD 14)
+if(WITH_FLATBUFFERS)
+    # FlatBuffers support requires C++17 so that over-aligned objects use
+    # aligned new consistently in the library and in every including unit.
+    set(BRPC_CXX_STANDARD 17)
+endif()
 
 if(WITH_DEBUG_SYMBOLS)
     list(APPEND BRPC_COMMON_COMPILE_OPTIONS -g)

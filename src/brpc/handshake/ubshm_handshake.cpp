@@ -18,11 +18,13 @@
 #include "brpc/handshake/ubshm_handshake.h"
 
 #include <errno.h>
+#include <cstddef>
 #include <cstdio>
 
 #include "butil/raw_pack.h"
 #include "butil/sys_byteorder.h"
 #include "brpc/adapter_transport.h"
+#include "brpc/nshead.h"
 #include "brpc/socket.h"
 
 #if BRPC_WITH_UBRING
@@ -57,6 +59,24 @@ static const FrameSpec& HelloFrameSpec() {
     static const FrameSpec spec(
         MAGIC, MAGIC_LEN, HELLO_LEN, HELLO_LEN, FrameSpec::FIXED);
     return spec;
+}
+
+static bool MatchHelloFields(const butil::IOBuf& input) {
+    if (input.size() >= sizeof(nshead_t)) {
+        // NSHEAD may share the UBSHM prefix. Its magic identifies its header.
+        unsigned int nshead_magic;
+        input.copy_to(&nshead_magic, sizeof(nshead_magic),
+                      offsetof(nshead_t, magic_num));
+        if (nshead_magic == NSHEAD_MAGICNUM) {
+            return false;
+        }
+    }
+    uint16_t net_len;
+    if (input.size() < MAGIC_LEN + sizeof(net_len)) {
+        return true;
+    }
+    input.copy_to(&net_len, sizeof(net_len), MAGIC_LEN);
+    return butil::NetToHost16(net_len) == HELLO_LEN;
 }
 
 static const FrameSpec& AckFrameSpec() {
@@ -298,7 +318,7 @@ bool UBShmHandshakeAdapter::NegotiationValid(
 namespace brpc {
 namespace handshake {
 
-class UBShmServerHandshakeAdapter : public StandardHandshakeAdapter {
+class UBShmServerHandshakeAdapter : public HandshakeAdapter {
 public:
     UBShmServerHandshakeAdapter() = default;
 
@@ -341,9 +361,91 @@ public:
     }
 };
 
-HandshakeAdapter* GetUBShmServerHandshakeAdapter() {
-    static UBShmServerHandshakeAdapter adapter;
-    return &adapter;
+#if BRPC_WITH_UBRING
+namespace {
+
+class UBShmClientHandshakeTransport : public HandshakeTransport {
+public:
+    UBShmClientHandshakeTransport(
+        UBShmTransport* transport, ubring::SHM* local_shm,
+        const char* shm_name, ubring::UBShmHandshakeAdapter* protocol)
+        : _transport(transport), _local_shm(local_shm),
+          _shm_name(shm_name), _protocol(protocol) {}
+
+    StepResult PrepareResources() override {
+        if (_transport->PrepareUpgradeResources(
+                _local_shm, _shm_name) != 0) {
+            return STEP_FALLBACK;
+        }
+        _protocol->ConfigureClientHello(*_local_shm);
+        return STEP_OK;
+    }
+
+    StepResult NegotiateResources() override {
+        return _transport->NegotiateUpgradeResources(
+                   _local_shm, _shm_name, _protocol->remote().len,
+                   _protocol->local_format()) == 0
+            ? STEP_OK : STEP_FALLBACK;
+    }
+
+    void OnEstablished() override {
+        _transport->GetUBShmEp()->SetNegotiatedDataFormat(
+            _protocol->local_format());
+        _transport->ActivateUpgrade();
+    }
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
+
+private:
+    UBShmTransport* _transport;
+    ubring::SHM* _local_shm;
+    const char* _shm_name;
+    ubring::UBShmHandshakeAdapter* _protocol;
+};
+
+int RunUBShmClientHandshake(Transport* high_speed, Socket* socket,
+                            HandshakeSession& session) {
+    auto* transport = static_cast<UBShmTransport*>(high_speed);
+    const size_t local_shm_len =
+        static_cast<size_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
+    ubring::SHM local_shm = {
+        nullptr, local_shm_len, 0, {0}, static_cast<uint32_t>(socket->fd())};
+    const auto shm_name = butil::endpoint2str(socket->local_side());
+    ubring::UBShmHandshakeAdapter wire(
+        ubring::PreferredDataFormatForShmType(ubring::GetShmType()));
+    UBShmClientHandshakeTransport participant(
+        transport, &local_shm, shm_name.c_str(), &wire);
+    const auto result = session.RunClient(session.socket_io(), &wire, &participant);
+    if (result == STEP_OK) {
+        transport->FinishUpgrade();
+    }
+    return result == STEP_ERROR ? errno : 0;
+}
+
+int StartUBShmReceive(Transport* high_speed) {
+    static_cast<UBShmTransport*>(high_speed)->GetUBShmEp()->StartReceiveEvents();
+    return 0;
+}
+
+}  // namespace
+#endif
+
+const HandshakeRegistration& GetUBShmHandshakeRegistration() {
+    static UBShmServerHandshakeAdapter server;
+#if BRPC_WITH_UBRING
+    static const auto operations =
+        HandshakeRegistration::ForTransport<UBShmTransport>(
+            ubring::IsUBAvailable, RunUBShmClientHandshake, StartUBShmReceive);
+    const auto* const upgrade = &operations;
+#else
+    const HandshakeRegistration::Upgrade* upgrade = nullptr;
+#endif
+    static const HandshakeRegistration registration = {
+        SOCKET_MODE_UBRING, &server, {&ubshm_wire::HelloFrameSpec()}, upgrade,
+        ubshm_wire::MatchHelloFields,
+    };
+    return registration;
 }
 
 HandshakeSession* UBShmServerHandshakeAdapter::GetSession(
@@ -353,12 +455,12 @@ HandshakeSession* UBShmServerHandshakeAdapter::GetSession(
 
 StepResult UBShmServerHandshakeAdapter::RunFallbackServerHandshake(
     butil::IOBuf* source, Socket* socket) {
-    IOBufHandshakeInput input(source);
     UBShmFallbackProtocol protocol;
     std::vector<HandshakeProtocol*> protocols(1, &protocol);
     FallbackHandshakeTransport transport;
-    return GetSession(socket)->RunServer(
-        protocols, &input, &transport, false);
+    auto* session = GetSession(socket);
+    return session->RunServer(
+        session->socket_io(), protocols, source, &transport, false);
 }
 
 #if BRPC_WITH_UBRING
@@ -402,10 +504,7 @@ public:
         if (client_ip_port != nullptr) {
             *client_ip_port = '\0';
         }
-        const int result = snprintf(
-            local_trx_shm.name, SHM_MAX_NAME_BUFF_LEN, "%s_%s",
-            client_name, SERVER_SHM_NAME_SUFFIX);
-        if (UNLIKELY(result < 0)) {
+        if (!ubring::BuildServerShmName(client_name, local_trx_shm.name)) {
             _transport->DeactivateUpgrade();
             return STEP_FALLBACK;
         }
@@ -451,12 +550,12 @@ StepResult UBShmServerHandshakeAdapter::RunUBShmServerHandshake(
     const uint64_t local_shm_len =
         static_cast<uint64_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
     wire.ConfigureServerReply(local_shm_len);
-    IOBufHandshakeInput input(source);
     std::vector<HandshakeProtocol*> protocols(1, &wire);
     UBShmServerHandshakeTransport participant(
         transport, &wire, socket, source);
-    const StepResult result = GetSession(socket)->RunServer(
-        protocols, &input, &participant, false);
+    auto* session = GetSession(socket);
+    const StepResult result = session->RunServer(
+        session->socket_io(), protocols, source, &participant, false);
     if (result == STEP_OK) {
         transport->FinishUpgrade();
         LOG_IF(INFO, ubring::FLAGS_ub_trace_verbose)

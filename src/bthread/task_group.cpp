@@ -69,18 +69,18 @@ DEFINE_bool(bthread_enable_cpu_clock_stat, false,
             "Enable CPU clock statistics for bthread");
 BUTIL_VALIDATE_GFLAG(bthread_enable_cpu_clock_stat, butil::PassValidate);
 
-BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group, nullptr);
+BUTIL_THREAD_LOCAL(TaskGroup*, tls_task_group, nullptr);
 // Sync with TaskMeta::local_storage when a bthread is created or destroyed.
 // During running, the two fields may be inconsistent, use tls_bls as the
 // groundtruth.
-BAIDU_VOLATILE_THREAD_LOCAL(LocalStorage, tls_bls, BTHREAD_LOCAL_STORAGE_INITIALIZER);
+BUTIL_THREAD_LOCAL(LocalStorage, tls_bls, BTHREAD_LOCAL_STORAGE_INITIALIZER);
 
 // defined in bthread/key.cpp
 extern void return_keytable(bthread_keytable_pool_t*, KeyTable*);
 
 // [Hacky] This is a special TLS set by bthread-rpc privately... to save
 // overhead of creation keytable, may be removed later.
-BAIDU_VOLATILE_THREAD_LOCAL(void*, tls_unique_user_ptr, nullptr);
+BUTIL_THREAD_LOCAL(void*, tls_unique_user_ptr, nullptr);
 
 const TaskStatistics EMPTY_STAT = { 0, 0, 0 };
 
@@ -320,7 +320,7 @@ void TaskGroup::asan_task_runner(intptr_t) {
 void TaskGroup::task_runner(intptr_t skip_remained) {
     // NOTE: tls_task_group is volatile since tasks are moved around
     //       different groups.
-    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    TaskGroup* g = tls_task_group();
 #ifdef BRPC_BTHREAD_TRACER
     TaskTracer::set_running_status(g->tid(), g->_cur_meta);
 #endif // BRPC_BTHREAD_TRACER
@@ -330,7 +330,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             RemainedFn fn = g->_last_context_remained;
             g->_last_context_remained = nullptr;
             fn(g->_last_context_remained_arg);
-            g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+            g = tls_task_group();
         }
 
 #ifndef NDEBUG
@@ -413,7 +413,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
 
         // During running the function in TaskMeta and deleting the KeyTable in
         // return_KeyTable, the group is probably changed.
-        g =  BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        g = tls_task_group();
 
         // Increase the version and wake up all joiners, if resulting version
         // is 0, change it to 1 to make bthread_t never be 0. Any access
@@ -500,7 +500,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
         if (g_create_bthread_span) {
             m->local_storage.rpcz_parent_span = g_create_bthread_span();
         } else {
-            m->local_storage.rpcz_parent_span = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
+            m->local_storage.rpcz_parent_span = tls_bls().rpcz_parent_span;
         }
     }
     m->cpuwide_start_ns = start_ns;
@@ -574,7 +574,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
         if (g_create_bthread_span) {
             m->local_storage.rpcz_parent_span = g_create_bthread_span();
         } else {
-            m->local_storage.rpcz_parent_span = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls).rpcz_parent_span;
+            m->local_storage.rpcz_parent_span = tls_bls().rpcz_parent_span;
         }
     }
     m->cpuwide_start_ns = start_ns;
@@ -622,7 +622,7 @@ int TaskGroup::join(bthread_t tid, void** return_value) {
         // The bthread is not created yet, this join is definitely wrong.
         return EINVAL;
     }
-    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    TaskGroup* g = tls_task_group();
     if (g != nullptr && g->current_tid() == tid) {
         // joining self causes indefinite waiting.
         return EINVAL;
@@ -741,7 +741,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
 #endif
     // Save errno so that errno is bthread-specific.
     int saved_errno = errno;
-    void* saved_unique_user_ptr = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr);
+    void* saved_unique_user_ptr = tls_unique_user_ptr();
 
     TaskMeta* const cur_meta = g->_cur_meta;
     int64_t now = butil::cpuwide_time_ns();
@@ -769,8 +769,8 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     if (__builtin_expect(next_meta != cur_meta, 1)) {
         g->_cur_meta = next_meta;
         // Switch tls_bls
-        cur_meta->local_storage = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_bls);
-        BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_bls, next_meta->local_storage);
+        cur_meta->local_storage = tls_bls();
+        tls_bls() = next_meta->local_storage;
 
         // Logging must be done after switching the local storage, since the logging lib
         // use bthread local storage internally, or will cause memory leak.
@@ -792,7 +792,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
                     jump_stack(cur_meta->stack, next_meta->stack);
                 }
                 // probably went to another group, need to assign g again.
-                g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+                g = tls_task_group();
 #ifdef BRPC_BTHREAD_TRACER
                 TaskTracer::set_running_status(g->tid(), g->_cur_meta);
 #endif // BRPC_BTHREAD_TRACER
@@ -819,13 +819,13 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
         RemainedFn fn = g->_last_context_remained;
         g->_last_context_remained = nullptr;
         fn(g->_last_context_remained_arg);
-        g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        g = tls_task_group();
     }
 
     // Restore errno
     errno = saved_errno;
     // tls_unique_user_ptr probably changed.
-    BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_unique_user_ptr, saved_unique_user_ptr);
+    tls_unique_user_ptr() = saved_unique_user_ptr;
 
 #ifndef NDEBUG
     --g->_sched_recursive_guard;
@@ -904,14 +904,14 @@ void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
 }
 
 void TaskGroup::ready_to_run_general(TaskMeta* meta, bool nosignal) {
-    if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == this) {
+    if (tls_task_group() == this) {
         return ready_to_run(meta, nosignal);
     }
     return ready_to_run_remote(meta, nosignal);
 }
 
 void TaskGroup::flush_nosignal_tasks_general() {
-    if (BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == this) {
+    if (tls_task_group() == this) {
         return flush_nosignal_tasks();
     }
     return flush_nosignal_tasks_remote();
@@ -919,13 +919,13 @@ void TaskGroup::flush_nosignal_tasks_general() {
 
 void TaskGroup::ready_to_run_in_worker(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
-    return BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group)->
+    return tls_task_group()->
         ready_to_run(args->meta, args->nosignal);
 }
 
 void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
-    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    TaskGroup* g = tls_task_group();
 
 #ifdef BRPC_BTHREAD_TRACER
     g->_control->_task_tracer.set_status(TASK_STATUS_READY, args->meta);
@@ -937,7 +937,7 @@ void TaskGroup::priority_to_run(void* args_in) {
     // Publishing the parent lets another worker resume it immediately and
     // reuse its stack. Copy the on-stack arguments before enqueueing it.
     const ReadyToRunArgs args = *static_cast<ReadyToRunArgs*>(args_in);
-    TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    TaskGroup* g = tls_task_group();
 #ifdef BRPC_BTHREAD_TRACER
     g->_control->_task_tracer.set_status(TASK_STATUS_READY, args.meta);
 #endif // BRPC_BTHREAD_TRACER
@@ -959,7 +959,7 @@ struct SleepArgs {
 };
 
 static void ready_to_run_from_timer_thread(void* arg) {
-    CHECK(BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group) == nullptr);
+    CHECK(tls_task_group() == nullptr);
     const SleepArgs* e = static_cast<const SleepArgs*>(arg);
     TaskGroup* g = e->group;
     bthread_tag_t tag = g->tag();
@@ -1109,7 +1109,7 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
         }
     } else if (sleep_id != 0) {
         if (get_global_timer_thread()->unschedule(sleep_id) == 0) {
-            TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+            TaskGroup* g = tls_task_group();
             TaskMeta* m = address_meta(tid);
             if (g) {
                 g->ready_to_run(m);

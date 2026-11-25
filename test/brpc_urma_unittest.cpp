@@ -244,18 +244,17 @@ TEST(UrmaHandshakeTest, common_frames_preserve_fragmented_and_coalesced_data) {
 
         butil::IOBuf source;
         source.append(frame.data(), 3);
-        handshake::IOBufHandshakeInput input(&source);
         std::string parsed;
         EXPECT_EQ(handshake::FRAME_NEED_MORE,
                   handshake::FrameCodec::ParseBufferedFrame(
-                      &input, adapter.HelloFrameSpec(), &parsed));
+                      &source, adapter.HelloFrameSpec(), &parsed));
         EXPECT_EQ(3u, source.size());
 
         source.append(frame.data() + 3, frame.size() - 3);
         source.append("RPC", 3);
         ASSERT_EQ(handshake::FRAME_OK,
                   handshake::FrameCodec::ParseBufferedFrame(
-                      &input, adapter.HelloFrameSpec(), &parsed));
+                      &source, adapter.HelloFrameSpec(), &parsed));
         EXPECT_EQ(hello, parsed);
         EXPECT_EQ(3u, source.size());
         EXPECT_EQ("RPC", source.to_string());
@@ -336,15 +335,13 @@ TEST(UrmaHandshakeTest, common_server_fallback_preserves_coalesced_rpc) {
     butil::IOBuf source;
     source.append(frame);
     source.append("RPC", 3);
-    handshake::IOBufHandshakeInput input(&source);
     CapturingUrmaHandshakeIO io;
     handshake::HandshakeSession session;
-    session.SetIOForTest(&io);
     FailingUrmaResources transport;
     std::vector<handshake::HandshakeProtocol*> protocols(1, &protocol);
 
     EXPECT_EQ(handshake::STEP_FALLBACK,
-              session.RunServer(protocols, &input, &transport, false));
+              session.RunServer(io, protocols, &source, &transport, false));
     EXPECT_EQ(handshake::FALLBACK_TCP, session.phase(butil::memory_order_acquire));
     EXPECT_EQ(2, transport.version);
     EXPECT_TRUE(transport.fallback);
@@ -467,17 +464,15 @@ TEST(UrmaHandshakeTest, server_resource_failure_preserves_legacy_rpc_without_ack
             butil::IOBuf source;
             source.append(hello);
             source.append("PRPC", 4);
-            handshake::IOBufHandshakeInput input(&source);
             handshake::HandshakeSession session;
             CapturingUrmaHandshakeIO io;
-            session.SetIOForTest(&io);
             RejectingUrmaPreparation prepare;
             RejectingUrmaImport negotiate;
             TrackedUrmaTestResources* resources = reject_prepare
                 ? static_cast<TrackedUrmaTestResources*>(&prepare) : &negotiate;
             std::vector<handshake::HandshakeProtocol*> protocols(1, &protocol);
             EXPECT_EQ(handshake::STEP_FALLBACK,
-                      session.RunServer(protocols, &input, resources, false));
+                      session.RunServer(io, protocols, &source, resources, false));
             EXPECT_EQ(handshake::FALLBACK_TCP,
                       session.phase(butil::memory_order_acquire));
             EXPECT_EQ("PRPC", source.to_string());
@@ -505,10 +500,9 @@ TEST(UrmaHandshakeTest, disabled_server_hello_does_not_send_ack) {
         ASSERT_EQ(handshake::FRAME_OK, handshake::FrameCodec::Encode(
             protocol.HelloFrameSpec(), protocol.local_payload, &expected));
         handshake::HandshakeSession session;
-        session.SetIOForTest(&io);
         TrackedUrmaTestResources resources;
         EXPECT_EQ(handshake::STEP_FALLBACK,
-                  session.RunClient(&protocol, &resources));
+                  session.RunClient(io, &protocol, &resources));
         EXPECT_EQ(expected, io.output);  // No ACK before ordinary RPC bytes.
         EXPECT_FALSE(resources.allocated);
         EXPECT_EQ(1, resources.cleanup_count);
@@ -525,21 +519,18 @@ TEST(UrmaHandshakeTest, client_import_failure_still_sends_disabled_ack) {
             protocol.HelloFrameSpec(), protocol.local_payload, &io.input));
         const std::string expected = io.input + std::string(4, '\0');
         handshake::HandshakeSession session;
-        session.SetIOForTest(&io);
         RejectingUrmaImport resources;
         EXPECT_EQ(handshake::STEP_FALLBACK,
-                  session.RunClient(&protocol, &resources));
+                  session.RunClient(io, &protocol, &resources));
         EXPECT_EQ(expected, io.output);
         EXPECT_FALSE(resources.allocated);
         EXPECT_EQ(1, resources.cleanup_count);
     }
 }
 
-class BufferedUrmaTestAdapter : public handshake::StandardHandshakeAdapter {
+class BufferedUrmaTestAdapter : public handshake::HandshakeAdapter {
 public:
-    explicit BufferedUrmaTestAdapter(int version) : protocol(version) {
-        session.SetIOForTest(&io);
-    }
+    explicit BufferedUrmaTestAdapter(int version) : protocol(version) {}
     BufferedUrmaTestProtocol protocol;
     TrackedUrmaTestResources resources;
     CapturingUrmaHandshakeIO io;
@@ -547,9 +538,8 @@ public:
 protected:
     handshake::StepResult RunServerStep(butil::IOBuf* source, Socket*) override {
         resources.source = source;
-        handshake::IOBufHandshakeInput input(source);
         std::vector<handshake::HandshakeProtocol*> protocols(1, &protocol);
-        return session.RunServer(protocols, &input, &resources, false);
+        return session.RunServer(io, protocols, source, &resources, false);
     }
     handshake::HandshakeSession* GetSession(Socket*) const override {
         return &session;

@@ -257,10 +257,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     // Switch to service-specific error.
     non_service_error.release();
     MethodStatus* method_status = service->_status;
-    if (method_status) {
-        CHECK(method_status->OnRequested());
-    }
-    
+
     void* sub_space = nullptr;
     if (service->_additional_space) {
         sub_space = (char*)space + sizeof(NsheadClosure);
@@ -310,6 +307,17 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     }
 
     do {
+        // The limiter rejects the request when the concurrency reaches the
+        // upper limit, which is a normal situation under overload instead
+        // of an impossible state. Note that OnRequested() counts the
+        // request in either case, and ConcurrencyRemover in
+        // NsheadClosure::Run() counts it out.
+        if (method_status && !method_status->OnRequested()) {
+            cntl->SetFailed(ELIMIT,
+                            "Reached NsheadService's max_concurrency=%d",
+                            method_status->MaxConcurrency());
+            break;
+        }
         if (!server->IsRunning()) {
             cntl->SetFailed(ELOGOFF, "Server is stopping");
             break;

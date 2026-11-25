@@ -1,4 +1,4 @@
-[connections服务](http://brpc.baidu.com:8765/connections)可以查看所有的连接。一个典型的页面如下：
+[connections服务](http://localhost:8765/connections)可以查看所有的连接。一个典型的页面如下：
 
 server_socket_count: 5
 

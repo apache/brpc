@@ -1741,6 +1741,35 @@ TEST_F(IOBufTest, append_user_data_with_meta) {
     }
 }
 
+TEST_F(IOBufTest, append_stateful_user_data_with_meta) {
+    int calls = 0;
+    auto data = std::make_shared<std::string>("user data");
+    std::weak_ptr<std::string> weak_data = data;
+    butil::IOBuf buf;
+    ASSERT_EQ(0, buf.append_user_data_with_meta(
+        &(*data)[0], data->size(),
+        [data, &calls](void* ptr) {
+            EXPECT_EQ(data->data(), ptr);
+            ++calls;
+        }, UINT64_C(0x123456789abcdef0)));
+    data.reset();
+
+    butil::IOBuf prefix;
+    ASSERT_EQ(4u, buf.cutn(&prefix, 4));
+    butil::IOBuf shared(buf);
+    EXPECT_EQ(UINT64_C(0x123456789abcdef0), prefix.get_first_data_meta());
+    EXPECT_EQ(UINT64_C(0x123456789abcdef0), shared.get_first_data_meta());
+    EXPECT_EQ("user", prefix.to_string());
+    EXPECT_EQ(" data", shared.to_string());
+    buf.clear();
+    prefix.clear();
+    EXPECT_EQ(0, calls);
+    EXPECT_FALSE(weak_data.expired());
+    shared.clear();
+    EXPECT_EQ(1, calls);
+    EXPECT_TRUE(weak_data.expired());
+}
+
 TEST_F(IOBufTest, share_tls_block) {
     butil::iobuf::remove_tls_block_chain();
     butil::IOBuf::Block* b = butil::iobuf::acquire_tls_block();
@@ -1978,6 +2007,45 @@ TEST_F(IOBufTest, single_iobuf_assign_large_multi_block) {
     ASSERT_EQ(n1 + n2, sbuf.get_length());
     ASSERT_EQ(std::string(n1, 'a') + std::string(n2, 'b'),
               std::string((const char*)sbuf.get_begin(), n1 + n2));
+}
+
+TEST_F(IOBufTest, single_iobuf_assign_stateful_user_data) {
+    struct Deleter {
+        Deleter(std::shared_ptr<std::string> data, int* copies, int* calls)
+            : data(std::move(data)), copies(copies), calls(calls) {}
+        Deleter(const Deleter& other)
+            : data(other.data), copies(other.copies), calls(other.calls) {
+            ++*copies;
+        }
+        Deleter(Deleter&&) noexcept = default;
+        void operator()(void* ptr) {
+            EXPECT_EQ(data->data(), ptr);
+            ++*calls;
+        }
+        std::shared_ptr<std::string> data;
+        int* copies;
+        int* calls;
+    };
+
+    int copies = 0;
+    int calls = 0;
+    auto data = std::make_shared<std::string>("user data");
+    std::weak_ptr<std::string> weak_data = data;
+    butil::SingleIOBuf buf;
+    ASSERT_EQ(0, buf.assign_user_data(
+        &(*data)[0], data->size(), Deleter(data, &copies, &calls)));
+    EXPECT_EQ(0, copies);
+    data.reset();
+
+    butil::IOBuf shared;
+    buf.append_to(&shared);
+    buf.reset();
+    EXPECT_EQ("user data", shared.to_string());
+    EXPECT_EQ(0, calls);
+    EXPECT_FALSE(weak_data.expired());
+    shared.clear();
+    EXPECT_EQ(1, calls);
+    EXPECT_TRUE(weak_data.expired());
 }
 
 TEST_F(IOBufTest, as_input_stream_basic) {

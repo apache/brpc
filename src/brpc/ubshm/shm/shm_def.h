@@ -48,6 +48,8 @@ typedef struct {
 
 typedef struct ShmListNode {
     SHM shm;
+    bool unmap;
+    bool deallocate;
     struct ShmListNode *next;
     struct ShmListNode *prev;
 } ShmListNode;

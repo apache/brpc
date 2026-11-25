@@ -49,8 +49,7 @@ private:
 };
 
 // Protocol adapters may use transport-specific intermediate values, but the
-// terminal values are shared so that AdapterTransport can make the same
-// acquire-side decision for RDMA, URMA and UBSHM.
+// terminal values let AdapterTransport read the handshake result uniformly.
 enum Phase {
     UNINITIALIZED = 0,
     PREPARING = 1,
@@ -113,6 +112,12 @@ public:
     virtual ~HandshakeTransport() = default;
 
     virtual void OnProtocolSelected(HandshakeProtocol*) {}
+    // A transport may replace the connection and select a different codec
+    // before peer parameters are applied. Preserve errno on terminal failure.
+    virtual HandshakeProtocol* RetryClientHello(
+        HandshakeProtocol*, bool, FrameResult, const std::string&) {
+        return nullptr;
+    }
     virtual StepResult PrepareResources() = 0;
     virtual StepResult NegotiateResources() = 0;
     virtual void OnEstablished() = 0;
@@ -152,13 +157,12 @@ public:
 class HandshakeSession {
 public:
     explicit HandshakeSession(Socket* socket = nullptr)
-        : _socket_io(socket), _io(&_socket_io), _phase(UNINITIALIZED),
+        : _socket_io(socket), _phase(UNINITIALIZED),
           _protocol_version(0), _local_enabled(false) {}
 
     void Reset(Socket* socket) {
         _socket_io.Reset(socket);
-        _io = &_socket_io;
-        _protocol_version = 0;
+        _protocol_version.store(0, butil::memory_order_relaxed);
         _local_enabled = false;
         _phase.store(UNINITIALIZED, butil::memory_order_relaxed);
     }
@@ -167,12 +171,16 @@ public:
         return _phase.load(order);
     }
 
-    void SetPhase(int phase) {
+    void set_phase(int phase) {
         _phase.store(phase, butil::memory_order_release);
     }
 
-    int protocol_version() const { return _protocol_version; }
-    void set_protocol_version(int version) { _protocol_version = version; }
+    int protocol_version() const {
+        return _protocol_version.load(butil::memory_order_relaxed);
+    }
+    void set_protocol_version(int version) {
+        _protocol_version.store(version, butil::memory_order_relaxed);
+    }
 
     void MarkEstablished() {
         _phase.store(ESTABLISHED, butil::memory_order_release);
@@ -194,38 +202,39 @@ public:
 
     void NotifyReadable() { _socket_io.NotifyReadable(); }
 
-    // Injects an in-memory stream in common-component unit tests. Reset()
-    // restores the Socket-backed implementation.
-    void SetIOForTest(HandshakeIO* io) { _io = io; }
+    HandshakeIO& socket_io() { return _socket_io; }
 
-    StepResult RunClient(HandshakeProtocol* protocol,
+    StepResult RunClient(HandshakeIO& io, HandshakeProtocol* protocol,
                          HandshakeTransport* transport);
-    StepResult RunServer(const std::vector<HandshakeProtocol*>& protocols,
-                         HandshakeInput* input,
+    StepResult RunServer(HandshakeIO& io,
+                         const std::vector<HandshakeProtocol*>& protocols,
+                         butil::IOBuf* input,
                          HandshakeTransport* transport,
                          bool fallback_on_not_mine);
 
 private:
-    StepResult SendHello(HandshakeProtocol* protocol, bool enabled);
-    StepResult ReceiveHello(HandshakeProtocol* protocol,
-                            HandshakeInput* input,
+    StepResult SendHello(HandshakeIO& io, HandshakeProtocol* protocol,
+                         bool enabled);
+    StepResult ReceiveHello(HandshakeIO& io, HandshakeProtocol* protocol,
+                            butil::IOBuf* input,
                             bool push_back_on_not_mine,
                             bool* magic_matched = nullptr);
-    StepResult SendAck(HandshakeProtocol* protocol, bool enabled);
-    StepResult ReceiveAck(HandshakeProtocol* protocol,
-                          HandshakeInput* input, bool* enabled);
-    StepResult SendExtension(HandshakeProtocol* protocol, bool enabled);
-    StepResult ReceiveExtension(HandshakeProtocol* protocol,
-                                HandshakeInput* input);
+    StepResult SendAck(HandshakeIO& io, HandshakeProtocol* protocol,
+                       bool enabled);
+    StepResult ReceiveAck(HandshakeIO& io, HandshakeProtocol* protocol,
+                          butil::IOBuf* input, bool* enabled);
+    StepResult SendExtension(HandshakeIO& io, HandshakeProtocol* protocol,
+                             bool enabled);
+    StepResult ReceiveExtension(HandshakeIO& io, HandshakeProtocol* protocol,
+                                butil::IOBuf* input);
     StepResult SelectAndReceiveHello(
-        const std::vector<HandshakeProtocol*>& protocols,
-        HandshakeInput* input, bool push_back_on_not_mine,
+        HandshakeIO& io, const std::vector<HandshakeProtocol*>& protocols,
+        butil::IOBuf* input, bool push_back_on_not_mine,
         HandshakeProtocol** selected);
 
     SocketHandshakeIO _socket_io;
-    HandshakeIO* _io;
     butil::atomic<int> _phase;
-    int _protocol_version;
+    butil::atomic<int> _protocol_version;
     bool _local_enabled;
 
     DISALLOW_COPY_AND_ASSIGN(HandshakeSession);

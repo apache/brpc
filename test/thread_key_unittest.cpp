@@ -112,6 +112,27 @@ TEST(ThreadLocalTest, thread_key_seq) {
     }
 }
 
+void CountThreadKeyDtor(void* arg) {
+    ++*static_cast<int*>(arg);
+}
+
+TEST(ThreadLocalTest, thread_key_destructor_matches_sequence) {
+    int dtor_calls = 0;
+    std::vector<ThreadKeyTLS> tls_data(1);
+    tls_data[0].seq = 1;
+    tls_data[0].data = &dtor_calls;
+
+    std::vector<butil::ThreadKeyInfo> keys(1);
+    keys[0].seq = 3;
+    keys[0].dtor = CountThreadKeyDtor;
+    detail::DestroyThreadKeyData(keys, &tls_data);
+    EXPECT_EQ(0, dtor_calls);
+
+    tls_data[0].seq = keys[0].seq;
+    detail::DestroyThreadKeyData(keys, &tls_data);
+    EXPECT_EQ(1, dtor_calls);
+}
+
 void* THreadKeyCreateAndDeleteFunc(void*) {
     while (!g_stopped) {
         ThreadKey key;

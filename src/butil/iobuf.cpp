@@ -296,13 +296,13 @@ inline IOBuf::Block* create_block_aligned(size_t block_size, size_t alignment) {
 
 // === Share TLS blocks between appending operations ===
 
-static __thread TLSData g_tls_data = { nullptr, 0, false };
+static BUTIL_THREAD_LOCAL(TLSData, g_tls_data, { nullptr, 0, false });
 
 // Used in release_tls_block()
-TLSData* get_g_tls_data() { return &g_tls_data; }
+TLSData* get_g_tls_data() { return &g_tls_data(); }
 // Used in UT
-IOBuf::Block* get_tls_block_head() { return g_tls_data.block_head; }
-int get_tls_block_count() { return g_tls_data.num_blocks; }
+IOBuf::Block* get_tls_block_head() { return g_tls_data().block_head; }
+int get_tls_block_count() { return g_tls_data().num_blocks; }
 
 // Number of blocks that can't be returned to TLS which has too many block
 // already. This counter should be 0 in most scenarios, otherwise performance
@@ -319,7 +319,7 @@ void dec_g_num_hit_tls_threshold() {
 
 // Called in UT.
 void remove_tls_block_chain() {
-    TLSData& tls_data = g_tls_data;
+    TLSData& tls_data = g_tls_data();
     IOBuf::Block* b = tls_data.block_head;
     if (!b) {
         return;
@@ -339,7 +339,7 @@ void remove_tls_block_chain() {
 // Get a (non-full) block from TLS.
 // Notice that the block is not removed from TLS.
 IOBuf::Block* share_tls_block() {
-    TLSData& tls_data = g_tls_data;
+    TLSData& tls_data = g_tls_data();
     IOBuf::Block* const b = tls_data.block_head;
     if (b != nullptr && !b->full()) {
         return b;
@@ -371,7 +371,7 @@ IOBuf::Block* share_tls_block() {
 // Return chained blocks to TLS.
 // NOTE: b MUST be non-nullptr and all blocks linked SHOULD not be full.
 void release_tls_block_chain(IOBuf::Block* b) {
-    TLSData& tls_data = g_tls_data;
+    TLSData& tls_data = g_tls_data();
     size_t n = 0;
     if (tls_data.num_blocks >= max_blocks_per_thread()) {
         do {
@@ -405,7 +405,7 @@ void release_tls_block_chain(IOBuf::Block* b) {
 
 // Get and remove one (non-full) block from TLS. If TLS is empty, create one.
 IOBuf::Block* acquire_tls_block() {
-    TLSData& tls_data = g_tls_data;
+    TLSData& tls_data = g_tls_data();
     IOBuf::Block* b = tls_data.block_head;
     if (!b) {
         return create_block();

@@ -150,11 +150,14 @@ size_t rvv_modp_b64_decode(char* dest, const char* src, size_t len)
 {
     if (len == 0) return 0;
 
-    /* Strip trailing '=' padding (up to 2 chars for valid base64) */
-    while (len > 0 && src[len-1] == '=') {
-        len--;
+    /* Match the padded scalar decoder's length and padding rules. */
+    if (len < 4 || len % 4 != 0) return MODP_B64_RVV_ERROR;
+    if (src[len-1] == '=') {
+        --len;
+        if (src[len-1] == '=') {
+            --len;
+        }
     }
-    if (len == 0) return 0;
 
     size_t i = 0;
     uint8_t* p = (uint8_t*)dest;

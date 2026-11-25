@@ -86,7 +86,7 @@ The log level of streaming log in accordance with glog：
 
 | streaming log | glog                 | Use Cases                                |
 | ------------- | -------------------- | ---------------------------------------- |
-| FATAL         | FATAL (coredump)     | Fatal error. Since most fatal log inside baidu is not fatal actually, it won't trigger coredump directly as glog, unless you turn on [-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) |
+| FATAL         | FATAL (coredump)     | Fatal error. Since most fatal log inside baidu is not fatal actually, it won't trigger coredump directly as glog, unless you turn on [-crash_on_fatal_log](http://localhost:8765/flags/crash_on_fatal_log) |
 | ERROR         | ERROR                | Non-fatal error.                         |
 | WARNING       | WARNING              | Unusual branches                         |
 | NOTICE        | -                    | Generally you should not use NOTICE as it's intended for important business logs. Make sure to check with other developers. glog doesn't have NOTICE. |

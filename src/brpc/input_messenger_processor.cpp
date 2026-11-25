@@ -125,8 +125,11 @@ ParseResult InputMessengerProcessor::CutInputMessage(InputMessenger* messenger,
         }
         _socket->set_preferred_index(-1);
     }
-    for (int i = 0; i <= max_index; ++i) {
-        if (i == preferred || handlers[i].parse == nullptr) {
+    // A non-negative max_index (acquire) implies _probe_order is set.
+    const int* probe_order = messenger->_probe_order;
+    for (size_t k = 0; max_index >= 0 && k < messenger->_capacity; ++k) {
+        const int i = probe_order[k];
+        if (i > max_index || i == preferred || handlers[i].parse == nullptr) {
             // Don't try preferred handler(already tried) or invalid handler
             continue;
         }
@@ -277,15 +280,8 @@ int InputMessengerProcessor::ProcessNewMessage(ssize_t bytes, bool read_eof,
             num_bthread_created = 0;
         }
     }
-    // In RDMA polling mode, all messages must be executed in a new bthread and
-    // not in the bthread where the polling bthread is located, because the
-    // method for processing messages may call synchronization primitives,
-    // causing the polling bthread to be scheduled out.
-    if (_socket->_socket_mode == SOCKET_MODE_RDMA ||
-        _socket->_socket_mode == SOCKET_MODE_UBRING ||
-        _socket->_socket_mode == SOCKET_MODE_URMA) {
-        _socket->_transport->QueueMessage(last_msg, &num_bthread_created, true);
-    }
+    // The active transport decides whether to dispatch or retain the last message.
+    _socket->_transport->QueueMessage(last_msg, &num_bthread_created, true);
     if (num_bthread_created) {
         bthread_flush();
     }

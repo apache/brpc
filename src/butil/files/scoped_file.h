@@ -47,7 +47,6 @@ typedef ScopedGeneric<int, internal::ScopedFDCloseTraits> ScopedFD;
 
 //// Automatically closes |FILE*|s.
 class ScopedFILE {
-    MOVE_ONLY_TYPE_FOR_CPP_03(ScopedFILE, RValue);
 public:
     ScopedFILE() : _fp(nullptr) {}
 
@@ -61,10 +60,12 @@ public:
     // destructor, otherwise the behavior is undefined
     explicit ScopedFILE(FILE *fp) :_fp(fp) {}
 
-    ScopedFILE(RValue rvalue) {
-        _fp = rvalue.object->_fp;
-        rvalue.object->_fp = nullptr;
-    }
+    ScopedFILE(const ScopedFILE&) = delete;
+    ScopedFILE& operator=(const ScopedFILE&) = delete;
+
+    ScopedFILE(ScopedFILE&& other) noexcept : _fp(other.release()) {}
+
+    ScopedFILE& operator=(ScopedFILE&&) = delete;
 
     ~ScopedFILE() {
         if (_fp != nullptr) {

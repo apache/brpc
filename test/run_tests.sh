@@ -26,6 +26,10 @@ test_bins="test_butil test_bvar bthread*unittest brpc*unittest"
 export ASAN_OPTIONS="detect_leaks=1:detect_stack_use_after_return=1"
 # Keep the original stdin on fd 3 for asynchronous test processes.
 for test_bin in $test_bins; do
+    # This hardware test must be invoked explicitly on an RDMA host.
+    if [ "$test_bin" = "brpc_flatbuffers_rdma_unittest" ]; then
+        continue
+    fi
     test_num=$((test_num + 1))
     >&2 echo "[runtest] $test_bin"
     # A passing death test may leave a core behind. Keep only cores from the

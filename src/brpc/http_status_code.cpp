@@ -100,7 +100,8 @@ static void InitReasonPhrases() {
     }
 }
 
-static BAIDU_THREAD_LOCAL char tls_phrase_cache[64];
+using PhraseCache = char[64];
+static BUTIL_THREAD_LOCAL(PhraseCache, tls_phrase_cache, {});
 
 const char *HttpReasonPhrase(int status_code) {
     pthread_once(&init_reason_phrases_once, InitReasonPhrases);
@@ -110,9 +111,9 @@ const char *HttpReasonPhrase(int status_code) {
         (desc = phrases[status_code])) {
         return desc;
     }
-    snprintf(tls_phrase_cache, sizeof(tls_phrase_cache),
+    snprintf(tls_phrase_cache(), sizeof(tls_phrase_cache()),
              "Unknown status code (%d)", status_code);
-    return tls_phrase_cache;
+    return tls_phrase_cache();
 }
 
 int ErrorCodeToStatusCode(int error_code) {

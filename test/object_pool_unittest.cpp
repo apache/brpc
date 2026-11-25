@@ -16,6 +16,8 @@
 // under the License.
 
 #include <memory>
+#include <atomic>
+#include <thread>
 #include <gtest/gtest.h>
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -25,6 +27,13 @@
 
 namespace {
 struct MyObject {};
+struct FreeChunkCountObject {};
+struct DescribeRaceObject {};
+
+template <size_t Size, size_t MaxSize, size_t MaxItem = 1024>
+struct BlockSizeLimitedObject {
+    char data[Size];
+};
 
 int nfoo_dtor = 0;
 struct Foo {
@@ -39,6 +48,16 @@ struct Foo {
 }
 
 namespace butil {
+template <size_t Size, size_t MaxSize, size_t MaxItem>
+struct ObjectPoolBlockMaxSize<BlockSizeLimitedObject<Size, MaxSize, MaxItem> > {
+    static const size_t value = MaxSize;
+};
+
+template <size_t Size, size_t MaxSize, size_t MaxItem>
+struct ObjectPoolBlockMaxItem<BlockSizeLimitedObject<Size, MaxSize, MaxItem> > {
+    static const size_t value = MaxItem;
+};
+
 template <> struct ObjectPoolBlockMaxSize<MyObject> {
     static const size_t value = 128;
 };
@@ -49,6 +68,10 @@ template <> struct ObjectPoolBlockMaxItem<MyObject> {
 
 template <> struct ObjectPoolFreeChunkMaxItem<MyObject> {
     static size_t value() { return 5; }
+};
+
+template <> struct ObjectPoolFreeChunkMaxItem<FreeChunkCountObject> {
+    static size_t value() { return 1; }
 };
 
 template <> struct ObjectPoolValidator<Foo> {
@@ -102,6 +125,124 @@ TEST_F(ObjectPoolTest, change_config) {
     std::cout << describe_objects<MyObject>() << std::endl;
     return_object(p);
     std::cout << describe_objects<MyObject>() << std::endl;
+}
+
+struct DescribeObjectsArgs {
+    std::atomic<bool>* started;
+    std::atomic<bool>* done;
+};
+
+const size_t kDescribeRaceObjectCount = 100000;
+
+void* create_objects_while_describing(void* arg) {
+    DescribeObjectsArgs* args = static_cast<DescribeObjectsArgs*>(arg);
+    args->started->store(true, std::memory_order_release);
+    for (size_t i = 0; i < kDescribeRaceObjectCount; ++i) {
+        (void)get_object<DescribeRaceObject>();
+    }
+    args->done->store(true, std::memory_order_release);
+    return nullptr;
+}
+
+TEST_F(ObjectPoolTest, describe_while_creating_objects) {
+    // Keep the pool alive while the worker's LocalPool is being destroyed.
+    DescribeRaceObject* guard = get_object<DescribeRaceObject>();
+    ASSERT_NE(nullptr, guard);
+    std::atomic<bool> started(false);
+    std::atomic<bool> done(false);
+    DescribeObjectsArgs args = { &started, &done };
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr,
+                                create_objects_while_describing, &args));
+    while (!started.load(std::memory_order_acquire)) {
+    }
+    while (!done.load(std::memory_order_acquire)) {
+        describe_objects<DescribeRaceObject>();
+    }
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+    // The count assertion catches non-atomic or incomplete publication on
+    // regular builds; TSan additionally detects the concurrent access race.
+    ASSERT_EQ(kDescribeRaceObjectCount + 1,
+              describe_objects<DescribeRaceObject>().item_num);
+    return_object(guard);
+    clear_objects<DescribeRaceObject>();
+}
+
+template <typename T>
+void check_block_capacity(size_t expected_capacity) {
+    typedef typename ObjectPool<T>::Block Block;
+    typedef typename ObjectPool<T>::BlockItem BlockItem;
+    const size_t max_size = ObjectPoolBlockMaxSize<T>::value;
+    if (max_size >= sizeof(BlockItem)) {
+        EXPECT_LE(sizeof(Block::items), max_size);
+    } else {
+        EXPECT_EQ(sizeof(BlockItem), sizeof(Block::items));
+    }
+
+    clear_objects<T>();
+    EXPECT_EQ(0u, describe_objects<T>().total_size);
+    EXPECT_EQ(expected_capacity, describe_objects<T>().block_item_num);
+    std::vector<T*> objects;
+    for (size_t i = 0; i < expected_capacity; ++i) {
+        T* obj = get_object<T>();
+        ASSERT_TRUE(obj);
+        obj->data[0] = 'x';
+        objects.push_back(obj);
+    }
+    EXPECT_EQ(1u, describe_objects<T>().block_num);
+    EXPECT_EQ(sizeof(Block::items), describe_objects<T>().total_size);
+    T* next = get_object<T>();
+    ASSERT_TRUE(next);
+    EXPECT_EQ(2u, describe_objects<T>().block_num);
+    EXPECT_EQ(2 * sizeof(Block::items), describe_objects<T>().total_size);
+    EXPECT_EQ(0, return_object(next));
+    EXPECT_EQ(next, get_object<T>());
+    EXPECT_EQ(0, return_object(next));
+    for (T* obj : objects) {
+        EXPECT_EQ('x', obj->data[0]);
+        EXPECT_EQ(0, return_object(obj));
+    }
+    EXPECT_EQ(2 * sizeof(Block::items), describe_objects<T>().total_size);
+    clear_objects<T>();
+    EXPECT_EQ(0u, describe_objects<T>().total_size);
+}
+
+TEST_F(ObjectPoolTest, total_size_counts_slot_storage) {
+    clear_objects<char>();
+    EXPECT_EQ(0u, describe_objects<char>().total_size);
+    char* obj = get_object<char>();
+    ASSERT_TRUE(obj);
+    const ObjectPoolInfo info = describe_objects<char>();
+    EXPECT_EQ(1u, info.item_num);
+#ifdef BUTIL_USE_ASAN
+    EXPECT_EQ(2048u, info.total_size);
+#else
+    EXPECT_EQ(256u, info.total_size);
+#endif
+    EXPECT_EQ(0, return_object(obj));
+    EXPECT_EQ(info.total_size, describe_objects<char>().total_size);
+    clear_objects<char>();
+    EXPECT_EQ(0u, describe_objects<char>().total_size);
+}
+
+TEST_F(ObjectPoolTest, block_size_limit_includes_slot_padding) {
+#ifdef BUTIL_USE_ASAN
+    check_block_capacity<BlockSizeLimitedObject<1, 1024> >(128);
+    check_block_capacity<BlockSizeLimitedObject<9, 1024> >(64);
+#else
+    check_block_capacity<BlockSizeLimitedObject<1, 1024> >(1024);
+    check_block_capacity<BlockSizeLimitedObject<9, 1024> >(113);
+#endif
+}
+
+TEST_F(ObjectPoolTest, block_size_limit_keeps_at_least_one_object) {
+    check_block_capacity<BlockSizeLimitedObject<1, 1> >(1);
+    check_block_capacity<BlockSizeLimitedObject<9, 8> >(1);
+    check_block_capacity<BlockSizeLimitedObject<1, 0> >(1);
+}
+
+TEST_F(ObjectPoolTest, block_size_limit_preserves_item_limit) {
+    check_block_capacity<BlockSizeLimitedObject<1, 1024, 3> >(3);
 }
 
 struct NonDefaultCtorObject {
@@ -243,6 +384,43 @@ TEST_F(ObjectPoolTest, get_perf) {
     std::cout << describe_objects<SilentObj>() << std::endl;
 }
 
+struct FreeChunkCountArgs {
+    FreeChunkCountObject* first;
+    FreeChunkCountObject* second;
+};
+
+void* add_two_free_chunks(void* arg) {
+    FreeChunkCountArgs* args = static_cast<FreeChunkCountArgs*>(arg);
+    args->first = get_object<FreeChunkCountObject>();
+    args->second = get_object<FreeChunkCountObject>();
+    return_object(args->first);
+    return_object(args->second);
+    return nullptr;
+}
+
+TEST_F(ObjectPoolTest, free_chunk_count_tracks_push_and_pop) {
+    // Keep the main LocalPool alive so worker teardown does not clear chunks.
+    FreeChunkCountObject* guard = get_object<FreeChunkCountObject>();
+    ASSERT_NE(nullptr, guard);
+    FreeChunkCountArgs args = { nullptr, nullptr };
+    pthread_t tid;
+    ASSERT_EQ(0, pthread_create(&tid, nullptr, add_two_free_chunks, &args));
+    ASSERT_EQ(0, pthread_join(tid, nullptr));
+
+    FreeChunkCountObject* first = get_object<FreeChunkCountObject>();
+    FreeChunkCountObject* second = get_object<FreeChunkCountObject>();
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+    ASSERT_TRUE(first == args.first || first == args.second);
+    ASSERT_TRUE(second == args.first || second == args.second);
+    ASSERT_NE(first, second);
+
+    return_object(first);
+    return_object(second);
+    return_object(guard);
+    clear_objects<FreeChunkCountObject>();
+}
+
 struct D { int val[1]; };
 
 void* get_and_return_int(void*) {
@@ -377,3 +555,175 @@ TEST_F(ObjectPoolTest, verify_get) {
     clear_objects<int>();
 }
 } // namespace
+
+namespace {
+std::atomic<int> idle_objects_alive(0);
+size_t idle_chunk_size = 4;
+struct IdleObject {
+    IdleObject() : in_use(false), processed(false) { ++idle_objects_alive; }
+    ~IdleObject() { --idle_objects_alive; }
+    std::atomic<bool> in_use;
+    bool processed;
+};
+}
+
+namespace butil {
+template <> struct ObjectPoolBlockMaxItem<IdleObject> {
+    static const size_t value = 4;
+};
+template <> struct ObjectPoolFreeChunkMaxItem<IdleObject> {
+    static size_t value() { return idle_chunk_size; }
+};
+}
+
+namespace {
+typedef butil::ObjectPool<IdleObject> IdlePool;
+
+class ObjectPoolIdleTest : public ::testing::Test {
+protected:
+    void TearDown() override {
+        butil::clear_objects<IdleObject>();
+        EXPECT_EQ(0, idle_objects_alive.load());
+        idle_chunk_size = 4;
+    }
+    void fill(size_t n) {
+        std::vector<IdleObject*> objects;
+        for (size_t i = 0; i < n; ++i) {
+            objects.push_back(butil::get_object<IdleObject>());
+        }
+        for (IdleObject* obj : objects) {
+            ASSERT_EQ(0, butil::return_object(obj));
+        }
+    }
+    void check_count() {
+        IdlePool* pool = IdlePool::singleton();
+        BAIDU_SCOPED_LOCK(pool->_free_chunks_mutex);
+        EXPECT_EQ(pool->_free_chunks.size() + pool->_cold_chunks.size(),
+                  pool->_nchunks.load(butil::memory_order_relaxed));
+    }
+};
+
+TEST_F(ObjectPoolIdleTest, age_budget_and_tls) {
+    fill(13);  // Three global chunks and one TLS object.
+    IdlePool* pool = IdlePool::singleton();
+    size_t calls = 0;
+    auto process = [&calls](IdleObject* obj) noexcept {
+        EXPECT_FALSE(obj->in_use.load());
+        EXPECT_FALSE(obj->processed);
+        obj->processed = true;
+        ++calls;
+    };
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(INT64_MAX, 64, process));
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(0, 0, process));
+    {
+        BAIDU_SCOPED_LOCK(pool->_free_chunks_mutex);
+        ASSERT_EQ(3u, pool->_free_chunks.size());
+        EXPECT_LE(pool->_free_chunks[0]->push_us, pool->_free_chunks[1]->push_us);
+        EXPECT_LE(pool->_free_chunks[1]->push_us, pool->_free_chunks[2]->push_us);
+        pool->_free_chunks[0]->push_us -= 2000000;
+    }
+    EXPECT_EQ(4u, butil::process_idle_objects<IdleObject>(1000000, 1, process));
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(1000000, 64, process));
+    // Whole chunks may overshoot the budget by fewer than FREE_CHUNK_NITEM.
+    EXPECT_EQ(8u, butil::process_idle_objects<IdleObject>(0, 5, process));
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(0, 64, process));
+    EXPECT_EQ(12u, calls);
+    IdleObject* local = butil::get_object<IdleObject>();
+    EXPECT_FALSE(local->processed);
+    butil::return_object(local);
+    check_count();
+    // TearDown drains both global lists and destroys every object exactly once.
+}
+
+TEST_F(ObjectPoolIdleTest, prefer_unprocessed_and_reuse_without_construction) {
+    fill(13);
+    auto process = [](IdleObject* obj) noexcept { obj->processed = true; };
+    EXPECT_EQ(12u, butil::process_idle_objects<IdleObject>(0, 64, process));
+    std::vector<IdleObject*> held;
+    for (int i = 0; i < 5; ++i) {
+        held.push_back(butil::get_object<IdleObject>());
+        held.back()->processed = false;
+    }
+    for (IdleObject* obj : held) { butil::return_object(obj); }
+    held.clear();
+    // The five returned objects (TLS + global) precede the eight processed ones.
+    for (int i = 0; i < 13; ++i) {
+        IdleObject* obj = butil::get_object<IdleObject>();
+        EXPECT_EQ(i >= 5, obj->processed);
+        held.push_back(obj);
+    }
+    EXPECT_EQ(13, idle_objects_alive.load());
+    for (IdleObject* obj : held) { butil::return_object(obj); }
+    check_count();
+}
+
+TEST_F(ObjectPoolIdleTest, zero_cache_does_not_publish_empty_chunks) {
+    idle_chunk_size = 0;
+    fill(9);
+    auto process = [](IdleObject*) noexcept {};
+    EXPECT_EQ(8u, butil::process_idle_objects<IdleObject>(0, 64, process));
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(0, 64, process));
+    check_count();
+}
+
+TEST_F(ObjectPoolIdleTest, honors_item_budget_across_many_chunks) {
+    idle_chunk_size = 1;
+    fill(301);  // 300 global chunks and one TLS object.
+    size_t calls = 0;
+    auto process = [&calls](IdleObject* obj) noexcept {
+        EXPECT_FALSE(obj->processed);
+        obj->processed = true;
+        ++calls;
+    };
+    EXPECT_EQ(200u, butil::process_idle_objects<IdleObject>(0, 200, process));
+    EXPECT_EQ(200u, calls);
+    check_count();
+    EXPECT_EQ(100u, butil::process_idle_objects<IdleObject>(0, SIZE_MAX, process));
+    EXPECT_EQ(300u, calls);
+    EXPECT_EQ(0u, butil::process_idle_objects<IdleObject>(0, SIZE_MAX, process));
+    check_count();
+}
+
+TEST_F(ObjectPoolIdleTest, concurrent_borrow_return_and_process) {
+    fill(1024);
+    std::atomic<bool> stop(false);
+    std::atomic<size_t> calls(0);
+    auto process = [&calls](IdleObject* obj) noexcept {
+        EXPECT_FALSE(obj->in_use.exchange(true));
+        obj->processed = true;
+        EXPECT_TRUE(obj->in_use.exchange(false));
+        ++calls;
+    };
+    std::thread processor([&] {
+        // Run at least once: the workers may finish before this is scheduled.
+        do {
+            butil::process_idle_objects<IdleObject>(0, 32, process);
+            check_count();
+            std::this_thread::yield();
+        } while (!stop.load());
+    });
+    std::vector<std::thread> workers;
+    for (int i = 0; i < 4; ++i) {
+        workers.emplace_back([] {
+            for (int j = 0; j < 1000; ++j) {
+                IdleObject* held[16];
+                for (IdleObject*& obj : held) {
+                    obj = butil::get_object<IdleObject>();
+                    EXPECT_FALSE(obj->in_use.exchange(true));
+                    obj->processed = false;
+                }
+                for (IdleObject* obj : held) {
+                    EXPECT_TRUE(obj->in_use.exchange(false));
+                    butil::return_object(obj);
+                }
+            }
+        });
+    }
+    for (std::thread& worker : workers) { worker.join(); }
+    stop = true;
+    processor.join();
+    EXPECT_GT(calls.load(), 0u);
+    EXPECT_EQ(1024, idle_objects_alive.load());
+    check_count();
+}
+}  // namespace

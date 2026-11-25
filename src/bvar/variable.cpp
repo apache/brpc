@@ -304,6 +304,7 @@ size_t Variable::count_exposed() {
     size_t n = 0;
     VarMapWithLock* var_maps = get_var_maps();
     for (size_t i = 0; i < SUB_MAP_COUNT; ++i) {
+        BAIDU_SCOPED_LOCK(var_maps[i].mutex);
         n += var_maps[i].size();
     }
     return n;
@@ -313,8 +314,7 @@ int Variable::describe_exposed(const std::string& name, std::ostream& os,
                                bool quote_string,
                                DisplayFilter display_filter) {
     VarMapWithLock& m = get_var_map(name);
-    Variable* var = nullptr;
-    SharedExposedRef ref;
+    ScopedExposedRef var;
     {
         BAIDU_SCOPED_LOCK(m.mutex);
         VarEntry* p = m.seek(name);
@@ -324,8 +324,7 @@ int Variable::describe_exposed(const std::string& name, std::ostream& os,
         if (!(display_filter & p->display_filter)) {
             return -1;
         }
-        ref = p->ref;
-        var = ref->acquire();
+        var.reset(p->ref);
     }
     if (var == nullptr) {
         // The variable is being destructed.
@@ -334,7 +333,6 @@ int Variable::describe_exposed(const std::string& name, std::ostream& os,
     // Call describe() outside the VarMap lock to avoid deadlock when the user
     // callback (e.g. PassiveStatus) yields the bthread.
     var->describe(os, quote_string);
-    ref->release();
     return 0;
 }
 
@@ -366,44 +364,37 @@ int Variable::describe_series_exposed(const std::string& name,
                                       std::ostream& os,
                                       const SeriesOptions& options) {
     VarMapWithLock& m = get_var_map(name);
-    Variable* var = nullptr;
-    SharedExposedRef ref;
+    ScopedExposedRef var;
     {
         BAIDU_SCOPED_LOCK(m.mutex);
         VarEntry* p = m.seek(name);
         if (p == nullptr) {
             return -1;
         }
-        ref = p->ref;
-        var = ref->acquire();
+        var.reset(p->ref);
     }
     if (var == nullptr) {
         return -1;
     }
-    const int rc = var->describe_series(os, options);
-    ref->release();
-    return rc;
+    return var->describe_series(os, options);
 }
 
 #ifdef BAIDU_INTERNAL
 int Variable::get_exposed(const std::string& name, boost::any* value) {
     VarMapWithLock& m = get_var_map(name);
-    Variable* var = nullptr;
-    SharedExposedRef ref;
+    ScopedExposedRef var;
     {
         BAIDU_SCOPED_LOCK(m.mutex);
         VarEntry* p = m.seek(name);
         if (p == nullptr) {
             return -1;
         }
-        ref = p->ref;
-        var = ref->acquire();
+        var.reset(p->ref);
     }
     if (var == nullptr) {
         return -1;
     }
     var->get_value(value);
-    ref->release();
     return 0;
 }
 #endif
@@ -574,8 +565,7 @@ static int dump_exposed_one(Dumper* dumper,
                             const DumpOptions& options,
                             const std::string& name) {
     VarMapWithLock& m = get_var_map(name);
-    Variable* var = nullptr;
-    Variable::SharedExposedRef ref;
+    Variable::ScopedExposedRef var;
     {
         BAIDU_SCOPED_LOCK(m.mutex);
         VarEntry* p = m.seek(name);
@@ -585,8 +575,7 @@ static int dump_exposed_one(Dumper* dumper,
         if (!(options.display_filter & p->display_filter)) {
             return 0;
         }
-        ref = p->ref;
-        var = ref->acquire();
+        var.reset(p->ref);
     }
     if (var == nullptr) {
         // The variable is being destructed.
@@ -594,9 +583,7 @@ static int dump_exposed_one(Dumper* dumper,
     }
     // Dump outside the VarMap lock to avoid deadlock when the user callback
     // (e.g. PassiveStatus) yields the bthread, same as describe_exposed().
-    bool ok = var->dump(dumper, options, name);
-    ref->release();
-    return ok ? 1 : -1;
+    return var->dump(dumper, options, name) ? 1 : -1;
 }
 
 // Tees everything going through the wrapped dumper into `info`, implementing

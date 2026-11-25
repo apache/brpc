@@ -48,6 +48,7 @@ typedef struct TagUbrLinkInfoMgr {
 } UbrLinkInfoMgr;
 
 class UBRingManager {
+friend class UBRing;
 public:
     ~UBRingManager(){
         UbrMgrFini();

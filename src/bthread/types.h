@@ -151,9 +151,12 @@ static const bthread_attr_t BTHREAD_ATTR_DEBUG = {
 static const size_t BTHREAD_EPOLL_THREAD_NUM = 1;
 static const bthread_t BTHREAD_ATOMIC_INIT = 0;
 
-// Min/Max number of work pthreads.
-static const int BTHREAD_MIN_CONCURRENCY = 3 + BTHREAD_EPOLL_THREAD_NUM;
+// Min/Max number of worker pthreads available to normal bthreads.
+// Internal epoll workers are reserved separately.
+static const int BTHREAD_MIN_CONCURRENCY = 4;
 static const int BTHREAD_MAX_CONCURRENCY = 1024;
+// Independent per-tag limit for extra workers reserved for blocking loops.
+static const int BTHREAD_MAX_RESERVED_CONCURRENCY = 512;
 // Min/max number of ParkingLot.
 static const int BTHREAD_MIN_PARKINGLOT = 4;
 static const int BTHREAD_MAX_PARKINGLOT = 1024;

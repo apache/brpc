@@ -250,7 +250,8 @@ public:
     explicit Reducer(typename butil::add_cr_non_integral<T>::type identity = T(),
                      const Op& op = Op(), const InvOp& inv_op = InvOp())
         : _combiner(std::make_shared<combiner_type>(identity, identity, op))
-        , _sampler(nullptr) , _series_sampler(nullptr) , _inv_op(inv_op) {}
+        , _agent_id(_combiner->agent_id()) , _sampler(nullptr)
+        , _series_sampler(nullptr) , _inv_op(inv_op) {}
 
     ~Reducer() override {
         // Calling hide() manually is a MUST required by Variable.
@@ -351,6 +352,8 @@ protected:
 
 private:
     shared_combiner_type _combiner;
+    // `_combiner` keeps this ID allocated for the lifetime of the reducer.
+    const detail::AgentId _agent_id;
     sampler_type* _sampler;
     SeriesSampler* _series_sampler;
     InvOp _inv_op;
@@ -360,8 +363,11 @@ template <typename T, typename Op, typename InvOp>
 inline Reducer<T, Op, InvOp>& Reducer<T, Op, InvOp>::operator<<(
     typename butil::add_cr_non_integral<T>::type value) {
     // It's wait-free for most time
-    agent_type* agent = _combiner->get_or_create_tls_agent();
-    if (__builtin_expect(!agent, 0)) {
+    agent_type* agent = combiner_type::get_bound_tls_agent(_agent_id);
+    if (BAIDU_UNLIKELY(agent == nullptr)) {
+        agent = _combiner->get_or_create_tls_agent();
+    }
+    if (BAIDU_UNLIKELY(agent == nullptr)) {
         LOG(FATAL) << "Fail to create agent";
         return *this;
     }

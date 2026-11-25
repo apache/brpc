@@ -34,6 +34,10 @@
 
 namespace bthread {
 
+class TaskGroup;
+// Resolve the current worker again after any operation that may suspend.
+TaskGroup*& tls_task_group();
+
 // For exiting a bthread.
 class ExitException : public std::exception {
 public:

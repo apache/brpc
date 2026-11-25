@@ -28,19 +28,20 @@ template <typename T>
 class ThreadLocalHelper {
 public:
     inline static T* get() {
-        if (__builtin_expect(value != nullptr, 1)) {
-            return value;
+        T* ptr = value();
+        if (__builtin_expect(ptr != nullptr, 1)) {
+            return ptr;
         }
-        value = new (std::nothrow) T;
-        if (value != nullptr) {
-            butil::thread_atexit(delete_object<T>, value);
+        ptr = new (std::nothrow) T;
+        if (ptr != nullptr) {
+            value() = ptr;
+            butil::thread_atexit(delete_object<T>, ptr);
         }
-        return value;
+        return ptr;
     }
-    static BAIDU_THREAD_LOCAL T* value;
+private:
+    static BUTIL_THREAD_LOCAL(T*, value, nullptr);
 };
-
-template <typename T> BAIDU_THREAD_LOCAL T* ThreadLocalHelper<T>::value = nullptr;
 
 }  // namespace detail
 

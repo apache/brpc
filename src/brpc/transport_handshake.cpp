@@ -104,27 +104,26 @@ static StepResult ConvertFrameResult(FrameResult result) {
     return STEP_ERROR;
 }
 
-StepResult HandshakeSession::SendHello(HandshakeProtocol* protocol,
-                                       bool enabled) {
+StepResult HandshakeSession::SendHello(
+    HandshakeIO& io, HandshakeProtocol* protocol, bool enabled) {
     std::string payload;
     const StepResult result = protocol->BuildHello(enabled, &payload);
     if (result != STEP_OK) {
         return result;
     }
     return ConvertFrameResult(
-        FrameCodec::WriteFrame(_io, protocol->HelloFrameSpec(), payload));
+        FrameCodec::WriteFrame(&io, protocol->HelloFrameSpec(), payload));
 }
 
-StepResult HandshakeSession::ReceiveHello(HandshakeProtocol* protocol,
-                                          HandshakeInput* input,
-                                          bool push_back_on_not_mine,
-                                          bool* magic_matched) {
+StepResult HandshakeSession::ReceiveHello(
+    HandshakeIO& io, HandshakeProtocol* protocol, butil::IOBuf* input,
+    bool push_back_on_not_mine, bool* magic_matched) {
     std::string payload;
     const FrameResult frame_result = input != nullptr
         ? FrameCodec::ParseBufferedFrame(
               input, protocol->HelloFrameSpec(), &payload, magic_matched)
         : FrameCodec::ReadFrame(
-              _io, protocol->HelloFrameSpec(), push_back_on_not_mine,
+              &io, protocol->HelloFrameSpec(), push_back_on_not_mine,
               &payload);
     const StepResult result = ConvertFrameResult(frame_result);
     if (result != STEP_OK) {
@@ -134,26 +133,26 @@ StepResult HandshakeSession::ReceiveHello(HandshakeProtocol* protocol,
     return protocol->ParseHello(payload);
 }
 
-StepResult HandshakeSession::SendAck(HandshakeProtocol* protocol,
-                                     bool enabled) {
+StepResult HandshakeSession::SendAck(
+    HandshakeIO& io, HandshakeProtocol* protocol, bool enabled) {
     std::string payload;
     const StepResult result = protocol->BuildAck(enabled, &payload);
     if (result != STEP_OK) {
         return result;
     }
     return ConvertFrameResult(
-        FrameCodec::WriteFrame(_io, protocol->AckFrameSpec(), payload));
+        FrameCodec::WriteFrame(&io, protocol->AckFrameSpec(), payload));
 }
 
-StepResult HandshakeSession::ReceiveAck(HandshakeProtocol* protocol,
-                                        HandshakeInput* input,
-                                        bool* enabled) {
+StepResult HandshakeSession::ReceiveAck(
+    HandshakeIO& io, HandshakeProtocol* protocol, butil::IOBuf* input,
+    bool* enabled) {
     std::string payload;
     const FrameResult frame_result = input != nullptr
         ? FrameCodec::ParseBufferedFrame(
               input, protocol->AckFrameSpec(), &payload)
         : FrameCodec::ReadFrame(
-              _io, protocol->AckFrameSpec(), false, &payload);
+              &io, protocol->AckFrameSpec(), false, &payload);
     const StepResult result = ConvertFrameResult(frame_result);
     if (result != STEP_OK) {
         return result;
@@ -161,8 +160,8 @@ StepResult HandshakeSession::ReceiveAck(HandshakeProtocol* protocol,
     return protocol->ParseAck(payload, enabled);
 }
 
-StepResult HandshakeSession::SendExtension(HandshakeProtocol* protocol,
-                                          bool enabled) {
+StepResult HandshakeSession::SendExtension(
+    HandshakeIO& io, HandshakeProtocol* protocol, bool enabled) {
     std::string payload;
     const StepResult result = protocol->BuildExtension(enabled, &payload);
     if (result != STEP_OK) {
@@ -170,24 +169,25 @@ StepResult HandshakeSession::SendExtension(HandshakeProtocol* protocol,
     }
     return ConvertFrameResult(
         FrameCodec::WriteFrame(
-            _io, protocol->ExtensionFrameSpec(), payload));
+            &io, protocol->ExtensionFrameSpec(), payload));
 }
 
-StepResult HandshakeSession::ReceiveExtension(HandshakeProtocol* protocol,
-                                             HandshakeInput* input) {
+StepResult HandshakeSession::ReceiveExtension(
+    HandshakeIO& io, HandshakeProtocol* protocol, butil::IOBuf* input) {
     std::string payload;
     const FrameResult frame_result = input != nullptr
         ? FrameCodec::ParseBufferedFrame(
               input, protocol->ExtensionFrameSpec(), &payload)
         : FrameCodec::ReadFrame(
-              _io, protocol->ExtensionFrameSpec(), false, &payload);
+              &io, protocol->ExtensionFrameSpec(), false, &payload);
     const StepResult result = ConvertFrameResult(frame_result);
     return result == STEP_OK ? protocol->ParseExtension(payload) : result;
 }
 
 StepResult HandshakeSession::SelectAndReceiveHello(
-    const std::vector<HandshakeProtocol*>& protocols, HandshakeInput* input,
-    bool push_back_on_not_mine, HandshakeProtocol** selected) {
+    HandshakeIO& io, const std::vector<HandshakeProtocol*>& protocols,
+    butil::IOBuf* input, bool push_back_on_not_mine,
+    HandshakeProtocol** selected) {
     CHECK(!protocols.empty());
     CHECK(selected != nullptr);
     if (input == nullptr) {
@@ -196,14 +196,14 @@ StepResult HandshakeSession::SelectAndReceiveHello(
         // entering the common session.
         CHECK_EQ(1UL, protocols.size());
         *selected = protocols.front();
-        return ReceiveHello(*selected, nullptr, push_back_on_not_mine);
+        return ReceiveHello(io, *selected, nullptr, push_back_on_not_mine);
     }
 
     bool need_more = false;
     for (size_t i = 0; i < protocols.size(); ++i) {
         bool magic_matched = false;
         const StepResult result = ReceiveHello(
-            protocols[i], input, false, &magic_matched);
+            io, protocols[i], input, false, &magic_matched);
         if (result == STEP_NOT_MINE) {
             continue;
         }
@@ -222,8 +222,9 @@ StepResult HandshakeSession::SelectAndReceiveHello(
     return need_more ? STEP_NEED_MORE : STEP_NOT_MINE;
 }
 
-StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
-                                       HandshakeTransport* transport) {
+StepResult HandshakeSession::RunClient(
+    HandshakeIO& io, HandshakeProtocol* protocol,
+    HandshakeTransport* transport) {
     CHECK(protocol != nullptr);
     CHECK(transport != nullptr);
     transport->OnProtocolSelected(protocol);
@@ -231,27 +232,46 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
     // let an errno left by earlier work override this handshake's result.
     errno = 0;
 
-    SetPhase(PREPARING);
-    StepResult result = transport->PrepareResources();
-    if (result == STEP_FALLBACK) {
-        return FinishWithFallback(this, transport);
+    StepResult result;
+    for (;;) {
+        set_protocol_version(protocol->ProtocolVersion());
+        set_phase(PREPARING);
+        result = transport->PrepareResources();
+        if (result == STEP_FALLBACK) {
+            return FinishWithFallback(this, transport);
+        }
+        if (result != STEP_OK) {
+            return FinishWithFailure(this, transport);
+        }
+        set_phase(HELLO_SEND);
+        const bool hello_sent = SendHello(io, protocol, true) == STEP_OK;
+        FrameResult frame = FRAME_IO_ERROR;
+        std::string magic;
+        if (hello_sent) {
+            set_phase(HELLO_WAIT);
+            std::string payload;
+            frame = FrameCodec::ReadFrame(
+                &io, protocol->HelloFrameSpec(), false, &payload, &magic);
+            if (frame == FRAME_OK) {
+                result = protocol->ParseHello(payload);
+                break;
+            }
+            if (frame == FRAME_NOT_MINE || frame == FRAME_NEED_MORE ||
+                frame == FRAME_PROTOCOL_ERROR) {
+                errno = EPROTO;
+            }
+        }
+        protocol = transport->RetryClientHello(protocol, hello_sent, frame, magic);
+        if (protocol == nullptr) {
+            return FinishWithFailure(this, transport);
+        }
+        transport->OnProtocolSelected(protocol);
+        errno = 0;
     }
-    if (result != STEP_OK) {
-        return FinishWithFailure(this, transport);
-    }
-
-    SetPhase(HELLO_SEND);
-    if (SendHello(protocol, true) != STEP_OK) {
-        return FinishWithFailure(this, transport);
-    }
-
-    SetPhase(HELLO_WAIT);
-    result = ReceiveHello(protocol, nullptr, false);
     if (result == STEP_NOT_MINE || result == STEP_NEED_MORE) {
         errno = EPROTO;
     }
-    if (result == STEP_ERROR || result == STEP_NOT_MINE ||
-        result == STEP_NEED_MORE) {
+    if (result != STEP_OK && result != STEP_FALLBACK) {
         return FinishWithFailure(this, transport);
     }
     bool enabled = result == STEP_OK;
@@ -260,12 +280,12 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
     }
 
     if (enabled && protocol->HasExtension()) {
-        SetPhase(EXTENSION_SEND);
-        if (SendExtension(protocol, true) != STEP_OK) {
+        set_phase(EXTENSION_SEND);
+        if (SendExtension(io, protocol, true) != STEP_OK) {
             return FinishWithFailure(this, transport);
         }
-        SetPhase(EXTENSION_WAIT);
-        result = ReceiveExtension(protocol, nullptr);
+        set_phase(EXTENSION_WAIT);
+        result = ReceiveExtension(io, protocol, nullptr);
         if (result != STEP_OK && result != STEP_FALLBACK) {
             return FinishWithFailure(this, transport);
         }
@@ -273,7 +293,7 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
     }
 
     if (enabled) {
-        SetPhase(NEGOTIATING);
+        set_phase(NEGOTIATING);
         result = transport->NegotiateResources();
         if (result != STEP_OK && result != STEP_FALLBACK) {
             return FinishWithFailure(this, transport);
@@ -281,8 +301,8 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
         enabled = result == STEP_OK;
     }
 
-    SetPhase(ACK_SEND);
-    if (SendAck(protocol, enabled) != STEP_OK) {
+    set_phase(ACK_SEND);
+    if (SendAck(io, protocol, enabled) != STEP_OK) {
         return FinishWithFailure(this, transport);
     }
 
@@ -295,36 +315,36 @@ StepResult HandshakeSession::RunClient(HandshakeProtocol* protocol,
 }
 
 StepResult HandshakeSession::RunServer(
-    const std::vector<HandshakeProtocol*>& protocols, HandshakeInput* input,
-    HandshakeTransport* transport, bool fallback_on_not_mine) {
+    HandshakeIO& io, const std::vector<HandshakeProtocol*>& protocols,
+    butil::IOBuf* input, HandshakeTransport* transport,
+    bool fallback_on_not_mine) {
     CHECK(!protocols.empty());
     CHECK(transport != nullptr);
 
     // Once TCP fallback has been published, subsequent bytes are application
     // protocol data and must bypass every upgrade codec without changing the
     // terminal state.
-    if (phase(butil::memory_order_acquire) == FALLBACK_TCP) {
+    const int previous_phase = phase(butil::memory_order_acquire);
+    if (previous_phase == FALLBACK_TCP) {
         return STEP_NOT_MINE;
     }
 
     HandshakeProtocol* selected = nullptr;
-    if (phase(butil::memory_order_acquire) != ACK_WAIT &&
-        phase(butil::memory_order_acquire) != EXTENSION_WAIT) {
-        const int previous_phase = phase(butil::memory_order_acquire);
+    if (previous_phase != ACK_WAIT && previous_phase != EXTENSION_WAIT) {
         _local_enabled = false;
-        SetPhase(HELLO_WAIT);
+        set_phase(HELLO_WAIT);
         StepResult result = SelectAndReceiveHello(
-            protocols, input, fallback_on_not_mine, &selected);
+            io, protocols, input, fallback_on_not_mine, &selected);
         if (result == STEP_NOT_MINE) {
             if (fallback_on_not_mine) {
                 return FinishWithFallback(this, transport);
             }
-            SetPhase(UNINITIALIZED);
+            set_phase(UNINITIALIZED);
             return STEP_NOT_MINE;
         }
         if (result == STEP_NEED_MORE) {
             if (selected == nullptr) {
-                SetPhase(previous_phase);
+                set_phase(previous_phase);
             }
             return STEP_NEED_MORE;
         }
@@ -333,16 +353,16 @@ StepResult HandshakeSession::RunServer(
         }
         CHECK(selected != nullptr);
         transport->OnProtocolSelected(selected);
-        if (result == STEP_FALLBACK) {
+        if (result == STEP_FALLBACK && selected->AckDisabledHello()) {
             // Publish the disabled transport state immediately. The server
-            // still sends a disabled hello and, if the protocol requires it,
-            // consumes the peer ACK before publishing FALLBACK_TCP.
+            // still sends a disabled hello and consumes the peer ACK before
+            // publishing the terminal FALLBACK_TCP phase.
             transport->OnFallback();
         }
         bool enabled = result == STEP_OK;
 
         if (enabled) {
-            SetPhase(PREPARING);
+            set_phase(PREPARING);
             result = transport->PrepareResources();
             if (result != STEP_OK && result != STEP_FALLBACK) {
                 return FinishWithFailure(this, transport);
@@ -351,7 +371,7 @@ StepResult HandshakeSession::RunServer(
         }
 
         if (enabled) {
-            SetPhase(NEGOTIATING);
+            set_phase(NEGOTIATING);
             result = transport->NegotiateResources();
             if (result != STEP_OK && result != STEP_FALLBACK) {
                 return FinishWithFailure(this, transport);
@@ -359,17 +379,17 @@ StepResult HandshakeSession::RunServer(
             enabled = result == STEP_OK;
         }
 
-        SetPhase(HELLO_SEND);
+        set_phase(HELLO_SEND);
         _local_enabled = enabled;
-        if (SendHello(selected, enabled) != STEP_OK) {
+        if (SendHello(io, selected, enabled) != STEP_OK) {
             return FinishWithFailure(this, transport);
         }
         if (!enabled && !selected->AckDisabledHello()) {
             return FinishWithFallback(this, transport);
         }
-        SetPhase(enabled && selected->HasExtension()
-                     ? EXTENSION_WAIT
-                     : ACK_WAIT);
+        set_phase(enabled && selected->HasExtension()
+                      ? EXTENSION_WAIT
+                      : ACK_WAIT);
     } else {
         for (size_t i = 0; i < protocols.size(); ++i) {
             if (protocols[i]->ProtocolVersion() == protocol_version()) {
@@ -381,7 +401,7 @@ StepResult HandshakeSession::RunServer(
     }
 
     if (phase(butil::memory_order_acquire) == EXTENSION_WAIT) {
-        StepResult result = ReceiveExtension(selected, input);
+        StepResult result = ReceiveExtension(io, selected, input);
         if (result == STEP_NEED_MORE) {
             return STEP_NEED_MORE;
         }
@@ -391,11 +411,11 @@ StepResult HandshakeSession::RunServer(
         if (result == STEP_FALLBACK) {
             _local_enabled = false;
         }
-        SetPhase(EXTENSION_SEND);
-        if (SendExtension(selected, _local_enabled) != STEP_OK) {
+        set_phase(EXTENSION_SEND);
+        if (SendExtension(io, selected, _local_enabled) != STEP_OK) {
             return FinishWithFailure(this, transport);
         }
-        SetPhase(ACK_WAIT);
+        set_phase(ACK_WAIT);
     }
 
     // Always try the ACK callback once. For a non-blocking server it returns
@@ -403,7 +423,7 @@ StepResult HandshakeSession::RunServer(
     // coalesced in the input buffer this consumes the ACK without waiting for
     // another socket edge.
     bool peer_enabled = false;
-    StepResult result = ReceiveAck(selected, input, &peer_enabled);
+    StepResult result = ReceiveAck(io, selected, input, &peer_enabled);
     if (result == STEP_NEED_MORE) {
         return STEP_NEED_MORE;
     }

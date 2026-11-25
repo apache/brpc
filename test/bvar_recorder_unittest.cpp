@@ -19,14 +19,62 @@
 
 #include <pthread.h>                                // pthread_*
 
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <iostream>
+#include <vector>
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "bvar/recorder.h"
 #include "bvar/latency_recorder.h"
 #include <gtest/gtest.h>
+
+namespace bvar {
+namespace detail {
+
+// Give the real QPS APIs a fixed history without racing the sampling thread.
+// The recorder's original sampler remains registered and is restored before
+// destruction. Only this replacement sampler's queue is modified by the test.
+class LatencyRecorderTestPeer {
+public:
+    LatencyRecorderTestPeer(RecorderWindow& window, IntRecorder& recorder,
+                            int count)
+        : _window(window), _original(window._sampler),
+          _sampler(new IntRecorder::sampler_type(&recorder)) {
+        CHECK_EQ(0, _sampler->set_window_size(4));
+        _sampler->take_sample();  // Allocate room for five snapshots.
+        _sampler->_q.clear();
+        for (int i = 0; i <= 4; ++i) {
+            CHECK(_sampler->_q.push(Sample<Stat>(
+                i == 4 ? Stat(count, count) : Stat(), i * 1000000L)));
+        }
+        _sampler->add_borrower();
+        _window._sampler = _sampler.get();
+        // Keep the original borrow alive until it is restored.
+    }
+
+    ~LatencyRecorderTestPeer() {
+        _window._sampler = _original;
+        _sampler->remove_borrower();
+    }
+
+    void advance() {
+        Sample<Stat> next = *_sampler->_q.bottom();
+        next.time_us += 1000000L;
+        _sampler->_q.elim_push(next);
+    }
+
+private:
+    LatencyRecorderTestPeer(const LatencyRecorderTestPeer&) = delete;
+    LatencyRecorderTestPeer& operator=(const LatencyRecorderTestPeer&) = delete;
+    RecorderWindow& _window;
+    IntRecorder::sampler_type* _original;
+    std::unique_ptr<IntRecorder::sampler_type> _sampler;
+};
+
+}  // namespace detail
+}  // namespace bvar
 
 namespace {
 #if !WITH_BABYLON_COUNTER
@@ -222,6 +270,16 @@ public:
     bool get_latency_sample(bvar::detail::Sample<bvar::Stat>* sample) const {
         return _latency_window.get_span(sample);
     }
+
+    bool get_latency_sample(time_t window_size,
+                            bvar::detail::Sample<bvar::Stat>* sample) const {
+        return _latency_window.get_span(window_size, sample);
+    }
+
+    std::unique_ptr<bvar::detail::LatencyRecorderTestPeer> fixed_history(int count) {
+        return std::unique_ptr<bvar::detail::LatencyRecorderTestPeer>(
+            new bvar::detail::LatencyRecorderTestPeer(_latency_window, _latency, count));
+    }
 };
 
 TEST(RecorderTest, latency_recorder_window_statistics) {
@@ -276,44 +334,52 @@ TEST(RecorderTest, latency_recorder_window_statistics) {
 }
 
 TEST(RecorderTest, latency_recorder_qps_accuracy) {
-    bvar::LatencyRecorder lr1(2); // set windows size to 2s
-    bvar::LatencyRecorder lr2(2);
-    bvar::LatencyRecorder lr3(2);
-    bvar::LatencyRecorder lr4(2);
-    usleep(3000000); // wait sampler to sample 3 times
+    for (int count : {10, 11, 3, 1}) {
+        for (time_t window : {2, 3}) {
+            SCOPED_TRACE(::testing::Message() << "count=" << count
+                                             << " window=" << window);
+            // Default qps() uses two seconds; explicit qps(3) must override
+            // a four-second default.
+            LatencyRecorderWithWindowSample lr(window == 2 ? 2 : 4);
+            auto history = lr.fixed_history(count);
+            bvar::detail::Sample<bvar::Stat> sample;
+            ASSERT_TRUE(lr.get_latency_sample(window, &sample));
+            ASSERT_EQ(count, sample.data.num);
+            ASSERT_EQ(window * 1000000L, sample.time_us);
 
-    auto write = [](bvar::LatencyRecorder& lr, int times) {   
-        for (int i = 0; i < times; ++i) {
-            lr << 1;
+            const double expected = count / static_cast<double>(window);
+            int64_t total = 0;
+            const int trials = 10000;
+            for (int i = 0; i < trials; ++i) {
+                const int64_t value = window == 2 ? lr.qps() : lr.qps(window);
+                ASSERT_GE(value, static_cast<int64_t>(std::floor(expected)));
+                ASSERT_LE(value, static_cast<int64_t>(std::ceil(expected)));
+                total += value;
+            }
+            // Exercise rounding through the public APIs, including low QPS.
+            // For independent uniform draws, Hoeffding bounds the chance of
+            // this tolerance failing at less than 2*exp(-50) per case.
+            EXPECT_NEAR(expected, total / static_cast<double>(trials), 0.05);
+
+            // Move the batch out of the requested window. Duration stays the
+            // same while count becomes zero, reproducing the rollover case.
+            for (time_t i = 0; i < window; ++i) {
+                history->advance();
+            }
+            ASSERT_TRUE(lr.get_latency_sample(window, &sample));
+            EXPECT_EQ(0, sample.data.num);
+            EXPECT_EQ(window * 1000000L, sample.time_us);
+            EXPECT_EQ(0, window == 2 ? lr.qps() : lr.qps(window));
         }
-    };
-    write(lr1, 10);
-    write(lr2, 11);
-    write(lr3, 3);
-    write(lr4, 1);
-    usleep(1000000); // wait sampler to sample 1 time
+    }
+}
 
-    auto read = [](bvar::LatencyRecorder& lr, double exp_qps, int window_size = 0) {
-        int64_t qps_sum = 0;
-        int64_t exp_qps_int = (int64_t)exp_qps;
-        for (int i = 0; i < 1000; ++i) {
-            int64_t qps = window_size ? lr.qps(window_size): lr.qps();
-            EXPECT_GE(qps, exp_qps_int - 1);
-            EXPECT_LE(qps, exp_qps_int + 1);
-            qps_sum += qps;
-        }
-        double err = fabs(qps_sum / 1000.0 - exp_qps);
-        return err;
-    };
-    ASSERT_GT(0.1, read(lr1, 10/2.0));
-    ASSERT_GT(0.1, read(lr2, 11/2.0));
-    ASSERT_GT(0.1, read(lr3, 3/2.0));
-    ASSERT_GT(0.1, read(lr4, 1/2.0));
-
-    ASSERT_GT(0.1, read(lr1, 10/3.0, 3));
-    ASSERT_GT(0.1, read(lr2, 11/3.0, 3));
-    ASSERT_GT(0.1, read(lr3, 3/3.0, 3));
-    ASSERT_GT(0.1, read(lr4, 1/3.0, 3));
+TEST(RecorderTest, latency_recorder_qps_rounding) {
+    // A random value equal to the fractional part rounds down.
+    EXPECT_EQ(10, bvar::detail::double_to_random_int(10.25, 0.25));
+    EXPECT_EQ(11, bvar::detail::double_to_random_int(10.25, 0.24));
+    EXPECT_EQ(10, bvar::detail::double_to_random_int(10.0, 0.0));
+    EXPECT_EQ(11, bvar::detail::double_to_random_int(10.75, 0.1));
 }
 
 } // namespace

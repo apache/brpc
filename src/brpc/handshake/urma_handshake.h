@@ -29,7 +29,8 @@
 namespace brpc {
 namespace handshake {
 
-HandshakeAdapter* GetUrmaServerHandshakeAdapter();
+const HandshakeRegistration& GetUrmaHandshakeRegistration();
+const FrameSpec& UrmaHelloFrameSpec(int version);
 StepResult RunUrmaFallbackServerHandshake(butil::IOBuf* source, Socket* socket);
 
 }  // namespace handshake

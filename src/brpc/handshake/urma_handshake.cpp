@@ -162,7 +162,6 @@ constexpr uint32_t MIN_BUFFER_SIZE = 1024;
 // receive count must leave at least one data WR after those reservations.
 constexpr uint32_t MIN_BUFFER_CNT = 3;
 constexpr uint32_t MAX_BUFFER_CNT = 65535;
-constexpr uint32_t MAX_V3_PB_SIZE = 4096;
 
 }  // namespace
 
@@ -191,21 +190,6 @@ bool ValidHello(const ParsedHello& h) {
 }
 
 namespace {
-
-const handshake::FrameSpec& UrmaV2FrameSpec() {
-    static const handshake::FrameSpec spec(
-        "URMA", 4, v2_wire::HELLO_PACKET_LEN,
-        v2_wire::HELLO_MSG_LEN_MAX,
-        handshake::FrameSpec::U16_TOTAL_LENGTH);
-    return spec;
-}
-
-const handshake::FrameSpec& UrmaV3FrameSpec() {
-    static const handshake::FrameSpec spec(
-        "URM3", 4, 8, 8 + MAX_V3_PB_SIZE,
-        handshake::FrameSpec::U32_BODY_LENGTH);
-    return spec;
-}
 
 const handshake::FrameSpec& UrmaAckFrameSpec() {
     static const handshake::FrameSpec spec(
@@ -278,7 +262,7 @@ void FillV3Hello(const ParsedHello& p, UrmaHello* out) {
 }  // namespace
 
 const handshake::FrameSpec& UrmaHandshakeAdapter::HelloFrameSpec() const {
-    return _version == 3 ? UrmaV3FrameSpec() : UrmaV2FrameSpec();
+    return handshake::UrmaHelloFrameSpec(_version);
 }
 
 const handshake::FrameSpec& UrmaHandshakeAdapter::AckFrameSpec() const {
@@ -373,6 +357,52 @@ CreateServerHandshakeAdapters(UrmaEndpoint* ep) {
 
 namespace handshake {
 
+namespace {
+
+class UrmaClientHandshakeTransport : public HandshakeTransport {
+public:
+    UrmaClientHandshakeTransport(UrmaTransport* transport,
+                                urma::UrmaHandshakeAdapter* protocol)
+        : _transport(transport), _protocol(protocol) {}
+
+    StepResult PrepareResources() override {
+        return _transport->PrepareUpgradeResources(false) == 0
+            ? STEP_OK : STEP_FALLBACK;
+    }
+    StepResult NegotiateResources() override {
+        return _transport->NegotiateUpgradeResources(
+                   _protocol->remote(), false) == 0
+            ? STEP_OK : STEP_FALLBACK;
+    }
+    void OnEstablished() override { _transport->ActivateUpgrade(); }
+    void OnFallback() override { _transport->DeactivateUpgrade(); }
+    void OnFailed() override { _transport->DeactivateUpgrade(); }
+
+private:
+    UrmaTransport* _transport;
+    urma::UrmaHandshakeAdapter* _protocol;
+};
+
+int RunUrmaClientHandshake(Transport* high_speed, Socket*,
+                           HandshakeSession& session) {
+    auto* transport = static_cast<UrmaTransport*>(high_speed);
+    auto protocol = urma::CreateClientHandshakeAdapter(transport->GetUrmaEp());
+    UrmaClientHandshakeTransport participant(transport, protocol.get());
+    const auto result = session.RunClient(session.socket_io(), protocol.get(),
+                                          &participant);
+    return result == STEP_ERROR ? errno : 0;
+}
+
+int StartUrmaReceive(Transport* high_speed) {
+    auto* transport = static_cast<UrmaTransport*>(high_speed);
+    if (transport->StartUpgradeEvents() >= 0) {
+        return 0;
+    }
+    const int error = errno != 0 ? errno : EIO;
+    transport->DeactivateUpgrade();
+    return error;
+}
+
 class UrmaServerHandshakeTransport : public HandshakeTransport {
 public:
     UrmaServerHandshakeTransport(UrmaTransport* transport,
@@ -386,7 +416,6 @@ public:
         if (_transport->PrepareUpgradeResources(true) == 0) {
             return STEP_OK;
         }
-        _transport->DeactivateUpgrade();
         return STEP_FALLBACK;
     }
     StepResult NegotiateResources() override {
@@ -395,7 +424,6 @@ public:
                 _protocol->remote(), true) == 0) {
             return STEP_OK;
         }
-        _transport->DeactivateUpgrade();
         return STEP_FALLBACK;
     }
     void OnEstablished() override { _transport->ActivateUpgrade(); }
@@ -411,7 +439,7 @@ private:
     urma::UrmaHandshakeAdapter* _protocol;
 };
 
-class UrmaServerHandshakeAdapter : public StandardHandshakeAdapter {
+class UrmaServerHandshakeAdapter : public HandshakeAdapter {
 protected:
     StepResult RunServerStep(butil::IOBuf* source, Socket* socket) override {
         AdapterTransport* adapter = AdapterTransport::Get(socket);
@@ -426,10 +454,10 @@ protected:
         for (size_t i = 0; i < owned.size(); ++i) {
             protocols.push_back(owned[i].get());
         }
-        IOBufHandshakeInput input(source);
         UrmaServerHandshakeTransport participant(transport, source);
-        return adapter->handshake_session()->RunServer(
-            protocols, &input, &participant, false);
+        auto* session = adapter->handshake_session();
+        return session->RunServer(session->socket_io(), protocols, source,
+                                  &participant, false);
     }
 
     HandshakeSession* GetSession(Socket* socket) const override {
@@ -437,9 +465,17 @@ protected:
     }
 };
 
-HandshakeAdapter* GetUrmaServerHandshakeAdapter() {
-    static UrmaServerHandshakeAdapter adapter;
-    return &adapter;
+}  // namespace
+
+const HandshakeRegistration& GetUrmaHandshakeRegistration() {
+    static UrmaServerHandshakeAdapter server;
+    static const auto upgrade = HandshakeRegistration::ForTransport<UrmaTransport>(
+        urma::IsUrmaAvailable, RunUrmaClientHandshake, StartUrmaReceive);
+    static const HandshakeRegistration registration = {
+        SOCKET_MODE_URMA, &server,
+        {&UrmaHelloFrameSpec(2), &UrmaHelloFrameSpec(3)}, &upgrade, nullptr,
+    };
+    return registration;
 }
 
 }  // namespace handshake

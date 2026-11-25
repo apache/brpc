@@ -18,15 +18,19 @@
 // brpc - A framework to host and access services throughout Baidu.
 
 #include <gtest/gtest.h>
+#include <atomic>
+#include <thread>
 #include <unordered_set>
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
 #include "brpc/builtin/prometheus_metrics_service.h"
 #include "butil/iobuf.h"
+#include "butil/memory/scope_guard.h"
 #include "butil/strings/string_piece.h"
 #include "butil/string_printf.h"
 #include "butil/time.h"
+#include "bthread/countdown_event.h"
 #include "echo.pb.h"
 #include "bvar/bvar.h"
 #include "bvar/histogram.h"
@@ -48,6 +52,53 @@ public:
         return;
     }
 };
+
+TEST(PrometheusMetrics, method_metrics_remain_exposed_during_startup) {
+    for (int i = 0; i < 20; ++i) {
+        DummyEchoServiceImpl echo_svc;
+        brpc::Server server;
+        ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+        brpc::ServerOptions options;
+        options.server_info_name = "prometheus_startup_alias";
+        const std::string count_name =
+            "rpc_server_prometheus_startup_alias_test_echo_service_echo_count";
+        std::atomic<bool> stop(false);
+        std::atomic<bool> observed(false);
+        std::atomic<bool> disappeared(false);
+        bthread::CountdownEvent started;
+        {
+            // Start observing before Start() can publish the first metric.
+            // echo.proto enables idl_support, so both full and short method
+            // names refer to the same MethodStatus.
+            std::thread observer([&] {
+                started.signal();
+                while (!stop.load(std::memory_order_relaxed)) {
+                    if (!bvar::Variable::describe_exposed(count_name).empty()) {
+                        observed.store(true, std::memory_order_relaxed);
+                    } else if (observed.load(std::memory_order_relaxed)) {
+                        disappeared.store(true, std::memory_order_relaxed);
+                    }
+                }
+            });
+            BUTIL_SCOPE_EXIT {
+                stop.store(true, std::memory_order_relaxed);
+                observer.join();
+            };
+            started.wait();
+            ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+            const int64_t deadline_us = butil::cpuwide_time_us() + 5000000;
+            while (!observed.load(std::memory_order_relaxed) &&
+                   butil::cpuwide_time_us() < deadline_us) {
+                bthread_usleep(1000);
+            }
+            ASSERT_TRUE(observed.load(std::memory_order_relaxed));
+            ASSERT_EQ(0, server.Stop(0));
+            ASSERT_EQ(0, server.Join());
+        }
+        ASSERT_FALSE(disappeared.load(std::memory_order_relaxed))
+            << "Published method metrics must not be hidden by an alias";
+    }
+}
 
 enum STATE {
     HELP = 0,
@@ -73,19 +124,18 @@ TEST(PrometheusMetrics, sanity) {
     // An ephemeral port rather than a hardcoded one, which another test in the
     // same run may already be listening on.
     ASSERT_EQ(0, server.Start("127.0.0.1:0", nullptr));
-    // Start() only launches the bthread exposing the per method bvars, it does
-    // not wait for it. Scraping right away can catch that loop halfway and see
-    // some methods but not others, which _method_map iterates in hash order.
-    // Wait for the one this test reads back.
-    std::string echo_count_name = butil::string_printf(
-        "rpc_server_%d_test_echo_service_echo_count",
+    // Start() does not wait for method bvars to be exposed. The count is
+    // published before the percentiles, so wait for the last percentile
+    // required by the Prometheus summary before scraping it.
+    const std::string echo_ready_name = butil::string_printf(
+        "rpc_server_%d_test_echo_service_echo_latency_9999",
         server.listen_address().port);
     const int64_t deadline_us = butil::cpuwide_time_us() + 5000000;
-    while (bvar::Variable::describe_exposed(echo_count_name).empty() &&
+    while (bvar::Variable::describe_exposed(echo_ready_name).empty() &&
            butil::cpuwide_time_us() < deadline_us) {
         bthread_usleep(10000);
     }
-    ASSERT_FALSE(bvar::Variable::describe_exposed(echo_count_name).empty());
+    ASSERT_FALSE(bvar::Variable::describe_exposed(echo_ready_name).empty());
 
     const std::list<std::string> labels = {"label1", "label2"};
     bvar::MultiDimension<bvar::Adder<uint32_t> > my_madder("madder", labels);

@@ -208,6 +208,9 @@ public:
             LOG(ERROR) << "Trx close callback failed, trx is null.";
             return UBRING_ERR;
         }
+        if (ATOMIC_LOAD(trx->initializing)) {
+            return UBRING_REENTRY;
+        }
         if (UNLIKELY(trx->local_shm.addr == nullptr)) {
             LOG(ERROR) << "Trx close failed, local_shm addr is NULL.";
             return UBRING_ERR;
@@ -224,6 +227,20 @@ public:
     }
 
 private:
+    class ScopedIo {
+    public:
+        explicit ScopedIo(UbrTrx* trx);
+        ~ScopedIo();
+        explicit operator bool() const { return _trx != nullptr; }
+
+    private:
+        DISALLOW_COPY_AND_ASSIGN(ScopedIo);
+        static void Release(UbrTrx* trx);
+        UbrTrx* _trx = nullptr;
+    };
+    static void FinishTrxCleanup(UbrTrx* trx);
+    int RecvLegacy(uint8_t* dest, uint32_t buf_len);
+    ssize_t ReadvLegacy(const iovec* iov, int iovcnt);
     ssize_t UbrIpcV2Writev(const struct iovec* iov, int iovcnt);
     ssize_t UbrIpcV2Readv(const struct iovec* iov, int iovcnt);
     RETURN_CODE IsIpcV2Readable(uint32_t ep_event);
@@ -243,7 +260,10 @@ private:
     RETURN_CODE InitializeClientLocalLegacyFormat();
     void InitializeClientRemoteLegacyFormat();
     void InitializeClientLegacyFormat();
-    void ActivateClientFormat();
+    RETURN_CODE ActivateClientFormat();
+    RETURN_CODE RegisterShmName(SHM* target, const char* name);
+    void RecordShm(SHM* target, const SHM& source);
+    static RETURN_CODE UnlinkLocalShm(UbrTrx* trx);
     static RETURN_CODE UbrClearResourceCheck(UbrTrx* trx, UbrCloseType close_type);
     static RETURN_CODE ClearTrxResource(UbrTrx* trx, UbrCloseType close_type);
     RETURN_CODE ReleaseTrx();

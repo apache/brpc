@@ -24,7 +24,7 @@ namespace brpc {
 namespace policy {
 
 ParseResult ParseTransportHandshake(butil::IOBuf* source, Socket* socket,
-                                     bool /*read_eof*/, const void* /*arg*/) {
+                                    bool /*read_eof*/, const void* /*arg*/) {
     return AdapterTransport::Get(socket)->ProcessUpgradeReadable(source);
 }
 

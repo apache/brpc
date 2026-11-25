@@ -45,11 +45,9 @@ DEFINE_uint32(borrow_from_globle_size, 200,
               "from the global free_keytables when no KeyTable exists in the "
               "current thread's keytable_list.");
 
-EXTERN_BAIDU_VOLATILE_THREAD_LOCAL(TaskGroup*, tls_task_group);
-
 class KeyTable;
 
-BAIDU_VOLATILE_THREAD_LOCAL(bool, tls_ever_created_keytable, false);
+BUTIL_THREAD_LOCAL(bool, tls_ever_created_keytable, false);
 
 // We keep thread specific data in a two-level array. The top-level array
 // contains at most KEY_1STLEVEL_SIZE pointers to dynamically allocated
@@ -221,7 +219,7 @@ public:
         _head(nullptr), _tail(nullptr), _length(0) {}
 
     ~KeyTableList() {
-        TaskGroup* g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        TaskGroup* g = tls_task_group();
         KeyTable* old_kt = tls_bls_ptr()->keytable;
         KeyTable* keytable = _head;
         while (keytable) {
@@ -235,7 +233,7 @@ public:
             if (old_kt == kt) {
                 old_kt = nullptr;
             }
-            g = BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+            g = tls_task_group();
         }
         tls_bls_ptr()->keytable = old_kt;
         if (g) {
@@ -255,6 +253,24 @@ public:
         }
         keytable->next = nullptr;
         _length++;
+    }
+
+    // Transfer the entire chain without invoking KeyTable destructors. The
+    // caller uses this while holding the cache-management locks, then destroys
+    // the receiving list after releasing those locks.
+    void transfer_list_from(KeyTableList* other) {
+        if (other == nullptr || other->_head == nullptr) {
+            return;
+        }
+        if (_head == nullptr) {
+            _head = other->_head;
+        } else {
+            _tail->next = other->_head;
+        }
+        _tail = other->_tail;
+        _length += other->_length;
+        other->_head = other->_tail = nullptr;
+        other->_length = 0;
     }
 
     KeyTable* remove_front() {
@@ -478,18 +494,36 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
         return EINVAL;
     }
     bthread::KeyTable* saved_free_keytables = nullptr;
-    pthread_rwlock_wrlock(&pool->rwlock);
-    pool->destroyed = 1;
-    pool->size = 0;
-    delete (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
-    saved_free_keytables = (bthread::KeyTable*)pool->free_keytables;
-    pool->list = nullptr;
-    pool->free_keytables = nullptr;
-    pthread_rwlock_unlock(&pool->rwlock);
+    butil::ThreadLocal<bthread::KeyTableList>* lists = nullptr;
+    {
+        bthread::KeyTableList detached;
+        pthread_rwlock_wrlock(&pool->rwlock);
+        pool->destroyed = 1;
+        pool->size = 0;
+        lists = (butil::ThreadLocal<bthread::KeyTableList>*)pool->list;
+        if (lists) {
+            // for_each() holds ThreadLocal's internal mutex. Only detach list
+            // nodes here: deleting a KeyTable can invoke a user TLS destructor.
+            lists->for_each([&detached](bthread::KeyTableList* list) {
+                detached.transfer_list_from(list);
+            });
+        }
+        saved_free_keytables = (bthread::KeyTable*)pool->free_keytables;
+        // After destroyed is set, borrowers and returners stop using these
+        // cache entries. Detaching their roots while holding the pool lock
+        // makes it safe to release both locks before running destructors.
+        pool->list = nullptr;
+        pool->free_keytables = nullptr;
+        pthread_rwlock_unlock(&pool->rwlock);
+        // Destroy the detached tables after releasing both cache locks. This
+        // scope ends before lists is deleted, so its destructor sees only
+        // empty KeyTableLists and cannot invoke user TLS destructors.
+    }
+    delete lists;
 
     // Cheat get/setspecific and destroy the keytables.
     bthread::TaskGroup* g =
-        bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        bthread::tls_task_group();
     bthread::KeyTable* old_kt = bthread::tls_bls_ptr()->keytable;
     while (saved_free_keytables) {
         bthread::KeyTable* kt = saved_free_keytables;
@@ -499,7 +533,7 @@ int bthread_keytable_pool_destroy(bthread_keytable_pool_t* pool) {
             g->current_task()->local_storage.keytable = kt;
         }
         delete kt;
-        g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        g = bthread::tls_task_group();
     }
     bthread::tls_bls_ptr()->keytable = old_kt;
     if (g) {
@@ -646,15 +680,15 @@ int bthread_setspecific(bthread_key_t key, void* data) {
     if (nullptr == kt) {
         kt = new bthread::KeyTable;
         bthread::tls_bls_ptr()->keytable = kt;
-        bthread::TaskGroup* const g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+        bthread::TaskGroup* const g = bthread::tls_task_group();
         if (g) {
             g->current_task()->local_storage.keytable = kt;
         } else {
             // Only cleanup keytable created by pthread.
             // keytable created by bthread will be deleted
             // in `return_keytable' or `bthread_keytable_pool_destroy'.
-            if (!bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_ever_created_keytable)) {
-                bthread::BAIDU_SET_VOLATILE_THREAD_LOCAL(tls_ever_created_keytable, true);
+            if (!bthread::tls_ever_created_keytable()) {
+                bthread::tls_ever_created_keytable() = true;
                 CHECK_EQ(0, butil::thread_atexit(bthread::cleanup_pthread, kt));
             }
         }
@@ -667,7 +701,7 @@ void* bthread_getspecific(bthread_key_t key) {
     if (kt) {
         return kt->get_data(key);
     }
-    bthread::TaskGroup* const g = bthread::BAIDU_GET_VOLATILE_THREAD_LOCAL(tls_task_group);
+    bthread::TaskGroup* const g = bthread::tls_task_group();
     if (g) {
         bthread::TaskMeta* const task = g->current_task();
         kt = bthread::borrow_keytable(task->attr.keytable_pool);

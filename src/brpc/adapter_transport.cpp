@@ -17,43 +17,16 @@
 
 #include "brpc/adapter_transport.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <errno.h>
 #include <unistd.h>
 
 #include "brpc/input_messenger.h"
-#include "brpc/destroyable.h"
-#include "brpc/handshake/rdma_handshake.h"
-#include "brpc/handshake/ubshm_handshake.h"
-#include "brpc/handshake/urma_handshake.h"
-#if BRPC_WITH_RDMA
-#include "brpc/rdma/rdma_helper.h"
-#endif
-#if BRPC_WITH_UBRING
-#include "brpc/ubshm/shm/shm_mgr.h"
-#include "brpc/ubshm/ub_endpoint.h"
-#include "brpc/ubshm/ub_helper.h"
-#include "brpc/ubshm/ubr_trx.h"
-#endif
-#if BRPC_WITH_URMA
-#include "brpc/urma/urma_helper.h"
-#endif
-#include "brpc/rdma_transport.h"
+#include "brpc/handshake/handshake_adapter.h"
 #include "brpc/tcp_transport.h"
-#include "brpc/ubshm_transport.h"
-#include "brpc/urma_transport.h"
 
 namespace brpc {
-
 namespace {
-
-bool MatchesMagicPrefix(const char *prefix, size_t prefix_len,
-                        const char *magic, size_t magic_len) {
-    const size_t compare_len = std::min(prefix_len, magic_len);
-    return memcmp(prefix, magic, compare_len) == 0;
-}
 
 class AdapterConnect : public AppConnect {
 public:
@@ -82,8 +55,8 @@ public:
         if (AdapterTransport::StartClientUpgrade(
                 socket, OnUpgradeComplete, task) != 0) {
             const int error = errno != 0 ? errno : EAGAIN;
-            AdapterTransport::Get(const_cast<Socket*>(socket))->CompleteConnection(
-                handshake::FAILED);
+            AdapterTransport::Get(const_cast<Socket*>(socket))
+                ->handshake_session()->MarkFailed();
             delete task;
             done(error, data);
         }
@@ -112,6 +85,9 @@ private:
     static void OnUpgradeComplete(int error, void* arg) {
         ApplicationConnectTask* task =
             static_cast<ApplicationConnectTask*>(arg);
+        if (error == 0 && task->socket->Failed()) {
+            error = EFAILEDSOCKET;
+        }
         if (error != 0 || !task->app_connect) {
             std::unique_ptr<ApplicationConnectTask> owned(task);
             task->done(error, task->data);
@@ -131,147 +107,11 @@ struct ClientHandshakeTask {
     SocketUniquePtr socket;
 };
 
-#if BRPC_WITH_RDMA
-class RdmaClientHandshakeTransport : public handshake::HandshakeTransport {
-public:
-    RdmaClientHandshakeTransport(
-        RdmaTransport* transport, rdma::RdmaHandshakeAdapter* protocol,
-        Socket* socket, int* connect_error)
-        : _transport(transport), _protocol(protocol), _socket(socket),
-          _connect_error(connect_error) {}
-
-    handshake::StepResult PrepareResources() override {
-        if (_transport->PrepareUpgradeResources() == 0) {
-            return handshake::STEP_OK;
-        }
-        errno = 0;
-        return handshake::STEP_FALLBACK;
-    }
-
-    handshake::StepResult NegotiateResources() override {
-        return _transport->NegotiateUpgradeResources(
-                   _protocol->remote(), false) == 0
-            ? handshake::STEP_OK : handshake::STEP_FALLBACK;
-    }
-
-    void OnEstablished() override { _transport->ActivateUpgrade(); }
-
-    void OnFallback() override { _transport->DeactivateUpgrade(); }
-
-    void OnFailed() override {
-        const int saved_errno = errno != 0 ? errno : EPROTO;
-        _transport->DeactivateUpgrade();
-        *_connect_error = saved_errno;
-        _socket->SetFailed(saved_errno,
-                           "Fail to complete rdma handshake from %s: %s",
-                           _socket->description().c_str(),
-                           berror(saved_errno));
-    }
-
-private:
-    RdmaTransport* _transport;
-    rdma::RdmaHandshakeAdapter* _protocol;
-    Socket* _socket;
-    int* _connect_error;
-};
-#endif
-
-#if BRPC_WITH_URMA
-class UrmaClientHandshakeTransport : public handshake::HandshakeTransport {
-public:
-    UrmaClientHandshakeTransport(
-        UrmaTransport* transport, urma::UrmaHandshakeAdapter* protocol,
-        Socket* socket, int* connect_error)
-        : _transport(transport), _protocol(protocol), _socket(socket),
-          _connect_error(connect_error) {}
-
-    handshake::StepResult PrepareResources() override {
-        return _transport->PrepareUpgradeResources(false) == 0
-            ? handshake::STEP_OK : handshake::STEP_FALLBACK;
-    }
-    handshake::StepResult NegotiateResources() override {
-        return _transport->NegotiateUpgradeResources(
-                   _protocol->remote(), false) == 0
-            ? handshake::STEP_OK : handshake::STEP_FALLBACK;
-    }
-    void OnEstablished() override { _transport->ActivateUpgrade(); }
-    void OnFallback() override { _transport->DeactivateUpgrade(); }
-    void OnFailed() override {
-        const int saved_errno = errno != 0 ? errno : EPROTO;
-        _transport->DeactivateUpgrade();
-        *_connect_error = saved_errno;
-        _socket->SetFailed(saved_errno,
-                           "Fail to complete URMA handshake from %s: %s",
-                           _socket->description().c_str(),
-                           berror(saved_errno));
-    }
-
-private:
-    UrmaTransport* _transport;
-    urma::UrmaHandshakeAdapter* _protocol;
-    Socket* _socket;
-    int* _connect_error;
-};
-#endif
-
-#if BRPC_WITH_UBRING
-class UBShmClientHandshakeTransport : public handshake::HandshakeTransport {
-public:
-    UBShmClientHandshakeTransport(
-        UBShmTransport* transport, ubring::SHM* local_shm,
-        const std::string& shm_name, ubring::UBShmHandshakeAdapter* protocol,
-        Socket* socket, int* connect_error)
-        : _transport(transport), _local_shm(local_shm),
-          _shm_name(shm_name), _protocol(protocol), _socket(socket),
-          _connect_error(connect_error) {}
-
-    handshake::StepResult PrepareResources() override {
-        if (_transport->PrepareUpgradeResources(
-                _local_shm, _shm_name.c_str()) != 0) {
-            return handshake::STEP_FALLBACK;
-        }
-        _protocol->ConfigureClientHello(*_local_shm);
-        return handshake::STEP_OK;
-    }
-
-    handshake::StepResult NegotiateResources() override {
-        return _transport->NegotiateUpgradeResources(
-                   _local_shm, _shm_name.c_str(), _protocol->remote().len,
-                   _protocol->local_format()) == 0
-            ? handshake::STEP_OK : handshake::STEP_FALLBACK;
-    }
-
-    void OnEstablished() override {
-        _transport->GetUBShmEp()->SetNegotiatedDataFormat(
-            _protocol->local_format());
-        _transport->ActivateUpgrade();
-    }
-    void OnFallback() override { _transport->DeactivateUpgrade(); }
-
-    void OnFailed() override {
-        const int saved_errno = errno != 0 ? errno : EPROTO;
-        _transport->DeactivateUpgrade();
-        *_connect_error = saved_errno;
-        _socket->SetFailed(saved_errno,
-                           "Fail to complete ubring handshake from %s: %s",
-                           _socket->description().c_str(),
-                           berror(saved_errno));
-    }
-
-private:
-    UBShmTransport* _transport;
-    ubring::SHM* _local_shm;
-    std::string _shm_name;
-    ubring::UBShmHandshakeAdapter* _protocol;
-    Socket* _socket;
-    int* _connect_error;
-};
-#endif
-
 }  // namespace
 
-AdapterTransport::AdapterTransport(SocketMode mode)
-    : _mode(mode), _connection_completed(0) {}
+AdapterTransport::AdapterTransport(
+    const handshake::HandshakeRegistration::Upgrade* upgrade)
+    : _upgrade(upgrade) {}
 AdapterTransport::~AdapterTransport() = default;
 
 AdapterTransport* AdapterTransport::Get(Socket* socket) {
@@ -285,28 +125,9 @@ const AdapterTransport* AdapterTransport::Get(const Socket* socket) {
 }
 
 bool AdapterTransport::upgrade_capable(SocketMode mode) const {
-    if (_mode != mode || _high_speed_transport == nullptr) {
-        return false;
-    }
-    switch (mode) {
-#if BRPC_WITH_RDMA
-    case SOCKET_MODE_RDMA:
-        return static_cast<RdmaTransport*>(
-            _high_speed_transport.get())->UpgradeReady();
-#endif
-#if BRPC_WITH_URMA
-    case SOCKET_MODE_URMA:
-        return static_cast<UrmaTransport*>(
-            _high_speed_transport.get())->UpgradeReady();
-#endif
-#if BRPC_WITH_UBRING
-    case SOCKET_MODE_UBRING:
-        return static_cast<UBShmTransport*>(
-            _high_speed_transport.get())->UpgradeReady();
-#endif
-    default:
-        return false;
-    }
+    return _socket->socket_mode() == mode && !_socket->is_ssl() &&
+           _high_speed_transport &&
+           _upgrade->ready(_high_speed_transport.get());
 }
 
 int AdapterTransport::StartClientUpgrade(const Socket* socket,
@@ -319,7 +140,7 @@ int AdapterTransport::StartClientUpgradeImpl(
     const Socket* socket, void (*done)(int, void*), void* data,
     StartBackground start_background) {
     AdapterTransport* adapter = Get(const_cast<Socket*>(socket));
-    ClientHandshakeTask* task = new ClientHandshakeTask{adapter, done, data, SocketUniquePtr()};
+    auto* task = new ClientHandshakeTask{adapter, done, data, SocketUniquePtr()};
     if (Socket::Address(socket->id(), &task->socket) != 0) {
         delete task;
         errno = EFAILEDSOCKET;
@@ -350,54 +171,11 @@ ParseResult AdapterTransport::ProcessUpgradeReadable(butil::IOBuf* source) {
         CHECK(context->adapter() != nullptr);
         result = context->adapter()->ExecuteServerHandshake(source, _socket);
     } else if (!source->empty()) {
-        static const size_t MAX_MAGIC_LEN = 4;
-        char prefix[MAX_MAGIC_LEN] = {};
-        const size_t prefix_len = std::min(source->size(), MAX_MAGIC_LEN);
-        source->copy_to(prefix, prefix_len);
-
-        const bool matches_ub =
-            MatchesMagicPrefix(prefix, prefix_len, "UB", 2);
-        const bool matches_rdma =
-            MatchesMagicPrefix(prefix, prefix_len, "RDMA", 4) ||
-            MatchesMagicPrefix(prefix, prefix_len, "RDM3", 4);
-        const bool matches_urma =
-            MatchesMagicPrefix(prefix, prefix_len, "URMA", 4) ||
-            MatchesMagicPrefix(prefix, prefix_len, "URM3", 4);
-        if (!matches_ub && !matches_rdma && !matches_urma) {
-            result = ParseResult(PARSE_ERROR_TRY_OTHERS);
-        } else {
-            handshake::HandshakeAdapter* adapter = nullptr;
-            if (matches_ub) {
-                adapter = handshake::GetUBShmServerHandshakeAdapter();
-            } else if (matches_rdma) {
-                adapter = handshake::GetRdmaServerHandshakeAdapter();
-            } else {
-                adapter = handshake::GetUrmaServerHandshakeAdapter();
-            }
-            result = adapter->ExecuteServerHandshake(source, _socket);
-        }
-    }
-    const int phase = _handshake.phase(butil::memory_order_acquire);
-    if (!connection_completed() &&
-        (phase == handshake::ESTABLISHED ||
-         phase == handshake::FALLBACK_TCP || phase == handshake::FAILED)) {
-        CompleteConnection(static_cast<handshake::Phase>(phase));
+        auto* handler = handshake::HandshakeRegistration::MatchHello(*source);
+        result = handler ? handler->ExecuteServerHandshake(source, _socket)
+                         : MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
     return result;
-}
-
-void AdapterTransport::CompleteConnection(handshake::Phase terminal_phase) {
-    CHECK(terminal_phase == handshake::ESTABLISHED ||
-          terminal_phase == handshake::FALLBACK_TCP ||
-          terminal_phase == handshake::FAILED);
-    if (terminal_phase == handshake::FAILED &&
-        _handshake.phase(butil::memory_order_acquire) != handshake::FAILED) {
-        _handshake.MarkFailed();
-    }
-    int expected = 0;
-    _connection_completed.compare_exchange_strong(
-        expected, 1, butil::memory_order_release,
-        butil::memory_order_relaxed);
 }
 
 void* AdapterTransport::ProcessClientHandshake(void* arg) {
@@ -405,181 +183,57 @@ void* AdapterTransport::ProcessClientHandshake(void* arg) {
         static_cast<ClientHandshakeTask*>(arg));
     AdapterTransport* adapter = task->adapter;
     Socket* socket = task->socket.get();
-    int connect_error = 0;
-    (void)connect_error;
-
-#if BRPC_WITH_RDMA
-    if (adapter->_mode == SOCKET_MODE_RDMA) {
-        RdmaTransport* transport = static_cast<RdmaTransport*>(
-            adapter->_high_speed_transport.get());
-        if (!rdma::IsRdmaAvailable()) {
-            adapter->FallbackToTcp();
-            adapter->CompleteConnection(handshake::FALLBACK_TCP);
-            task->done(0, task->data);
-            return nullptr;
-        }
-
-        std::unique_ptr<rdma::RdmaHandshakeAdapter> protocol =
-            transport->CreateClientHandshakeAdapter();
-        CHECK(protocol != nullptr);
-        RdmaClientHandshakeTransport participant(
-            transport, protocol.get(), socket, &connect_error);
-        const handshake::StepResult result = adapter->_handshake.RunClient(
-            protocol.get(), &participant);
-        if (result == handshake::STEP_OK &&
-            transport->StartUpgradeEvents() < 0) {
-            const int saved_errno = errno != 0 ? errno : ERDMA;
-            transport->DeactivateUpgrade();
-            adapter->_handshake.MarkFailed();
-            socket->SetFailed(
-                saved_errno,
-                "Fail to start RDMA CQ events from %s: %s",
-                socket->description().c_str(), berror(saved_errno));
-            connect_error = saved_errno;
-        }
-        if (result == handshake::STEP_ERROR && connect_error == 0) {
-            connect_error = errno != 0 ? errno : EPROTO;
-        }
-        adapter->CompleteConnection(static_cast<handshake::Phase>(
-            adapter->_handshake.phase(butil::memory_order_acquire)));
-        task->done(connect_error, task->data);
+    if (!adapter->_upgrade) {
+        socket->SetFailed(EPROTO, "Unsupported client transport handshake");
+        adapter->_handshake.MarkFailed();
+        task->done(EPROTO, task->data);
         return nullptr;
     }
-#endif
-
-#if BRPC_WITH_URMA
-    if (adapter->_mode == SOCKET_MODE_URMA) {
-        UrmaTransport* transport = static_cast<UrmaTransport*>(
-            adapter->_high_speed_transport.get());
-        if (!urma::IsUrmaAvailable()) {
-            adapter->FallbackToTcp();
-            adapter->CompleteConnection(handshake::FALLBACK_TCP);
-            task->done(0, task->data);
-            return nullptr;
-        }
-        std::unique_ptr<urma::UrmaHandshakeAdapter> protocol =
-            urma::CreateClientHandshakeAdapter(transport->GetUrmaEp());
-        UrmaClientHandshakeTransport participant(
-            transport, protocol.get(), socket, &connect_error);
-        const handshake::StepResult result = adapter->_handshake.RunClient(
-            protocol.get(), &participant);
-        if (result == handshake::STEP_OK &&
-            transport->StartUpgradeEvents() < 0) {
-            connect_error = errno != 0 ? errno : EIO;
-            transport->DeactivateUpgrade();
-            adapter->_handshake.MarkFailed();
-            socket->SetFailed(connect_error, "Fail to start URMA CQ events");
-        }
-        if (result == handshake::STEP_ERROR && connect_error == 0) {
-            connect_error = errno != 0 ? errno : EPROTO;
-        }
-        adapter->CompleteConnection(static_cast<handshake::Phase>(
-            adapter->_handshake.phase(butil::memory_order_acquire)));
-        task->done(connect_error, task->data);
-        return nullptr;
+    int error = 0;
+    if (socket->Failed()) {
+        error = EFAILEDSOCKET;
+        adapter->_handshake.MarkFailed();
+    } else if (adapter->_upgrade->available()) {
+        error = adapter->_upgrade->run_client(
+            adapter->_high_speed_transport.get(), socket, adapter->_handshake);
+    } else {
+        adapter->FallbackToTcp();
     }
-#endif
-#if BRPC_WITH_UBRING
-    if (adapter->_mode == SOCKET_MODE_UBRING) {
-        UBShmTransport* transport = static_cast<UBShmTransport*>(
-            adapter->_high_speed_transport.get());
-        if (!ubring::IsUBAvailable()) {
-            adapter->FallbackToTcp();
-            adapter->CompleteConnection(handshake::FALLBACK_TCP);
-            task->done(0, task->data);
-            return nullptr;
-        }
-
-        const size_t local_shm_len =
-            static_cast<size_t>(ubring::FLAGS_data_queue_size) * MB_TO_BYTE;
-        ubring::SHM local_trx_shm = {
-            nullptr, local_shm_len, 0, {0}, static_cast<uint32_t>(socket->fd())};
-        const auto shm_name_str =
-            butil::endpoint2str(socket->local_side());
-        ubring::UBShmHandshakeAdapter wire(
-            ubring::PreferredDataFormatForShmType(ubring::GetShmType()));
-        UBShmClientHandshakeTransport participant(
-            transport, &local_trx_shm, shm_name_str.c_str(), &wire, socket,
-            &connect_error);
-        const handshake::StepResult result = adapter->_handshake.RunClient(
-            &wire, &participant);
-        if (result == handshake::STEP_OK) {
-            transport->FinishUpgrade();
-            transport->GetUBShmEp()->StartReceiveEvents();
-        }
-        if (result == handshake::STEP_ERROR && connect_error == 0) {
-            connect_error = errno != 0 ? errno : EPROTO;
-        }
-        adapter->CompleteConnection(static_cast<handshake::Phase>(
-            adapter->_handshake.phase(butil::memory_order_acquire)));
-        task->done(connect_error, task->data);
-        return nullptr;
+    if (error == 0 && socket->Failed()) {
+        adapter->_handshake.MarkFailed();
+        error = EFAILEDSOCKET;
     }
-#endif
-
-    socket->SetFailed(EPROTO, "Unsupported client transport handshake");
-    adapter->CompleteConnection(handshake::FAILED);
-    task->done(EPROTO, task->data);
+    if (error == 0 && adapter->handshake_phase() == handshake::ESTABLISHED) {
+        error = adapter->StartUpgradeReceive();
+        if (error != 0) {
+            LOG(WARNING) << "Fail to start upgrade receive events from "
+                         << socket->description() << ": " << berror(error);
+        }
+    }
+    task->done(error, task->data);
     return nullptr;
 }
 
 void AdapterTransport::Init(Socket* socket, const SocketOptions& options) {
-    CHECK_EQ(_mode, options.socket_mode);
     _socket = socket;
     _default_connect = options.app_connect;
     _on_edge_trigger = options.on_edge_triggered_events;
     if (options.need_on_edge_trigger && _on_edge_trigger == nullptr) {
-        if (_mode == SOCKET_MODE_TCP) {
+        if (!_upgrade) {
             _on_edge_trigger = InputMessenger::OnNewMessages;
-#if BRPC_WITH_RDMA
-        } else if (_mode == SOCKET_MODE_RDMA &&
-                   options.user != static_cast<SocketUser*>(
-                       get_client_side_messenger())) {
-            // RDMA server handshake is parsed by InputMessenger.
-            _on_edge_trigger = OnNewMessagesAfterUpgrade;
-#endif
-#if BRPC_WITH_UBRING
-        } else if (_mode == SOCKET_MODE_UBRING &&
-                   options.user != static_cast<SocketUser*>(
-                       get_client_side_messenger())) {
-            // UBSHM server handshake is parsed by InputMessenger.
-            _on_edge_trigger = OnNewMessagesAfterUpgrade;
-#endif
-#if BRPC_WITH_URMA
-        } else if (_mode == SOCKET_MODE_URMA &&
-                   options.user != static_cast<SocketUser*>(
+        } else if (options.user != static_cast<SocketUser*>(
                        get_client_side_messenger())) {
             _on_edge_trigger = OnNewMessagesAfterUpgrade;
-#endif
         } else {
             _on_edge_trigger = OnNewDataFromTcp;
         }
     }
     _handshake.Reset(socket);
-    _connection_completed.store(0, butil::memory_order_relaxed);
-    _tcp_transport.reset(new TcpTransport);
+    _tcp_transport = std::make_unique<TcpTransport>();
     _tcp_transport->Init(socket, options);
 
-    switch (_mode) {
-#if BRPC_WITH_RDMA
-    case SOCKET_MODE_RDMA:
-        _high_speed_transport.reset(new RdmaTransport);
-        break;
-#endif
-#if BRPC_WITH_UBRING
-    case SOCKET_MODE_UBRING:
-        _high_speed_transport.reset(new UBShmTransport);
-        break;
-#endif
-#if BRPC_WITH_URMA
-    case SOCKET_MODE_URMA:
-        _high_speed_transport.reset(new UrmaTransport);
-        break;
-#endif
-    default:
-        break;
-    }
-    if (_high_speed_transport) {
+    if (_upgrade) {
+        _high_speed_transport = _upgrade->create();
         _high_speed_transport->Init(socket, options);
     }
 }
@@ -597,12 +251,11 @@ int AdapterTransport::Reset(int32_t expected_nref) {
     }
     _tcp_transport->Reset(expected_nref);
     _handshake.Reset(_socket);
-    _connection_completed.store(0, butil::memory_order_relaxed);
     return 0;
 }
 
 std::shared_ptr<AppConnect> AdapterTransport::Connect() {
-    if (upgrade_capable(_mode)) {
+    if (upgrade_capable(_socket->socket_mode())) {
         return AdapterConnect::Wrap(_default_connect);
     }
     SocketUser* const client_messenger =
@@ -637,7 +290,7 @@ ssize_t AdapterTransport::CutFromIOBufList(
 }
 
 int AdapterTransport::WaitEpollOut(butil::atomic<int>* epollout_butex,
-                                    bool pollin, timespec duetime) {
+                                  bool pollin, timespec duetime) {
     return ActiveTransport()->WaitEpollOut(
         epollout_butex, pollin, duetime);
 }
@@ -678,36 +331,18 @@ void AdapterTransport::Debug(std::ostream& os) {
 
 void AdapterTransport::FallbackToTcp() {
     _handshake.PublishFallback([this]() {
-        SetHighSpeedAvailable(false);
+        if (_high_speed_transport) {
+            _upgrade->disable(_high_speed_transport.get());
+        }
     });
 }
 
-void AdapterTransport::SetHighSpeedAvailable(bool available) {
-    if (!_high_speed_transport) {
-        return;
+int AdapterTransport::StartUpgradeReceive() {
+    const int error = _upgrade->start_receive(_high_speed_transport.get());
+    if (error != 0) {
+        _handshake.MarkFailed();
     }
-    switch (_mode) {
-#if BRPC_WITH_RDMA
-    case SOCKET_MODE_RDMA:
-        static_cast<RdmaTransport*>(_high_speed_transport.get())
-            ->SetHighSpeedAvailable(available);
-        break;
-#endif
-#if BRPC_WITH_UBRING
-    case SOCKET_MODE_UBRING:
-        static_cast<UBShmTransport*>(_high_speed_transport.get())
-            ->SetHighSpeedAvailable(available);
-        break;
-#endif
-#if BRPC_WITH_URMA
-    case SOCKET_MODE_URMA:
-        static_cast<UrmaTransport*>(_high_speed_transport.get())
-            ->SetHighSpeedAvailable(available);
-        break;
-#endif
-    default:
-        break;
-    }
+    return error;
 }
 
 void AdapterTransport::OnNewMessagesAfterUpgrade(Socket* socket) {
@@ -719,53 +354,20 @@ void AdapterTransport::OnNewMessagesAfterUpgrade(Socket* socket) {
     }
 
     InputMessenger::OnNewMessagesUntil(socket, [](Socket* s) {
-        return Get(s)->handshake_phase() == handshake::ESTABLISHED;
+        AdapterTransport* transport = Get(s);
+        if (transport->handshake_phase() != handshake::ESTABLISHED) {
+            return false;
+        }
+        const int error = transport->StartUpgradeReceive();
+        if (error == 0) {
+            transport->CheckUnexpectedTcpData();
+        } else {
+            s->SetFailed(
+                error, "Fail to start upgrade receive events from %s: %s",
+                s->description().c_str(), berror(error));
+        }
+        return true;
     });
-
-#if BRPC_WITH_RDMA
-    if (adapter->_mode == SOCKET_MODE_RDMA &&
-        adapter->_handshake.phase(butil::memory_order_acquire) ==
-            handshake::ESTABLISHED) {
-        RdmaTransport* transport = static_cast<RdmaTransport*>(
-            adapter->_high_speed_transport.get());
-        if (transport->StartUpgradeEvents() < 0) {
-            const int saved_errno = errno != 0 ? errno : ERDMA;
-            transport->DeactivateUpgrade();
-            adapter->_handshake.MarkFailed();
-            adapter->CompleteConnection(handshake::FAILED);
-            socket->SetFailed(
-                saved_errno,
-                "Fail to start RDMA CQ events from %s: %s",
-                socket->description().c_str(), berror(saved_errno));
-        }
-    }
-#endif
-#if BRPC_WITH_UBRING
-    if (adapter->_mode == SOCKET_MODE_UBRING &&
-        adapter->handshake_phase() == handshake::ESTABLISHED) {
-        UBShmTransport* transport = static_cast<UBShmTransport*>(
-            adapter->_high_speed_transport.get());
-        transport->GetUBShmEp()->StartReceiveEvents();
-    }
-#endif
-#if BRPC_WITH_URMA
-    if (adapter->_mode == SOCKET_MODE_URMA &&
-        adapter->_handshake.phase(butil::memory_order_acquire) ==
-            handshake::ESTABLISHED) {
-        UrmaTransport* transport = static_cast<UrmaTransport*>(
-            adapter->_high_speed_transport.get());
-        if (transport->StartUpgradeEvents() < 0) {
-            const int saved_errno = errno != 0 ? errno : EIO;
-            transport->DeactivateUpgrade();
-            adapter->_handshake.MarkFailed();
-            adapter->CompleteConnection(handshake::FAILED);
-            socket->SetFailed(saved_errno, "Fail to start URMA CQ events");
-        }
-    }
-#endif
-    if (adapter->handshake_phase() == handshake::ESTABLISHED) {
-        adapter->CheckUnexpectedTcpData();
-    }
 }
 
 void AdapterTransport::OnNewDataFromTcp(Socket* socket) {
@@ -819,18 +421,6 @@ void AdapterTransport::CheckUnexpectedTcpData() {
         if (!_socket->MoreReadEvents(&progress)) {
             return;
         }
-    }
-}
-
-void AdapterTransport::TryReadOnTcp() {
-    if (_socket->_nevent.fetch_add(1, butil::memory_order_acq_rel) != 0) {
-        return;
-    }
-    const int phase = _handshake.phase(butil::memory_order_acquire);
-    if (phase == handshake::FALLBACK_TCP) {
-        InputMessenger::OnNewMessages(_socket);
-    } else if (phase == handshake::ESTABLISHED) {
-        CheckUnexpectedTcpData();
     }
 }
 

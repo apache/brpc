@@ -110,16 +110,18 @@ static int bthread_sem_wait_impl(bthread_sem_t* sem, const struct timespec* abst
 
 static inline int bthread_sem_post(bthread_sem_t* sem, size_t num) {
     if (num > 0) {
-        unsigned n = ((butil::atomic<unsigned>*)sem->butex)
-            ->fetch_add(num, butil::memory_order_relaxed);
-        const size_t sampling_range = nullptr != bthread::g_cp && sem->enable_csite ?
+        // Publish preceding writes to successful acquire-CAS waiters, including
+        // those that consume permits without entering butex_wait().
+        ((butil::atomic<unsigned>*)sem->butex)
+            ->fetch_add(num, butil::memory_order_release);
+        size_t sampling_range = nullptr != bthread::g_cp && sem->enable_csite ?
             bvar::is_collectable(&bthread::g_cp_sl) : bvar::INVALID_SAMPLING_RANGE;
-        const int64_t start_ns = bvar::is_sampling_range_valid(sampling_range) ?
-                                 butil::cpuwide_time_ns() : -1;
-        bthread::butex_wake_n(sem->butex, n);
+        int64_t start_ns = bvar::is_sampling_range_valid(sampling_range) ?
+                           butil::cpuwide_time_ns() : -1;
+        bthread::butex_wake_n(sem->butex, num);
         if (start_ns > 0) {
-            const int64_t end_ns = butil::cpuwide_time_ns();
-            const bthread_contention_site_t csite{end_ns - start_ns, sampling_range};
+            int64_t end_ns = butil::cpuwide_time_ns();
+            bthread_contention_site_t csite{end_ns - start_ns, sampling_range};
             bthread::submit_contention(csite, end_ns);
         }
     }

@@ -25,6 +25,7 @@
 
 #include "butil/string_printf.h"
 #include "butil/string_splitter.h"                  // StringMultiSplitter
+#include "butil/strings/string_number_conversions.h"
 #include "butil/strings/string_util.h"
 #include "butil/sys_byteorder.h"
 #include "butil/time.h"
@@ -420,8 +421,22 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             }
             const std::string* grpc_status = res_header->GetHeader(common->GRPC_STATUS);
             if (grpc_status) {
-                // TODO: More strict parsing
-                GrpcStatus status = (GrpcStatus)strtol(grpc_status->data(), nullptr, 10);
+                int code = 0;
+                bool valid = !grpc_status->empty();
+                for (char c : *grpc_status) {
+                    if (c < '0' || c > '9') {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (!valid || !butil::StringToInt(*grpc_status, &code)) {
+                    cntl->SetFailed(ERESPONSE, "Invalid grpc-status header");
+                    break;
+                }
+                const GrpcStatus status =
+                    code >= GRPC_OK && code < GRPC_MAX
+                        ? static_cast<GrpcStatus>(code)
+                        : GRPC_UNKNOWN;
                 if (status != GRPC_OK) {
                     const std::string* grpc_message =
                         res_header->GetHeader(common->GRPC_MESSAGE);
@@ -453,12 +468,27 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                 res_body.copy_to(
                     &body_str, std::min((int)res_body.size(),
                                         FLAGS_http_max_error_length));
-                cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s: %.*s",
-                                res_header->major_version(),
-                                res_header->minor_version(),
-                                static_cast<int>(res_header->status_code()),
-                                res_header->reason_phrase(),
-                                (int)body_str.size(), body_str.c_str());
+                const H2StreamContext* h2_sctx =
+                    is_http2 ? static_cast<const H2StreamContext*>(imsg_guard.get()) : nullptr;
+                if (h2_sctx != nullptr && h2_sctx->rst_received()) {
+                    cntl->SetFailed(EHTTP,
+                                    "HTTP/%d.%d %d %s (stream_id=%d terminated by RST_STREAM: %s[0x%x]): %.*s",
+                                    res_header->major_version(),
+                                    res_header->minor_version(),
+                                    static_cast<int>(res_header->status_code()),
+                                    res_header->reason_phrase(),
+                                    h2_sctx->stream_id(),
+                                    H2ErrorToString(h2_sctx->rst_error()),
+                                    static_cast<unsigned int>(h2_sctx->rst_error()),
+                                    (int)body_str.size(), body_str.c_str());
+                } else {
+                    cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s: %.*s",
+                                    res_header->major_version(),
+                                    res_header->minor_version(),
+                                    static_cast<int>(res_header->status_code()),
+                                    res_header->reason_phrase(),
+                                    (int)body_str.size(), body_str.c_str());
+                }
             } else if (cntl->response() != nullptr &&
                        cntl->response()->GetDescriptor()->field_count() != 0) {
                 cntl->SetFailed(ERESPONSE, "A protobuf response can't be parsed"
@@ -477,6 +507,17 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                     res_header->minor_version(),
                     static_cast<int>(res_header->status_code()),
                     res_header->reason_phrase());
+            if (is_http2) {
+                const H2StreamContext* h2_sctx =
+                    static_cast<const H2StreamContext*>(imsg_guard.get());
+                if (h2_sctx->rst_received()) {
+                    butil::string_appendf(
+                        &err, " (stream_id=%d terminated by RST_STREAM: %s[0x%x])",
+                        h2_sctx->stream_id(),
+                        H2ErrorToString(h2_sctx->rst_error()),
+                        static_cast<unsigned int>(h2_sctx->rst_error()));
+                }
+            }
             if (!res_body.empty()) {
                 // Use content as error text if it's present. Notice that
                 // content may be binary data, so the size limit is a must.
@@ -853,6 +894,12 @@ HttpResponseSender::~HttpResponseSender() {
     const google::protobuf::Message* res = nullptr != _messages ? _messages->Response() : nullptr;
     
     if (cntl->IsCloseConnection()) {
+        if (cntl->http_request().is_http2()) {
+            H2Context* ctx = static_cast<H2Context*>(socket->parsing_context());
+            if (ctx != NULL) {
+                ctx->AddAbandonedStream(_h2_stream_id);
+            }
+        }
         socket->SetFailed();
         return;
     }
@@ -1051,6 +1098,12 @@ HttpResponseSender::~HttpResponseSender() {
     }
 
     if (rc != 0) {
+        if (is_http2) {
+            H2Context* ctx = static_cast<H2Context*>(socket->parsing_context());
+            if (ctx != NULL) {
+                ctx->AddAbandonedStream(_h2_stream_id);
+            }
+        }
         // EPIPE is common in pooled connections + backup requests.
         const int errcode = errno;
         PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *socket;
@@ -1062,6 +1115,10 @@ HttpResponseSender::~HttpResponseSender() {
         bthread_id_join(response_id);
         // Do not care about the result of background writing.
         // TODO: this is not sent
+        // Note: Under HTTP/2 with notify_on_success=true, H2UnsentResponse::AppendAndDestroySelf
+        // returns OK once HEADERS and the initial window of DATA frames are queued, while
+        // remaining DATA / Trailer frames may be deferred until WINDOW_UPDATE arrives.
+        // Thus args.sent_us records when the initial response frames are written.
         span->set_sent_us(args.sent_us);
     }
 }
@@ -1294,8 +1351,13 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             // already received some or all of the message body for the
             // corresponding request, or if the framing indicates that there is
             // no message body.
+            //
+            // This branch is reached again for every read that leaves the
+            // body incomplete, so answer the expectation on the first one only.
             if (http_imsg->parser().type == HTTP_REQUEST &&
-                !http_imsg->header().before_http_1_1()) {
+                !http_imsg->header().before_http_1_1() &&
+                !http_imsg->expect_handled()) {
+                http_imsg->set_expect_handled();
                 const std::string* expect = http_imsg->header().GetHeader(common->EXPECT);
                 if (expect && *expect ==  common->CONTINUE_100) {
                     // Send 100-continue response back.
@@ -1755,6 +1817,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 MakeRawHttpRequest(&sample->request, &req_header, ep, &req_body);
                 sample->submit(start_parse_us);
             }
+        } else {
+            req_body.clear();
         }
     } else {
         if (imsg_guard->read_body_progressively()) {

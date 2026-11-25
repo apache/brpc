@@ -17,6 +17,8 @@
 
 #include "brpc/policy/crc32c_checksum.h"
 
+#include <cstring>
+
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/log.h"
 #include "butil/crc32c.h"
@@ -61,12 +63,15 @@ void Crc32cCompute(const ChecksumIn& in) {
 }
 
 bool Crc32cVerify(const ChecksumIn& in) {
-    uint32_t crc = ComputeCrc32c(in);
     auto& val = ControllerPrivateAccessor(const_cast<Controller*>(in.cntl))
                     .checksum_value();
-    CHECK_EQ(val.size(), sizeof(crc));
-    auto expected = *reinterpret_cast<const uint32_t*>(val.data());
+    uint32_t expected;
+    if (val.size() != sizeof(expected)) {
+        return false;
+    }
+    std::memcpy(&expected, val.data(), sizeof(expected));
     expected = butil::crc32c::Unmask(butil::NetToHost32(expected));
+    const uint32_t crc = ComputeCrc32c(in);
     RPC_VLOG << "Crc32cVerify crc=" << crc << " expected=" << expected;
     return crc == expected;
 }

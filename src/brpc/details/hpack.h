@@ -108,6 +108,15 @@ public:
     void Encode(butil::IOBufAppender* out, const Header& header)
     { return Encode(out, header, HPackOptions()); }
 
+    // Encode header without consulting or mutating the dynamic table (uses
+    // static-table indexed representation when matched, or literal representation
+    // per RFC 7541 section 6.1 / 6.2.2 / 6.2.3). Safe to use for trailers whose
+    // transmission may be deferred behind flow-controlled DATA frames while
+    // other streams continue to encode HEADERS on the same connection.
+    static void EncodeWithoutDynamicTable(butil::IOBufAppender* out,
+                                          const Header& header,
+                                          const HPackOptions& options);
+
     // Try to decode at most one Header from source and erase corresponding
     // buffer.
     // Returns:

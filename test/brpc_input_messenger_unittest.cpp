@@ -45,7 +45,9 @@ int main(int argc, char* argv[]) {
                                EmptyProcessHuluRequest, EmptyProcessHuluRequest,
                                nullptr, nullptr, nullptr,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+    // Private protocols must not reuse builtin IDs (30 is fb_rpc); use the
+    // last slot of the protocol table.
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)127, dummy_protocol));
     return RUN_ALL_TESTS();
 }
 
@@ -59,6 +61,18 @@ protected:
     virtual void TearDown() {
     };
 };
+
+TEST_F(MessengerTest, non_protocol_handlers_respect_capacity) {
+    brpc::InputMessenger messenger(1);
+    brpc::InputMessageHandler handler;
+    handler.parse = brpc::policy::ParseHuluMessage;
+    handler.process = EmptyProcessHuluRequest;
+    handler.verify = nullptr;
+    handler.arg = nullptr;
+    handler.name = "dummy_hulu";
+    ASSERT_EQ(0, messenger.AddNonProtocolHandler(handler));
+    ASSERT_EQ(-1, messenger.AddNonProtocolHandler(handler));
+}
 
 #define USE_UNIX_DOMAIN_SOCKET 1
 

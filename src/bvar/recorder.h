@@ -124,7 +124,7 @@ public:
     typedef typename combiner_type::self_shared_type shared_combiner_type;
     typedef combiner_type::Agent agent_type;
 
-    IntRecorder() : _combiner(std::make_shared<combiner_type>()), _sampler(nullptr) {}
+    IntRecorder() = default;
 
     IntRecorder(const butil::StringPiece& name) : IntRecorder() {
         expose(name);
@@ -263,8 +263,10 @@ private:
     }
 
 private:
-    shared_combiner_type    _combiner;
-    sampler_type* _sampler;
+    shared_combiner_type _combiner{std::make_shared<combiner_type>()};
+    // `_combiner` keeps this ID allocated for the lifetime of the recorder.
+    const detail::AgentId _agent_id{_combiner->agent_id()};
+    sampler_type* _sampler{nullptr};
     std::string _debug_name;
 };
 
@@ -291,8 +293,12 @@ inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
                        << (void*)this << ") " << reason;
         }
     }
-    agent_type* agent = _combiner->get_or_create_tls_agent();
-    if (BAIDU_UNLIKELY(!agent)) {
+
+    agent_type* agent = combiner_type::get_bound_tls_agent(_agent_id);
+    if (BAIDU_UNLIKELY(agent == nullptr)) {
+        agent = _combiner->get_or_create_tls_agent();
+    }
+    if (BAIDU_UNLIKELY(agent == nullptr)) {
         LOG(FATAL) << "Fail to create agent";
         return *this;
     }

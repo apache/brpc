@@ -98,6 +98,7 @@ public:
         : InputMessageBase()
         , HttpMessage(read_body_progressively, request_method)
         , _is_stage2(false)
+        , _expect_handled(false)
         , _socket_id(INVALID_SOCKET_ID) {
         // add one ref for Destroy
         butil::intrusive_ptr<HttpContext>(this).detach();
@@ -115,6 +116,12 @@ public:
     // True if AddOneRefForStage2() was ever called.
     bool is_stage2() const { return _is_stage2; }
 
+    // True once ParseHttpMessage() has dealt with the `Expect' header of this
+    // request. The parser is re-entered on every read while the body is still
+    // incomplete; the expectation is answered on the first of them only.
+    bool expect_handled() const { return _expect_handled; }
+    void set_expect_handled() { _expect_handled = true; }
+
     // @InputMessageBase
     void DestroyImpl() override {
         RemoveOneRefForStage2();
@@ -129,6 +136,7 @@ public:
 
 private:
     bool _is_stage2;
+    bool _expect_handled;
     SocketId _socket_id;
 };
 

@@ -216,6 +216,9 @@ BRPC_SOURCES_ALL = $(foreach d,$(BRPC_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCE
 ifeq ($(URMA_USE_MOCK),0)
 BRPC_SOURCES_ALL := $(filter-out src/brpc/urma/mock_urma.cpp,$(BRPC_SOURCES_ALL))
 endif
+ifneq ($(WITH_FLATBUFFERS),1)
+BRPC_SOURCES_ALL := $(filter-out src/brpc/policy/flatbuffers_protocol.cpp,$(BRPC_SOURCES_ALL))
+endif
 BRPC_SOURCES = $(filter-out $(THRIFT_SOURCES) $(EXCLUDE_SOURCES), $(BRPC_SOURCES_ALL))
 # TCP-only servers also encode the disabled URMA Hello.
 BRPC_PROTOS = $(sort $(filter %.proto,$(BRPC_SOURCES)) src/brpc/urma/urma_handshake.proto)

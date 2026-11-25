@@ -212,9 +212,9 @@ make redis_cluster_client
 
 # 查看发出的请求和收到的回复
 
- 打开[-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose)即看到所有的redis request和response，注意这应该只用于线下调试，而不是线上程序。
+ 打开[-redis_verbose](http://localhost:8765/flags/redis_verbose)即看到所有的redis request和response，注意这应该只用于线下调试，而不是线上程序。
 
-打开[-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbose_crlf2space)可让打印内容中的CRLF (\r\n)变为空格，方便阅读。
+打开[-redis_verbose_crlf2space](http://localhost:8765/flags/redis_verbose_crlf2space)可让打印内容中的CRLF (\r\n)变为空格，方便阅读。
 
 | Name                     | Value | Description                              | Defined At                         |
 | ------------------------ | ----- | ---------------------------------------- | ---------------------------------- |

@@ -72,6 +72,14 @@ public:
     // Add a sub channel, which will be deleted along with schan or explicitly
     // by RemoveAndDestroyChannel.
     // On success, handle is set with the key for removal.
+    //
+    // Ownership (single source of truth: the FIRST successful registration):
+    //   - OWNS_CHANNEL: schan owns sub_channel; caller must not delete it.
+    //   - DOESNT_OWN_CHANNEL: caller owns sub_channel and must delete it.
+    // On failure the same rule applies to the registration being created: schan
+    // deletes sub_channel iff its ownership is OWNS_CHANNEL.
+    // A duplicate sub_channel returns -1 and changes nothing; it stays owned as
+    // its first registration decided.
     // NOTE: Different from pchan, schan can add channels at any time.
     // Returns 0 on success, -1 otherwise.
     int AddChannel(ChannelBase* sub_channel, ChannelHandle* handle) {

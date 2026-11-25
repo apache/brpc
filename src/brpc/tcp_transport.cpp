@@ -54,7 +54,7 @@ ssize_t TcpTransport::CutFromIOBufList(butil::IOBuf** buf, size_t ndata) {
 int TcpTransport::WaitEpollOut(butil::atomic<int>* _epollout_butex,
                                bool pollin, timespec duetime) {
     g_vars->nwaitepollout << 1;
-    const int rc = _socket->WaitEpollOut(_socket->fd(), pollin, &duetime);
+    int rc = _socket->WaitEpollOut(_socket->fd(), pollin, &duetime, false);
     if (rc < 0 && errno != ETIMEDOUT) {
         const int saved_errno = errno;
         PLOG(WARNING) << "Fail to wait epollout of " << _socket;
@@ -81,7 +81,10 @@ void TcpTransport::ProcessEvent(bthread_attr_t attr) {
     }
 }
 void TcpTransport::QueueMessage(InputMessageClosure& input_msg,
-                                int* num_bthread_created, bool) {
+                                int* num_bthread_created, bool last_msg) {
+    if (last_msg) {
+        return;
+    }
     InputMessageBase* to_run_msg = input_msg.release();
     if (!to_run_msg) {
         return;

@@ -33,6 +33,10 @@ typedef Window<IntRecorder, SERIES_IN_SECOND> RecorderWindow;
 typedef Window<Maxer<int64_t>, SERIES_IN_SECOND> MaxWindow;
 typedef Window<Percentile, SERIES_IN_SECOND> PercentileWindow;
 
+// Round |dval| up with probability equal to its fractional part. |random|
+// must be in [0, 1); keeping it explicit makes the rule deterministic to test.
+int64_t double_to_random_int(double dval, double random);
+
 // NOTE: Always use int64_t in the interfaces no matter what the impl. is.
 
 class CDF : public Variable {

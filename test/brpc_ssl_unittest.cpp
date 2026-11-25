@@ -20,6 +20,8 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <fstream>
+#include <memory>
+#include <sstream>
 #include <gtest/gtest.h>
 #include <google/protobuf/descriptor.h>
 #include <butil/time.h>
@@ -36,6 +38,7 @@
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
 #include "brpc/details/ssl_helper.h"
+#include "brpc/handshake/rdma_handshake_constants.h"
 #include "echo.pb.h"
 
 namespace brpc {
@@ -87,6 +90,116 @@ protected:
     virtual void SetUp() {};
     virtual void TearDown() {};
 };
+
+#ifndef USE_MESALINK
+static void MarkCertificateFreed(void*, void* ptr, CRYPTO_EX_DATA*,
+                                 int, long, void*) {
+    if (ptr != nullptr) {
+        *static_cast<bool*>(ptr) = true;
+    }
+}
+
+TEST_F(SSLTest, disabled_rdma_hello_is_sent_over_tls) {
+    brpc::Server server;
+    brpc::ServerOptions options;
+    auto& cert = options.mutable_ssl_options()->default_cert;
+    cert.certificate = "cert1.crt";
+    cert.private_key = "cert1.key";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+    butil::fd_guard fd(butil::tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(fd, 0);
+    const timeval timeout{3, 0};
+    ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO,
+                           &timeout, sizeof(timeout)));
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> ctx(
+        SSL_CTX_new(SSLv23_method()), SSL_CTX_free);
+    ASSERT_TRUE(ctx);
+    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(ctx.get()), SSL_free);
+    ASSERT_TRUE(ssl);
+    ASSERT_EQ(1, SSL_set_fd(ssl.get(), fd));
+    ASSERT_EQ(1, SSL_connect(ssl.get()));
+
+    const auto& spec = brpc::rdma::RdmaHelloFrameSpec(2);
+    std::string payload(spec.min_frame_len - spec.magic_len - sizeof(uint16_t),
+                        '\0');
+    std::string hello;
+    ASSERT_EQ(brpc::handshake::FRAME_OK,
+              brpc::handshake::FrameCodec::Encode(spec, payload, &hello));
+    ASSERT_EQ(static_cast<int>(hello.size()),
+              SSL_write(ssl.get(), hello.data(), hello.size()));
+    char reply[brpc::rdma::HELLO_V2_MSG_LEN_MIN];
+    size_t received = 0;
+    while (received < sizeof(reply)) {
+        const int n = SSL_read(ssl.get(), reply + received,
+                               sizeof(reply) - received);
+        ASSERT_GT(n, 0);
+        received += n;
+    }
+    EXPECT_EQ(0, memcmp(reply, "RDMA", spec.magic_len));
+    EXPECT_EQ(0xff, static_cast<unsigned char>(reply[6]));
+    EXPECT_EQ(0xff, static_cast<unsigned char>(reply[7]));
+}
+
+TEST_F(SSLTest, diagnostic_print_releases_peer_certificate) {
+    bool certificate_freed = false;
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> server_ctx(
+        SSL_CTX_new(SSLv23_method()), SSL_CTX_free);
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> client_ctx(
+        SSL_CTX_new(SSLv23_method()), SSL_CTX_free);
+    ASSERT_TRUE(server_ctx);
+    ASSERT_TRUE(client_ctx);
+    ASSERT_EQ(1, SSL_CTX_use_certificate_chain_file(server_ctx.get(), "cert1.crt"));
+    ASSERT_EQ(1, SSL_CTX_use_PrivateKey_file(
+        server_ctx.get(), "cert1.key", SSL_FILETYPE_PEM));
+    SSL_CTX_set_session_cache_mode(server_ctx.get(), SSL_SESS_CACHE_OFF);
+    SSL_CTX_set_session_cache_mode(client_ctx.get(), SSL_SESS_CACHE_OFF);
+    std::unique_ptr<SSL, decltype(&SSL_free)> server(
+        SSL_new(server_ctx.get()), SSL_free);
+    std::unique_ptr<SSL, decltype(&SSL_free)> client(
+        SSL_new(client_ctx.get()), SSL_free);
+    ASSERT_TRUE(server);
+    ASSERT_TRUE(client);
+    BIO* server_bio = nullptr;
+    BIO* client_bio = nullptr;
+    ASSERT_EQ(1, BIO_new_bio_pair(&server_bio, 0, &client_bio, 0));
+    SSL_set_bio(server.get(), server_bio, server_bio);
+    SSL_set_bio(client.get(), client_bio, client_bio);
+    SSL_set_accept_state(server.get());
+    SSL_set_connect_state(client.get());
+    for (int i = 0; i < 100 &&
+         (!SSL_is_init_finished(client.get()) ||
+          !SSL_is_init_finished(server.get())); ++i) {
+        for (SSL* ssl : {client.get(), server.get()}) {
+            const int rc = SSL_do_handshake(ssl);
+            if (rc != 1) {
+                const int error = SSL_get_error(ssl, rc);
+                ASSERT_TRUE(error == SSL_ERROR_WANT_READ ||
+                            error == SSL_ERROR_WANT_WRITE) << error;
+            }
+        }
+    }
+    ASSERT_TRUE(SSL_is_init_finished(client.get()));
+    ASSERT_TRUE(SSL_is_init_finished(server.get()));
+    std::unique_ptr<X509, decltype(&X509_free)> peer(
+        SSL_get_peer_certificate(client.get()), X509_free);
+    ASSERT_TRUE(peer);
+    static const int index = X509_get_ex_new_index(
+        0, nullptr, nullptr, nullptr, MarkCertificateFreed);
+    ASSERT_GE(index, 0);
+    ASSERT_EQ(1, X509_set_ex_data(peer.get(), index, &certificate_freed));
+    for (int i = 0; i < 10; ++i) {
+        std::ostringstream os;
+        brpc::Print(os, client.get(), "\n");
+        EXPECT_NE(std::string::npos, os.str().find("peer_certificate={"));
+        EXPECT_NE(std::string::npos, os.str().find("subject="));
+    }
+    EXPECT_FALSE(certificate_freed);
+    peer.reset();
+    client.reset();
+    client_ctx.reset();
+    EXPECT_TRUE(certificate_freed);
+}
+#endif  // USE_MESALINK
 
 void* RunClosure(void* arg) {
     google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
@@ -324,7 +437,9 @@ TEST_F(SSLTest, connect_on_create) {
         brpc::policy::PackRpcRequest,nullptr, ProcessResponse,
         nullptr, nullptr, nullptr, brpc::CONNECTION_TYPE_ALL, "ssl_ut_baidu"
     };
-    ASSERT_EQ(0, RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+    // Private protocols must not reuse builtin IDs (30 is fb_rpc); use the
+    // last slot of the protocol table.
+    ASSERT_EQ(0, RegisterProtocol((brpc::ProtocolType)127, dummy_protocol));
 
     brpc::InputMessageHandler dummy_handler ={
         dummy_protocol.parse, dummy_protocol.process_response,

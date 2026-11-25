@@ -22,6 +22,8 @@
 
 #include "brpc/handshake/ubshm_handshake.h"
 #include "brpc/socket.h"
+#include "bthread/mutex.h"
+#include "bthread/condition_variable.h"
 #include "brpc/ubshm/ubr_data_format.h"
 #include "brpc/ubshm/shm/shm_def.h"
 #include "brpc/ubshm/ub_helper.h"
@@ -44,6 +46,11 @@ namespace ubring {
 DECLARE_int32(ub_poller_num);
 DECLARE_bool(ub_edisp_unsched);
 DECLARE_bool(ub_disable_bthread);
+
+// Builds the server-side shared-memory name derived from a peer name.
+// Returns false when the result cannot fit in shm_name.
+bool BuildServerShmName(const char* peer_name,
+                        char (&shm_name)[SHM_MAX_NAME_BUFF_LEN]);
 
 class BAIDU_CACHELINE_ALIGNMENT UBShmEndpoint : public SocketUser {
 friend class Socket;
@@ -166,8 +173,12 @@ private:
     // Poller group
     struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {
         PollerGroup() : pollers(FLAGS_ub_poller_num), running(false) {}
+        bthread::Mutex mutex;
         std::vector<Poller> pollers;
         std::atomic<bool> running;
+        bool stopping{false};
+        bthread::ConditionVariable stopped;
+        void Stop(std::unique_lock<bthread::Mutex>& lock);
     };
     static std::vector<PollerGroup> _poller_groups;
 

@@ -30,7 +30,8 @@
 #include "butil/atomicops.h"              // butil::atomic
 #include "butil/macros.h"                 // BAIDU_CACHELINE_ALIGNMENT
 #include "butil/scoped_lock.h"            // BAIDU_SCOPED_LOCK
-#include "butil/thread_local.h"           // BAIDU_THREAD_LOCAL
+#include "butil/thread_local.h"           // BUTIL_THREAD_LOCAL
+#include "butil/time.h"                   // monotonic_time_us
 #include "butil/memory/aligned_memory.h"  // butil::AlignedMemory
 #include "butil/debug/address_annotations.h"
 
@@ -78,11 +79,20 @@ static const size_t OP_INITIAL_FREE_LIST_SIZE = 1024;
 
 template <typename T>
 class ObjectPoolBlockItemNum {
-    static const size_t N1 = ObjectPoolBlockMaxSize<T>::value / sizeof(T);
+public:
+#ifdef BUTIL_USE_ASAN
+    // ASan manual poisoning requires slots to start at 8-byte boundaries.
+    typedef AlignedMemory<sizeof(T), __alignof__(T) < 8 ? 8 : __alignof__(T)> BlockItem;
+#else
+    typedef AlignedMemory<sizeof(T), __alignof__(T)> BlockItem;
+#endif
+
+private:
+    static const size_t N1 = ObjectPoolBlockMaxSize<T>::value / sizeof(BlockItem);
     static const size_t N2 = (N1 < 1 ? 1 : N1);
 public:
-    static const size_t value = (N2 > ObjectPoolBlockMaxItem<T>::value ?
-                                 ObjectPoolBlockMaxItem<T>::value : N2);
+    static const size_t value =
+        N2 > ObjectPoolBlockMaxItem<T>::value ? ObjectPoolBlockMaxItem<T>::value : N2;
 };
 
 template <typename T>
@@ -116,23 +126,23 @@ public:
 
     // Free objects are batched in a FreeChunk before they're added to
     // global list(_free_chunks).
-    typedef ObjectPoolFreeChunk<T, FREE_CHUNK_NITEM>    FreeChunk;
-    typedef ObjectPoolFreeChunk<T, 0> DynamicFreeChunk;
-#ifdef BUTIL_USE_ASAN
-    // According to https://github.com/google/sanitizers/wiki/AddressSanitizerManualPoisoning ,
-    // The allocated chunks should start with 8-aligned addresses,
-    // so that AlignedMemory starts with at least 8-aligned addresses.
-    typedef AlignedMemory<sizeof(T), __alignof__(T) < 8 ? 8 : __alignof__(T)> BlockItem;
-#else
-    typedef AlignedMemory<sizeof(T), __alignof__(T)> BlockItem;
-#endif
+    typedef ObjectPoolFreeChunk<T, FREE_CHUNK_NITEM> FreeChunk;
+    struct GlobalFreeChunk {
+        int64_t push_us;
+        size_t nfree;
+        T* ptrs[0];
+    };
+    typedef typename ObjectPoolBlockItemNum<T>::BlockItem BlockItem;
 
     // When a thread needs memory, it allocates a Block. To improve locality,
     // items in the Block are only used by the thread.
     // To support cache-aligned objects, align Block.items by cacheline.
     struct BAIDU_CACHELINE_ALIGNMENT Block {
         BlockItem items[BLOCK_NITEM];
-        size_t nitem;
+        // Written by the owning LocalPool and read by describe_objects().
+        // Publish the count after construction so statistics never observe a
+        // partially constructed object.
+        butil::atomic<size_t> nitem;
 
         Block() : nitem(0) {}
     };
@@ -194,22 +204,29 @@ public:
         }                                                               \
         T* obj = nullptr;                                                  \
         /* Fetch memory from local block */                             \
-        if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {            \
-            auto item = _cur_block->items + _cur_block->nitem;          \
-            obj = new (item->void_data()) T CTOR_ARGS;                  \
-            if (!ObjectPoolValidator<T>::validate(obj)) {               \
-                obj->~T();                                              \
-                return nullptr;                                            \
+        if (_cur_block) {                                                \
+            const size_t nitem =                                        \
+                _cur_block->nitem.load(butil::memory_order_relaxed);    \
+            if (nitem < BLOCK_NITEM) {                                  \
+                auto item = _cur_block->items + nitem;                  \
+                obj = new (item->void_data()) T CTOR_ARGS;              \
+                if (!ObjectPoolValidator<T>::validate(obj)) {           \
+                    obj->~T();                                          \
+                    return nullptr;                                     \
+                }                                                       \
+                /* It's poisoned prior to use. */                       \
+                OBJECT_POOL_ASAN_POISON_MEMORY_REGION(obj);             \
+                _cur_block->nitem.store(nitem + 1,                       \
+                                        butil::memory_order_release);    \
+                return obj;                                             \
             }                                                           \
-            /* It's poisoned prior to use. */                           \
-            OBJECT_POOL_ASAN_POISON_MEMORY_REGION(obj);                 \
-            ++_cur_block->nitem;                                        \
-            return obj;                                                 \
         }                                                               \
         /* Fetch a Block from global */                                 \
         _cur_block = add_block(&_cur_block_index);                      \
         if (_cur_block != nullptr) {                                       \
-            auto item = _cur_block->items + _cur_block->nitem;          \
+            const size_t nitem =                                        \
+                _cur_block->nitem.load(butil::memory_order_relaxed);    \
+            auto item = _cur_block->items + nitem;                      \
             obj = new (item->void_data()) T CTOR_ARGS;                  \
             if (!ObjectPoolValidator<T>::validate(obj)) {               \
                 obj->~T();                                              \
@@ -217,7 +234,8 @@ public:
             }                                                           \
             /* It's poisoned prior to use. */                           \
             OBJECT_POOL_ASAN_POISON_MEMORY_REGION(obj);                 \
-            ++_cur_block->nitem;                                        \
+            _cur_block->nitem.store(nitem + 1,                           \
+                                    butil::memory_order_release);        \
             return obj;                                                 \
         }                                                               \
         return nullptr;                                                    \
@@ -294,9 +312,9 @@ public:
     }
 
     void clear_objects() {
-        LocalPool* lp = _local_pool;
+        LocalPool* lp = _local_pool();
         if (lp) {
-            _local_pool = nullptr;
+            _local_pool() = nullptr;
             butil::thread_atexit_cancel(LocalPool::delete_local_pool, lp);
             delete lp;
         }
@@ -305,6 +323,44 @@ public:
     inline static size_t free_chunk_nitem() {
         const size_t n = ObjectPoolFreeChunkMaxItem<T>::value();
         return (n < FREE_CHUNK_NITEM ? n : FREE_CHUNK_NITEM);
+    }
+
+    template <typename Fn>
+    size_t process_idle_objects(int64_t idle_us, size_t max_items, Fn& fn) {
+        static_assert(noexcept(std::declval<Fn&>()(std::declval<T*>())),
+                      "idle object callback must be noexcept");
+        if (idle_us < 0 || max_items == 0) {
+            return 0;
+        }
+        std::vector<GlobalFreeChunk*> batch;
+        size_t nchunk = 0;
+        size_t nitem = 0;
+        int64_t deadline = monotonic_time_us() - idle_us;
+        {
+            BAIDU_SCOPED_LOCK(_free_chunks_mutex);
+            while (nchunk < _free_chunks.size() &&
+                   nitem < max_items && _free_chunks[nchunk]->push_us <= deadline) {
+                nitem += _free_chunks[nchunk]->nfree;
+                ++nchunk;
+            }
+            batch.assign(_free_chunks.begin(), _free_chunks.begin() + nchunk);
+            _free_chunks.erase(_free_chunks.begin(), _free_chunks.begin() + nchunk);
+            publish_nchunks_locked();
+        }
+        for (size_t i = 0; i < nchunk; ++i) {
+            for (size_t j = 0; j < batch[i]->nfree; ++j) {
+                T* obj = batch[i]->ptrs[j];
+                OBJECT_POOL_ASAN_UNPOISON_MEMORY_REGION(obj);
+                fn(obj);
+                OBJECT_POOL_ASAN_POISON_MEMORY_REGION(obj);
+            }
+        }
+        if (nchunk != 0) {
+            BAIDU_SCOPED_LOCK(_free_chunks_mutex);
+            _cold_chunks.insert(_cold_chunks.end(), batch.begin(), batch.end());
+            publish_nchunks_locked();
+        }
+        return nitem;
     }
 
     // Number of all allocated objects, including being used and free.
@@ -331,11 +387,11 @@ public:
             for (size_t j = 0; j < nblock; ++j) {
                 Block* b = bg->blocks[j].load(butil::memory_order_consume);
                 if (nullptr != b) {
-                    info.item_num += b->nitem;
+                    info.item_num += b->nitem.load(butil::memory_order_acquire);
                 }
             }
         }
-        info.total_size = info.block_num * info.block_item_num * sizeof(T);
+        info.total_size = info.block_num * info.block_item_num * sizeof(BlockItem);
         return info;
     }
 
@@ -355,7 +411,7 @@ public:
     }
 
 private:
-    ObjectPool() {
+    ObjectPool() : _nchunks(0) {
         _free_chunks.reserve(OP_INITIAL_FREE_LIST_SIZE);
         pthread_mutex_init(&_free_chunks_mutex, nullptr);
 #if defined(BUTIL_USE_ASAN) && \
@@ -406,7 +462,8 @@ private:
                 if (nullptr == b) {
                     continue;
                 }
-                for (size_t k = 0; k < b->nitem; ++k) {
+                const size_t nitem = b->nitem.load(butil::memory_order_acquire);
+                for (size_t k = 0; k < nitem; ++k) {
                     asan_unpoison_memory_region((T*)&b->items[k]);
                 }
             }
@@ -416,10 +473,7 @@ private:
 
     // Create a Block and append it to right-most BlockGroup.
     static Block* add_block(size_t* index) {
-        Block* const new_block = new(std::nothrow) Block;
-        if (nullptr == new_block) {
-            return nullptr;
-        }
+        auto const new_block = new Block;
         size_t ngroup;
         do {
             ngroup = _ngroup.load(butil::memory_order_acquire);
@@ -454,25 +508,23 @@ private:
             return true;
         }
         if (ngroup < OP_MAX_BLOCK_NGROUP) {
-            bg = new(std::nothrow) BlockGroup;
-            if (nullptr != bg) {
-                // Release fence is paired with consume fence in add_block()
-                // to avoid un-constructed bg to be seen by other threads.
-                _block_groups[ngroup].store(bg, butil::memory_order_release);
-                _ngroup.store(ngroup + 1, butil::memory_order_release);
-            }
+            bg = new BlockGroup;
+            // Release fence is paired with consume fence in add_block()
+            // to avoid un-constructed bg to be seen by other threads.
+            _block_groups[ngroup].store(bg, butil::memory_order_release);
+            _ngroup.store(ngroup + 1, butil::memory_order_release);
         }
         return bg != nullptr;
     }
 
     inline LocalPool* get_or_new_local_pool() {
-	    LocalPool* lp = BAIDU_GET_VOLATILE_THREAD_LOCAL(_local_pool);
+        LocalPool* lp = _local_pool();
         if (BAIDU_LIKELY(lp != nullptr)) {
             return lp;
         }
         lp = new LocalPool(this);
         BAIDU_SCOPED_LOCK(_change_thread_mutex); //avoid race with clear()
-	    BAIDU_SET_VOLATILE_THREAD_LOCAL(_local_pool, lp);
+        _local_pool() = lp;
         butil::thread_atexit(LocalPool::delete_local_pool, lp);
         _nlocal.fetch_add(1, butil::memory_order_relaxed);
         return lp;
@@ -480,7 +532,7 @@ private:
 
     void clear_from_destructor_of_local_pool() {
         // Remove tls
-        _local_pool = nullptr;
+        _local_pool() = nullptr;
 
         // Do nothing if there're active threads.
         if (_nlocal.fetch_sub(1, butil::memory_order_relaxed) != 1) {
@@ -519,7 +571,8 @@ private:
                 if (nullptr == b) {
                     continue;
                 }
-                for (size_t k = 0; k < b->nitem; ++k) {
+                const size_t nitem = b->nitem.load(butil::memory_order_acquire);
+                for (size_t k = 0; k < nitem; ++k) {
                     T* obj = (T*)&b->items[k];
                     // Unpoison to avoid affecting other allocator.
                     OBJECT_POOL_ASAN_UNPOISON_MEMORY_REGION(obj);
@@ -535,19 +588,28 @@ private:
     }
 
 private:
+    void publish_nchunks_locked() {
+        _nchunks.store(_free_chunks.size() + _cold_chunks.size(),
+                       butil::memory_order_relaxed);
+    }
+
     bool pop_free_chunk(FreeChunk& c) {
-        // Critical for the case that most return_object are called in
-        // different threads of get_object.
-        if (_free_chunks.empty()) {
+        // This relaxed load is only a hint that avoids contending on the
+        // mutex when both shared free lists are empty. Both lists remain
+        // protected by `_free_chunks_mutex` below.
+        if (_nchunks.load(butil::memory_order_relaxed) == 0) {
             return false;
         }
         pthread_mutex_lock(&_free_chunks_mutex);
-        if (_free_chunks.empty()) {
+        std::vector<GlobalFreeChunk*>& list =
+            _free_chunks.empty() ? _cold_chunks : _free_chunks;
+        if (list.empty()) {
             pthread_mutex_unlock(&_free_chunks_mutex);
             return false;
         }
-        DynamicFreeChunk* p = _free_chunks.back();
-        _free_chunks.pop_back();
+        GlobalFreeChunk* p = list.back();
+        list.pop_back();
+        publish_nchunks_locked();
         pthread_mutex_unlock(&_free_chunks_mutex);
         c.nfree = p->nfree;
         memcpy(c.ptrs, p->ptrs, sizeof(*p->ptrs) * p->nfree);
@@ -556,29 +618,38 @@ private:
     }
 
     bool push_free_chunk(const FreeChunk& c) {
-        DynamicFreeChunk* p = (DynamicFreeChunk*)malloc(
-            offsetof(DynamicFreeChunk, ptrs) + sizeof(*c.ptrs) * c.nfree);
+        if (c.nfree == 0) {
+            return true;
+        }
+        GlobalFreeChunk* p = (GlobalFreeChunk*)malloc(
+            offsetof(GlobalFreeChunk, ptrs) + sizeof(*c.ptrs) * c.nfree);
         if (!p) {
             return false;
         }
         p->nfree = c.nfree;
         memcpy(p->ptrs, c.ptrs, sizeof(*c.ptrs) * c.nfree);
         pthread_mutex_lock(&_free_chunks_mutex);
+        // Timestamp under the lock so the list is ordered by idle age.
+        p->push_us = monotonic_time_us();
         _free_chunks.push_back(p);
+        publish_nchunks_locked();
         pthread_mutex_unlock(&_free_chunks_mutex);
         return true;
     }
     
     static butil::static_atomic<ObjectPool*> _singleton;
     static pthread_mutex_t _singleton_mutex;
-    STATIC_MEMBER_BAIDU_VOLATILE_THREAD_LOCAL(LocalPool*, _local_pool);
+    static BUTIL_THREAD_LOCAL(LocalPool*, _local_pool, nullptr);
     static butil::static_atomic<long> _nlocal;
     static butil::static_atomic<size_t> _ngroup;
     static pthread_mutex_t _block_group_mutex;
     static pthread_mutex_t _change_thread_mutex;
     static butil::static_atomic<BlockGroup*> _block_groups[OP_MAX_BLOCK_NGROUP];
 
-    std::vector<DynamicFreeChunk*> _free_chunks;
+    std::vector<GlobalFreeChunk*> _free_chunks;
+    // Processed idle chunks, reused only when `_free_chunks` is empty.
+    std::vector<GlobalFreeChunk*> _cold_chunks;
+    butil::atomic<size_t> _nchunks;
     pthread_mutex_t _free_chunks_mutex;
 
 #ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
@@ -590,10 +661,6 @@ private:
 
 template <typename T>
 const size_t ObjectPool<T>::FREE_CHUNK_NITEM;
-
-template <typename T>
-BAIDU_THREAD_LOCAL typename ObjectPool<T>::LocalPool*
-ObjectPool<T>::_local_pool = nullptr;
 
 template <typename T>
 butil::static_atomic<ObjectPool<T>*> ObjectPool<T>::_singleton = BUTIL_STATIC_ATOMIC_INIT(nullptr);

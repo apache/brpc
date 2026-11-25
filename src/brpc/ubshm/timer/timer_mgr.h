@@ -61,13 +61,15 @@ typedef struct {
 RETURN_CODE TimerInit(void);
 void TimerModuleDestroy(void);
 void *TimerEpoll(void *args);
-int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args);
+// Store the descriptor before the callback can run when requested.
+int32_t TimerStart(const itimerspec* time, void* (*cb)(void*), void* args,
+                   int* registered_fd = nullptr);
 uint32_t GetActiveTimerNum(void);
 void CloseTimerFd(int fd);
 
 // Wait for an active callback before closing its descriptor. Self-cancellation
 // closes the descriptor when the callback returns.
-void DeleteTimerSafe(uint32_t fd);
+void DeleteTimerSafe(int fd);
 void DeleteTimer(uint32_t fd);
 }
 }

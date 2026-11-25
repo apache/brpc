@@ -18,7 +18,9 @@
 #ifndef BVAR_DETAIL_EXPOSED_REF_H_
 #define BVAR_DETAIL_EXPOSED_REF_H_
 
+#include <cstddef>
 #include <memory>
+#include <utility>
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "butil/synchronization/condition_variable.h"
@@ -36,7 +38,8 @@ namespace detail {
 //   - A reader increments the reference via acquire() while still holding the
 //     global map lock (so it is serialized with the owner's erase from the
 //     map), then releases the map lock, uses the returned pointer outside the
-//     lock, and finally calls release().
+//     lock, and finally calls release(). ScopedExposedRef manages this pairing
+//     automatically, including on early returns and exceptions.
 //   - The owner's hide() erases itself from the map and then calls hide_and_wait(),
 //     which blocks until all references acquired before this point are released,
 //     guaranteeing the owner stays alive throughout the reader's use. The handle
@@ -89,6 +92,57 @@ private:
 
 template <typename T>
 using SharedExposedRef = std::shared_ptr<ExposedRef<T>>;
+
+// Owns one acquired reader reference and keeps its ExposedRef alive. Construct
+// or reset with a non-empty handle while holding the global map lock, then use
+// the object outside that lock. Destruction/reset releases only a successfully
+// acquired reference. Moving transfers ownership without acquiring again.
+template <typename T>
+class ScopedExposedRef {
+public:
+    explicit ScopedExposedRef(const SharedExposedRef<T>& ref = nullptr)
+        : _ref(ref), _obj(_ref != nullptr ? _ref->acquire() : nullptr) {}
+
+    ~ScopedExposedRef() {
+        if (_obj != nullptr) {
+            _ref->release();
+        }
+    }
+
+    DISALLOW_COPY_AND_ASSIGN(ScopedExposedRef);
+
+    ScopedExposedRef(ScopedExposedRef&& other) noexcept
+        : _ref(std::move(other._ref)), _obj(other._obj) {
+        other._obj = nullptr;
+    }
+
+    ScopedExposedRef& operator=(ScopedExposedRef&& other) noexcept {
+        ScopedExposedRef tmp(std::move(other));
+        swap(tmp);
+        return *this;
+    }
+
+    void reset(const SharedExposedRef<T>& ref = nullptr) {
+        // Acquire before releasing the previous reference, even if both
+        // handles are the same.
+        ScopedExposedRef tmp(ref);
+        swap(tmp);
+    }
+
+    T* get() const { return _obj; }
+    T* operator->() const { return _obj; }
+    bool operator==(std::nullptr_t) const { return _obj == nullptr; }
+    bool operator!=(std::nullptr_t) const { return _obj != nullptr; }
+
+private:
+    void swap(ScopedExposedRef& other) noexcept {
+        _ref.swap(other._ref);
+        std::swap(_obj, other._obj);
+    }
+
+    SharedExposedRef<T> _ref;
+    T* _obj;
+};
 
 template <typename T>
 SharedExposedRef<T> make_exposed_ref(T* obj) {

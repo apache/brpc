@@ -145,6 +145,7 @@ TEST_BUTIL_SOURCES = \
     crc32c_unittest.cc \
     iobuf_unittest.cpp \
     object_pool_unittest.cpp \
+    resource_pool_unittest.cpp \
     recordio_unittest.cpp \
     test_switches.cc \
     scoped_locale.cc \
@@ -181,8 +182,10 @@ TEST_BTHREAD_SOURCES = $(wildcard bthread_*unittest.cpp)
 TEST_BTHREAD_OBJS = $(addsuffix .o, $(basename $(TEST_BTHREAD_SOURCES))) 
 
 TEST_BRPC_SOURCES = $(wildcard brpc_*unittest.cpp)
+# Requires real RDMA hardware; build and run this target explicitly.
+TEST_BRPC_SOURCES := $(filter-out brpc_flatbuffers_rdma_unittest.cpp,$(TEST_BRPC_SOURCES))
 ifneq ($(WITH_FLATBUFFERS),1)
-TEST_BRPC_SOURCES := $(filter-out brpc_flatbuffers_unittest.cpp,$(TEST_BRPC_SOURCES))
+TEST_BRPC_SOURCES := $(filter-out brpc_flatbuffers_unittest.cpp brpc_flatbuffers_protocol_unittest.cpp,$(TEST_BRPC_SOURCES))
 endif
 TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES))) 
 
@@ -199,11 +202,12 @@ all: $(TEST_BINS)
 clean:clean_bins
 	@echo "> Cleaning"
 	rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS) $(TEST_PROTO_SOURCES:.proto=.pb.h) $(TEST_PROTO_SOURCES:.proto=.pb.cc) flatbuffers_message_generated.h $(FLATBUFFERS_TEST_GEN_DIR)
+	rm -f brpc_flatbuffers_rdma_unittest.o
 	$(MAKE) -C.. clean_debug
 
 .PHONY:clean_bins
 clean_bins:
-	rm -rf $(TEST_BINS)
+	rm -rf $(TEST_BINS) brpc_flatbuffers_rdma_unittest
 
 libbrpc.dbg.$(SOEXT):FORCE
 	$(MAKE) -C.. test/libbrpc.dbg.$(SOEXT)
@@ -243,22 +247,46 @@ ifeq ($(WITH_FLATBUFFERS),1)
 FLATC ?= flatc
 FLATBUFFERS_TEST_HEADER = $(FLATBUFFERS_TEST_GEN_DIR)/flatbuffers_message_generated.h
 FLATBUFFERS_TEST_HDRPATHS = -I$(FLATBUFFERS_TEST_GEN_DIR) $(HDRPATHS)
+FLATBUFFERS_TEST_TARGETS = brpc_flatbuffers_unittest brpc_flatbuffers_protocol_unittest
+ifeq ($(WITH_RDMA),1)
+FLATBUFFERS_TEST_TARGETS += brpc_flatbuffers_rdma_unittest
+endif
 
 $(FLATBUFFERS_TEST_HEADER):flatbuffers_message.fbs
 	@mkdir -p $(FLATBUFFERS_TEST_GEN_DIR)
 	$(FLATC) --cpp -o $(FLATBUFFERS_TEST_GEN_DIR) $<
 
-brpc_flatbuffers_unittest.o:brpc_flatbuffers_unittest.cpp $(FLATBUFFERS_TEST_HEADER) | libbrpc.dbg.$(SOEXT)
+$(FLATBUFFERS_TEST_TARGETS:=.o):%.o:%.cpp $(FLATBUFFERS_TEST_HEADER) | libbrpc.dbg.$(SOEXT)
 	@echo "> Compiling $@"
 	$(CXX) -c $(FLATBUFFERS_TEST_HDRPATHS) $(CXXFLAGS) $< -o $@
 
-brpc_flatbuffers_unittest:brpc_flatbuffers_unittest.o | libbrpc.dbg.$(SOEXT)
+$(FLATBUFFERS_TEST_TARGETS): %: %.o | libbrpc.dbg.$(SOEXT)
 	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
 	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(GTEST_STATIC_LINKINGS) $(UT_DYNAMIC_LINKINGS)
 endif
+endif
+
+ifneq ($(WITH_FLATBUFFERS)$(WITH_RDMA),11)
+.PHONY: brpc_flatbuffers_rdma_unittest
+brpc_flatbuffers_rdma_unittest:
+	$(error Configure with --with-flatbuffers --with-rdma to build this test)
+endif
+
+# The pre-main test includes both implementations and needs a static archive to
+# avoid loading duplicate flags from the shared test library.
+../libbrpc.a:FORCE
+	$(MAKE) -C.. libbrpc.a
+
+brpc_collector_premain_unittest.o:../src/bvar/collector.cpp ../src/brpc/rpc_dump.cpp
+
+brpc_collector_premain_unittest:brpc_collector_premain_unittest.o ../libbrpc.a
+ifeq ($(SYSTEM),Linux)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ $(STATIC_LINKINGS) -Xlinker "-)" $(DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Darwin)
+	$(CXX) -o $@ $(LIBPATHS) $(SOPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
 
 brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o | libbrpc.dbg.$(SOEXT)

@@ -1,0 +1,161 @@
+name: FlatBuffers ON
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/brpc/flatbuffers/**'
+      - 'src/brpc/policy/flatbuffers_protocol.*'
+      - 'src/brpc/channel.*'
+      - 'src/brpc/controller.*'
+      - 'src/brpc/server.*'
+      - 'src/brpc/global.cpp'
+      - 'src/brpc/options.proto'
+      - 'src/brpc/details/*_private_accessor.h'
+      - 'test/*flatbuffers*'
+      - 'test/CMakeLists.txt'
+      - 'test/Makefile'
+      - 'test/BUILD.bazel'
+      - 'tools/flatbuffers/**'
+      - 'example/benchmark_fb/**'
+      - 'CMakeLists.txt'
+      - 'src/**/CMakeLists.txt'
+      - 'Makefile'
+      - 'config_brpc.sh'
+      - 'BUILD.bazel'
+      - 'MODULE.bazel'
+      - 'WORKSPACE'
+      - '.github/scripts/*flatbuffers*'
+      - '.github/workflows/flatbuffers-on.yml'
+  pull_request:
+    paths:
+      - 'src/brpc/flatbuffers/**'
+      - 'src/brpc/policy/flatbuffers_protocol.*'
+      - 'src/brpc/channel.*'
+      - 'src/brpc/controller.*'
+      - 'src/brpc/server.*'
+      - 'src/brpc/global.cpp'
+      - 'src/brpc/options.proto'
+      - 'src/brpc/details/*_private_accessor.h'
+      - 'test/*flatbuffers*'
+      - 'test/CMakeLists.txt'
+      - 'test/Makefile'
+      - 'test/BUILD.bazel'
+      - 'tools/flatbuffers/**'
+      - 'example/benchmark_fb/**'
+      - 'CMakeLists.txt'
+      - 'src/**/CMakeLists.txt'
+      - 'Makefile'
+      - 'config_brpc.sh'
+      - 'BUILD.bazel'
+      - 'MODULE.bazel'
+      - 'WORKSPACE'
+      - '.github/scripts/*flatbuffers*'
+      - '.github/workflows/flatbuffers-on.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: FB ON (${{ matrix.os }}, ${{ matrix.system }}, ${{ matrix.compiler }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {os: ubuntu-22.04, system: cmake, compiler: gcc, cc: gcc, cxx: g++, cache: ccache}
+          - {os: ubuntu-22.04, system: cmake, compiler: clang, cc: clang, cxx: clang++, cache: ccache}
+          - {os: ubuntu-22.04, system: make, compiler: gcc, cc: gcc, cxx: g++, cache: ccache}
+          - {os: ubuntu-22.04, system: make, compiler: clang, cc: clang, cxx: clang++, cache: ccache}
+          - {os: ubuntu-22.04, system: bazel, compiler: gcc, cc: gcc, cxx: g++, cache: bazel}
+          - {os: macos-latest, system: cmake, compiler: apple-clang, cc: clang, cxx: clang++, cache: ccache}
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      BUILD_SYSTEM: ${{ matrix.system }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # The runner context is unavailable in job-level env, so derive the work
+      # directory here for the remaining steps.
+      - name: Set the work directory
+        shell: bash
+        run: echo "FB_WORK=$RUNNER_TEMP/brpc-fb-${{ matrix.system }}-${{ matrix.compiler }}" >> "$GITHUB_ENV"
+
+      - name: Validate the gate's report checks
+        run: python3 .github/scripts/test_flatbuffers_on.py
+
+      - name: Install focused Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build clang ccache pkg-config python3 curl ca-certificates git \
+            libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler \
+            libleveldb-dev zlib1g-dev
+
+      # libgoogle-perftools-dev cannot be installed on the runner image (unmet
+      # libunwind-dev), so build gperftools as ci-linux.yml does. Bazel uses
+      # its own gperftools module.
+      - name: Build isolated Gperftools
+        if: runner.os == 'Linux' && matrix.system != 'bazel'
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/gperftools-2.16.tar.gz"
+          curl --fail --location --retry 3 \
+            https://github.com/gperftools/gperftools/releases/download/gperftools-2.16/gperftools-2.16.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' f12624af5c5987f2cc830ee534f754c3c5961eec08004c26a8b80de015cf056f "$archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/gperftools-2.16"
+          ./configure --prefix="$RUNNER_TEMP/gperftools-install" \
+            --enable-frame-pointers --disable-libunwind
+          make -j2
+          make install
+          echo "FB_GPERFTOOLS=$RUNNER_TEMP/gperftools-install" >> "$GITHUB_ENV"
+
+      - name: Install focused macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja pkg-config openssl@3 gflags leveldb protobuf@29 abseil gperftools
+
+      - uses: ./.github/actions/setup-build-cache
+        with:
+          kind: ${{ matrix.cache }}
+          cache-key: fb-on-${{ matrix.system }}-${{ matrix.compiler }}
+
+      - name: Build and run the FB ON gates
+        shell: bash
+        run: |
+          args=(--build-system "$BUILD_SYSTEM" --work "$FB_WORK" --jobs 2)
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            # Same layout as master's ci-macos.yml: the keg-only protobuf@29
+            # first, then the shared Homebrew prefix for everything else.
+            # Per-formula Cellar prefixes would leave abseil, which
+            # protobuf@29 headers include, off the include path.
+            args+=(--dependency-prefix "$(brew --prefix protobuf@29)")
+            args+=(--dependency-prefix "$(brew --prefix)")
+            args+=(--protoc "$(brew --prefix protobuf@29)/bin/protoc")
+          fi
+          if [[ -n "${FB_GPERFTOOLS:-}" ]]; then
+            args+=(--dependency-prefix "$FB_GPERFTOOLS")
+          fi
+          python3 .github/scripts/flatbuffers-on.py "${args[@]}"
+
+      - name: Upload commands, logs and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatbuffers-on-${{ matrix.os }}-${{ matrix.system }}-${{ matrix.compiler }}
+          path: ${{ env.FB_WORK }}/evidence/
+          if-no-files-found: warn
+          retention-days: 14
