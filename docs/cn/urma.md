@@ -100,41 +100,29 @@ sopt.socket_mode = brpc::SOCKET_MODE_URMA;
 server.Start(port, &sopt);
 ```
 
-若对端不支持 URMA（例如 TCP 客户端连接 URMA 服务端），在 4 字节 magic
-握手后透明回退到 TCP，应用代码无需改动。
+TCP 客户端可以直接连接 URMA 服务端。URMA 客户端收到禁用 URMA 的
+Hello 后继续使用 TCP。
 
 ## 架构
 
-UrmaTransport 沿用与 `RdmaTransport` / `UBShmTransport` 一致的两层设计：
+`AdapterTransport` 编排公共握手，并在 TCP 和 URMA 数据面之间选择：
 
 ```
-UrmaTransport : public Transport         (urma_transport.{h,cpp})
-  +-- std::shared_ptr<TcpTransport>      (回退路径)
-  +-- urma::UrmaEndpoint*                (URMA 数据路径)
-  +-- UrmaState { URMA_ON, URMA_OFF, URMA_UNKNOWN }
-
-urma::UrmaEndpoint : public SocketUser   (urma/urma_endpoint.{h,cpp})
-  +-- UrmaResource { jfc, jfce, jfr, jetty, remote_jetty, remote_seg }
-  +-- 握手状态机（C/S 对称，在 TCP fd 上驱动）
-  +-- 发送路径：urma_post_jetty_send_wr(URMA_OPC_SEND)
-  +-- 接收路径：urma_poll_jfc -> HandleCompletion -> InputMessenger
-  +-- 双窗口信用流控（_remote_rq_window_size / _sq_window_size）
+AdapterTransport
+  +-- TcpTransport             （TCP 握手、普通 TCP 请求和回退）
+  +-- UrmaTransport
+      +-- UrmaEndpoint         （URMA 资源、CQ 与收发信用）
 ```
 
-### 建链流程（双平面）
+### 建链流程
 
-与 RDMA / UBRing 一致，控制面为 TCP，数据面为 URMA：
-
-1. TCP 连接建立。
-2. `UrmaConnect::StartConnect` 起客户端握手 bthread。
-3. 双方在 TCP fd 上交换 `UrmaHello` 消息（v2 二进制 magic `URMA`，
-   v3 protobuf magic `URM3`），携带本地 EID、jetty id、recv buffer 数量、
-   以及扁平化的 buffer 池 segment。
-4. 双方先调用 `urma_import_seg` **再**调用 `urma_import_jetty`，为远端 EID
-   建立传输路径（TP）路由。跳过 `import_seg` 会导致首个 SEND 被硬件以
-   `URMA_CR_RNR_RETRY_CNT_EXC_ERR` 拒绝。
-5. 4 字节 ACK（`HELLO_ACK_URMA_OK = 0x1`）确认双方均要 URMA。
-6. 成功后 TCP fd 仅保留用于 epoll 生命周期和回退，数据走 URMA。
+1. TCP 连接建立后，`AdapterTransport` 启动客户端握手 bthread。服务端
+   通过 `InputMessenger` 解析握手帧。
+2. 双方交换 Hello。v2 使用二进制格式和 magic `URMA`，v3 使用 protobuf
+   和 magic `URM3`。Hello 携带 EID、jetty ID、接收缓冲区数量和缓冲池段信息。
+3. 双方先调用 `urma_import_seg`，再调用 `urma_import_jetty`。
+4. 客户端发送 4 字节 ACK 确认升级。服务端处理完 ACK 并退出 TCP 握手解析后
+   启动 CQ 接收。业务数据走 URMA，TCP 保留为控制连接。
 
 ### 内存管理
 

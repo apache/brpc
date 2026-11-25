@@ -98,28 +98,17 @@ int UrmaTransport::WaitEpollOut(butil::atomic<int>* epollout_butex,
         const int expected_val =
             epollout_butex->load(butil::memory_order_acquire);
         CHECK(_urma_ep != nullptr);
-        if (!_urma_ep->IsWritable()) {
-            // Same caveat as RDMA: URMA cannot detect failure by writing, so
-            // after a failed butex wait we must re-check _socket->Failed().
-            int rc =
-                bthread::butex_wait(epollout_butex, expected_val, &duetime);
-            if (rc < 0 && errno != EWOULDBLOCK && errno != ETIMEDOUT) {
-                const int saved_errno = errno;
-                PLOG(ERROR) << "Fail to wait epollout butex";
-                if (_socket->SetFailed(saved_errno, "Fail to wait epollout butex: %s",
-                                        berror(saved_errno))) {
-                    return 1;
-                }
-            }
-            if (_socket->Failed()) {
-                return 1;
-            }
-            return 0;
+        if (!_urma_ep->IsWritable() &&
+            bthread::butex_wait(epollout_butex, expected_val, &duetime) < 0 &&
+            errno != EWOULDBLOCK && errno != ETIMEDOUT) {
+            const int saved_errno = errno;
+            PLOG(ERROR) << "Fail to wait epollout butex";
+            _socket->SetFailed(saved_errno, "Fail to wait epollout butex: %s",
+                               berror(saved_errno));
         }
-        return 0;
     }
-    errno = ENOTCONN;
-    return 1;
+    // A healthy socket can retry the write through AdapterTransport.
+    return _socket->Failed() ? 1 : 0;
 }
 
 void UrmaTransport::ProcessEvent(bthread_attr_t attr) {

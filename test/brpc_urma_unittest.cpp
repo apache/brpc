@@ -271,12 +271,24 @@ TEST(UrmaTransportTest, inactive_data_path_fails_without_tcp_delegate) {
     errno = 0;
     EXPECT_EQ(-1, transport.CutFromIOBufList(list, 1));
     EXPECT_EQ(ENOTCONN, errno);
+}
+
+TEST(UrmaTransportTest, inactive_write_wait_checks_socket_failure) {
+    SocketOptions options;
+    SocketId sid;
+    ASSERT_EQ(0, Socket::Create(options, &sid));
+    SocketUniquePtr socket;
+    ASSERT_EQ(0, Socket::Address(sid, &socket));
+    UrmaTransport transport;
+    transport.Init(socket.get(), options);
 
     butil::atomic<int> epollout_butex(0);
     const timespec duetime = {};
-    errno = 0;
+    EXPECT_EQ(0, transport.WaitEpollOut(&epollout_butex, false, duetime));
+    EXPECT_FALSE(socket->Failed());
+
+    ASSERT_EQ(0, socket->SetFailed(ECANCELED, "Cancel write wait"));
     EXPECT_EQ(1, transport.WaitEpollOut(&epollout_butex, false, duetime));
-    EXPECT_EQ(ENOTCONN, errno);
 }
 
 class CapturingUrmaHandshakeIO : public handshake::HandshakeIO {
