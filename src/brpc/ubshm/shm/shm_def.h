@@ -33,6 +33,9 @@
 #define SHM_MAX_NAME_BUFF_LEN 48 // byte, buffer size, ubsm_sdk need name to be below 48byte
 #define SHM_MAX_NAME_LEN (SHM_MAX_NAME_BUFF_LEN - 1) // byte, string length
 #define SHM_ALLOC_UNIT_SIZE (4 * 1024 * 1024) // 4MB
+// Permission bits of newly created shm segments. Only the peer of the creating
+// user is allowed to access the segment, so group and other get no access.
+#define SHM_SEGMENT_MODE 0600
 
 namespace brpc {
 namespace ubring {
