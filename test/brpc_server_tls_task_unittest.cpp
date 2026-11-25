@@ -168,7 +168,8 @@ struct Launcher {
 class ManagedTaskTest : public ManagedPoolTest,
                         public testing::WithParamInterface<Options> {
 protected:
-    void CheckExitBoundary(bool use_tls, bool exit_explicitly = false) {
+    void CheckExitBoundary(bool use_tls, bool exit_explicitly = false,
+                           bool return_after_start = false) {
         const Options options = GetParam();
         BlockingTask data;
         data.context = context.get();
@@ -180,14 +181,24 @@ protected:
                           &data};
         bthread_t driver = INVALID_BTHREAD;
         auto cleanup = butil::MakeScopeGuard([&] {
-            data.ReleaseFunction();
+            context->BeginDrain();
             data.ReleaseDestructor();
+            if (use_tls && !pool_destroyed) {
+                // Destroy cached TLS values while data is alive, and make
+                // running tasks destroy their tables instead of caching them.
+                EXPECT_EQ(0, bthread_keytable_pool_destroy(pool));
+                pool_destroyed = true;
+            }
+            data.ReleaseFunction();
             // Join driver before reading its output even on a fatal assertion.
             if (driver != INVALID_BTHREAD) {
                 EXPECT_EQ(0, bthread_join(driver, nullptr));
             }
             if (launcher.child != INVALID_BTHREAD) {
                 EXPECT_EQ(0, bthread_join(launcher.child, nullptr));
+            }
+            if (return_after_start) {
+                EXPECT_EQ(1, data.destroyed.load(butil::memory_order_relaxed));
             }
         });
         if (options.caller == 0) {
@@ -201,6 +212,10 @@ protected:
         ASSERT_EQ(0, launcher.completed.timed_wait(butil::seconds_from_now(5)));
         ASSERT_EQ(0, launcher.result);
         ASSERT_EQ(0, data.started.timed_wait(butil::seconds_from_now(5)));
+        if (return_after_start) {
+            // Exercise the same scope cleanup used by a fatal assertion.
+            return;
+        }
         EXPECT_EQ(1u, context->GetSnapshot().lease_count);
         context->BeginDrain();
         if (use_tls) {
@@ -232,6 +247,17 @@ protected:
 
 TEST_P(ManagedTaskTest, drain_waits_for_blocked_tls_destructor) {
     CheckExitBoundary(true);
+}
+
+TEST_P(ManagedTaskTest, early_return_destroys_pool_before_task_data) {
+    CheckExitBoundary(true, false, true);
+    // Keep a broken cleanup path from invoking a destructor on expired data
+    // during TearDown, so this regression reports an assertion instead of UAF.
+    if (!pool_destroyed) {
+        EXPECT_EQ(0, bthread_key_delete(key));
+        key = INVALID_BTHREAD_KEY;
+    }
+    EXPECT_TRUE(pool_destroyed);
 }
 
 TEST_P(ManagedTaskTest, task_without_keytable_still_releases_lease) {
