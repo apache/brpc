@@ -224,7 +224,8 @@ int LegacyUrmaEndpoint::WriteToFd(void* data, size_t len) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             return -1;
         }
-        if (_socket->WaitEpollOut(fd, true, &duetime) != 0 && errno != ETIMEDOUT) {
+        if (_socket->WaitEpollOut(fd, true, &duetime, /*check_failed=*/true) != 0 &&
+            errno != ETIMEDOUT) {
             return -1;
         }
     }
@@ -293,7 +294,8 @@ int LegacyUrmaEndpoint::WriteToFd(butil::IOBuf& data) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             return -1;
         }
-        if (_socket->WaitEpollOut(fd, true, &duetime) != 0 && errno != ETIMEDOUT) {
+        if (_socket->WaitEpollOut(fd, true, &duetime, /*check_failed=*/true) != 0 &&
+            errno != ETIMEDOUT) {
             return -1;
         }
     }

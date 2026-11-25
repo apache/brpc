@@ -1862,7 +1862,8 @@ static int RunUrmaHandshakeInterop(int version, bool polling, bool zerocopy,
         }
     } else if (AdapterTransport::Get(client.get())->handshake_phase() !=
                    handshake::ESTABLISHED ||
-               AdapterTransport::Get(client.get())->handshake_version() != version) {
+               AdapterTransport::Get(client.get())
+                   ->handshake_session()->protocol_version() != version) {
         return 40;
     }
     if (order == UrmaFirstPacket::IN_ACK_PARSER && !gate.Wait()) {
@@ -1948,7 +1949,8 @@ static int RunUrmaHandshakeInterop(int version, bool polling, bool zerocopy,
     if (peer != UrmaInteropPeer::LEGACY_SERVER &&
         (AdapterTransport::Get(accepted.get())->handshake_phase() !=
              handshake::ESTABLISHED ||
-         AdapterTransport::Get(accepted.get())->handshake_version() != version)) {
+         AdapterTransport::Get(accepted.get())
+                   ->handshake_session()->protocol_version() != version)) {
         return 51;
     }
     client->SetFailed();
