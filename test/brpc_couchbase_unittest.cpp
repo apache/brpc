@@ -23,6 +23,7 @@
 #include <butil/logging.h>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
+#include <limits>
 
 namespace brpc {
 DECLARE_int32(idle_timeout_second);
@@ -39,6 +40,68 @@ namespace {
 
 // Unit Tests - No Server Required
 class CouchbaseUnitTest : public testing::Test {};
+
+TEST_F(CouchbaseUnitTest, RequestLengthLimits) {
+  const size_t max_body = std::numeric_limits<uint32_t>::max();
+  EXPECT_TRUE(brpc::policy::ValidCouchbaseRequestLengths(1, 1, 8, max_body - 10));
+  EXPECT_FALSE(brpc::policy::ValidCouchbaseRequestLengths(1, 1, 8, max_body - 9));
+  EXPECT_FALSE(brpc::policy::ValidCouchbaseRequestLengths(65535, 1, 0, 0));
+  EXPECT_TRUE(brpc::policy::ValidCouchbaseAuthLengths(1, max_body - 9));
+  EXPECT_FALSE(brpc::policy::ValidCouchbaseAuthLengths(1, max_body - 8));
+  EXPECT_FALSE(brpc::policy::ValidCouchbaseAuthLengths(max_body, 0));
+}
+
+TEST_F(CouchbaseUnitTest, RejectOversizedRequestKeysWithoutChangingBuffer) {
+  brpc::CouchbaseOperations::CouchbaseRequest req;
+  const std::string max_key(65534, 'k');
+  const std::string oversized_key(65535, 'k');
+  const std::string oversized_bucket(65536, 'b');
+
+  ASSERT_TRUE(req.getRequest(max_key));
+  brpc::policy::CouchbaseRequestHeader header;
+  ASSERT_EQ(sizeof(header), req.rawBuffer().copy_to(&header, sizeof(header)));
+  EXPECT_EQ(65535, butil::NetToHost16(header.key_length));
+  EXPECT_EQ(65535u, butil::NetToHost32(header.total_body_length));
+  const size_t size = req.rawBuffer().size();
+  const int count = req.pipelinedCount();
+  EXPECT_FALSE(req.getRequest(oversized_key));
+  EXPECT_FALSE(req.deleteRequest(oversized_key));
+  EXPECT_FALSE(req.upsertRequest(oversized_key, "value", 0, 0, 0));
+  EXPECT_FALSE(req.addRequest(oversized_key, "value", 0, 0, 0));
+  EXPECT_FALSE(req.selectBucketRequest(oversized_bucket));
+  EXPECT_EQ(size, req.rawBuffer().size());
+  EXPECT_EQ(count, req.pipelinedCount());
+
+  std::unordered_map<std::string, brpc::CouchbaseManifestManager::CollectionManifest> cache;
+  brpc::CouchbaseOperations::CouchbaseRequest collection_req(&cache);
+  EXPECT_FALSE(collection_req.getRequest(oversized_key, "custom"));
+  EXPECT_FALSE(collection_req.deleteRequest(oversized_key, "custom"));
+  EXPECT_FALSE(collection_req.upsertRequest(oversized_key, "value", 0, 0, 0, "custom"));
+  EXPECT_FALSE(collection_req.addRequest(oversized_key, "value", 0, 0, 0, "custom"));
+  EXPECT_FALSE(collection_req.appendRequest(oversized_key, "value", 0, 0, 0, "custom"));
+  EXPECT_FALSE(collection_req.prependRequest(oversized_key, "value", 0, 0, 0, "custom"));
+  EXPECT_TRUE(cache.empty());
+  EXPECT_TRUE(collection_req.rawBuffer().empty());
+  EXPECT_EQ(0, collection_req.pipelinedCount());
+
+  brpc::CouchbaseOperations::CouchbaseRequest bucket_req;
+  ASSERT_TRUE(bucket_req.selectBucketRequest(std::string(65535, 'b')));
+  ASSERT_EQ(sizeof(header), bucket_req.rawBuffer().copy_to(&header, sizeof(header)));
+  EXPECT_EQ(65535, butil::NetToHost16(header.key_length));
+  EXPECT_EQ(65535u, butil::NetToHost32(header.total_body_length));
+}
+
+TEST_F(CouchbaseUnitTest, OversizedBucketReportsDeterministicError) {
+  brpc::CouchbaseOperations operations;
+  const brpc::CouchbaseOperations::Result result =
+      operations.selectBucket(std::string(65536, 'b'));
+
+  EXPECT_FALSE(result.success);
+  EXPECT_TRUE(result.value.empty());
+  EXPECT_EQ("Couchbase request exceeds protocol length limits",
+            result.error_message);
+  EXPECT_EQ(0, result.status_code);
+}
 
 TEST_F(CouchbaseUnitTest, ManifestJsonNesting) {
   brpc::CouchbaseManifestManager manager;
