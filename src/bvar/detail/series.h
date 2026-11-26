@@ -82,10 +82,10 @@ struct DivideOnAddition<T, Op, typename butil::enable_if<
 };
 
 template <typename T, size_t N, typename Op>
-struct DivideOnAddition<Vector<T,N>, Op, typename butil::enable_if<
+struct DivideOnAddition<FixedVector<T,N>, Op, typename butil::enable_if<
                                              butil::is_integral<T>::value>::type> {
-    static void inplace_divide(Vector<T, N>& obj, const Op& op, int number) {
-        static ProbablyAddtition<Vector<T, N>, Op> probably_add(op);
+    static void inplace_divide(FixedVector<T, N>& obj, const Op& op, int number) {
+        static ProbablyAddtition<FixedVector<T, N>, Op> probably_add(op);
         if (probably_add) {
             for (size_t i = 0; i < N; ++i) {
                 obj[i] = (T)round(obj[i] / (double)number);
@@ -95,10 +95,10 @@ struct DivideOnAddition<Vector<T,N>, Op, typename butil::enable_if<
 };
 
 template <typename T, size_t N, typename Op>
-struct DivideOnAddition<Vector<T,N>, Op, typename butil::enable_if<
+struct DivideOnAddition<FixedVector<T,N>, Op, typename butil::enable_if<
                                    butil::is_floating_point<T>::value>::type> {
-    static void inplace_divide(Vector<T,N>& obj, const Op& op, int number) {
-        static ProbablyAddtition<Vector<T,N>, Op> probably_add(op);
+    static void inplace_divide(FixedVector<T,N>& obj, const Op& op, int number) {
+        static ProbablyAddtition<FixedVector<T,N>, Op> probably_add(op);
         if (probably_add) {
             obj /= number;
         }
@@ -229,8 +229,8 @@ public:
 };
 
 template <typename T, size_t N, typename Op>
-class Series<Vector<T,N>, Op> : public SeriesBase<Vector<T,N>, Op> {
-    typedef SeriesBase<Vector<T,N>, Op> Base;
+class Series<FixedVector<T,N>, Op> : public SeriesBase<FixedVector<T,N>, Op> {
+    typedef SeriesBase<FixedVector<T,N>, Op> Base;
 public:
     explicit Series(const Op& op) : Base(op) {}
     void describe(std::ostream& os, const std::string* vector_names) const;
@@ -279,7 +279,7 @@ void Series<T, Op>::describe(std::ostream& os,
 }
 
 template <typename T, size_t N, typename Op>
-void Series<Vector<T,N>, Op>::describe(std::ostream& os,
+void Series<FixedVector<T,N>, Op>::describe(std::ostream& os,
                                        const std::string* vector_names) const {
     pthread_mutex_lock(&this->_mutex);
     const int second_begin = this->_nsecond;

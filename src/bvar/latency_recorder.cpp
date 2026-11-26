@@ -165,13 +165,13 @@ static int64_t get_p3(void* arg) {
     return lr->latency_percentile(FLAGS_bvar_latency_p3 / 100.0);
 }
 
-static Vector<int64_t, 4> get_latencies(void *arg) {
+static FixedVector<int64_t, 4> get_latencies(void *arg) {
     std::unique_ptr<CombinedPercentileSamples> cb(
         combine((PercentileWindow*)arg));
     // NOTE: We don't show 99.99% since it's often significantly larger than
     // other values and make other curves on the plotted graph small and
     // hard to read.
-    Vector<int64_t, 4> result;
+    FixedVector<int64_t, 4> result;
     result[0] = cb->get_number(FLAGS_bvar_latency_p1 / 100.0);
     result[1] = cb->get_number(FLAGS_bvar_latency_p2 / 100.0);
     result[2] = cb->get_number(FLAGS_bvar_latency_p3 / 100.0);
@@ -197,7 +197,7 @@ LatencyRecorderBase::LatencyRecorderBase(time_t window_size)
 
 }  // namespace detail
 
-Vector<int64_t, 4> LatencyRecorder::latency_percentiles() const {
+FixedVector<int64_t, 4> LatencyRecorder::latency_percentiles() const {
     // const_cast here is just to adapt parameter type and safe.
     return detail::get_latencies(
         const_cast<detail::PercentileWindow*>(&_latency_percentile_window));

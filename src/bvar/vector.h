@@ -27,7 +27,8 @@ namespace bvar {
 
 DECLARE_bool(quote_vector);
 
-// Data inside a Vector will be plotted in a same graph.
+// Fixed-size multi-metric value for co-plotting on the same /vars graph.
+// This is not std::vector: N is a compile-time constant with no heap growth.
 template <typename T, size_t N>
 class Vector {
 public:
@@ -91,8 +92,13 @@ private:
     T _data[N];
 };
 
+// Keep Vector as the class template to preserve existing declarations,
+// derived-class constructors, explicit instantiations, and binary symbols.
 template <typename T, size_t N>
-std::ostream& operator<<(std::ostream& os, const Vector<T, N>& vec) {
+using FixedVector = Vector<T, N>;
+
+template <typename T, size_t N>
+std::ostream& operator<<(std::ostream& os, const FixedVector<T, N>& vec) {
     if (FLAGS_quote_vector) {
         os << '"';
     }
@@ -115,6 +121,10 @@ struct is_vector : public butil::false_type {};
 
 template <typename T, size_t N>
 struct is_vector<Vector<T,N> > : public butil::true_type {};
+
+// Honor user specializations of the original trait under either name.
+template <typename T>
+struct is_fixed_vector : public is_vector<T> {};
 
 }  // namespace bvar
 

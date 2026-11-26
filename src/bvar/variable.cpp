@@ -64,7 +64,7 @@ DEFINE_bool(save_series, true,
             "last 24 hours and last 30 days for plotting");
 
 DEFINE_bool(quote_vector, true,
-            "Quote description of Vector<> to make it valid to noah");
+            "Quote description of FixedVector<> to make it valid to noah");
 
 // Remember abort request before bvar_abort_on_same_name is initialized.
 bool s_bvar_may_abort = false;

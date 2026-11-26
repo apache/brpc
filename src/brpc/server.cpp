@@ -365,8 +365,8 @@ static int32_t GetBuiltinServiceCount(void* arg) {
     return ss.builtin_service_count;
 }
 
-static bvar::Vector<unsigned, 2> GetSessionLocalDataCount(void* arg) {
-    bvar::Vector<unsigned, 2> v;
+static bvar::FixedVector<unsigned, 2> GetSessionLocalDataCount(void* arg) {
+    bvar::FixedVector<unsigned, 2> v;
     SimpleDataPool::Stat s =
         static_cast<Server*>(arg)->session_local_data_pool()->stat();
     v[0] = s.ncreated - s.nfree;
@@ -415,7 +415,7 @@ void* Server::UpdateDerivedVars(void* arg) {
     bvar::PassiveStatus<int32_t> nbuiltinservice_st(
         prefix, "builtin_service_count", GetBuiltinServiceCount, server);
 
-    bvar::PassiveStatus<bvar::Vector<unsigned, 2> > nsessiondata_st(
+    bvar::PassiveStatus<bvar::FixedVector<unsigned, 2> > nsessiondata_st(
         GetSessionLocalDataCount, server);
     if (server->session_local_data_pool()) {
         nsessiondata_st.expose_as(prefix, "session_local_data_count");
