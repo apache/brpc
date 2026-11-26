@@ -16,7 +16,9 @@
 // under the License.
 
 #include <algorithm>                         // std::sort
+#include <atomic>
 #include <memory>                            // std::unique_ptr
+#include <thread>
 #include <gflags/gflags.h>
 #include "butil/atomicops.h"
 #include <gtest/gtest.h>
@@ -250,6 +252,80 @@ TEST(KeyTest, reuse_key) {
     ASSERT_EQ(key.index, key2.index);
     // The slot is not nullptr, the impl must check version and return nullptr.
     ASSERT_EQ(nullptr, bthread_getspecific(key2));
+}
+
+static void check_metadata_dtor(void* data, const void* arg) {
+    EXPECT_EQ(data, arg);
+}
+
+static void unexpected_metadata_dtor(void*, const void*) {
+    ADD_FAILURE() << "A reused key must not destroy an old key's data";
+}
+
+TEST(KeyTest, reuse_key_during_thread_exit) {
+    for (int round = 0; round < 100; ++round) {
+        int old_data = 0;
+        int new_data = 0;
+        bthread_key_t key;
+        ASSERT_EQ(0, bthread_key_create2(&key, check_metadata_dtor, &old_data));
+        std::atomic<bool> ready(false);
+        std::atomic<bool> finish(false);
+        std::thread worker([&] {
+            EXPECT_EQ(0, bthread_setspecific(key, &old_data));
+            ready.store(true, std::memory_order_release);
+            while (!finish.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+        });
+        while (!ready.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        finish.store(true, std::memory_order_release);
+        EXPECT_EQ(0, bthread_key_delete(key));
+        for (int i = 0; i < 100; ++i) {
+            bthread_key_t reused_key;
+            int rc = bthread_key_create2(
+                &reused_key, unexpected_metadata_dtor, &new_data);
+            EXPECT_EQ(0, rc);
+            if (rc != 0) {
+                break;
+            }
+            EXPECT_EQ(key.index, reused_key.index);
+            EXPECT_EQ(0, bthread_key_delete(reused_key));
+        }
+        worker.join();
+    }
+}
+
+struct RecreateKeyData {
+    bthread_key_t key;
+    int calls;
+};
+
+static void recreated_key_dtor(void* data, const void* arg) {
+    auto* context = static_cast<RecreateKeyData*>(data);
+    EXPECT_EQ(data, arg);
+    ++context->calls;
+}
+
+static void recreate_key_dtor(void* data, const void* arg) {
+    auto* context = static_cast<RecreateKeyData*>(data);
+    EXPECT_EQ(data, arg);
+    ++context->calls;
+    ASSERT_EQ(0, bthread_key_delete(context->key));
+    ASSERT_EQ(0, bthread_key_create2(&context->key, recreated_key_dtor, data));
+    ASSERT_EQ(0, bthread_setspecific(context->key, data));
+}
+
+TEST(KeyTest, recreate_key_in_destructor) {
+    RecreateKeyData data = {};
+    ASSERT_EQ(0, bthread_key_create2(&data.key, recreate_key_dtor, &data));
+    std::thread worker([&] {
+        EXPECT_EQ(0, bthread_setspecific(data.key, &data));
+    });
+    worker.join();
+    EXPECT_EQ(2, data.calls);
+    EXPECT_EQ(0, bthread_key_delete(data.key));
 }
 
 // NOTE: sid is short for 'set in dtor'.
