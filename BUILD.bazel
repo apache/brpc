@@ -297,6 +297,7 @@ objc_library(
     hdrs = [
         "src/butil/atomicops.h",
         "src/butil/atomicops_internals_atomicword_compat.h",
+        "src/butil/atomicops_internals_arm64_gcc.h",
         "src/butil/atomicops_internals_mac.h",
         "src/butil/base_export.h",
         "src/butil/basictypes.h",
