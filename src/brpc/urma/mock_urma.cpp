@@ -70,7 +70,7 @@ std::map<urma_jfce_t *, int> jfce_map;
 std::map<urma_jfc_t *, JfcState *> jfc_state_map;
 std::map<urma_jfr_t *, int> jfr_map;
 // Side-table: JFR -> the JFC it was created with (used to route recv
-// completions to the right JfcState, since the JFR is an opaque handle).
+// completions to the right JfcState).
 std::map<urma_jfr_t *, urma_jfc_t *> jfr_jfc_map;
 std::map<urma_jfr_t *, std::deque<PendingRecv>> jfr_recv_map;
 std::map<urma_target_seg_t *, int> seg_map;
@@ -240,10 +240,20 @@ urma_status_t urma_query_device(urma_device_t *device,
     if (!device || !attr) {
         return URMA_EINVAL;
     }
+    mock_device_attr.dev_cap.priority_info[3].tp_type.bs.rtp = 1;
+    mock_device_attr.dev_cap.priority_info[3].SL = 3;
+    mock_device_attr.dev_cap.priority_info[6].tp_type.bs.ctp = 1;
+    mock_device_attr.dev_cap.priority_info[6].tp_type.bs.rtp = 1;
+    mock_device_attr.dev_cap.priority_info[6].SL = 2;
+    mock_device_attr.dev_cap.priority_info[10].tp_type.bs.ctp = 1;
+    mock_device_attr.dev_cap.priority_info[10].tp_type.bs.rtp = 1;
+    mock_device_attr.dev_cap.priority_info[10].SL = 4;
     mock_device_attr.dev_cap.max_jfc = 1024;
     mock_device_attr.dev_cap.max_jetty = 1024;
     mock_device_attr.dev_cap.max_jfs_sge = 8;
     mock_device_attr.dev_cap.max_jfr_sge = 8;
+    mock_device_attr.dev_cap.priority_info[0].tp_type.bs.rtp = 1;
+    mock_device_attr.dev_cap.priority_info[0].SL = 2;
     memcpy(attr, &mock_device_attr, sizeof(urma_device_attr_t));
     return URMA_SUCCESS;
 }
@@ -357,15 +367,15 @@ urma_status_t urma_delete_jfc(urma_jfc_t *jfc) {
     return URMA_SUCCESS;
 }
 
-urma_jfr_t *urma_create_jfr(urma_context_t *ctx, urma_jfr_cfg_t *cfg) {
+urma_jfr_t* urma_create_jfr(urma_context_t* ctx, urma_jfr_cfg_t* cfg) {
     std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
     if (!ctx || !cfg || context_map.find(ctx) == context_map.end()) {
         return nullptr;
     }
-    // Opaque handle (avoids partially initializing urma_jfr_t's pthread
-    // members). brpc's endpoint reads back jfr_cfg.jfc from the stored cfg
-    // pointer below, so we keep a side-table mapping jfr -> cfg.jfc.
-    urma_jfr_t *jfr = reinterpret_cast<urma_jfr_t *>(new int(1));
+    auto* jfr = new urma_jfr_t{};
+    jfr->urma_ctx = ctx;
+    jfr->jfr_id.id = 1;
+    jfr->jfr_cfg = *cfg;
     jfr_map[jfr] = 1;
     // Stash the JFC for urma_post_jfr_wr's completion routing.
     jfr_jfc_map[jfr] = cfg->jfc;
@@ -373,7 +383,7 @@ urma_jfr_t *urma_create_jfr(urma_context_t *ctx, urma_jfr_cfg_t *cfg) {
     return jfr;
 }
 
-urma_status_t urma_delete_jfr(urma_jfr_t *jfr) {
+urma_status_t urma_delete_jfr(urma_jfr_t* jfr) {
     std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
     if (!jfr || jfr_map.find(jfr) == jfr_map.end()) {
         return URMA_EINVAL;
@@ -381,22 +391,28 @@ urma_status_t urma_delete_jfr(urma_jfr_t *jfr) {
     jfr_map.erase(jfr);
     jfr_jfc_map.erase(jfr);
     jfr_recv_map.erase(jfr);
-    delete reinterpret_cast<int *>(jfr);
+    delete jfr;
     return URMA_SUCCESS;
 }
 
-urma_target_seg_t *urma_register_seg(urma_context_t *ctx, urma_seg_cfg_t *cfg) {
+urma_target_seg_t* urma_register_seg(urma_context_t* ctx, urma_seg_cfg_t* cfg) {
     std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
     if (!ctx || !cfg || context_map.find(ctx) == context_map.end()) {
         return nullptr;
     }
-    urma_target_seg_t *seg = new urma_target_seg_t;
+    auto* seg = new urma_target_seg_t{};
     memset(&seg->seg.ubva.eid, 0, sizeof(urma_eid_t));
     seg->seg.ubva.eid.raw[0] = 1;
     seg->seg.ubva.uasid = 0;
     seg->seg.ubva.va = cfg->va;
     seg->seg.len = cfg->len;
     seg->seg.token_id = cfg->token_value.token;
+    seg->seg.attr.bs.access = cfg->flag.bs.access;
+    seg->seg.attr.bs.token_policy = cfg->flag.bs.token_policy;
+    seg->seg.attr.bs.cacheable = cfg->flag.bs.cacheable;
+    seg->user_ctx = cfg->user_ctx;
+    seg->urma_ctx = ctx;
+    seg->token_id = cfg->token_id;
     seg_map[seg] = 1;
     return seg;
 }
@@ -531,91 +547,83 @@ urma_status_t urma_modify_jetty(urma_jetty_t *jetty, urma_jetty_attr_t *attr) {
     return URMA_SUCCESS;
 }
 
-urma_status_t urma_post_jetty_send_wr(urma_jetty_t *jetty, urma_jfs_wr_t *wr,
-                                      urma_jfs_wr_t **bad_wr) {
-    std::shared_lock<std::shared_mutex> read_lock(g_rw_mutex);
-    auto local_it = jetty_map.find(jetty);
-    auto local_jfc_it =
-        jetty ? jfc_state_map.find(jetty->jetty_cfg.jfs_cfg.jfc)
-              : jfc_state_map.end();
-    if (!jetty || !wr || local_it == jetty_map.end() ||
-        local_jfc_it == jfc_state_map.end()) {
+urma_status_t urma_post_jetty_send_wr(urma_jetty_t* jetty, urma_jfs_wr_t* wr,
+                                     urma_jfs_wr_t** bad_wr) {
+    // Protect the target, pending receive buffer and both completion queues
+    // from teardown until delivery and notification are complete.
+    std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
+    if (!jetty || !wr || jetty_map.find(jetty) == jetty_map.end()) {
         if (bad_wr) {
             *bad_wr = wr;
         }
         return URMA_EINVAL;
     }
-    JfcState* local_state = local_jfc_it->second;
-    read_lock.unlock();
+    urma_jfc_t* local_jfc = jetty->jetty_cfg.jfs_cfg.jfc;
+    const auto local_state = jfc_state_map.find(local_jfc);
+    if (local_state == jfc_state_map.end()) {
+        if (bad_wr) {
+            *bad_wr = wr;
+        }
+        return URMA_EINVAL;
+    }
 
     for (urma_jfs_wr_t* current = wr; current; current = current->next) {
-        if (!current->tjetty) {
-            if (bad_wr) {
-                *bad_wr = current;
-            }
+        if (bad_wr) {
+            *bad_wr = current;
+        }
+        if (target_jetty_map.find(current->tjetty) == target_jetty_map.end()) {
             return URMA_EINVAL;
         }
-
-        urma_cr_t send_cr{};
-        send_cr.status = URMA_CR_SUCCESS;
-        send_cr.user_ctx = current->user_ctx;
-        send_cr.flag.bs.s_r = 0;
-        if (current->flag.bs.complete_enable) {
-            PushCompletion(jetty->jetty_cfg.jfs_cfg.jfc,
-                           local_state, send_cr);
+        const auto remote = jetty_id_map.find(current->tjetty->id.id);
+        if (remote == jetty_id_map.end()) {
+            return URMA_FAIL;
         }
-
-        PendingRecv recv{};
-        urma_jfc_t* remote_jfc = nullptr;
-        {
-            std::unique_lock<std::shared_mutex> lock(g_rw_mutex);
-            auto remote_it = jetty_id_map.find(current->tjetty->id.id);
-            if (remote_it == jetty_id_map.end()) {
-                continue;
-            }
-            urma_jfr_t* remote_jfr =
-                remote_it->second->jetty_cfg.shared.jfr;
-            auto recv_it = jfr_recv_map.find(remote_jfr);
-            auto jfc_it = jfr_jfc_map.find(remote_jfr);
-            if (recv_it == jfr_recv_map.end() || recv_it->second.empty() ||
-                jfc_it == jfr_jfc_map.end()) {
-                continue;
-            }
-            recv = recv_it->second.front();
-            recv_it->second.pop_front();
-            remote_jfc = jfc_it->second;
+        urma_jfr_t* jfr = remote->second->jetty_cfg.shared.jfr;
+        const auto pending = jfr_recv_map.find(jfr);
+        const auto cq = jfr_jfc_map.find(jfr);
+        if (pending == jfr_recv_map.end() || cq == jfr_jfc_map.end()) {
+            return URMA_FAIL;
         }
+        const auto remote_state = jfc_state_map.find(cq->second);
+        if (remote_state == jfc_state_map.end()) {
+            return URMA_FAIL;
+        }
+        if (pending->second.empty()) {
+            return URMA_EAGAIN;
+        }
+        const PendingRecv recv = pending->second.front();
+        const auto& src = current->send.src;
+        uint64_t length = 0;
+        for (uint32_t i = 0; i < src.num_sge; ++i) {
+            length += src.sge[i].len;
+        }
+        if (length > recv.len) {
+            return URMA_EINVAL;
+        }
+        pending->second.pop_front();
 
         uint32_t copied = 0;
-        for (uint32_t i = 0;
-             i < current->send.src.num_sge && copied < recv.len; ++i) {
-            const urma_sge_t& sge = current->send.src.sge[i];
-            const uint32_t n = std::min(sge.len, recv.len - copied);
+        for (uint32_t i = 0; i < src.num_sge; ++i) {
+            const auto& sge = src.sge[i];
             std::memcpy(reinterpret_cast<void*>(recv.addr + copied),
-                        reinterpret_cast<const void*>(sge.addr), n);
-            copied += n;
+                        reinterpret_cast<const void*>(sge.addr), sge.len);
+            copied += sge.len;
         }
-
-        JfcState* remote_state = nullptr;
-        {
-            std::shared_lock<std::shared_mutex> lock(g_rw_mutex);
-            auto state_it = jfc_state_map.find(remote_jfc);
-            if (state_it != jfc_state_map.end()) {
-                remote_state = state_it->second;
-            }
-        }
-        if (remote_state) {
-            urma_cr_t recv_cr{};
-            recv_cr.status = URMA_CR_SUCCESS;
-            recv_cr.user_ctx = recv.user_ctx;
-            recv_cr.flag.bs.s_r = 1;
-            recv_cr.completion_len = copied;
-            recv_cr.opcode =
-                current->opcode == URMA_OPC_SEND_IMM
-                    ? URMA_CR_OPC_SEND_WITH_IMM
-                    : URMA_CR_OPC_SEND;
-            recv_cr.imm_data = current->send.imm_data;
-            PushCompletion(remote_jfc, remote_state, recv_cr);
+        urma_cr_t recv_cr{};
+        recv_cr.status = URMA_CR_SUCCESS;
+        recv_cr.user_ctx = recv.user_ctx;
+        recv_cr.flag.bs.s_r = 1;
+        recv_cr.completion_len = copied;
+        recv_cr.opcode = current->opcode == URMA_OPC_SEND_IMM
+                             ? URMA_CR_OPC_SEND_WITH_IMM
+                             : URMA_CR_OPC_SEND;
+        recv_cr.imm_data = current->send.imm_data;
+        PushCompletion(cq->second, remote_state->second, recv_cr);
+        if (current->flag.bs.complete_enable) {
+            urma_cr_t send_cr{};
+            send_cr.status = URMA_CR_SUCCESS;
+            send_cr.user_ctx = current->user_ctx;
+            PushCompletion(local_jfc, local_state->second, send_cr);
         }
     }
     if (bad_wr) {
@@ -669,17 +677,14 @@ urma_status_t urma_post_jetty_recv_wr(urma_jetty_t *jetty,
     return urma_post_jfr_wr(shared_jfr, wr, bad_wr);
 }
 
-int urma_poll_jfc(urma_jfc_t *jfc, int num_entries, urma_cr_t *cr_list) {
-    JfcState* state = nullptr;
-    {
-        std::shared_lock<std::shared_mutex> lock(g_rw_mutex);
-        auto it = jfc_state_map.find(jfc);
-        if (it == jfc_state_map.end()) {
-            return -1;
-        }
-        state = it->second;
+int urma_poll_jfc(urma_jfc_t* jfc, int num_entries, urma_cr_t* cr_list) {
+    std::shared_lock<std::shared_mutex> lock(g_rw_mutex);
+    auto it = jfc_state_map.find(jfc);
+    if (it == jfc_state_map.end()) {
+        return -1;
     }
-    std::lock_guard<std::mutex> lock(state->mutex);
+    JfcState* state = it->second;
+    std::lock_guard<std::mutex> state_lock(state->mutex);
     int count = 0;
     while (count < num_entries && !state->completions.empty()) {
         cr_list[count++] = state->completions.front();
@@ -697,13 +702,13 @@ urma_status_t urma_rearm_jfc(urma_jfc_t*, bool) {
 
 int urma_wait_jfc(urma_jfce_t* jfce, uint32_t jfc_cnt, int,
                   urma_jfc_t* jfcs[]) {
-    if (!jfce || !jfcs || jfc_cnt == 0) {
+    std::shared_lock<std::shared_mutex> lock(g_rw_mutex);
+    if (!jfce || !jfcs || jfc_cnt == 0 || jfce_map.count(jfce) == 0) {
         errno = EINVAL;
         return -1;
     }
     uint64_t value = 0;
     (void)read(jfce->fd, &value, sizeof(value));
-    std::shared_lock<std::shared_mutex> lock(g_rw_mutex);
     uint32_t count = 0;
     for (const auto& item : jfc_state_map) {
         if (count >= jfc_cnt || item.first->jfc_cfg.jfce != jfce) {

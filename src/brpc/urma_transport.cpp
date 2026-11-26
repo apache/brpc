@@ -80,7 +80,10 @@ int UrmaTransport::Reset(int32_t /*expected_nref*/) {
 }
 
 std::shared_ptr<AppConnect> UrmaTransport::Connect() {
-    if (_default_connect == nullptr) {
+    // Child sockets inherit AppConnect options. The built-in handshake
+    // stores a pending callback and therefore belongs to one socket only.
+    if (!_default_connect ||
+        dynamic_cast<urma::UrmaConnect*>(_default_connect.get())) {
         return std::make_shared<urma::UrmaConnect>();
     }
     return _default_connect;
@@ -197,6 +200,12 @@ int UrmaTransport::ContextInitOrDie(bool server_or_not, const void* options) {
             return -1;
         }
         urma::GlobalUrmaInitializeOrDie();
+        uint8_t priority;
+        if (!urma::ResolveUrmaJettyPriority(
+                static_cast<const ServerOptions*>(options)->urma_qos,
+                &priority)) {
+            return -1;
+        }
         if (!urma::InitPollingModeWithTag(
                 static_cast<const ServerOptions*>(options)->bthread_tag)) {
             return -1;
@@ -207,6 +216,12 @@ int UrmaTransport::ContextInitOrDie(bool server_or_not, const void* options) {
             return -1;
         }
         urma::GlobalUrmaInitializeOrDie();
+        uint8_t priority;
+        if (!urma::ResolveUrmaJettyPriority(
+                static_cast<const ChannelOptions*>(options)->urma_qos,
+                &priority)) {
+            return -1;
+        }
         if (!urma::InitPollingModeWithTag(bthread_self_tag())) {
             return -1;
         }

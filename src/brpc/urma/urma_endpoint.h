@@ -18,6 +18,8 @@
 #ifndef BRPC_URMA_ENDPOINT_H
 #define BRPC_URMA_ENDPOINT_H
 
+#include "brpc/urma/urma_recovery_policy.h"
+
 #include <cstdint>
 #include <functional>
 #include <ostream>
@@ -100,6 +102,8 @@ struct UrmaResource {
 // windows, and the registered buffer bookkeeping. Cache-line padded to avoid
 // false sharing between connections.
 class BAIDU_CACHELINE_ALIGNMENT UrmaEndpoint : public SocketUser {
+    friend class UrmaRecoveryTestPeer;
+    friend class UrmaQosTestPeer;
     friend class UrmaConnect;
     friend class Socket;
     friend class UrmaTransport;
@@ -144,7 +148,7 @@ public:
     static void OnNewDataFromTcp(Socket* m);
 
     // CQ completion poller: the edge-triggered callback for the CQ socket
-    // (whose user is this endpoint). Drains urma_poll_jfc and feeds the
+    // (whose user holds the owning socket ID). Drains urma_poll_jfc and feeds the
     // completions into HandleCompletion, then calls InputMessenger. Event mode
     // also drains the aggregated JFCE until urma_wait_jfc reports no event,
     // then calls Socket::MoreReadEvents so later JFCE edges can start the
@@ -211,6 +215,8 @@ private:
     // Jetty, plus the CQ socket). Returns 0 on success.
     int AllocateResources();
     void DeallocateResources();
+    bool AllowNewUrmaConnection(const char* peer);
+    void DrainCq(Socket* carrier, SocketUniquePtr& owner);
 
     // Import the peer's jetty and buffer-pool segment. CRITICAL:
     // urma_import_seg is called BEFORE urma_import_jetty, otherwise the kernel
@@ -229,15 +235,17 @@ private:
     // Send a pure-ACK URMA_OPC_SEND_IMM WR with no payload. @imm carries the
     // number of receive WRs reposted for peer-side flow-control credit.
     int SendImm(uint32_t imm);
-    // Batched credit ack: if _new_rq_wrs is above the threshold, flush it via
-    // a standalone SendImm. @num is the number of new recv WRs to add.
+    // Return @num newly posted receive credits in a batch or on a delay.
+    // The caller holds _cq_mutex while managing pending credits and flushes.
     int SendAck(int num);
+    int FlushAck();
+    int ScheduleAckFlush();
+    static void* RunAckFlush(void* arg);
 
     // Handle one completion record. For SEND completions: reclaim the SQ
     // window and wake the writer. For RECV completions: cut the payload into
     // the URMA input processor, repost the recv WR, and ack. Returns bytes
-    // received
-    // (0 for send completions), or -1 on error (errno set).
+    // received (0 for send completions), or -1 on error (errno set).
     ssize_t HandleCompletion(const urma_cr_t& cr);
 
     // Queue received bytes for InputMessenger. CQ receive completions can
@@ -259,8 +267,10 @@ private:
     void PollerAddCqSid();
     void PollerRemoveCqSid();
 
-    inline void TryReadOnTcp();
+    void TryReadOnTcp();
+    void DrainEstablishedTcp();
     void FallbackToTcp(UrmaTransport* transport, bool process_tcp);
+    void ReportFailure(UrmaFailureReason reason);
     void FailHandshake(UrmaTransport* transport, int error,
                        const char* reason);
 
@@ -272,17 +282,26 @@ private:
     // Not owned.
     Socket* _socket;
 
+    butil::atomic<uint64_t> _recovery_epoch{0};
+    butil::atomic<UrmaFailureReason> _runtime_failure{UrmaFailureReason::NONE};
+
     // Handshake state.
     butil::atomic<State> _state{UNINIT};
     int _handshake_version{0};  // 0 = unnegotiated; 2 = v2; 3 = v3
     butil::atomic<int64_t> _pending_received_bytes{0};
     butil::Mutex _dispatch_mutex;
+    // Serialize TCP parsing / EOF checks across event and handshake bthreads.
+    butil::Mutex _tcp_read_mutex;
 
     // The URMA resources (jetty / jfc / jfr / jfce / imported peer objects).
     UrmaResource* _resource{nullptr};
+    // Diagnostics can read the effective priority during handshake teardown.
+    butil::atomic<int> _effective_priority{-1};
 
     // The SocketId wrapping the JFCE fd (event mode) or a synthetic carrier
     // (polling mode). PollCq is the edge-triggered callback on this socket.
+    // Serializes provider CQ operations with carrier registration and teardown.
+    butil::Mutex _cq_mutex;
     SocketId _cq_sid{INVALID_SOCKET_ID};
 
     // ---- Send / recv window bookkeeping ----
@@ -307,6 +326,8 @@ private:
     butil::atomic<uint16_t> _remote_rq_window_size{0};  // WRs we can send
     butil::atomic<uint16_t> _sq_window_size{0};          // WRs we can post
     butil::atomic<uint16_t> _new_rq_wrs{0};              // new recv WRs (to ack)
+    butil::atomic<bool> _send_post_blocked{false};
+    bool _ack_flush_scheduled{false};  // guarded by _cq_mutex
     uint16_t _sq_imm_window_size{0};                     // budget for pure-ack WRs
 
     // SQ producer / consumer indices.

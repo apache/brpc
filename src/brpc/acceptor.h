@@ -24,7 +24,7 @@
 #include "butil/containers/flat_map.h"
 #include "brpc/input_messenger.h"
 #include "brpc/socket_mode.h"
-
+#include "brpc/urma/urma_qos.h"
 
 namespace brpc {
 
@@ -137,6 +137,7 @@ private:
 
     // Choose to use a certain socket: 0 TCP, 1 RDMA
     SocketMode _socket_mode;
+    UrmaQosOptions _urma_qos;
 
     // Acceptor belongs to this tag
     bthread_tag_t _bthread_tag;
