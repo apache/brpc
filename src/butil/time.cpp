@@ -101,7 +101,8 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
     char buf[4096];  // should be enough
     const ssize_t n = read(fd, buf, sizeof(buf));
     if (n > 0) {
-        char *mhz = static_cast<char*>(memmem(buf, n, "cpu MHz", 7));
+        char* mhz = static_cast<char*>(
+            memmem(buf, static_cast<size_t>(n), "cpu MHz", 7));
 
         if (mhz != nullptr) {
             char *endp = buf + n;
@@ -131,30 +132,40 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
         }
 
         if (invariant_tsc) {
-            char* flags_pos = static_cast<char*>(memmem(buf, n, "flags", 5));
-            *invariant_tsc = 
+            char* flags_pos = static_cast<char*>(
+                memmem(buf, static_cast<size_t>(n), "flags", 5));
+            *invariant_tsc =
                 (flags_pos &&
-                 memmem(flags_pos, buf + n - flags_pos, "constant_tsc", 12) &&
-                 memmem(flags_pos, buf + n - flags_pos, "nonstop_tsc", 11));
+                 memmem(flags_pos, static_cast<size_t>(buf + n - flags_pos),
+                        "constant_tsc", 12) &&
+                 memmem(flags_pos, static_cast<size_t>(buf + n - flags_pos),
+                        "nonstop_tsc", 11));
         }
     }
     close (fd);
     return result;
 }
 
+uint64_t invariant_cpu_freq_mult = 0;
+uint32_t invariant_cpu_freq_shift = 0;
+
 // Return value must be >= 0
 static int64_t read_invariant_cpu_frequency() {
-    bool invariant_tsc = false;
     int64_t freq = -1;
 #if defined(__aarch64__) && BUTIL_USE_CPU_FREQUENCY
     __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));
 #else
+    bool invariant_tsc = false;
     freq = read_cpu_frequency(&invariant_tsc);
     if (!invariant_tsc || freq < 0) {
         return 0;
     }
 #endif
-
+    if (freq <= 0) {
+        return 0;
+    }
+    compute_cpu_frequency_scale(freq, &invariant_cpu_freq_mult,
+                                &invariant_cpu_freq_shift);
     return freq;
 }
 
