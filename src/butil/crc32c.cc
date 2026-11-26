@@ -12,29 +12,30 @@
 
 #include "butil/crc32c.h"
 
-#include <string.h>
 #include <stdint.h>
+#include <string.h>
+
+#include "butil/build_config.h"
 #ifdef __SSE4_2__
 #include <nmmintrin.h>
 #endif
-#if defined(__aarch64__)
+
+#if (defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) ||                  \
+    defined(__AARCH64EB__) || defined(__ARM_BIG_ENDIAN) ||       \
+    defined(__BIG_ENDIAN__)
+#define BUTIL_CRC32C_LITTLE_ENDIAN 0
+#elif defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
+#define BUTIL_CRC32C_LITTLE_ENDIAN 1
+#else
+#define BUTIL_CRC32C_LITTLE_ENDIAN 0
+#endif
+
+#if defined(__aarch64__) && BUTIL_CRC32C_LITTLE_ENDIAN && \
+    (defined(__clang__) || defined(__GNUC__))
+#define BUTIL_ARM64_CRC32_ENABLED 1
 #if defined(__ARM_NEON)
 #define BUTIL_ARM64_PMULL_ENABLED 1
-#endif
-#if defined(__clang__)
-#pragma clang attribute push(__attribute__((target("crc"))), \
-                             apply_to = function)
-#elif defined(__GNUC__)
-#pragma GCC push_options
-#pragma GCC target("+crc")
-#endif
-#include <arm_acle.h>
-#if defined(__clang__)
-#pragma clang attribute pop
-#elif defined(__GNUC__)
-#pragma GCC pop_options
-#endif
-#if defined(BUTIL_ARM64_PMULL_ENABLED)
 #if defined(__clang__)
 #pragma clang attribute push(__attribute__((target("crc,aes"))), \
                              apply_to = function)
@@ -48,7 +49,7 @@
 #elif defined(__GNUC__)
 #pragma GCC pop_options
 #endif
-#endif  // defined(BUTIL_ARM64_PMULL_ENABLED)
+#endif  // defined(__ARM_NEON)
 #if defined(__linux__)
 #include <asm/hwcap.h>
 #include <sys/auxv.h>
@@ -56,8 +57,7 @@
 #include <sys/sysctl.h>
 #undef ALIGN
 #endif
-#endif
-#include "butil/build_config.h"
+#endif  // defined(__aarch64__) && BUTIL_CRC32C_LITTLE_ENDIAN && (clang || gcc)
 
 namespace butil {
 namespace crc32c {
@@ -330,12 +330,20 @@ static const uint32_t table3_[256] = {
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
+#if defined(BUTIL_ARM64_CRC32_ENABLED)
+static inline uint16_t DecodeFixed16(const char* ptr) {
+  uint16_t result;
+  memcpy(&result, ptr, sizeof(result));
+  return result;
+}
+#endif
+
 static inline uint32_t DecodeFixed32(const char* ptr) {
-#if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
-    // Load the raw bytes
-    uint32_t result;
-    memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
-    return result;
+#if BUTIL_CRC32C_LITTLE_ENDIAN
+  // Load the raw bytes
+  uint32_t result;
+  memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
+  return result;
 #else
     return ((static_cast<uint32_t>(static_cast<unsigned char>(ptr[0])))
         | (static_cast<uint32_t>(static_cast<unsigned char>(ptr[1])) << 8)
@@ -345,11 +353,11 @@ static inline uint32_t DecodeFixed32(const char* ptr) {
 }
 
 inline uint64_t DecodeFixed64(const char* ptr) {
-#if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
-    // Load the raw bytes
-    uint64_t result;
-    memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
-    return result;
+#if BUTIL_CRC32C_LITTLE_ENDIAN
+  // Load the raw bytes
+  uint64_t result;
+  memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
+  return result;
 #else
     uint64_t lo = DecodeFixed32(ptr);
     uint64_t hi = DecodeFixed32(ptr + 4);
@@ -357,17 +365,22 @@ inline uint64_t DecodeFixed64(const char* ptr) {
 #endif
 }
 
+#if defined(BUTIL_ARM64_CRC32_ENABLED)
+static inline uint16_t LE_LOAD16(const uint8_t* p) {
+  return DecodeFixed16(reinterpret_cast<const char*>(p));
+}
+#endif
+
 // Used to fetch a naturally-aligned 32-bit word in little endian byte-order
 static inline uint32_t LE_LOAD32(const uint8_t *p) {
   return DecodeFixed32(reinterpret_cast<const char*>(p));
 }
 
-#ifdef __SSE4_2__
-#ifdef __LP64__
+#if (defined(__SSE4_2__) && defined(__LP64__)) || \
+    defined(BUTIL_ARM64_CRC32_ENABLED)
 static inline uint64_t LE_LOAD64(const uint8_t *p) {
   return DecodeFixed64(reinterpret_cast<const char*>(p));
 }
-#endif
 #endif
 
 static inline void Slow_CRC32(uint64_t* l, uint8_t const **p) {
@@ -857,7 +870,7 @@ static bool isSSE42() {
 }
 #endif
 
-#if defined(__aarch64__)
+#if defined(BUTIL_ARM64_CRC32_ENABLED)
 #if defined(__clang__)
 #define BUTIL_CRC32_TARGET_CRC __attribute__((target("crc")))
 #if defined(BUTIL_ARM64_PMULL_ENABLED)
@@ -867,11 +880,6 @@ static bool isSSE42() {
 #define BUTIL_CRC32_TARGET_CRC __attribute__((target("+crc")))
 #if defined(BUTIL_ARM64_PMULL_ENABLED)
 #define BUTIL_CRC32_TARGET_CRC_PMULL __attribute__((target("+crc+crypto")))
-#endif
-#else
-#define BUTIL_CRC32_TARGET_CRC
-#if defined(BUTIL_ARM64_PMULL_ENABLED)
-#define BUTIL_CRC32_TARGET_CRC_PMULL
 #endif
 #endif
 
@@ -926,8 +934,6 @@ static inline uint32_t ArmCrc32cb(uint32_t crc, uint8_t data) {
   return __builtin_arm_crc32cb(crc, data);
 #elif defined(__GNUC__)
   return __builtin_aarch64_crc32cb(crc, data);
-#else
-  return __crc32cb(crc, data);
 #endif
 }
 
@@ -937,8 +943,6 @@ static inline uint32_t ArmCrc32ch(uint32_t crc, uint16_t data) {
   return __builtin_arm_crc32ch(crc, data);
 #elif defined(__GNUC__)
   return __builtin_aarch64_crc32ch(crc, data);
-#else
-  return __crc32ch(crc, data);
 #endif
 }
 
@@ -948,8 +952,6 @@ static inline uint32_t ArmCrc32cw(uint32_t crc, uint32_t data) {
   return __builtin_arm_crc32cw(crc, data);
 #elif defined(__GNUC__)
   return __builtin_aarch64_crc32cw(crc, data);
-#else
-  return __crc32cw(crc, data);
 #endif
 }
 
@@ -959,8 +961,6 @@ static inline uint32_t ArmCrc32cd(uint32_t crc, uint64_t data) {
   return __builtin_arm_crc32cd(crc, data);
 #elif defined(__GNUC__)
   return __builtin_aarch64_crc32cx(crc, data);
-#else
-  return __crc32cd(crc, data);
 #endif
 }
 
@@ -970,61 +970,7 @@ static inline uint64_t ArmVmullP64(uint64_t a, uint64_t b) {
   return static_cast<uint64_t>(
       vmull_p64(static_cast<poly64_t>(a), static_cast<poly64_t>(b)));
 }
-
-// Compute the 32-bit reflected remainder of x^(8 * bytes - 64) mod P(x)
-// so that ArmCrc32cd(0, ArmVmullP64(crc, k)) shifts `crc` forward by `bytes`
-// zero bytes in reflected CRC32C (Castagnoli polynomial 0x82f63b78).
-static constexpr uint32_t ComputeCrc32cShiftConst(size_t bytes) {
-  uint32_t c = 1U;
-  for (size_t i = 0; i < 8 * bytes - 64; ++i) {
-    c = (c >> 1) ^ ((c & 1U) ? 0x82f63b78U : 0U);
-  }
-  return c;
-}
 #endif  // defined(BUTIL_ARM64_PMULL_ENABLED)
-
-#if (defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
-     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) ||                  \
-    defined(__AARCH64EB__) || defined(__ARM_BIG_ENDIAN)
-#define BUTIL_ARM64_BIG_ENDIAN 1
-#else
-#define BUTIL_ARM64_BIG_ENDIAN 0
-#endif
-
-static inline uint16_t ArmLoadLe16(const uint8_t* ptr) {
-#if BUTIL_ARM64_BIG_ENDIAN
-  return static_cast<uint16_t>(static_cast<uint16_t>(ptr[0]) |
-                               (static_cast<uint16_t>(ptr[1]) << 8));
-#else
-  uint16_t result;
-  memcpy(&result, ptr, sizeof(result));
-  return result;
-#endif
-}
-
-static inline uint32_t ArmLoadLe32(const uint8_t* ptr) {
-#if BUTIL_ARM64_BIG_ENDIAN
-  return static_cast<uint32_t>(ptr[0]) | (static_cast<uint32_t>(ptr[1]) << 8) |
-         (static_cast<uint32_t>(ptr[2]) << 16) |
-         (static_cast<uint32_t>(ptr[3]) << 24);
-#else
-  uint32_t result;
-  memcpy(&result, ptr, sizeof(result));
-  return result;
-#endif
-}
-
-static inline uint64_t ArmLoadLe64(const uint8_t* ptr) {
-#if BUTIL_ARM64_BIG_ENDIAN
-  const uint64_t lo = ArmLoadLe32(ptr);
-  const uint64_t hi = ArmLoadLe32(ptr + 4);
-  return (hi << 32) | lo;
-#else
-  uint64_t result;
-  memcpy(&result, ptr, sizeof(result));
-  return result;
-#endif
-}
 
 BUTIL_CRC32_TARGET_CRC
 static uint32_t Arm64ExtendCrc32(uint32_t crc, const char* buf, size_t size) {
@@ -1037,36 +983,36 @@ static uint32_t Arm64ExtendCrc32(uint32_t crc, const char* buf, size_t size) {
       --size;
     }
     if (reinterpret_cast<uintptr_t>(p) & 2) {
-      c = ArmCrc32ch(c, ArmLoadLe16(p));
+      c = ArmCrc32ch(c, LE_LOAD16(p));
       p += 2;
       size -= 2;
     }
     if (reinterpret_cast<uintptr_t>(p) & 4) {
-      c = ArmCrc32cw(c, ArmLoadLe32(p));
+      c = ArmCrc32cw(c, LE_LOAD32(p));
       p += 4;
       size -= 4;
     }
   }
 
   while (size >= 32) {
-    c = ArmCrc32cd(c, ArmLoadLe64(p));
-    c = ArmCrc32cd(c, ArmLoadLe64(p + 8));
-    c = ArmCrc32cd(c, ArmLoadLe64(p + 16));
-    c = ArmCrc32cd(c, ArmLoadLe64(p + 24));
+    c = ArmCrc32cd(c, LE_LOAD64(p));
+    c = ArmCrc32cd(c, LE_LOAD64(p + 8));
+    c = ArmCrc32cd(c, LE_LOAD64(p + 16));
+    c = ArmCrc32cd(c, LE_LOAD64(p + 24));
     p += 32;
     size -= 32;
   }
   while (size >= 8) {
-    c = ArmCrc32cd(c, ArmLoadLe64(p));
+    c = ArmCrc32cd(c, LE_LOAD64(p));
     p += 8;
     size -= 8;
   }
   if (size & 4) {
-    c = ArmCrc32cw(c, ArmLoadLe32(p));
+    c = ArmCrc32cw(c, LE_LOAD32(p));
     p += 4;
   }
   if (size & 2) {
-    c = ArmCrc32ch(c, ArmLoadLe16(p));
+    c = ArmCrc32ch(c, LE_LOAD16(p));
     p += 2;
   }
   if (size & 1) {
@@ -1088,23 +1034,24 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
       --size;
     }
     if (reinterpret_cast<uintptr_t>(p) & 2) {
-      c = ArmCrc32ch(c, ArmLoadLe16(p));
+      c = ArmCrc32ch(c, LE_LOAD16(p));
       p += 2;
       size -= 2;
     }
     if (reinterpret_cast<uintptr_t>(p) & 4) {
-      c = ArmCrc32cw(c, ArmLoadLe32(p));
+      c = ArmCrc32cw(c, LE_LOAD32(p));
       p += 4;
       size -= 4;
     }
   }
 
+  // Reflected CRC32C (Castagnoli polynomial 0x82f63b78) shift constants
+  // x^(8 * bytes - 64) mod P(x), so ArmCrc32cd(0, ArmVmullP64(crc, k))
+  // advances `crc` by `bytes` zero bytes.
   static constexpr size_t kLargeStripeBytes = 336;
   static constexpr size_t kLargeBlockBytes = 3 * kLargeStripeBytes;  // 1008
-  static constexpr uint32_t kShift672 =
-      ComputeCrc32cShiftConst(2 * kLargeStripeBytes);
-  static constexpr uint32_t kShift336 =
-      ComputeCrc32cShiftConst(kLargeStripeBytes);
+  static constexpr uint32_t kShift672 = 0xcec3662eU;
+  static constexpr uint32_t kShift336 = 0xa60ce07bU;
 
   while (size >= kLargeBlockBytes) {
     uint32_t crc0 = c;
@@ -1114,9 +1061,9 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
     const uint8_t* p1 = p + kLargeStripeBytes;
     const uint8_t* p2 = p + 2 * kLargeStripeBytes;
     for (size_t i = 0; i < kLargeStripeBytes / 8; ++i) {
-      crc0 = ArmCrc32cd(crc0, ArmLoadLe64(p0));
-      crc1 = ArmCrc32cd(crc1, ArmLoadLe64(p1));
-      crc2 = ArmCrc32cd(crc2, ArmLoadLe64(p2));
+      crc0 = ArmCrc32cd(crc0, LE_LOAD64(p0));
+      crc1 = ArmCrc32cd(crc1, LE_LOAD64(p1));
+      crc2 = ArmCrc32cd(crc2, LE_LOAD64(p2));
       p0 += 8;
       p1 += 8;
       p2 += 8;
@@ -1130,10 +1077,8 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
 
   static constexpr size_t kSmallStripeBytes = 64;
   static constexpr size_t kSmallBlockBytes = 3 * kSmallStripeBytes;  // 192
-  static constexpr uint32_t kShift128 =
-      ComputeCrc32cShiftConst(2 * kSmallStripeBytes);
-  static constexpr uint32_t kShift64 =
-      ComputeCrc32cShiftConst(kSmallStripeBytes);
+  static constexpr uint32_t kShift128 = 0x0d3b6092U;
+  static constexpr uint32_t kShift64 = 0x9e4addf8U;
 
   while (size >= kSmallBlockBytes) {
     uint32_t crc0 = c;
@@ -1143,9 +1088,9 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
     const uint8_t* p1 = p + kSmallStripeBytes;
     const uint8_t* p2 = p + 2 * kSmallStripeBytes;
     for (size_t i = 0; i < kSmallStripeBytes / 8; ++i) {
-      crc0 = ArmCrc32cd(crc0, ArmLoadLe64(p0));
-      crc1 = ArmCrc32cd(crc1, ArmLoadLe64(p1));
-      crc2 = ArmCrc32cd(crc2, ArmLoadLe64(p2));
+      crc0 = ArmCrc32cd(crc0, LE_LOAD64(p0));
+      crc1 = ArmCrc32cd(crc1, LE_LOAD64(p1));
+      crc2 = ArmCrc32cd(crc2, LE_LOAD64(p2));
       p0 += 8;
       p1 += 8;
       p2 += 8;
@@ -1158,24 +1103,24 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
   }
 
   while (size >= 32) {
-    c = ArmCrc32cd(c, ArmLoadLe64(p));
-    c = ArmCrc32cd(c, ArmLoadLe64(p + 8));
-    c = ArmCrc32cd(c, ArmLoadLe64(p + 16));
-    c = ArmCrc32cd(c, ArmLoadLe64(p + 24));
+    c = ArmCrc32cd(c, LE_LOAD64(p));
+    c = ArmCrc32cd(c, LE_LOAD64(p + 8));
+    c = ArmCrc32cd(c, LE_LOAD64(p + 16));
+    c = ArmCrc32cd(c, LE_LOAD64(p + 24));
     p += 32;
     size -= 32;
   }
   while (size >= 8) {
-    c = ArmCrc32cd(c, ArmLoadLe64(p));
+    c = ArmCrc32cd(c, LE_LOAD64(p));
     p += 8;
     size -= 8;
   }
   if (size & 4) {
-    c = ArmCrc32cw(c, ArmLoadLe32(p));
+    c = ArmCrc32cw(c, LE_LOAD32(p));
     p += 4;
   }
   if (size & 2) {
-    c = ArmCrc32ch(c, ArmLoadLe16(p));
+    c = ArmCrc32ch(c, LE_LOAD16(p));
     p += 2;
   }
   if (size & 1) {
@@ -1185,29 +1130,11 @@ static uint32_t Arm64ExtendCrc32Pmull(uint32_t crc, const char* buf,
 }
 #endif  // defined(BUTIL_ARM64_PMULL_ENABLED)
 
-uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char* buf, size_t size) {
-  if (isArmCrc32()) {
-    return Arm64ExtendCrc32(crc, buf, size);
-  }
-  return ExtendImpl<SlowCRC32Functor>(crc, buf, size);
-}
-
-uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char* buf,
-                                      size_t size) {
-#if defined(BUTIL_ARM64_PMULL_ENABLED)
-  if (isArmCrc32() && isArmPmull()) {
-    return Arm64ExtendCrc32Pmull(crc, buf, size);
-  }
-#endif
-  return Arm64ExtendCrc32ForTest(crc, buf, size);
-}
-
-#undef BUTIL_ARM64_BIG_ENDIAN
 #undef BUTIL_CRC32_TARGET_CRC
 #if defined(BUTIL_CRC32_TARGET_CRC_PMULL)
 #undef BUTIL_CRC32_TARGET_CRC_PMULL
 #endif
-#endif  // defined(__aarch64__)
+#endif  // defined(BUTIL_ARM64_CRC32_ENABLED)
 
 typedef uint32_t (*Function)(uint32_t, const char*, size_t);
 
@@ -1226,7 +1153,7 @@ static inline Function Choose_Extend() {
     return (Function)ExtendImpl<FastCRC32Functor>;
   }
 #endif
-#if defined(__aarch64__)
+#if defined(BUTIL_ARM64_CRC32_ENABLED)
   if (isArmCrc32()) {
 #if defined(BUTIL_ARM64_PMULL_ENABLED)
     if (isArmPmull()) {
@@ -1265,6 +1192,22 @@ static inline Function Choose_Extend() {
 }
 
 #if defined(__aarch64__)
+bool IsArm64Crc32CompiledForTest() {
+#if defined(BUTIL_ARM64_CRC32_ENABLED)
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsArm64PmullCompiledForTest() {
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool IsArm64PmullSelectedForTest() {
 #if defined(BUTIL_ARM64_PMULL_ENABLED)
   return Choose_Extend() == reinterpret_cast<Function>(Arm64ExtendCrc32Pmull);
@@ -1272,16 +1215,32 @@ bool IsArm64PmullSelectedForTest() {
   return false;
 #endif
 }
+
+uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char* buf, size_t size) {
+#if defined(BUTIL_ARM64_CRC32_ENABLED)
+  if (isArmCrc32()) {
+    return Arm64ExtendCrc32(crc, buf, size);
+  }
+#endif
+  return ExtendImpl<SlowCRC32Functor>(crc, buf, size);
+}
+
+uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char* buf,
+                                      size_t size) {
 #if defined(BUTIL_ARM64_PMULL_ENABLED)
-#undef BUTIL_ARM64_PMULL_ENABLED
+  if (isArmCrc32() && isArmPmull()) {
+    return Arm64ExtendCrc32Pmull(crc, buf, size);
+  }
 #endif
-#endif
+  return Arm64ExtendCrc32ForTest(crc, buf, size);
+}
+#endif  // defined(__aarch64__)
 
 bool IsFastCrc32Supported() {
 #ifdef __SSE4_2__
   if (isSSE42()) return true;
 #endif
-#if defined(__aarch64__)
+#if defined(BUTIL_ARM64_CRC32_ENABLED)
   if (isArmCrc32()) return true;
 #endif
 #if defined(__riscv) && (__riscv_xlen == 64) && (defined(__riscv_zbc) || defined(__riscv_zvbc))
@@ -1294,6 +1253,14 @@ bool IsFastCrc32Supported() {
 #endif
   return false;
 }
+
+#undef BUTIL_CRC32C_LITTLE_ENDIAN
+#if defined(BUTIL_ARM64_CRC32_ENABLED)
+#undef BUTIL_ARM64_CRC32_ENABLED
+#endif
+#if defined(BUTIL_ARM64_PMULL_ENABLED)
+#undef BUTIL_ARM64_PMULL_ENABLED
+#endif
 
 uint32_t Extend(uint32_t crc, const char* buf, size_t size) {
   static Function ChosenExtend = Choose_Extend();
