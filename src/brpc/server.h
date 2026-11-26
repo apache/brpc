@@ -73,6 +73,12 @@ struct SocketSSLContext;
 struct ServerOptions {
     ServerOptions();  // Constructed with default options.
 
+    // NOTE: pointers in this struct are owned by the caller until they are
+    // adopted by a Server. A Server::Start() rejected by the validation of
+    // this struct (e.g. an invalid enabled_protocols) adopts nothing, so the
+    // caller still owns and must free them. Once Start() gets past the
+    // validation, the Server owns them and frees them in its destructor.
+
     // connections without data transmission for so many seconds will be closed
     // Default: -1 (disabled)
     int idle_timeout_sec;
@@ -290,6 +296,8 @@ struct ServerOptions {
     // Builtin and restful services as well as http_master_service are served
     // through http/h2, so if any of them is enabled, http or h2 must be listed
     // as well, otherwise Server::Start() fails.
+    // The value is applied by the first Start() of a Server; restarting it
+    // with a different value fails, use a new Server instead.
     // Default: empty (all protocols)
     std::string enabled_protocols;
 
@@ -836,6 +844,10 @@ friend struct RevertServerStatus;
     bool _failed_to_set_ignore_eovercrowded;
     Acceptor* _am;
     Acceptor* _internal_am;
+    // ServerOptions.enabled_protocols used to build `_am'. Acceptors cache
+    // their protocol handlers, so a different value cannot be applied by
+    // restarting this Server.
+    std::string _built_enabled_protocols;
 
     // Declared whatever BRPC_WITH_FLATBUFFERS is, so the layout does not
     // depend on it. Always null when the option is OFF.

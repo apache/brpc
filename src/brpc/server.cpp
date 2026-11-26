@@ -726,6 +726,16 @@ static void ParseEnabledProtocols(const std::string& enabled_protocols,
     }
 }
 
+// Returns true if `a' and `b' list the same set of protocols, in which case the
+// handlers built from one of them also match the other.
+static bool SameEnabledProtocols(const std::string& a, const std::string& b) {
+    std::unordered_set<std::string> wa;
+    std::unordered_set<std::string> wb;
+    ParseEnabledProtocols(a, &wa);
+    ParseEnabledProtocols(b, &wb);
+    return wa == wb;
+}
+
 int Server::ValidateEnabledProtocols(const ServerOptions& options) const {
     std::unordered_set<std::string> whitelist;
     ParseEnabledProtocols(options.enabled_protocols, &whitelist);
@@ -749,6 +759,7 @@ int Server::ValidateEnabledProtocols(const ServerOptions& options) const {
         }
         err << '\'';
         LOG(ERROR) << err.str();
+        errno = EINVAL;
         return -1;
     }
     if (http_in_whitelist) {
@@ -756,7 +767,13 @@ int Server::ValidateEnabledProtocols(const ServerOptions& options) const {
     }
     std::vector<std::string> features;
     std::vector<std::string> fixes;
-    if (options.has_builtin_services) {
+    if (_builtin_service_count > 0) {
+        // Builtin services added by a previous Start() stay registered, so the
+        // configuration cannot get rid of them anymore.
+        features.push_back("builtin services are already registered");
+        fixes.push_back("create a new Server with "
+                        "ServerOptions.has_builtin_services=false");
+    } else if (options.has_builtin_services) {
         features.push_back("ServerOptions.has_builtin_services is true");
         fixes.push_back("set ServerOptions.has_builtin_services=false");
     }
@@ -776,6 +793,7 @@ int Server::ValidateEnabledProtocols(const ServerOptions& options) const {
                << "h2, but " << JoinWithAnd(features)
                << ". They are served through http/h2, add `http' (or `h2') to "
                << "enabled_protocols, or " << JoinWithAnd(fixes) << '.';
+    errno = EINVAL;
     return -1;
 }
 
@@ -845,6 +863,17 @@ int Server::InitALPNOptions(const ServerSSLOptions* options) {
         const Protocol* protocol = FindProtocol(protocol_type);
         if (protocol == nullptr || !protocol->support_server()) {
             LOG(ERROR) << "Server does not support alpn=" << alpn;
+            return -1;
+        }
+        // Negotiating a protocol without an installed handler makes the client
+        // fail on its first request, reject the configuration instead.
+        std::unordered_set<std::string> whitelist;
+        ParseEnabledProtocols(_options.enabled_protocols, &whitelist);
+        if (!whitelist.empty() && whitelist.count(protocol->name) == 0) {
+            LOG(ERROR) << "alpn=" << alpn << " is not in "
+                       << "ServerOptions.enabled_protocols=`"
+                       << _options.enabled_protocols << '\'';
+            errno = EINVAL;
             return -1;
         }
         raw_protocol.append(ALPNProtocolToString(protocol_type));
@@ -1031,6 +1060,19 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     if (ValidateEnabledProtocols(real_opt) != 0) {
         return -1;
     }
+    // Acceptors keep the handlers built from the options of the first Start(),
+    // so a different `enabled_protocols' cannot be applied by restarting.
+    if (_am != nullptr &&
+        !SameEnabledProtocols(real_opt.enabled_protocols,
+                              _built_enabled_protocols)) {
+        LOG(ERROR) << "ServerOptions.enabled_protocols cannot be changed from `"
+                   << _built_enabled_protocols << "' to `"
+                   << real_opt.enabled_protocols
+                   << "' after the Server is started, create a new Server "
+                   << "instead";
+        errno = EINVAL;
+        return -1;
+    }
 
     int ret = TransportFactory::ContextInitOrDie(real_opt.socket_mode, true, &real_opt);
     if (ret != 0) {
@@ -1196,6 +1238,12 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 
     _concurrency = 0;
 
+    // bthread_init_fn runs after the validation of the user-provided options
+    // and may add services with restful mappings, validate again.
+    if (ValidateEnabledProtocols(_options) != 0) {
+        return -1;
+    }
+
     if (_options.has_builtin_services &&
         _builtin_service_count <= 0 &&
         AddBuiltinServices() != 0) {
@@ -1279,12 +1327,6 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
         LOG(ERROR) << "Only IPv4 address supports port range feature";
         return -1;
     }
-    // Acceptors cache the protocol handlers built from ServerOptions, which may
-    // change between Start()s of the same Server, so rebuild them.
-    delete _am;
-    _am = nullptr;
-    delete _internal_am;
-    _internal_am = nullptr;
     _listen_addr = endpoint;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
         _listen_addr.port = port;
@@ -1318,6 +1360,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 LOG(ERROR) << "Fail to build acceptor";
                 return -1;
             }
+            _built_enabled_protocols = _options.enabled_protocols;
             _am->_socket_mode = _options.socket_mode;
             _am->_bthread_tag = _options.bthread_tag;
         }
@@ -2139,6 +2182,8 @@ void Server::ClearServices() {
     _fullname_service_map.clear();
     _service_map.clear();
     _method_map.clear();
+    delete _global_restful_map;
+    _global_restful_map = nullptr;
     _builtin_service_count = 0;
     _virtual_service_count = 0;
     _first_service = nullptr;
