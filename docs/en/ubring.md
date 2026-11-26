@@ -20,9 +20,13 @@ UBRing supports two types of shared memory backends, controlled by the `ub_shm_t
 
 This is the default mode, using standard POSIX shared memory for local IPC. Processes on the same machine can communicate directly through shared memory regions.
 
+The segments are created with mode 0600, so the client and the server must run as the same user.
+
 ### 2. UBS-Mem Remote Shared Memory (ub_shm_type = 2)
 
 This mode uses ubs-mem (Unified Block Storage Memory), an open-source remote shared memory framework from openEuler. It enables shared memory communication across nodes in a rack, similar to RDMA but with simpler deployment requirements.
+
+The segments are also created with mode 0600, so the processes that create and map a segment must run as the same user.
 
 **UBS-Mem Open Source**: https://atomgit.com/openeuler/ubs-mem
 

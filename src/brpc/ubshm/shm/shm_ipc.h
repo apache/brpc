@@ -20,7 +20,7 @@
 
 #include "shm_def.h"
 
-#define SHM_IPC_MODE 0666
+#define SHM_IPC_MODE SHM_SEGMENT_MODE
 
 namespace brpc {
 namespace ubring {
