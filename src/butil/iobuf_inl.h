@@ -241,6 +241,42 @@ inline const void* IOBufCutter::fetch1() {
     return _data;
 }
 
+inline size_t IOBufCutter::remaining_contiguous_bytes() {
+    const char* data = static_cast<const char*>(fetch1());
+    if (data == nullptr) {
+        return 0;
+    }
+    const char* end = static_cast<const char*>(_data_end);
+    return static_cast<size_t>(end - data);
+}
+
+inline const void* IOBufCutter::fetch(void* aux_buffer, size_t n) const {
+    if (n == 0) {
+        return aux_buffer;
+    }
+    if (_block == nullptr) {
+        return _buf->fetch(aux_buffer, n);
+    }
+    const size_t size = (const char*)_data_end - (const char*)_data;
+    if (n <= size) {
+        return _data;
+    }
+    if (n > remaining_bytes()) {
+        return nullptr;
+    }
+    // The exhausted front block has not been removed yet. Peeking into the
+    // next block must also remain zero-copy when all n bytes fit there.
+    if (size == 0) {
+        const StringPiece next = _buf->backing_block(1);
+        if (n <= next.size()) {
+            return next.data();
+        }
+    }
+    const size_t offset = _buf->_front_ref().length - size;
+    _buf->copy_to(aux_buffer, n, offset);
+    return aux_buffer;
+}
+
 inline size_t IOBufCutter::copy_to(void* out, size_t n) {
     size_t size = (char*)_data_end - (char*)_data;
     if (n <= size) {
