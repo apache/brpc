@@ -98,7 +98,12 @@ class BAIDU_CACHELINE_ALIGNMENT TimerThread::Bucket {
 public:
     Bucket()
         : _nearest_run_time(std::numeric_limits<int64_t>::max())
-        , _task_head(nullptr) {
+        , _task_head(nullptr)
+        , _has_tasks(false)
+#if defined(UNIT_TEST)
+        , _force_empty_hint_once(false)
+#endif
+    {
     }
 
     ~Bucket() {}
@@ -106,6 +111,7 @@ public:
     struct ScheduleResult {
         TimerThread::TaskId task_id;
         bool earlier;
+        bool became_nonempty;
     };
     
     // Schedule a task into this bucket.
@@ -117,10 +123,22 @@ public:
     // This function is called in timer thread.
     Task* consume_tasks();
 
+#if defined(UNIT_TEST)
+    void force_empty_hint_once_for_test() {
+        _force_empty_hint_once.store(true, butil::memory_order_relaxed);
+    }
+#endif
+
 private:
     FastPthreadMutex _mutex;
     int64_t _nearest_run_time;
     Task* _task_head;
+    butil::atomic<bool> _has_tasks;
+#if defined(UNIT_TEST)
+    // Makes the next consume_tasks() take the sparse fast path. This models a
+    // legal stale empty-hint observation without exposing test state in builds.
+    butil::atomic<bool> _force_empty_hint_once;
+#endif
 };
 
 // Utilies for making and extracting TaskId.
@@ -156,7 +174,12 @@ TimerThread::TimerThread()
     , _nearest_run_time(std::numeric_limits<int64_t>::max())
     , _nsignals(0)
     , _npending(0)
-    , _thread(0) {
+    , _thread(0)
+#if defined(UNIT_TEST)
+    , _before_wait_hook(nullptr)
+    , _before_wait_hook_arg(nullptr)
+#endif
+{
 }
 
 TimerThread::~TimerThread() {
@@ -190,20 +213,30 @@ int TimerThread::start(const TimerThreadOptions* options_in) {
 }
 
 TimerThread::Task* TimerThread::Bucket::consume_tasks() {
-    Task* head = nullptr;
-    if (_task_head) { // NOTE: schedule() and consume_tasks() are sequenced
-        // by TimerThread._nearest_run_time and fenced by TimerThread._mutex.
-        // We can avoid touching the mutex and related cacheline when the
-        // bucket is actually empty.
-        BAIDU_SCOPED_LOCK(_mutex);
-        if (_task_head) {
-            head = _task_head;
-            _task_head = nullptr;
-            _nearest_run_time = std::numeric_limits<int64_t>::max();
-        }
+#if defined(UNIT_TEST)
+    if (_force_empty_hint_once.exchange(false, butil::memory_order_relaxed)) {
+        return nullptr;
     }
-    return head;
+#endif
+    if (!_has_tasks.load(butil::memory_order_acquire)) {
+        return nullptr;
+    }
+    BAIDU_SCOPED_LOCK(_mutex);
+    if (_task_head) {
+        Task* head = _task_head;
+        _task_head = nullptr;
+        _has_tasks.store(false, butil::memory_order_release);
+        _nearest_run_time = std::numeric_limits<int64_t>::max();
+        return head;
+    }
+    return nullptr;
 }
+
+#if defined(UNIT_TEST)
+void TimerThread::force_empty_bucket_hint_once_for_test(size_t bucket) {
+    _buckets[bucket].force_empty_hint_once_for_test();
+}
+#endif
 
 TimerThread::Bucket::ScheduleResult
 TimerThread::Bucket::schedule(void (*fn)(void*), void* arg,
@@ -211,7 +244,7 @@ TimerThread::Bucket::schedule(void (*fn)(void*), void* arg,
     butil::ResourceId<Task> slot_id;
     Task* task = butil::get_resource<Task>(&slot_id);
     if (task == nullptr) {
-        ScheduleResult result = { INVALID_TASK_ID, false };
+        ScheduleResult result = { INVALID_TASK_ID, false, false };
         return result;
     }
     task->next = nullptr;
@@ -226,16 +259,19 @@ TimerThread::Bucket::schedule(void (*fn)(void*), void* arg,
     const TaskId id = make_task_id(slot_id, version);
     task->task_id = id;
     bool earlier = false;
+    bool became_nonempty = false;
     {
         BAIDU_SCOPED_LOCK(_mutex);
+        became_nonempty = (_task_head == nullptr);
         task->next = _task_head;
         _task_head = task;
+        _has_tasks.store(true, butil::memory_order_release);
         if (task->run_time < _nearest_run_time) {
             _nearest_run_time = task->run_time;
             earlier = true;
         }
     }
-    ScheduleResult result = { id, earlier };
+    ScheduleResult result = { id, earlier, became_nonempty };
     return result;
 }
 
@@ -249,18 +285,24 @@ TimerThread::TaskId TimerThread::schedule(
     const Bucket::ScheduleResult result = 
         _buckets[butil::fmix64(pthread_numeric_id()) % _options.num_buckets]
         .schedule(fn, arg, abstime);
-    if (result.earlier) {
+    if (result.earlier || result.became_nonempty) {
         bool earlier = false;
         const int64_t run_time = butil::timespec_to_microseconds(abstime);
         {
             BAIDU_SCOPED_LOCK(_mutex);
-            if (run_time < _nearest_run_time) {
+            if (result.earlier && run_time < _nearest_run_time) {
                 _nearest_run_time = run_time;
-                ++_nsignals;
                 earlier = true;
             }
+            // An empty-to-nonempty transition is a publication event even
+            // when its task is later than the heap minimum. The timer
+            // snapshots this sequence before polling buckets, preventing a
+            // stale empty-hint read from being followed by an indefinite wait.
+            if (earlier || result.became_nonempty) {
+                ++_nsignals;
+            }
         }
-        if (earlier) {
+        if (earlier || result.became_nonempty) {
             futex_wake_private(&_nsignals, 1);
         }
     }
@@ -374,9 +416,14 @@ void TimerThread::run() {
     }
     
     while (!_stop.load(butil::memory_order_relaxed)) {
-        // Clear _nearest_run_time before consuming tasks from buckets.
+        // Clear _nearest_run_time and snapshot _nsignals before consuming
+        // tasks from buckets. A producer that publishes an empty bucket after
+        // this snapshot increments _nsignals, preventing the futex wait below
+        // from missing that publication. A producer that publishes before the
+        // snapshot is ordered before the bucket hint load by this mutex.
         // This helps us to be aware of earliest task of the new tasks before we
         // would run the consumed tasks.
+        int expected_nsignals = 0;
         {
             BAIDU_SCOPED_LOCK(_mutex);
             // This check of _stop ensures we won't miss the reset of _nearest_run_time
@@ -385,6 +432,7 @@ void TimerThread::run() {
                 break;
             }
             _nearest_run_time = std::numeric_limits<int64_t>::max();
+            expected_nsignals = _nsignals;
         }
         
         // Pull tasks from buckets.
@@ -478,7 +526,6 @@ void TimerThread::run() {
         // _nearest_run_time to prevent us from waiting on a non-earliest
         // task. We also use the _nsignal to make sure that if new task 
         // is earlier than the realtime that we wait for, we'll wake up.
-        int expected_nsignals = 0;
         {
             BAIDU_SCOPED_LOCK(_mutex);
             if (next_run_time > _nearest_run_time) {
@@ -487,7 +534,6 @@ void TimerThread::run() {
                 continue;
             } else {
                 _nearest_run_time = next_run_time;
-                expected_nsignals = _nsignals;
             }
         }
         timespec* ptimeout = nullptr;
@@ -509,6 +555,11 @@ void TimerThread::run() {
             ptimeout = &next_timeout;
         }
         busy_seconds += (now - last_sleep_time) / 1000000.0;
+#if defined(UNIT_TEST)
+        if (_before_wait_hook != nullptr) {
+            _before_wait_hook(_before_wait_hook_arg);
+        }
+#endif
         futex_wait_private(&_nsignals, expected_nsignals, ptimeout);
         last_sleep_time = butil::gettimeofday_us();
     }

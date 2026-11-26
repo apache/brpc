@@ -105,6 +105,12 @@ private:
     // tests through the -fno-access-control build flag.
     butil::atomic<int64_t> _npending;
     pthread_t _thread;       // all scheduled task will be run on this thread
+#if defined(UNIT_TEST)
+    // Test-only hook, configured before start() for deterministic wait tests.
+    void (*_before_wait_hook)(void*);
+    void* _before_wait_hook_arg;
+    void force_empty_bucket_hint_once_for_test(size_t bucket);
+#endif
 };
 
 // Get the global TimerThread which never quits.
