@@ -44,6 +44,7 @@
 
 /* public header */
 #include "modp_b64.h"
+#include "modp_b64_avx2.h"
 
 /*
  * If you are ripping this out of the library, comment out the next
@@ -83,8 +84,21 @@
 #define CHARPAD '\0'
 #endif
 
+#if MODP_B64_HAS_AVX2 && !defined(MODP_B64_DISABLE_AVX2)
+// AVX2 setup is slower for short inputs. These thresholds were selected from
+// the x86 AVX2 benchmark: encoding wins from 32 bytes, while decoding wins
+// from 256 bytes of Base64 text (about 192 bytes of decoded data).
+static const size_t kAvx2EncodeMinInputSize = 32;
+static const size_t kAvx2DecodeMinInputSize = 256;
+#endif
+
 size_t modp_b64_encode(char* dest, const char* str, size_t len)
 {
+#if MODP_B64_HAS_AVX2 && !defined(MODP_B64_DISABLE_AVX2)
+    if (len >= kAvx2EncodeMinInputSize && modp_b64_avx2_supported()) {
+        return modp_b64_avx2_encode(dest, str, len);
+    }
+#endif
 #if USE_RVV_BASE64
     return rvv_modp_b64_encode(dest, str, len);
 #endif
@@ -197,6 +211,11 @@ int modp_b64_decode(char* dest, const char* src, int len)
 
 size_t modp_b64_decode(char* dest, const char* src, size_t len)
 {
+#if MODP_B64_HAS_AVX2 && !defined(MODP_B64_DISABLE_AVX2)
+    if (len >= kAvx2DecodeMinInputSize && modp_b64_avx2_supported()) {
+        return modp_b64_avx2_decode(dest, src, len);
+    }
+#endif
 #if USE_RVV_BASE64
     return rvv_modp_b64_decode(dest, src, len);
 #endif
