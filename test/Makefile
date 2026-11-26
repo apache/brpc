@@ -52,6 +52,7 @@ ifeq ($(SYSTEM),Darwin)
 endif
 
 TEST_BUTIL_SOURCES = \
+    arena_unittest.cc \
     at_exit_unittest.cc \
     atomicops_unittest.cc \
     base64_unittest.cc \
