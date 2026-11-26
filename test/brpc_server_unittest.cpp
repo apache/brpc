@@ -123,6 +123,21 @@ private:
     const bool _saved;
 };
 
+// Captures logs and restores the previous sink when leaving the scope, so a
+// failing assertion cannot leave the global sink pointing at a destroyed
+// object.
+class LogSinkScope {
+public:
+    LogSinkScope() : _old_sink(logging::SetLogSink(&_sink)) {}
+    ~LogSinkScope() { logging::SetLogSink(_old_sink); }
+
+    const logging::StringSink& sink() const { return _sink; }
+
+private:
+    logging::StringSink _sink;
+    logging::LogSink* _old_sink;
+};
+
 class MyAuthenticator : public brpc::Authenticator {
 public:
     MyAuthenticator() = default;
@@ -481,12 +496,11 @@ TEST_F(ServerTest, invalid_protocol_in_enabled_protocols) {
         brpc::Server server;
         brpc::ServerOptions opt;
         opt.enabled_protocols = cases[i];
-        logging::StringSink log_sink;
-        logging::LogSink* old_sink = logging::SetLogSink(&log_sink);
+        LogSinkScope log_scope;
         ASSERT_EQ(-1, server.Start(ep, &opt));
-        logging::SetLogSink(old_sink);
         ASSERT_NE(std::string::npos,
-                  log_sink.find("unknown protocols=`hehe '")) << cases[i];
+                  log_scope.sink().find("unknown protocols=`hehe '"))
+            << cases[i];
         ASSERT_EQ(EINVAL, errno) << cases[i];
         ASSERT_EQ(0u, server._builtin_service_count) << cases[i];
     }
@@ -805,11 +819,9 @@ TEST_F(ServerTest, registered_builtin_services_hint_to_use_new_server) {
 
     opt.has_builtin_services = false;
     opt.enabled_protocols = "baidu_std";
-    logging::StringSink log_sink;
-    logging::LogSink* old_sink = logging::SetLogSink(&log_sink);
+    LogSinkScope log_scope;
     ASSERT_EQ(-1, server.Start(ep, &opt));
-    logging::SetLogSink(old_sink);
-    ASSERT_NE(std::string::npos, log_sink.find("already registered"));
+    ASSERT_NE(std::string::npos, log_scope.sink().find("already registered"));
     ASSERT_EQ(EINVAL, errno);
 }
 
@@ -820,11 +832,9 @@ TEST_F(ServerTest, enabled_protocols_must_include_alpn_protocols) {
     opt.has_builtin_services = false;
     opt.enabled_protocols = "h2";
     opt.mutable_ssl_options()->alpns = "http,h2";
-    logging::StringSink log_sink;
-    logging::LogSink* old_sink = logging::SetLogSink(&log_sink);
+    LogSinkScope log_scope;
     ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
-    logging::SetLogSink(old_sink);
-    ASSERT_NE(std::string::npos, log_sink.find(
+    ASSERT_NE(std::string::npos, log_scope.sink().find(
         "is not in ServerOptions.enabled_protocols"));
     ASSERT_EQ(EINVAL, errno);
 }
