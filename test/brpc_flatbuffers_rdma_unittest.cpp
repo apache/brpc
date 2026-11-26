@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include "brpc/adapter_transport.h"
 #include "brpc/channel.h"
 #include "brpc/closure_guard.h"
 #include "brpc/controller.h"
@@ -34,11 +35,11 @@
 #include "brpc/flatbuffers/message.h"
 #include "brpc/flatbuffers/service.h"
 #include "brpc/global.h"
-#include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma_transport.h"
 #include "brpc/server.h"
 #include "brpc/socket.h"
+#include "brpc/transport_handshake.h"
 #include "flatbuffers_message_generated.h"
 
 #if !BRPC_WITH_GLOG
@@ -104,11 +105,9 @@ bool IsRdmaOn(const brpc::Socket* socket) {
     if (socket == nullptr || socket->socket_mode() != brpc::SOCKET_MODE_RDMA) {
         return false;
     }
-    const auto* transport =
-        static_cast<const brpc::RdmaTransport*>(socket->_transport.get());
-    return transport->_rdma_ep->_state.load(butil::memory_order_acquire) ==
-               brpc::rdma::RdmaEndpoint::ESTABLISHED &&
-           transport->_rdma_state == brpc::RdmaTransport::RDMA_ON;
+    return brpc::AdapterTransport::Get(socket)->handshake_phase() ==
+               brpc::handshake::ESTABLISHED &&
+           brpc::RdmaTransport::Get(socket)->UpgradeActive();
 }
 
 std::string Bytes(const Message& message) {
@@ -239,10 +238,9 @@ protected:
         ASSERT_EQ(0, brpc::Socket::Address(channel._server_id, &socket));
         ASSERT_EQ(expect_rdma, IsRdmaOn(socket.get()));
         if (!expect_rdma && socket->socket_mode() == brpc::SOCKET_MODE_RDMA) {
-            const auto* transport =
-                static_cast<const brpc::RdmaTransport*>(socket->_transport.get());
-            EXPECT_EQ(brpc::rdma::RdmaEndpoint::FALLBACK_TCP,
-                      transport->_rdma_ep->_state.load(butil::memory_order_acquire));
+            const auto* transport = brpc::RdmaTransport::Get(socket);
+            const auto* adapter = brpc::AdapterTransport::Get(socket.get());
+            EXPECT_EQ(brpc::handshake::FALLBACK_TCP, adapter->handshake_phase());
             EXPECT_EQ(brpc::RdmaTransport::RDMA_OFF, transport->_rdma_state);
         }
     }

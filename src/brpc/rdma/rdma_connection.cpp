@@ -21,7 +21,6 @@
 #include <gflags/gflags.h>
 #include "brpc/errno.pb.h"
 #include "brpc/rdma/block_pool.h"
-#include "brpc/rdma/rdma_handshake.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma/rq_connection.h"
 #include "brpc/rdma/srq_worker.h"

@@ -203,7 +203,7 @@ protected:
 // Shorthand for the RDMA transport behind a Socket, which every endpoint state
 // check below has to go through.
 static RdmaTransport* RdmaTransportOf(Socket* s) {
-    return static_cast<RdmaTransport*>(s->_transport.get());
+    return RdmaTransport::Get(s);
 }
 
 static RdmaTransport* RdmaTransportOf(const SocketUniquePtr& s) {

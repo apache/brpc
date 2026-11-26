@@ -16,10 +16,8 @@
 // under the License.
 
 #include "brpc/transport_factory.h"
-#include "brpc/rdma_transport.h"
-#include "brpc/tcp_transport.h"
-#include "brpc/ubshm_transport.h"
-#include "brpc/urma_transport.h"
+#include "brpc/adapter_transport.h"
+#include "brpc/handshake/handshake_adapter.h"
 
 namespace brpc {
 
@@ -28,44 +26,23 @@ int TransportFactory::ContextInitOrDie(
     if (mode == SOCKET_MODE_TCP) {
         return 0;
     }
-#if BRPC_WITH_RDMA
-    if (mode == SOCKET_MODE_RDMA) {
-        return RdmaTransport::ContextInitOrDie(server_or_not, options);
+    const auto* registration = handshake::HandshakeRegistration::Find(mode);
+    if (registration && registration->upgrade) {
+        return registration->upgrade->init_context(server_or_not, options);
     }
-#endif
-#if BRPC_WITH_URMA
-    if (mode == SOCKET_MODE_URMA) {
-        return UrmaTransport::ContextInitOrDie(server_or_not, options);
-    }
-#endif
-#if BRPC_WITH_UBRING
-    if (mode == SOCKET_MODE_UBRING) {
-        return UBShmTransport::ContextInitOrDie(server_or_not, options);
-    }
-#endif
     LOG(ERROR) << "Unknown transport type " << mode;
     return 1;
 }
 
 std::unique_ptr<Transport> TransportFactory::CreateTransport(SocketMode mode) {
     if (mode == SOCKET_MODE_TCP) {
-        return std::unique_ptr<TcpTransport>(new TcpTransport());
+        return std::unique_ptr<Transport>(new AdapterTransport(nullptr));
     }
-#if BRPC_WITH_RDMA
-    if (mode == SOCKET_MODE_RDMA) {
-        return std::unique_ptr<RdmaTransport>(new RdmaTransport());
+    const auto* registration = handshake::HandshakeRegistration::Find(mode);
+    if (registration && registration->upgrade) {
+        return std::unique_ptr<Transport>(
+            new AdapterTransport(registration->upgrade));
     }
-#endif
-#if BRPC_WITH_URMA
-    if (mode == SOCKET_MODE_URMA) {
-        return std::unique_ptr<UrmaTransport>(new UrmaTransport());
-    }
-#endif
-#if BRPC_WITH_UBRING
-    if (mode == SOCKET_MODE_UBRING) {
-        return std::unique_ptr<UBShmTransport>(new UBShmTransport());
-    }
-#endif
     LOG(ERROR) << "Unknown transport type " << mode;
     return nullptr;
 }

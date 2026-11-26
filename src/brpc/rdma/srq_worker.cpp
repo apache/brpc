@@ -41,7 +41,6 @@
 #include "brpc/rdma_transport.h"
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_endpoint.h"
-#include "brpc/rdma/rdma_handshake.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma/srq_flow_control.h"
 #include "brpc/rdma/srq_receive_pool.h"
@@ -2658,7 +2657,7 @@ void SrqConnection::Consume(Socket* socket, butil::IOBuf data) {
             }
             if (!data.empty() && !_closing.load(butil::memory_order_acquire) &&
                 socket) {
-                auto* transport = static_cast<RdmaTransport*>(socket->_transport.get());
+                auto* transport = RdmaTransport::Get(socket);
                 auto* ep = transport->GetRdmaEp();
                 if (ep->Deliver(this, &data, data.size(), last_msg) < 0) {
                     Close(EPROTO);

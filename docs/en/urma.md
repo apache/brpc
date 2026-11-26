@@ -104,46 +104,31 @@ sopt.socket_mode = brpc::SOCKET_MODE_URMA;
 server.Start(port, &sopt);
 ```
 
-If the peer does not speak URMA (e.g. a TCP-only client connecting to a
-URMA-enabled server), the transport transparently falls back to TCP after
-the 4-byte magic handshake. No application code change is required.
+TCP clients can connect directly to a URMA-enabled server. A URMA client
+continues over TCP when it receives a disabled Hello.
 
 ## Architecture
 
-UrmaTransport follows the same two-layer design as `RdmaTransport` and
-`UBShmTransport`:
+`AdapterTransport` runs the common handshake and selects the data path:
 
 ```
-UrmaTransport : public Transport         (urma_transport.{h,cpp})
-  +-- std::shared_ptr<TcpTransport>      (fallback path)
-  +-- urma::UrmaEndpoint*                (URMA data path)
-  +-- UrmaState { URMA_ON, URMA_OFF, URMA_UNKNOWN }
-
-urma::UrmaEndpoint : public SocketUser   (urma/urma_endpoint.{h,cpp})
-  +-- UrmaResource { jfc, jfce, jfr, jetty, remote_jetty, remote_seg }
-  +-- handshake state machine (C/S symmetric, driven over the TCP fd)
-  +-- send path: urma_post_jetty_send_wr(URMA_OPC_SEND)
-  +-- recv path: urma_poll_jfc -> HandleCompletion -> InputMessenger
-  +-- two-window credit flow control
-      (_remote_rq_window_size / _sq_window_size)
+AdapterTransport
+  +-- TcpTransport             (TCP handshake, ordinary requests and fallback)
+  +-- UrmaTransport
+      +-- UrmaEndpoint         (URMA resources, CQ and flow-control credits)
 ```
 
-### Connection establishment (dual-plane)
+### Connection establishment
 
-Like RDMA / UBRing, the control plane is TCP and the data plane is URMA:
-
-1. TCP connect completes.
-2. `UrmaConnect::StartConnect` spawns the client handshake bthread.
-3. Both sides exchange a `UrmaHello` message (magic `URMA` for v2 binary,
-   `URM3` for v3 protobuf) over the TCP fd. The message carries the local
-   EID, jetty id, recv buffer count, and the flattened buffer-pool segment.
-4. Each side calls `urma_import_seg` **before** `urma_import_jetty` to
-   establish transport-path (TP) routing for the remote EID. Skipping the
-   `import_seg` step causes the first SEND to be rejected by hardware with
-   `URMA_CR_RNR_RETRY_CNT_EXC_ERR`.
-5. A 4-byte ACK (`HELLO_ACK_URMA_OK = 0x1`) confirms both sides want URMA.
-6. On success, the TCP fd is kept only for the epoll lifecycle and fallback;
-   payloads flow through URMA.
+1. After TCP connects, `AdapterTransport` starts the client handshake bthread.
+   The server parses handshake frames through `InputMessenger`.
+2. The peers exchange Hello frames. Version 2 uses binary encoding with the
+   `URMA` magic prefix, and version 3 uses protobuf with `URM3`. The frames
+   carry the EID, jetty ID, receive buffer count, and buffer pool segment details.
+3. Both peers call `urma_import_seg` before `urma_import_jetty`.
+4. The client sends a 4-byte ACK to confirm the upgrade. The server starts
+   receiving CQ events after processing the ACK and leaving the TCP handshake
+   parser. RPC traffic uses URMA, and TCP remains the control connection.
 
 ### Memory management
 

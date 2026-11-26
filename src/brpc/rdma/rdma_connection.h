@@ -37,7 +37,19 @@ extern const uint16_t MIN_QP_SIZE;
 extern const uint16_t MAX_QP_SIZE;
 extern uint32_t g_rdma_recv_block_size;
 
-struct ParsedHello;
+struct ParsedHello {
+    uint32_t block_size;
+    uint16_t sq_size;
+    uint16_t rq_size;
+    uint16_t lid;
+    ibv_gid gid;
+    uint32_t qp_num;
+    uint32_t srq_protocol{0};
+    uint32_t fc_window{0};
+    butil::optional<ibv_ece> ece;
+    // Active MTU in a client hello, negotiated MTU in a server hello (v3).
+    butil::optional<uint32_t> path_mtu;
+};
 
 enum class RdmaQueueMode { PRIVATE_RQ, SHARED_RQ };
 

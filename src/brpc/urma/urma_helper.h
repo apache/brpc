@@ -75,6 +75,10 @@ const urma_eid_t* GetUrmaLocalEid();
 // Return true when the selected URMA device is a bonding provider device.
 bool IsUrmaBondingDevice();
 
+// Standalone bonding uses the regular remote-jetty import layout.
+// Mode values match urma_bonding_mode: 0=standalone, 1=active_backup, 2=balance.
+bool NeedsUrmaBondingJettyExtension(bool bonding_device, int bonding_mode);
+
 // Find the priority whose advertised transport-path capability exactly
 // matches @tp_type. Returns -1 when the device does not report one.
 int FindUrmaPriorityForTpType(const urma_device_attr_t& attr,

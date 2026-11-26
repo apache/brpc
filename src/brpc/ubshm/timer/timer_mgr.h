@@ -54,20 +54,23 @@ typedef struct {
     uint32_t fd;
     TimerFdCtxStatus status;
     uint32_t periodical;
-    pthread_spinlock_t spin_lock;
+    uint32_t generation;
+    bool canceled;
 } TimerFdCtx;
 
 RETURN_CODE TimerInit(void);
 void TimerModuleDestroy(void);
-void *UnifiedCallback(void *args);
 void *TimerEpoll(void *args);
-int32_t TimerStart(const itimerspec *time, void *(*cb)(void *), void *args);
+// Store the descriptor before the callback can run when requested.
+int32_t TimerStart(const itimerspec* time, void* (*cb)(void*), void* args,
+                   int* registered_fd = nullptr);
 uint32_t GetActiveTimerNum(void);
 void CloseTimerFd(int fd);
 
-void DeleteTimerSafe(uint32_t fd);
+// Wait for an active callback before closing its descriptor. Self-cancellation
+// closes the descriptor when the callback returns.
+void DeleteTimerSafe(int fd);
 void DeleteTimer(uint32_t fd);
-RETURN_CODE TimerFdCtxValidate(uint32_t fd);
 }
 }
 #endif //BRPC_TIMER_MGR_H

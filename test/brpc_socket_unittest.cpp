@@ -474,6 +474,43 @@ TEST_F(SocketTest, failed_socket_before_handshake_releases_queued_writes) {
     }
 }
 
+TEST_F(SocketTest, app_connect_success_after_socket_failure) {
+    butil::EndPoint point;
+    butil::fd_guard listener;
+    ASSERT_NO_FATAL_FAILURE(ListenOnFreePort(&point, &listener));
+    auto paused = std::make_shared<PausedAppConnect>();
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    options.app_connect = paused;
+    brpc::SocketId id;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr socket;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &socket));
+
+    WaitData result;
+    const timespec deadline = butil::seconds_from_now(5);
+    brpc::Socket::WriteOptions write_options;
+    write_options.abstime = &deadline;
+    ASSERT_EQ(0, bthread_id_create2(&write_options.id_wait, &result, OnWaitIdReset));
+    auto cleanup = butil::MakeScopeGuard([&] {
+        socket->SetFailed();
+        if (paused->started.timed_wait(deadline) == 0 && paused->done) {
+            PausedAppConnect::Complete(ECANCELED, paused.get());
+        }
+        bthread_id_cancel(write_options.id_wait);
+    });
+
+    butil::IOBuf request;
+    request.append("queued application request");
+    ASSERT_EQ(0, socket->Write(&request, &write_options));
+    ASSERT_EQ(0, paused->started.timed_wait(deadline));
+
+    ASSERT_EQ(0, socket->SetFailed(ECANCELED, "Canceled during application connect"));
+    PausedAppConnect::Complete(0, paused.get());
+    EXPECT_EQ(ECANCELED, result.error_code);
+    EXPECT_EQ(nullptr, socket->_write_head.load(butil::memory_order_acquire));
+}
+
 TEST_F(SocketTest, single_threaded_connect_and_write) {
     // FIXME(gejun): Messenger has to be new otherwise quitting may crash.
     // It is intentionally never deleted; mark it so it is not a reported leak.

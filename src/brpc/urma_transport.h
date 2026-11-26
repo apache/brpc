@@ -27,19 +27,12 @@
 
 namespace brpc {
 
-// UrmaTransport is the Transport subclass for URMA (openEuler Unified Remote
-// Memory Access). It composes a TcpTransport for fallback (mirroring the
-// RdmaTransport / UBShmTransport design) and delegates the URMA data path to
-// the per-connection urma::UrmaEndpoint. Negotiation runs over the TCP fd and
-// resolves _urma_state to URMA_ON or URMA_OFF.
+// UrmaTransport owns the URMA data path. AdapterTransport owns TCP fallback
+// and selects this transport only after the handshake establishes URMA.
 class UrmaTransport : public Transport {
-    friend class TransportFactory;
-    friend class urma::UrmaEndpoint;
-    friend class urma::UrmaConnect;
-    friend class urma::UrmaHandshakeServerV2;
-    friend class urma::UrmaHandshakeClientV2;
-    friend class urma::UrmaHandshakeServerV3;
-    friend class urma::UrmaHandshakeClientV3;
+friend class TransportFactory;
+friend class AdapterTransport;
+friend class urma::UrmaEndpoint;
 
 public:
     void Init(Socket* socket, const SocketOptions& options) override;
@@ -62,6 +55,15 @@ public:
 
     static int ContextInitOrDie(bool server_or_not, const void* options);
 
+    bool UpgradeReady() const { return _urma_ep != nullptr; }
+    int PrepareUpgradeResources(bool server_side);
+    int NegotiateUpgradeResources(const urma::UrmaConnectionInfo& remote,
+                                  bool server_side);
+    void ActivateUpgrade();
+    int StartUpgradeEvents();
+    void DeactivateUpgrade();
+    void SetHighSpeedAvailable(bool available);
+
 private:
     static bool OptionsAvailableForUrma(const ChannelOptions* opt);
     static bool OptionsAvailableOverUrma(const ServerOptions* opt);
@@ -75,7 +77,6 @@ private:
 
     urma::UrmaEndpoint* _urma_ep = nullptr;
     butil::atomic<UrmaState> _urma_state{URMA_UNKNOWN};
-    std::shared_ptr<TcpTransport> _tcp_transport;
 };
 
 }  // namespace brpc
