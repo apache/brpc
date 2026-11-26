@@ -23,10 +23,46 @@
 
 #include "butil/iobuf.h"
 #include "butil/arena.h"
+#include "brpc/channel.h"
+#include "brpc/controller.h"
+#include "brpc/details/controller_private_accessor.h"
+#include "brpc/policy/mysql/mysql.h"
 #include "brpc/policy/mysql/mysql_reply.h"
 #include "brpc/policy/mysql/mysql_common.h"
+#include "brpc/policy/mysql/mysql_protocol.h"
 
 namespace {
+
+TEST(MysqlRequestTest, prepared_data_outlives_request) {
+    brpc::Channel channel;
+    brpc::MysqlStatementUniquePtr statement = brpc::NewMysqlStatement(channel, "SELECT ?");
+    ASSERT_TRUE(statement);
+    for (bool clear_request : {false, true}) {
+        brpc::Controller controller;
+        butil::IOBuf serialized;
+        std::string expected_data;
+        {
+            brpc::MysqlRequest request(statement.get());
+            ASSERT_TRUE(request.AddParam(int32_t(42)));
+            expected_data = request.stmt()->execute_data().to_string();
+            brpc::policy::SerializeMysqlRequest(&serialized, &controller, &request);
+            ASSERT_FALSE(controller.Failed()) << controller.ErrorText();
+            if (clear_request) {
+                request.Clear();
+            }
+        }
+        brpc::ControllerPrivateAccessor accessor(&controller);
+        auto* stub = accessor.mysql_statement_stub();
+        ASSERT_NE(nullptr, stub);
+        EXPECT_EQ(statement.get(), stub->stmt());
+        EXPECT_EQ(expected_data, stub->execute_data().to_string());
+        butil::IOBuf packed;
+        EXPECT_TRUE(stub->PackExecuteCommand(&packed, 123).ok());
+        EXPECT_FALSE(packed.empty());
+        controller.Reset();
+        EXPECT_EQ(nullptr, accessor.mysql_statement_stub());
+    }
+}
 
 // Append a MySQL packet: 3-byte little-endian payload length + 1-byte
 // sequence id, followed by the payload.
