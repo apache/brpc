@@ -1095,11 +1095,11 @@ static void StartProfiling(ProfilingType type,
         "<select id='view_prof' onchange='onSelectProf()'>";
     os << "<option value=''>&lt;new profile&gt;</option>";
     for (size_t i = 0; i < past_profs.size(); ++i) {
-        os << "<option value='" << past_profs[i] << "' ";
+        os << "<option value='" << WebEscape(past_profs[i]) << "' ";
         if (view != nullptr && past_profs[i] == *view) {
             os << "selected";
         }
-        os << '>' << GetBaseName(&past_profs[i]);
+        os << '>' << WebEscape(GetBaseName(&past_profs[i]));
     }
     os << "</select>";
     os << "<div><pre style='display:inline'>Display: </pre>"
@@ -1120,11 +1120,11 @@ static void StartProfiling(ProfilingType type,
               "<select id='base_prof' onchange='onSelectProf()'>"
               "<option value=''>&lt;none&gt;</option>";
         for (size_t i = 0; i<past_profs.size(); ++i) {
-            os << "<option value='" << past_profs[i] << "' ";
+            os << "<option value='" << WebEscape(past_profs[i]) << "' ";
             if (base_name!=nullptr && past_profs[i]==*base_name) {
                 os << "selected";
             }
-            os << '>' << GetBaseName(&past_profs[i]);
+            os << '>' << WebEscape(GetBaseName(&past_profs[i]));
         }
         os << "</select></div>";
     }

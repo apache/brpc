@@ -22,10 +22,13 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
+#include <sstream>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include "gperftools_helper.h"
+#include "butil/file_util.h"
+#include "butil/files/scoped_temp_dir.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "brpc/socket.h"
@@ -815,6 +818,76 @@ TEST_F(BuiltinServiceTest, hotspots_query_escaping) {
     }
 }
 
+TEST_F(BuiltinServiceTest, hotspots_profile_filename_escaping) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    butil::ScopedTempDir temp_dir;
+    ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+    brpc::FLAGS_rpc_profiling_dir = temp_dir.path().value();
+    const butil::FilePath profile_dir = temp_dir.path().Append(
+        brpc::GetProgramChecksum());
+    ASSERT_TRUE(butil::CreateDirectory(profile_dir));
+
+    const std::string filename = "profile'><img src=x onerror=alert(1)>.cpu";
+    const butil::FilePath profile_path = profile_dir.Append(filename);
+    ASSERT_EQ(0, butil::WriteFile(profile_path, "", 0));
+
+    ClosureChecker done;
+    brpc::Controller cntl;
+    brpc::HotspotsRequest req;
+    brpc::HotspotsResponse res;
+    brpc::HotspotsService service;
+    SetUpController(&cntl, true);
+    service.cpu(&cntl, &req, &res, &done);
+
+    const std::string& body = cntl.response_attachment().to_string();
+    EXPECT_EQ(std::string::npos, body.find(filename))
+        << "unescaped profile filename in html: " << body;
+    EXPECT_NE(std::string::npos, body.find(brpc::WebEscape(filename)));
+
+}
+
+TEST_F(BuiltinServiceTest, hotspots_non_responsive_raw_profile_paths) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    butil::ScopedTempDir temp_dir;
+    ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+    brpc::FLAGS_rpc_profiling_dir = temp_dir.path().value();
+    const butil::FilePath profile_dir = temp_dir.path().Append(
+        brpc::GetProgramChecksum());
+    ASSERT_TRUE(butil::CreateDirectory(profile_dir));
+    const butil::FilePath view_path = profile_dir.Append("selected.cpu");
+    const butil::FilePath base_path = profile_dir.Append("base.cpu");
+    ASSERT_EQ(0, butil::WriteFile(view_path, "", 0));
+    ASSERT_EQ(0, butil::WriteFile(base_path, "", 0));
+
+    ClosureChecker done;
+    brpc::Controller cntl;
+    brpc::HotspotsRequest req;
+    brpc::HotspotsResponse res;
+    brpc::HotspotsService service;
+    SetUpController(&cntl, true);
+    cntl.http_request().uri().SetQuery("view", view_path.value());
+    cntl.http_request().uri().SetQuery("base", base_path.value());
+    service.cpu_non_responsive(&cntl, &req, &res, &done);
+    EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+}
+
+TEST_F(BuiltinServiceTest, path_html_escaping) {
+    const std::string payload = "\"'><script>alert(1)</script>&";
+    std::ostringstream html;
+    html << brpc::Path(payload.c_str(), brpc::Path::LOCAL, payload.c_str());
+    EXPECT_EQ(std::string::npos, html.str().find(payload));
+    EXPECT_NE(std::string::npos, html.str().find(brpc::WebEscape(payload)));
+
+    std::ostringstream reserved_html;
+    reserved_html << brpc::Path("/dir/a?x#fragment", brpc::Path::LOCAL);
+    EXPECT_NE(std::string::npos,
+              reserved_html.str().find("href=\"/dir/a?x#fragment\""));
+
+    std::ostringstream text;
+    text << brpc::Path(payload.c_str(), nullptr, payload.c_str());
+    EXPECT_EQ(payload, text.str());
+}
+
 TEST_F(BuiltinServiceTest, rpcz_query_escaping) {
     // Restore -enable_rpcz on any exit of this test.
     GFLAGS_NAMESPACE::FlagSaver flag_saver;
@@ -1008,7 +1081,35 @@ TEST_F(BuiltinServiceTest, dir) {
         CheckErrorText(cntl, "Cannot open");
     }
 }
-    
+
+TEST_F(BuiltinServiceTest, dir_percent_encoded_path_round_trip) {
+    butil::ScopedTempDir temp_dir;
+    ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+    const butil::FilePath path = temp_dir.path().Append("a?x#fragment");
+    ASSERT_EQ(7, butil::WriteFile(path, "content", 7));
+
+    brpc::DirService service;
+    brpc::DirRequest req;
+    brpc::DirResponse res;
+    const std::string relative_dir = temp_dir.path().value().substr(1);
+    ClosureChecker list_done;
+    brpc::Controller list_cntl;
+    SetUpController(&list_cntl, true);
+    list_cntl.http_request()._unresolved_path = relative_dir;
+    service.default_method(&list_cntl, &req, &res, &list_done);
+    EXPECT_FALSE(list_cntl.Failed());
+    CheckContent(list_cntl, "a%3fx%23fragment");
+
+    ClosureChecker file_done;
+    brpc::Controller file_cntl;
+    SetUpController(&file_cntl, false);
+    file_cntl.http_request()._unresolved_path =
+        relative_dir + "/a%3fx%23fragment";
+    service.default_method(&file_cntl, &req, &res, &file_done);
+    EXPECT_FALSE(file_cntl.Failed()) << file_cntl.ErrorText();
+    CheckContent(file_cntl, "content");
+}
+
 TEST_F(BuiltinServiceTest, ids) {
     brpc::IdsService service;
     brpc::IdsRequest req;
