@@ -40,7 +40,6 @@ namespace brpc {
 namespace ubring {
 #define UBRING_MK_UBSM(ret, fn, args) ret (*fn) args = nullptr
 #include "brpc/ubshm/ubs_mem/declare_shm_ubs.h"
-#define SHM_RIGHT_MODE 0666
 #define UBRING_REGION_NAME_PREFIX "UbrONE2ALLRegion"
 DEFINE_uint32(node_location, 1, "Location of the ub machine.");
 DEFINE_bool(shm_wr_delay_comp, true, "Indicates whether to enable the write relay."
@@ -235,7 +234,7 @@ RETURN_CODE UbsShmLocalMalloc(SHM* shm) {
     const uint64_t flags = AquireFlagIfWrDelayComp(
         UBSM_FLAG_ONLY_IMPORT_NONCACHE | UBSM_FLAG_MEM_ANONYMOUS);
     int ret = ubsmem_shmem_allocate(
-        g_region_name, shm->name, shm->len, SHM_RIGHT_MODE, flags);
+        g_region_name, shm->name, shm->len, SHM_SEGMENT_MODE, flags);
     if (ret == UBSM_ERR_ALREADY_EXIST) {
         return SHM_ERR_EXIST;
     }

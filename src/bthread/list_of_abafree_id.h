@@ -180,7 +180,12 @@ int ListOfABAFreeId<Id, IdTraits>::add(Id id) {
             }
         }
 
-        return rc;
+        if (rc != 0) {
+            return rc;
+        }
+        _cur_block->ids[_cur_index] = id;
+        forward_index();
+        return 0;
     }
     // The list is considered to be "crowded", add a new block and scatter
     // the conflict identifiers by inserting an empty entry after each of
