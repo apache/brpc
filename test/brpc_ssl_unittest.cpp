@@ -28,6 +28,11 @@
 #include <butil/macros.h>
 #include <butil/fd_guard.h>
 #include <butil/files/scoped_file.h>
+#include <butil/files/temp_file.h>
+#ifndef USE_MESALINK
+#include <openssl/pem.h>
+#include <openssl/x509v3.h>
+#endif
 #include <brpc/policy/baidu_rpc_meta.pb.h>
 #include <brpc/policy/baidu_rpc_protocol.h>
 #include <brpc/policy/most_common_message.h>
@@ -353,6 +358,100 @@ TEST_F(SSLTest, verify_peer_name) {
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
 }
+
+#ifndef USE_MESALINK
+static void CreateIPv6Certificate(butil::TempFile* cert_file) {
+    std::unique_ptr<BIO, decltype(&BIO_free)> cert_bio(
+        BIO_new_file("cert1.crt", "r"), BIO_free);
+    std::unique_ptr<BIO, decltype(&BIO_free)> key_bio(
+        BIO_new_file("cert1.key", "r"), BIO_free);
+    ASSERT_TRUE(cert_bio);
+    ASSERT_TRUE(key_bio);
+    std::unique_ptr<X509, decltype(&X509_free)> cert(
+        PEM_read_bio_X509(cert_bio.get(), nullptr, nullptr, nullptr), X509_free);
+    std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> key(
+        PEM_read_bio_PrivateKey(key_bio.get(), nullptr, nullptr, nullptr), EVP_PKEY_free);
+    ASSERT_TRUE(cert);
+    ASSERT_TRUE(key);
+    const int san_index = X509_get_ext_by_NID(cert.get(), NID_subject_alt_name, -1);
+    ASSERT_GE(san_index, 0);
+    X509_EXTENSION_free(X509_delete_ext(cert.get(), san_index));
+    char ip_san[] = "IP:::1";
+    std::unique_ptr<X509_EXTENSION, decltype(&X509_EXTENSION_free)> san(
+        X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name, ip_san),
+        X509_EXTENSION_free);
+    ASSERT_TRUE(san);
+    ASSERT_EQ(1, X509_add_ext(cert.get(), san.get(), -1));
+    ASSERT_GT(X509_sign(cert.get(), key.get(), EVP_sha256()), 0);
+
+    std::unique_ptr<BIO, decltype(&BIO_free)> pem(BIO_new(BIO_s_mem()), BIO_free);
+    ASSERT_TRUE(pem);
+    ASSERT_EQ(1, PEM_write_bio_X509(pem.get(), cert.get()));
+    char* data = nullptr;
+    const long size = BIO_get_mem_data(pem.get(), &data);
+    ASSERT_GT(size, 0);
+    ASSERT_EQ(0, cert_file->save_bin(data, static_cast<size_t>(size)));
+}
+
+TEST_F(SSLTest, verify_ipv6_peer_name_with_load_balancer) {
+    if (!brpc::SupportsPeerNameVerification()) {
+        return;
+    }
+    butil::TempFile cert_file;
+    ASSERT_NO_FATAL_FAILURE(CreateIPv6Certificate(&cert_file));
+
+    EchoServiceImpl echo_svc;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.mutable_ssl_options()->default_cert.certificate = cert_file.fname();
+    server_options.mutable_ssl_options()->default_cert.private_key = "cert1.key";
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start("[::1]:8613", &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_HTTP;
+    options.succeed_without_server = false;
+    options.mutable_ssl_options()->verify.verify_mode = brpc::VerifyMode::VERIFY_PEER;
+    options.mutable_ssl_options()->verify.verify_depth = 1;
+    options.mutable_ssl_options()->verify.ca_file_path = cert_file.fname();
+
+    {
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://[::1]:8613", "rr", &options));
+        EXPECT_EQ("::1", channel.options().ssl_options().verify.expected_peer_name);
+        EXPECT_TRUE(channel.options().ssl_options().sni_name.empty());
+
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
+        brpc::Controller cntl;
+        test::EchoService_Stub stub(&channel);
+        stub.Echo(&cntl, &req, &res, nullptr);
+        EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        EXPECT_EQ(EXP_RESPONSE, res.message());
+    }
+    {
+        // An explicit TLS identity and SNI must not be overwritten.
+        options.mutable_ssl_options()->verify.expected_peer_name = "::2";
+        options.mutable_ssl_options()->sni_name = "localhost";
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("https://[::1]:8613", "rr", &options));
+        EXPECT_EQ("::2", channel.options().ssl_options().verify.expected_peer_name);
+        EXPECT_EQ("localhost", channel.options().ssl_options().sni_name);
+
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
+        brpc::Controller cntl;
+        test::EchoService_Stub stub(&channel);
+        stub.Echo(&cntl, &req, &res, nullptr);
+        EXPECT_TRUE(cntl.Failed());
+    }
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+#endif  // USE_MESALINK
 
 TEST_F(SSLTest, expected_peer_name_requires_peer_verification) {
     brpc::ChannelSSLOptions options;
