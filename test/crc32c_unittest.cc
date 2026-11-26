@@ -40,6 +40,8 @@ namespace butil {
 namespace crc32c {
 
 #if defined(__aarch64__)
+bool IsArm64Crc32CompiledForTest();
+bool IsArm64PmullCompiledForTest();
 bool IsArm64PmullSelectedForTest();
 uint32_t Arm64ExtendCrc32ForTest(uint32_t crc, const char* buf, size_t size);
 uint32_t Arm64ExtendCrc32PmullForTest(uint32_t crc, const char* buf,
@@ -166,29 +168,25 @@ TEST_F(CRC, fast_is_on) {
   const bool sysctl_crc32 =
       (sysctlbyname("hw.optional.armv8_crc32", &val, &len, nullptr, 0) == 0 &&
        val != 0);
-  EXPECT_EQ(sysctl_crc32, IsFastCrc32Supported());
+  EXPECT_EQ(IsArm64Crc32CompiledForTest() && sysctl_crc32,
+            IsFastCrc32Supported());
   val = 0;
   len = sizeof(val);
   const bool sysctl_pmull = (sysctlbyname("hw.optional.arm.FEAT_PMULL", &val,
                                           &len, nullptr, 0) == 0 &&
                              val != 0);
-#if defined(__ARM_NEON)
-  EXPECT_EQ(sysctl_crc32 && sysctl_pmull, IsArm64PmullSelectedForTest());
-#else
-  (void)sysctl_pmull;
-  EXPECT_FALSE(IsArm64PmullSelectedForTest());
-#endif
+  EXPECT_EQ(IsArm64PmullCompiledForTest() && sysctl_crc32 && sysctl_pmull,
+            IsArm64PmullSelectedForTest());
 #elif defined(__aarch64__) && defined(__linux__)
   const unsigned long hwcap = getauxval(AT_HWCAP);
   const bool hw_crc32 = (hwcap & HWCAP_CRC32) != 0;
   const bool hw_pmull = (hwcap & HWCAP_PMULL) != 0;
-  EXPECT_EQ(hw_crc32, IsFastCrc32Supported());
-#if defined(__ARM_NEON)
-  EXPECT_EQ(hw_crc32 && hw_pmull, IsArm64PmullSelectedForTest());
-#else
-  (void)hw_pmull;
+  EXPECT_EQ(IsArm64Crc32CompiledForTest() && hw_crc32, IsFastCrc32Supported());
+  EXPECT_EQ(IsArm64PmullCompiledForTest() && hw_crc32 && hw_pmull,
+            IsArm64PmullSelectedForTest());
+#elif defined(__aarch64__)
+  EXPECT_FALSE(IsFastCrc32Supported());
   EXPECT_FALSE(IsArm64PmullSelectedForTest());
-#endif
 #endif
 }
 
@@ -260,20 +258,8 @@ TEST_F(CRC, TightBoundsAndAllArm64Paths) {
       }
       const char* base = raw.get() + align;
       for (size_t si = 0; si < sizeof(seeds) / sizeof(seeds[0]); ++si) {
-        const uint32_t seed = seeds[si];
-        const uint32_t expected = ReferenceExtend(seed, base, len);
-        ASSERT_EQ(expected, Extend(seed, base, len))
-            << "len=" << len << " align=" << align << " seed=" << seed;
-#if defined(__aarch64__)
-        if (IsFastCrc32Supported()) {
-          ASSERT_EQ(expected, Arm64ExtendCrc32ForTest(seed, base, len))
-              << "len=" << len << " align=" << align << " seed=" << seed;
-        }
-        if (IsArm64PmullSelectedForTest()) {
-          ASSERT_EQ(expected, Arm64ExtendCrc32PmullForTest(seed, base, len))
-              << "len=" << len << " align=" << align << " seed=" << seed;
-        }
-#endif
+        ASSERT_NO_FATAL_FAILURE(
+            VerifyAllExtendPaths("tight", seeds[si], base, len, align));
       }
       for (size_t a = 0; a < align; ++a) {
         ASSERT_EQ(static_cast<char>(0xa5), raw[a])
