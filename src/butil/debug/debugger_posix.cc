@@ -191,6 +191,8 @@ bool BeingDebugged() {
 #define DEBUG_BREAK_ASM() asm("break 2")
 #elif defined(ARCH_CPU_X86_FAMILY)
 #define DEBUG_BREAK_ASM() asm("int3")
+#elif defined(ARCH_CPU_PPC64_FAMILY)
+#define DEBUG_BREAK_ASM() asm("trap")
 #endif
 
 #if defined(NDEBUG) && !defined(OS_MACOSX) && !defined(OS_ANDROID)
