@@ -343,6 +343,7 @@ H2Context::H2Context(Socket* socket, const Server* server)
     , _last_received_stream_id(-1)
     , _last_sent_stream_id(1)
     , _goaway_stream_id(-1)
+    , _expect_continuation_stream_id(0)
     , _remote_settings_received(false)
     , _client_preface_pending(false)
     , _volatile_pending_stream_size(0)
@@ -587,6 +588,25 @@ ParseResult H2Context::ConsumeFrameHead(
     return MakeMessage(nullptr);
 }
 
+H2ParseResult H2Context::CheckHeaderBlockContinuity(
+    const H2FrameHead& frame_head) {
+    if (_expect_continuation_stream_id != 0) {
+        if (frame_head.type != H2_FRAME_CONTINUATION ||
+            frame_head.stream_id != _expect_continuation_stream_id) {
+            LOG(ERROR) << "Expected CONTINUATION of stream_id="
+                       << _expect_continuation_stream_id << ", actually type="
+                       << (int)frame_head.type << " stream_id="
+                       << frame_head.stream_id;
+            return MakeH2Error(H2_PROTOCOL_ERROR);
+        }
+    } else if (frame_head.type == H2_FRAME_CONTINUATION) {
+        LOG(ERROR) << "CONTINUATION of stream_id=" << frame_head.stream_id
+                   << " does not continue any header block";
+        return MakeH2Error(H2_PROTOCOL_ERROR);
+    }
+    return MakeH2Message(nullptr);
+}
+
 ParseResult H2Context::Consume(
     butil::IOBufBytesIterator& it, Socket* socket) {
     if (_conn_state == H2_CONNECTION_UNINITIALIZED) {
@@ -619,12 +639,29 @@ ParseResult H2Context::Consume(
         if (!res.is_ok()) {
             return res;
         }
-        H2Context::FrameHandler handler = FindFrameHandler(frame_head.type);
-        if (handler == nullptr) {
-            LOG(ERROR) << "Invalid frame type=" << (int)frame_head.type;
-            return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+        // A header block is decoded against the connection-wide HPACK
+        // context, so the frames carrying it have to arrive uninterrupted
+        // (RFC 9113 section 6.10). Without this, a CONTINUATION extends a
+        // header block that END_HEADERS already closed, and blocks of two
+        // streams can be decoded out of order. Checked before the handler
+        // is looked up, otherwise an unknown frame type inside a header
+        // block takes the no-handler path below and skips the GOAWAY that
+        // section 6.10 requires.
+        H2ParseResult h2_res = CheckHeaderBlockContinuity(frame_head);
+        if (h2_res.is_ok()) {
+            if (frame_head.type == H2_FRAME_HEADERS ||
+                frame_head.type == H2_FRAME_CONTINUATION) {
+                _expect_continuation_stream_id =
+                    (frame_head.flags & H2_FLAGS_END_HEADERS)
+                    ? 0 : frame_head.stream_id;
+            }
+            H2Context::FrameHandler handler = FindFrameHandler(frame_head.type);
+            if (handler == nullptr) {
+                LOG(ERROR) << "Invalid frame type=" << (int)frame_head.type;
+                return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+            }
+            h2_res = (this->*handler)(it, frame_head);
         }
-        H2ParseResult h2_res = (this->*handler)(it, frame_head);
         if (h2_res.is_ok()) {
             return MakeMessage(h2_res.message());
         }

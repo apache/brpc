@@ -425,6 +425,10 @@ friend class H2UnsentResponse;
 friend void InitFrameHandlers();
 
     ParseResult ConsumeFrameHead(butil::IOBufBytesIterator&, H2FrameHead*);
+    // Enforce RFC 9113 section 6.10 on the frame about to be handled: while a
+    // header block is open, only a CONTINUATION of the same stream may follow,
+    // and a CONTINUATION outside a header block is never valid.
+    H2ParseResult CheckHeaderBlockContinuity(const H2FrameHead&);
 
     H2ParseResult OnData(butil::IOBufBytesIterator&, const H2FrameHead&);
     H2ParseResult OnHeaders(butil::IOBufBytesIterator&, const H2FrameHead&);
@@ -469,6 +473,9 @@ friend void InitFrameHandlers();
     int _last_received_stream_id;
     uint32_t _last_sent_stream_id;
     int _goaway_stream_id;
+    // Stream whose header block has been started but not ended by
+    // END_HEADERS, 0 when no header block is open.
+    int _expect_continuation_stream_id;
     H2Settings _remote_settings;
     bool _remote_settings_received;
     bool _client_preface_pending;
