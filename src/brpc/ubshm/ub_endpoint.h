@@ -115,7 +115,7 @@ public:
     ssize_t CutFromIOBufList(butil::IOBuf** data, size_t ndata);
 
     // Whether the endpoint can send more data
-    bool IsWritable() const;
+    bool IsWritable();
 
     void PollerRegisterEpollOut(bool pollin) {
         uint32_t events = EPOLLOUT | EPOLLET;
@@ -187,6 +187,15 @@ private:
     // Release resources
     void DeallocateResources();
 
+    // Mark the ring in use so that it is not destroyed while it is read or
+    // written. Return false when the endpoint has no usable ring, i.e. it is
+    // not allocated yet or it is being released. Each successful call must be
+    // paired with ReleaseRing(). DeallocateResources() waits for the users.
+    bool AcquireRing(UBRing** ring);
+
+    // Stop using the ring returned by AcquireRing().
+    void ReleaseRing();
+
     // Read at most len bytes from fd in _socket to data
     // wait for _read_butex if encounter EAGAIN
     // return -1 if encounter other errno (including EOF)
@@ -198,10 +207,12 @@ private:
     // return -1 if encounter other errno
     int WriteToFd(void* data, size_t len);
 
-    // Poll inbound and outbound UBRing events.
-    static void PollIn(UBShmEndpoint* ep, uint32_t ep_event);
+    // Poll inbound and outbound UBRing events of `ring', which belongs to `s'
+    // and `ep'.
+    static void PollIn(UBShmEndpoint* ep, Socket* s, UBRing* ring,
+                       uint32_t ep_event);
 
-    static void PollOut(UBShmEndpoint* ep, uint32_t ep_event);
+    static void PollOut(Socket* s, UBRing* ring);
 
     // Try to read data on TCP fd in _socket
     inline void TryReadOnTcp();
@@ -213,16 +224,35 @@ private:
     State _state;
     UbrDataFormat _negotiated_data_format{UBR_DATA_FORMAT_NONE};
 
-    // ub resource
-    ubring::UBRing* _ub_ring{nullptr};
+    // ub resource. The ring is shared with pollers and senders and Reset()
+    // may run concurrently with them, so it is reference counted: see
+    // AcquireRing() and ReleaseRing().
+    butil::atomic<UBRing*> _ub_ring{nullptr};
+    // Number of threads currently using _ub_ring. DeallocateResources() waits
+    // until it drops to zero; ReleaseRing() only touches this counter, so the
+    // endpoint may destroy its state as soon as the counter reads zero.
+    butil::atomic<int> _ring_ref{0};
+    // Set while the endpoint does not hand out _ub_ring. See AcquireRing().
+    butil::atomic<bool> _ring_closed{false};
 
     // Synthetic SocketId registered with the UBRing poller.
-    SocketId _poller_sid;
+    butil::atomic<SocketId> _poller_sid{INVALID_SOCKET_ID};
 
     // butex for inform read events on TCP fd during handshake
     butil::atomic<int> *_read_butex;
 
     DISALLOW_COPY_AND_ASSIGN(UBShmEndpoint);
+
+    // SocketUser of the synthetic poller Socket. The poller must not keep the
+    // UBShmEndpoint in it: the endpoint can be destroyed while the poller set
+    // still has its socket id. The endpoint is resolved from owner_id instead,
+    // which keeps it alive for the whole poll.
+    struct PollerUser : public SocketUser {
+        explicit PollerUser(SocketId owner) : owner_id(owner) {}
+        void BeforeRecycle(Socket*) override { delete this; }
+
+        const SocketId owner_id;
+    };
 
     struct PollerSidOp {
         enum OpType {
@@ -265,6 +295,12 @@ private:
         std::atomic<bool> running;
     };
     static std::vector<PollerGroup> _poller_groups;
+
+    // The poller serving _poller_sid. It is chosen when the ring is allocated
+    // and reused by MOD/REMOVE, which must reach the same op queue as ADD:
+    // bthread_self_tag() at MOD/REMOVE time may name another poller group, and
+    // the stale sid would be left in the original poller set for ever.
+    butil::atomic<Poller*> _poller{nullptr};
 
     void PollerRegisterEvent(PollerSidOp::OpType op,
                              uint32_t events = EPOLLET);

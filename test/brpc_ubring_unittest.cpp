@@ -44,6 +44,7 @@
 #include "brpc/ubshm/ub_ring.h"
 #include "brpc/ubshm/ubr_msg.h"
 #include "brpc/ubshm/ubr_msg_v2.h"
+#include "brpc/ubshm_transport.h"
 
 namespace brpc {
 namespace ubring {
@@ -984,6 +985,111 @@ protected:
 private:
     GFLAGS_NAMESPACE::FlagSaver _flag_saver;
 };
+
+// The teardown of a UBRing is asynchronous when a poller is still using it, so
+// a test that owns the only trx must wait for it before it allocates again or
+// finishes.
+bool WaitForTrxRelease() {
+    for (int i = 0; i < 5000; ++i) {
+        UbrTrx* trx = nullptr;
+        if (UBRingManager::AcquireUbrTrxFromMgr(&trx) == 0) {
+            UBRingManager::ReleaseUbrTrxFromMgr(trx);
+            return true;
+        }
+        bthread_usleep(1000);
+    }
+    return false;
+}
+
+// A trx slot that is free means the ring that owned it was closed. Unlike
+// WaitForTrxRelease() this does not wait, which lets a test check that a ring
+// was already closed when a call returned.
+bool TrxIsFree() {
+    UbrTrx* trx = nullptr;
+    if (UBRingManager::AcquireUbrTrxFromMgr(&trx) != 0) {
+        return false;
+    }
+    UBRingManager::ReleaseUbrTrxFromMgr(trx);
+    return true;
+}
+
+// Returns the endpoint of a Socket created in SOCKET_MODE_UBRING. The Socket
+// keeps the endpoint alive.
+UBShmEndpoint* EndpointOf(Socket* s) {
+    return static_cast<UBShmTransport*>(s->_transport.get())->GetUBShmEp();
+}
+
+// Holds the ring of an endpoint for a while, across the release of the
+// endpoint, like a poller or a sender does.
+struct RingUser {
+    UBShmEndpoint* ep{nullptr};
+    butil::atomic<bool> acquired{false};
+    butil::atomic<bool> released{false};
+    butil::atomic<int> writable{INT_MIN};
+};
+
+void HoldRing(RingUser* user) {
+    UBRing* ring = nullptr;
+    if (!user->ep->AcquireRing(&ring)) {
+        return;
+    }
+    user->acquired.store(true);
+    // The endpoint is released concurrently from the test thread: the ring must
+    // stay usable until it is returned below.
+    bthread_usleep(20000);
+    user->writable.store(ring->IsUbrTrxWriteable(EPOLLET));
+    user->ep->ReleaseRing();
+    user->released.store(true);
+}
+
+// Creates and releases ubring endpoints from another thread, so that the
+// poller polls an endpoint while it is released.
+void ChurnEndpoints(int* failures) {
+    static std::atomic<uint32_t> name_sequence(0);
+    for (int i = 0; i < 200 && *failures == 0; ++i) {
+        if (!WaitForTrxRelease()) {
+            ++*failures;
+            break;
+        }
+        SocketOptions options;
+        options.socket_mode = SOCKET_MODE_UBRING;
+        SocketId id = INVALID_SOCKET_ID;
+        if (Socket::Create(options, &id) != 0) {
+            ++*failures;
+            break;
+        }
+        {
+            SocketUniquePtr s;
+            if (Socket::Address(id, &s) != 0) {
+                ++*failures;
+                continue;
+            }
+            UBShmEndpoint* ep = EndpointOf(s.get());
+            SHM local_trx_shm =
+                {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)s->fd()};
+            const std::string name = "UBRING_ut_churn_" +
+                std::to_string(getpid()) + "_" +
+                std::to_string(name_sequence.fetch_add(
+                    1, std::memory_order_relaxed));
+            if (ep->AllocateClientResources(&local_trx_shm, name.c_str()) != 0) {
+                ++*failures;
+                continue;
+            }
+            // Let the poller poll the endpoint before it is released.
+            bthread_usleep(100);
+        }
+        SocketUniquePtr s;
+        if (Socket::Address(id, &s) != 0) {
+            ++*failures;
+            continue;
+        }
+        if (i % 2 == 0) {
+            // The health check path: reset the endpoint, the socket lives on.
+            EndpointOf(s.get())->Reset();
+        }
+        s->SetFailed();
+    }
+}
 }  // namespace ubring
 }  // namespace brpc
 
@@ -1091,6 +1197,140 @@ TEST(UBRingRecvChunkHeaderTest, crafted_chunk_is_rejected) {
     chunk.header[UBR_MSG_CUR_INDEX] = 0;
     EXPECT_TRUE(brpc::ubring::UBRing::IsRecvChunkHeaderValid(
         chunk.header[UBR_MSG_LEN_INDEX], chunk.header[UBR_MSG_CUR_INDEX]));
+}
+
+// The ring is read by the poller and written by the sender while Reset() may
+// run in a health-check bthread, so the endpoint only hands it out until it is
+// released and closes it only after its last user returns it.
+TEST_F(UBShmEndpointOneTrxTest, ring_lifetime_is_bounded_by_its_users) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
+    brpc::ubring::UBRing* ring = nullptr;
+    EXPECT_FALSE(_ep->AcquireRing(&ring));
+    EXPECT_FALSE(_ep->IsWritable());
+    butil::IOBuf buf;
+    butil::IOBuf* blocks[] = {&buf};
+    errno = 0;
+    EXPECT_EQ(-1, _ep->CutFromIOBufList(blocks, 1));
+    EXPECT_EQ(EPIPE, errno);
+
+    brpc::ubring::SHM local_trx_shm =
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+    ASSERT_EQ(0, _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_ring"));
+    ASSERT_TRUE(_ep->AcquireRing(&ring));
+    ASSERT_NE(nullptr, ring);
+    EXPECT_EQ(ring, _ep->_ub_ring.load(butil::memory_order_relaxed));
+    _ep->ReleaseRing();
+
+    // Reset() must wait for the user of the ring: it returns only after the
+    // user returned the ring, and the ring is closed by then.
+    // A thread of its own: this thread blocks in Reset() below, which waits
+    // for the user, so both must be able to run at the same time.
+    brpc::ubring::RingUser user;
+    user.ep = _ep;
+    std::thread holder(brpc::ubring::HoldRing, &user);
+    while (!user.acquired.load()) {
+        bthread_usleep(1000);
+    }
+    _ep->Reset();
+    EXPECT_TRUE(user.released.load());
+    EXPECT_TRUE(brpc::ubring::TrxIsFree());
+    EXPECT_FALSE(_ep->AcquireRing(&ring));
+    EXPECT_FALSE(_ep->IsWritable());
+    holder.join();
+    EXPECT_NE(INT_MIN, user.writable.load());
+}
+
+// A sender may register EPOLLOUT after the endpoint stopped handing out the
+// ring. Such an op must not reach the poller: it can be applied after the
+// REMOVE of the teardown, which puts the socket id back into the poller set
+// and keeps it there.
+TEST_F(UBShmEndpointTest, late_registration_after_release_is_dropped) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
+    brpc::ubring::SHM local_trx_shm =
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+    ASSERT_EQ(0, _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_late"));
+    auto* poller = _ep->_poller.load();
+    ASSERT_NE(nullptr, poller);
+    brpc::ubring::UBShmEndpoint::PollerSidOp op;
+    while (poller->op_queue.Dequeue(op)) {
+    }
+
+    _ep->_ring_closed.store(true);
+    _ep->PollerRegisterEpollOut(false);  // ADD
+    _ep->PollerRegisterEpollOut(true);   // MOD
+    EXPECT_FALSE(poller->op_queue.TryDequeue(op));
+
+    // The REMOVE of the teardown itself still goes through.
+    _ep->PollerRegisterEvent(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE);
+    ASSERT_TRUE(poller->op_queue.Dequeue(op));
+    EXPECT_EQ(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE, op.type);
+    _ep->Reset();
+}
+
+// PollIn() drains the ring until it is empty, which a busy peer can postpone
+// for a long time. It must stop as soon as the endpoint is released, because
+// the teardown waits for the poller to leave the ring.
+TEST_F(UBShmEndpointTest, polling_stops_when_the_endpoint_is_released) {
+    _ep->_ring_closed.store(true);
+    // Returns before the ring is touched: a ring that must not be used is
+    // passed to prove that the closed flag is checked first.
+    _ep->PollIn(_ep, _socket, nullptr, EPOLLET);
+    _ep->_ring_closed.store(false);
+}
+
+// The poller of an endpoint is chosen when the event is added. Later ops must
+// use the same poller even when they run in a bthread of another poller group,
+// otherwise the stale socket id stays in the original poller set.
+TEST_F(UBShmEndpointTest, poller_of_add_serves_later_operations) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
+    brpc::ubring::SHM local_trx_shm =
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+    ASSERT_EQ(0, _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_op"));
+
+    auto& pollers =
+        brpc::ubring::UBShmEndpoint::_poller_groups[bthread_self_tag()].pollers;
+    ASSERT_FALSE(pollers.empty());
+    brpc::ubring::UBShmEndpoint::Poller* derived =
+        &pollers[butil::fmix32(_ep->_poller_sid.load()) % pollers.size()];
+    ASSERT_EQ(derived, _ep->_poller.load());
+    brpc::ubring::UBShmEndpoint::PollerSidOp op;
+    while (derived->op_queue.Dequeue(op)) {
+    }
+
+    // Pretend that the events were added to another poller: a REMOVE must
+    // still be delivered there.
+    brpc::ubring::UBShmEndpoint::Poller other;
+    _ep->_poller.store(&other);
+    _ep->PollerRegisterEvent(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE);
+    ASSERT_TRUE(other.op_queue.Dequeue(op));
+    EXPECT_EQ(_ep->_poller_sid.load(), op.sid);
+    EXPECT_EQ(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE, op.type);
+    EXPECT_FALSE(derived->op_queue.TryDequeue(op));
+
+    _ep->Reset();
+    EXPECT_EQ(nullptr, _ep->_poller.load());
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, _ep->_poller_sid.load());
+}
+
+TEST_F(UBShmEndpointOneTrxTest, poller_survives_endpoint_teardown) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
+    // Start the poller from a plain thread so that it runs on a worker
+    // pthread. Started from this thread it would join this thread's task group
+    // and only run while the test sleeps.
+    std::thread poller([] {
+        EXPECT_EQ(0, brpc::ubring::UBShmEndpoint::PollingModeInitialize(
+                         bthread_self_tag(), nullptr, nullptr, nullptr));
+    });
+    poller.join();
+    int failures = 0;
+    std::thread churn(brpc::ubring::ChurnEndpoints, &failures);
+    churn.join();
+    EXPECT_EQ(0, failures);
+    EXPECT_TRUE(brpc::ubring::WaitForTrxRelease());
 }
 
 #else
