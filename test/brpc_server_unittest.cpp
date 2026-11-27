@@ -849,8 +849,9 @@ bool AddRestfulServiceInInit(void* args) {
 }
 
 // bthread_init_fn runs after the user options are validated and may add
-// services with restful mappings, which must not slip through.
-TEST_F(ServerTest, restful_service_added_in_init_fn_requires_http) {
+// services with restful mappings; such services are rejected because they
+// could not be served, and the failing callback fails Start().
+TEST_F(ServerTest, restful_service_added_in_init_fn_is_rejected) {
     EchoServiceImpl echo_svc;
     g_restful_service_in_init = &echo_svc;
     brpc::Server server;
@@ -860,7 +861,10 @@ TEST_F(ServerTest, restful_service_added_in_init_fn_requires_http) {
     opt.bthread_init_fn = AddRestfulServiceInInit;
     opt.bthread_init_args = &server;
     opt.bthread_init_count = 1;
+    LogSinkScope log_scope;
     ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+    ASSERT_NE(std::string::npos,
+              log_scope.sink().find("enables neither http nor h2"));
 }
 
 TEST_F(ServerTest, enabled_protocols_must_include_http_for_restful_services) {

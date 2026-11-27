@@ -76,8 +76,9 @@ struct ServerOptions {
     // NOTE: pointers in this struct are owned by the caller until they are
     // adopted by a Server. A Server::Start() rejected by the validation of
     // this struct (e.g. an invalid enabled_protocols) adopts nothing, so the
-    // caller still owns and must free them. Once Start() gets past the
-    // validation, the Server owns them and frees them in its destructor.
+    // caller still owns and must free them. Once Start() gets past that
+    // validation, the Server owns them and frees them in its destructor even
+    // if Start() fails later, e.g. when the port cannot be bound.
 
     // connections without data transmission for so many seconds will be closed
     // Default: -1 (disabled)
@@ -848,6 +849,11 @@ friend struct RevertServerStatus;
     // their protocol handlers, so a different value cannot be applied by
     // restarting this Server.
     std::string _built_enabled_protocols;
+
+    // True while StartInternal() is running, so that services added during it
+    // (e.g. from bthread_init_fn) are still checked against the protocols to
+    // serve.
+    bool _in_start;
 
     // Declared whatever BRPC_WITH_FLATBUFFERS is, so the layout does not
     // depend on it. Always null when the option is OFF.

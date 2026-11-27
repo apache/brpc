@@ -509,6 +509,7 @@ Server::Server(ProfilerLinker)
     , _failed_to_set_ignore_eovercrowded(false)
     , _am(nullptr)
     , _internal_am(nullptr)
+    , _in_start(false)
     , _first_service(nullptr)
     , _tab_info_list(nullptr)
     , _global_restful_map(nullptr)
@@ -1082,6 +1083,15 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
 
     copy_and_fill_server_options(_options, real_opt);
 
+    // Services added while the rest of Start() runs (e.g. from
+    // bthread_init_fn) are not seen by the validation above, mark the server
+    // as starting so that their restful mappings are checked as well.
+    struct InStartGuard {
+        explicit InStartGuard(bool* in_start) : ptr(in_start) { *ptr = true; }
+        ~InStartGuard() { *ptr = false; }
+        bool* ptr;
+    } in_start_guard(&_in_start);
+
     if (_options.http_master_service) {
         // Check requirements for http_master_service:
         //  has "default_method" & request/response have no fields
@@ -1237,12 +1247,6 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     }
 
     _concurrency = 0;
-
-    // bthread_init_fn runs after the validation of the user-provided options
-    // and may add services with restful mappings, validate again.
-    if (ValidateEnabledProtocols(_options) != 0) {
-        return -1;
-    }
 
     if (_options.has_builtin_services &&
         _builtin_service_count <= 0 &&
@@ -1699,6 +1703,21 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
     butil::StringPiece restful_mappings = svc_opt.restful_mappings;
     restful_mappings.trim_spaces();
     if (!restful_mappings.empty()) {
+        // Services added while Start() is running (e.g. from bthread_init_fn)
+        // were not seen by the validation of the user-provided options, so
+        // check that their restful mappings can be served as well.
+        if (_in_start) {
+            std::unordered_set<std::string> whitelist;
+            ParseEnabledProtocols(_options.enabled_protocols, &whitelist);
+            if (!whitelist.empty() && whitelist.count("http") == 0 &&
+                whitelist.count("h2") == 0) {
+                LOG(ERROR) << "Fail to add restful service=`" << sd->full_name()
+                           << "': ServerOptions.enabled_protocols=`"
+                           << _options.enabled_protocols
+                           << "' enables neither http nor h2";
+                return -1;
+            }
+        }
         // Parse the mappings.
         std::vector<RestfulMapping> mappings;
         if (!ParseRestfulMappings(restful_mappings, &mappings)) {
