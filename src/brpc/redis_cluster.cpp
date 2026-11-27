@@ -992,7 +992,7 @@ Channel* RedisClusterChannel::GetOrCreateChannel(const std::string& endpoint) {
 }
 
 uint16_t RedisClusterChannel::HashSlot(const std::string& key) {
-    const std::string hashed = ExtractHashtag(key);
+    const butil::StringPiece hashed = ExtractHashtag(key);
     uint16_t crc = 0;
     for (size_t i = 0; i < hashed.size(); ++i) {
         const uint8_t idx = static_cast<uint8_t>((crc >> 8) ^
@@ -1002,7 +1002,7 @@ uint16_t RedisClusterChannel::HashSlot(const std::string& key) {
     return crc & (kRedisClusterSlotCount - 1);
 }
 
-std::string RedisClusterChannel::ExtractHashtag(const std::string& key) {
+butil::StringPiece RedisClusterChannel::ExtractHashtag(const std::string& key) {
     const size_t begin = key.find('{');
     if (begin == std::string::npos) {
         return key;
@@ -1011,7 +1011,7 @@ std::string RedisClusterChannel::ExtractHashtag(const std::string& key) {
     if (end == std::string::npos || end == begin + 1) {
         return key;
     }
-    return key.substr(begin + 1, end - begin - 1);
+    return butil::StringPiece(key.data() + begin + 1, end - begin - 1);
 }
 
 bool RedisClusterChannel::ParseRedirectReply(const SingleCommandResult& result,

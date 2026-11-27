@@ -28,6 +28,7 @@
 
 #include "bthread/bthread.h"
 #include "butil/containers/doubly_buffered_data.h"
+#include "butil/strings/string_piece.h"
 #include "butil/synchronization/lock.h"
 #include "brpc/channel.h"
 #include "brpc/channel_base.h"
@@ -148,7 +149,8 @@ private:
     Channel* GetOrCreateChannel(const std::string& endpoint);
 
     static uint16_t HashSlot(const std::string& key);
-    static std::string ExtractHashtag(const std::string& key);
+    // Returns a view into `key` that is valid while `key` remains alive.
+    static butil::StringPiece ExtractHashtag(const std::string& key);
     static bool ParseRedirectReply(const SingleCommandResult& result,
                                    RedirectInfo* redirect);
 
