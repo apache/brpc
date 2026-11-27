@@ -1150,7 +1150,7 @@ TEST_F(UBShmEndpointTest, late_registration_after_release_is_dropped) {
     brpc::ubring::SHM local_trx_shm =
         {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
     ASSERT_EQ(0, _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_late"));
-    auto* poller = _ep->_poller;
+    auto* poller = _ep->_poller.load();
     ASSERT_NE(nullptr, poller);
     brpc::ubring::UBShmEndpoint::PollerSidOp op;
     while (poller->op_queue.Dequeue(op)) {
@@ -1193,8 +1193,8 @@ TEST_F(UBShmEndpointTest, poller_of_add_serves_later_operations) {
         brpc::ubring::UBShmEndpoint::_poller_groups[bthread_self_tag()].pollers;
     ASSERT_FALSE(pollers.empty());
     brpc::ubring::UBShmEndpoint::Poller* derived =
-        &pollers[butil::fmix32(_ep->_poller_sid) % pollers.size()];
-    ASSERT_EQ(derived, _ep->_poller);
+        &pollers[butil::fmix32(_ep->_poller_sid.load()) % pollers.size()];
+    ASSERT_EQ(derived, _ep->_poller.load());
     brpc::ubring::UBShmEndpoint::PollerSidOp op;
     while (derived->op_queue.Dequeue(op)) {
     }
@@ -1202,16 +1202,16 @@ TEST_F(UBShmEndpointTest, poller_of_add_serves_later_operations) {
     // Pretend that the events were added to another poller: a REMOVE must
     // still be delivered there.
     brpc::ubring::UBShmEndpoint::Poller other;
-    _ep->_poller = &other;
+    _ep->_poller.store(&other);
     _ep->PollerRegisterEvent(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE);
     ASSERT_TRUE(other.op_queue.Dequeue(op));
-    EXPECT_EQ(_ep->_poller_sid, op.sid);
+    EXPECT_EQ(_ep->_poller_sid.load(), op.sid);
     EXPECT_EQ(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE, op.type);
     EXPECT_FALSE(derived->op_queue.TryDequeue(op));
 
     _ep->Reset();
-    EXPECT_EQ(nullptr, _ep->_poller);
-    EXPECT_EQ(brpc::INVALID_SOCKET_ID, _ep->_poller_sid);
+    EXPECT_EQ(nullptr, _ep->_poller.load());
+    EXPECT_EQ(brpc::INVALID_SOCKET_ID, _ep->_poller_sid.load());
 }
 
 TEST_F(UBShmEndpointOneTrxTest, poller_survives_endpoint_teardown) {

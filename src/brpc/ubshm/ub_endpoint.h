@@ -228,14 +228,15 @@ private:
     // may run concurrently with them, so it is reference counted: see
     // AcquireRing() and ReleaseRing().
     butil::atomic<UBRing*> _ub_ring{nullptr};
-    // Number of threads currently using _ub_ring. It is a butex as well, so
-    // that DeallocateResources() can sleep until the last user is gone.
-    butil::atomic<int>* _ring_ref;
+    // Number of threads currently using _ub_ring. DeallocateResources() waits
+    // until it drops to zero; ReleaseRing() only touches this counter, so the
+    // endpoint may destroy its state as soon as the counter reads zero.
+    butil::atomic<int> _ring_ref{0};
     // Set while the endpoint does not hand out _ub_ring. See AcquireRing().
     butil::atomic<bool> _ring_closed{false};
 
     // Synthetic SocketId registered with the UBRing poller.
-    SocketId _poller_sid;
+    butil::atomic<SocketId> _poller_sid{INVALID_SOCKET_ID};
 
     // butex for inform read events on TCP fd during handshake
     butil::atomic<int> *_read_butex;
@@ -295,11 +296,11 @@ private:
     };
     static std::vector<PollerGroup> _poller_groups;
 
-    // The poller serving _poller_sid. It is chosen when the events are added
+    // The poller serving _poller_sid. It is chosen when the ring is allocated
     // and reused by MOD/REMOVE, which must reach the same op queue as ADD:
     // bthread_self_tag() at MOD/REMOVE time may name another poller group, and
     // the stale sid would be left in the original poller set for ever.
-    Poller* _poller{nullptr};
+    butil::atomic<Poller*> _poller{nullptr};
 
     void PollerRegisterEvent(PollerSidOp::OpType op,
                              uint32_t events = EPOLLET);

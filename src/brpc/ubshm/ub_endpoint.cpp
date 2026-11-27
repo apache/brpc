@@ -182,26 +182,23 @@ UBShmEndpoint::UBShmEndpoint(Socket* s)
     , _socket_id(s ? s->id() : INVALID_SOCKET_ID)
     , _state(UNINIT)
     , _ub_ring(nullptr)
-    , _poller_sid(INVALID_SOCKET_ID)
 {
     _read_butex = bthread::butex_create_checked<butil::atomic<int>>();
-    _ring_ref = bthread::butex_create_checked<butil::atomic<int>>();
-    // butex_create() does not initialize the value.
-    _ring_ref->store(0, butil::memory_order_relaxed);
 }
 
 UBShmEndpoint::~UBShmEndpoint() {
     Reset();
     bthread::butex_destroy(_read_butex);
-    bthread::butex_destroy(_ring_ref);
 }
 
 void UBShmEndpoint::Reset() {
     // DeallocateResources() closes the ring once its users are gone.
     DeallocateResources();
 
-    _poller_sid = INVALID_SOCKET_ID;
-    _poller = nullptr;
+    // Stop handing out the poller first: a sender that already read the socket
+    // id then finds no poller and drops its op.
+    _poller.store(nullptr, butil::memory_order_seq_cst);
+    _poller_sid.store(INVALID_SOCKET_ID, butil::memory_order_seq_cst);
     _negotiated_data_format = UBR_DATA_FORMAT_NONE;
     _state = UNINIT;
 }
@@ -215,7 +212,7 @@ void UBShmEndpoint::Reset() {
 // flag. Mixing in a weaker order would let a user return a ring that the
 // teardown already destroyed.
 bool UBShmEndpoint::AcquireRing(UBRing** ring) {
-    _ring_ref->fetch_add(1, butil::memory_order_seq_cst);
+    _ring_ref.fetch_add(1, butil::memory_order_seq_cst);
     if (_ring_closed.load(butil::memory_order_seq_cst)) {
         ReleaseRing();
         return false;
@@ -229,15 +226,10 @@ bool UBShmEndpoint::AcquireRing(UBRing** ring) {
 }
 
 void UBShmEndpoint::ReleaseRing() {
-    if (_ring_ref->fetch_sub(1, butil::memory_order_seq_cst) != 1) {
-        return;
-    }
-    // Wake up DeallocateResources() if it is waiting for the ring. It always
-    // sets the closed flag first, so the flag also tells whether anybody may
-    // be waiting.
-    if (_ring_closed.load(butil::memory_order_seq_cst)) {
-        bthread::butex_wake_all(_ring_ref);
-    }
+    // This is deliberately the only access: once the counter reads zero the
+    // endpoint may close the ring and destroy itself, so a wake-up epilogue
+    // here would touch freed memory.
+    _ring_ref.fetch_sub(1, butil::memory_order_seq_cst);
 }
 
 void UBConnect::StartConnect(const Socket* socket,
@@ -889,15 +881,23 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM* local_trx_shm, const cha
 
     SocketOptions options;
     options.keytable_pool = _socket->_keytable_pool;
-    if (Socket::Create(options, &_poller_sid) < 0) {
+    SocketId poller_sid = INVALID_SOCKET_ID;
+    if (Socket::Create(options, &poller_sid) < 0) {
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
+    // Choose the poller here, where the events are added, and keep it for
+    // later MOD/REMOVE: those run in other bthreads whose tag may name another
+    // poller group.
+    auto& pollers = _poller_groups[bthread_self_tag()].pollers;
+    _poller.store(&pollers[butil::fmix32(poller_sid) % FLAGS_ub_poller_num],
+                  butil::memory_order_seq_cst);
+    _poller_sid.store(poller_sid, butil::memory_order_seq_cst);
     // The poller resolves the endpoint from the owning Socket, see PollerUser.
     // Attach the user only now: Socket::Create() may fail before it takes
     // ownership of the user, which would leak it.
     SocketUniquePtr poller_socket;
-    CHECK_EQ(0, Socket::Address(_poller_sid, &poller_socket));
+    CHECK_EQ(0, Socket::Address(poller_sid, &poller_socket));
     poller_socket->set_user(new PollerUser(_socket_id));
     int ret = ring->UbrAllocateLocalShm(local_trx_shm, shm_name);
     if (ret != 0) {
@@ -924,15 +924,23 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm,
 
     SocketOptions options;
     options.keytable_pool = _socket->_keytable_pool;
-    if (Socket::Create(options, &_poller_sid) < 0) {
+    SocketId poller_sid = INVALID_SOCKET_ID;
+    if (Socket::Create(options, &poller_sid) < 0) {
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
+    // Choose the poller here, where the events are added, and keep it for
+    // later MOD/REMOVE: those run in other bthreads whose tag may name another
+    // poller group.
+    auto& pollers = _poller_groups[bthread_self_tag()].pollers;
+    _poller.store(&pollers[butil::fmix32(poller_sid) % FLAGS_ub_poller_num],
+                  butil::memory_order_seq_cst);
+    _poller_sid.store(poller_sid, butil::memory_order_seq_cst);
     // The poller resolves the endpoint from the owning Socket, see PollerUser.
     // Attach the user only now: Socket::Create() may fail before it takes
     // ownership of the user, which would leak it.
     SocketUniquePtr poller_socket;
-    CHECK_EQ(0, Socket::Address(_poller_sid, &poller_socket));
+    CHECK_EQ(0, Socket::Address(poller_sid, &poller_socket));
     poller_socket->set_user(new PollerUser(_socket_id));
     int ret = ring->UbrAllocateServerShm(
         remote_trx_shm, local_trx_shm, format);
@@ -955,9 +963,11 @@ void UBShmEndpoint::DeallocateResources() {
     // that the poller stops polling this endpoint.
     _ring_closed.store(true, butil::memory_order_seq_cst);
     PollerRegisterEvent(PollerSidOp::REMOVE);
-    if (INVALID_SOCKET_ID != _poller_sid) {
+    const SocketId poller_sid =
+        _poller_sid.load(butil::memory_order_seq_cst);
+    if (INVALID_SOCKET_ID != poller_sid) {
         SocketUniquePtr s;
-        if (Socket::Address(_poller_sid, &s) == 0) {
+        if (Socket::Address(poller_sid, &s) == 0) {
             s->_fd = -1;
             s->SetFailed();
         }
@@ -967,11 +977,11 @@ void UBShmEndpoint::DeallocateResources() {
     // user never releases the endpoint by itself (the poller keeps the owning
     // Socket referenced and the other users do not touch it), so the wait
     // ends.
-    int ref = _ring_ref->load(butil::memory_order_seq_cst);
-    while (ref != 0) {
-        // Returns early when the counter changed or on a signal: re-check.
-        bthread::butex_wait(_ring_ref, ref, nullptr);
-        ref = _ring_ref->load(butil::memory_order_seq_cst);
+    // The counter is polled instead of being waited on with a butex: the last
+    // ReleaseRing() must be a single atomic op, so that nothing touches this
+    // endpoint after the counter reached zero and the ring is closed.
+    while (_ring_ref.load(butil::memory_order_seq_cst) != 0) {
+        bthread_usleep(100);
     }
     ring->UbrTrxClose();
     delete ring;
@@ -1184,9 +1194,6 @@ void UBShmEndpoint::PollingModeRelease(bthread_tag_t tag) {
 
 void UBShmEndpoint::PollerRegisterEvent(PollerSidOp::OpType op,
                                         uint32_t events) {
-    if (INVALID_SOCKET_ID == _poller_sid) {
-        return;
-    }
     // A sender may register EPOLLOUT after DeallocateResources() stopped
     // handing out the ring. Such an op must not reach the poller: it can be
     // queued behind the REMOVE of the teardown, which would put the socket id
@@ -1195,17 +1202,17 @@ void UBShmEndpoint::PollerRegisterEvent(PollerSidOp::OpType op,
         _ring_closed.load(butil::memory_order_seq_cst)) {
         return;
     }
-    if (op == PollerSidOp::ADD && _poller == nullptr) {
-        // Pick the poller of _poller_sid once. bthread_self_tag() may name
-        // another poller group when MOD/REMOVE run in a different bthread, so
-        // the ops below must use the poller recorded here instead.
-        auto& pollers = _poller_groups[bthread_self_tag()].pollers;
-        _poller = &pollers[butil::fmix32(_poller_sid) % FLAGS_ub_poller_num];
-    }
-    if (_poller == nullptr) {
+    const SocketId sid = _poller_sid.load(butil::memory_order_seq_cst);
+    if (INVALID_SOCKET_ID == sid) {
         return;
     }
-    _poller->op_queue.Enqueue(PollerSidOp{_poller_sid, events, op});
+    Poller* poller = _poller.load(butil::memory_order_seq_cst);
+    if (poller == nullptr) {
+        // The endpoint has been released (Reset() clears the poller before the
+        // socket id) or is not published yet.
+        return;
+    }
+    poller->op_queue.Enqueue(PollerSidOp{sid, events, op});
 }
 
 }  // namespace ubring
