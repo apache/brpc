@@ -20,12 +20,12 @@
 #include <cstring>
 
 #include <openssl/bio.h>
-#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 #include <openssl/x509.h>
 
+#include "butil/base64.h"
 #include "butil/sha1.h"
 
 namespace brpc {
@@ -40,6 +40,71 @@ bool Sha256Bytes(const unsigned char* data, size_t len, unsigned char out[32]) {
         && digest_len == 32;
 }
 
+// Appends |len| in DER length encoding.
+void AppendDerLength(size_t len, std::string* out) {
+    if (len < 0x80) {
+        out->push_back(static_cast<char>(len));
+        return;
+    }
+    char bytes[sizeof(size_t)];
+    size_t n = 0;
+    while (len > 0) {
+        bytes[n++] = static_cast<char>(len & 0xff);
+        len >>= 8;
+    }
+    out->push_back(static_cast<char>(0x80 | n));
+    while (n > 0) {
+        out->push_back(bytes[--n]);
+    }
+}
+
+// Decodes the base64 body of the PEM block delimited by |label|.
+bool DecodePemBody(const butil::StringPiece& pem, const char* label,
+                   std::string* der) {
+    const std::string begin = std::string("-----BEGIN ") + label + "-----";
+    const std::string end = std::string("-----END ") + label + "-----";
+    const size_t b = pem.find(begin);
+    const size_t e = pem.find(end);
+    if (b == butil::StringPiece::npos || e == butil::StringPiece::npos ||
+        e < b + begin.size()) {
+        return false;
+    }
+    std::string body;
+    for (size_t i = b + begin.size(); i < e; ++i) {
+        const char c = pem[i];
+        if (c != '\r' && c != '\n' && c != ' ' && c != '\t') {
+            body.push_back(c);
+        }
+    }
+    return butil::Base64Decode(body, der);
+}
+
+// Wraps a PKCS#1 RSAPublicKey DER in a SubjectPublicKeyInfo DER:
+//   SEQUENCE {
+//     SEQUENCE { OID rsaEncryption, NULL },
+//     BIT STRING { unused-bits=0, RSAPublicKey }
+//   }
+std::string WrapRsaPublicKeyAsSubjectPublicKeyInfo(const std::string& pkcs1) {
+    static const char kRsaAlgorithmIdentifier[] =
+        "\x30\x0d"                                    // SEQUENCE, 13 bytes
+        "\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01"  // OID rsaEncryption
+        "\x05\x00";                                   // NULL
+    std::string bit_string;
+    bit_string.push_back('\0');  // no unused bits
+    bit_string.append(pkcs1);
+    std::string bit_string_tlv;
+    bit_string_tlv.push_back('\x03');
+    AppendDerLength(bit_string.size(), &bit_string_tlv);
+    bit_string_tlv.append(bit_string);
+
+    std::string spki;
+    spki.push_back('\x30');
+    AppendDerLength(sizeof(kRsaAlgorithmIdentifier) - 1 + bit_string_tlv.size(), &spki);
+    spki.append(kRsaAlgorithmIdentifier, sizeof(kRsaAlgorithmIdentifier) - 1);
+    spki.append(bit_string_tlv);
+    return spki;
+}
+
 // Parses a PEM-encoded public key and returns its SubjectPublicKeyInfo DER
 // encoding, or an empty string when |pem| is not a parseable public key.
 // Both "BEGIN PUBLIC KEY" (SubjectPublicKeyInfo) and "BEGIN RSA PUBLIC KEY"
@@ -49,37 +114,27 @@ std::string PublicKeyDer(const butil::StringPiece& pem) {
     if (pem.empty()) {
         return std::string();
     }
+    // PEM_read_bio_PUBKEY() does not read the PKCS#1 form on every supported
+    // OpenSSL version, so handle that form explicitly.
+    if (pem.find("-----BEGIN RSA PUBLIC KEY-----") != butil::StringPiece::npos) {
+        std::string pkcs1;
+        if (!DecodePemBody(pem, "RSA PUBLIC KEY", &pkcs1)) {
+            return std::string();
+        }
+        return WrapRsaPublicKeyAsSubjectPublicKeyInfo(pkcs1);
+    }
+    BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
+    if (bio == nullptr) {
+        return std::string();
+    }
+    EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    if (pkey == nullptr) {
+        return std::string();
+    }
     unsigned char* der = nullptr;
-    int len = 0;
-    {
-        BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
-        if (bio == nullptr) {
-            return std::string();
-        }
-        EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
-        BIO_free(bio);
-        if (pkey != nullptr) {
-            len = i2d_PUBKEY(pkey, &der);
-            EVP_PKEY_free(pkey);
-        }
-    }
-#if !defined(OPENSSL_IS_BORINGSSL) && OPENSSL_VERSION_NUMBER < 0x30000000L
-    // Before OpenSSL 3.0, PEM_read_bio_PUBKEY() only reads
-    // SubjectPublicKeyInfo; fall back to the PKCS#1 reader there.
-    if (len <= 0) {
-        ERR_clear_error();
-        BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
-        if (bio == nullptr) {
-            return std::string();
-        }
-        RSA* rsa = PEM_read_bio_RSAPublicKey(bio, nullptr, nullptr, nullptr);
-        BIO_free(bio);
-        if (rsa != nullptr) {
-            len = i2d_RSA_PUBKEY(rsa, &der);
-            RSA_free(rsa);
-        }
-    }
-#endif
+    const int len = i2d_PUBKEY(pkey, &der);
+    EVP_PKEY_free(pkey);
     if (len <= 0 || der == nullptr) {
         OPENSSL_free(der);  // no-op when |der| was never set
         return std::string();

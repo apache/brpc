@@ -546,6 +546,17 @@ TEST(MysqlServerPublicKeyMatchesTest, Pkcs1AndSpkiEncodingsOfSameKeyMatch) {
         butil::StringPiece(kTestPubKeyPem)));
 }
 
+TEST(MysqlServerPublicKeyMatchesTest, Pkcs1PemWithCrlfMatches) {
+    std::string crlf(kTestPkcs1PubKeyPem);
+    std::string::size_type pos = 0;
+    while ((pos = crlf.find('\n', pos)) != std::string::npos) {
+        crlf.insert(pos, "\r");
+        pos += 2;
+    }
+    EXPECT_TRUE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem), butil::StringPiece(crlf)));
+}
+
 TEST(MysqlServerPublicKeyMatchesTest, InvalidKeysDoNotMatch) {
     EXPECT_FALSE(ServerPublicKeyMatches(
         butil::StringPiece(kTestPubKeyPem), butil::StringPiece("")));
@@ -554,6 +565,14 @@ TEST(MysqlServerPublicKeyMatchesTest, InvalidKeysDoNotMatch) {
     EXPECT_FALSE(ServerPublicKeyMatches(
         butil::StringPiece(kTestPubKeyPem),
         butil::StringPiece(kTestPrivKeyPem)));
+    // Malformed PKCS#1 block (bad base64 body, missing END line).
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece("-----BEGIN RSA PUBLIC KEY-----\n!!!!\n"
+                           "-----END RSA PUBLIC KEY-----\n")));
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece("-----BEGIN RSA PUBLIC KEY-----\nMIIBCgKCAQEA\n")));
 }
 
 }  // namespace
