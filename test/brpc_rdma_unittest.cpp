@@ -24,10 +24,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <algorithm>                            // std::min
+#include <atomic>
 #include <functional>
+#include <mutex>
 #include <sstream>
+#include <thread>
 #include <vector>
 #include <google/protobuf/descriptor.h>
 #include "butil/atomicops.h"
@@ -38,6 +42,10 @@
 #include "butil/sys_byteorder.h"
 #include "butil/time.h"
 #include "butil/files/temp_file.h"
+#include "bthread/bthread.h"
+#include "bthread/butex.h"
+#include "bthread/condition_variable.h"
+#include "bthread/countdown_event.h"
 #include "brpc/acceptor.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
@@ -85,6 +93,9 @@ DECLARE_bool(rdma_trace_verbose);
 DECLARE_int32(rdma_memory_pool_max_regions);
 DECLARE_int32(rdma_client_handshake_version);
 DECLARE_bool(rdma_ece);
+DECLARE_bool(rdma_poller_yield);
+extern decltype(&bthread_start_background) g_start_rdma_poller_for_test;
+extern std::function<void()> g_before_rdma_poller_start_for_test;
 
 extern ibv_qp* (*IbvCreateQp)(ibv_pd*, ibv_qp_init_attr*);
 extern int (*IbvModifyQp)(ibv_qp*, ibv_qp_attr*, ibv_qp_attr_mask);
@@ -4467,6 +4478,327 @@ TEST(RdmaInlineDataTest, should_post_inline) {
     // A QP granted no inline data inlines nothing.
     EXPECT_FALSE(rdma::ShouldPostInline(true, 1, 0));
 }
+
+// Poller lifecycle tests do not need any RDMA queues or hardware.
+static std::atomic<int> g_poller_start_count{0};
+static int g_poller_fail_at = -1;
+
+static int StartRdmaPollerForTest(bthread_t* tid, const bthread_attr_t* attr,
+                                 void* (*fn)(void*), void* arg) {
+    if (g_poller_start_count.fetch_add(1) == g_poller_fail_at) {
+        return EAGAIN;
+    }
+    return bthread_start_background(tid, attr, fn, arg);
+}
+
+class RdmaPollingTest : public ::testing::TestWithParam<int> {
+protected:
+    void SetUp() override {
+        _saved_use_polling = rdma::FLAGS_rdma_use_polling;
+        _saved_poller_num = rdma::FLAGS_rdma_poller_num;
+        _saved_poller_yield = rdma::FLAGS_rdma_poller_yield;
+        _saved_disable_bthread = rdma::FLAGS_rdma_disable_bthread;
+        _saved_start_poller = rdma::g_start_rdma_poller_for_test;
+        rdma::FLAGS_rdma_use_polling = true;
+        rdma::FLAGS_rdma_poller_num = 3;
+        rdma::FLAGS_rdma_poller_yield = true;
+        _saved_groups.swap(rdma::RqConnection::_poller_groups);
+        ResetGroups();
+    }
+
+    void TearDown() override {
+        rdma::RdmaEndpoint::PollingModeRelease(BTHREAD_TAG_DEFAULT);
+        rdma::g_start_rdma_poller_for_test = _saved_start_poller;
+        rdma::g_before_rdma_poller_start_for_test = nullptr;
+        _saved_groups.swap(rdma::RqConnection::_poller_groups);
+        rdma::FLAGS_rdma_use_polling = _saved_use_polling;
+        rdma::FLAGS_rdma_poller_num = _saved_poller_num;
+        rdma::FLAGS_rdma_poller_yield = _saved_poller_yield;
+        rdma::FLAGS_rdma_disable_bthread = _saved_disable_bthread;
+    }
+
+    void ResetGroups() {
+        std::vector<rdma::RqConnection::PollerGroup> fresh(1);
+        rdma::RqConnection::_poller_groups.swap(fresh);
+        g_poller_start_count = 0;
+        g_poller_fail_at = -1;
+        _initialized = 0;
+        _released = 0;
+        _callbacks = 0;
+        rdma::g_start_rdma_poller_for_test = StartRdmaPollerForTest;
+        rdma::g_before_rdma_poller_start_for_test = nullptr;
+    }
+
+    int Initialize(const std::function<void()>& init_fn = nullptr) {
+        auto callback = [this] { _callbacks.fetch_add(1); };
+        auto release_fn = [this] { _released.fetch_add(1); };
+        return rdma::RdmaEndpoint::PollingModeInitialize(
+            BTHREAD_TAG_DEFAULT, callback, init_fn, release_fn);
+    }
+
+    void ExpectStopped() {
+        const auto& group =
+            rdma::RqConnection::_poller_groups[BTHREAD_TAG_DEFAULT];
+        EXPECT_FALSE(group.running.load());
+        for (const auto& poller : group.pollers) {
+            EXPECT_EQ(INVALID_BTHREAD, poller.tid);
+        }
+    }
+
+    std::atomic<int> _initialized{0};
+    std::atomic<int> _released{0};
+    std::atomic<int> _callbacks{0};
+
+private:
+    bool _saved_use_polling;
+    int _saved_poller_num;
+    bool _saved_poller_yield;
+    bool _saved_disable_bthread;
+    decltype(&bthread_start_background) _saved_start_poller;
+    std::vector<rdma::RqConnection::PollerGroup> _saved_groups;
+};
+
+TEST_P(RdmaPollingTest, failed_creation_is_permanent) {
+    for (bool disable_bthread : {false, true}) {
+        SCOPED_TRACE(disable_bthread);
+        ResetGroups();
+        rdma::FLAGS_rdma_disable_bthread = disable_bthread;
+        g_poller_fail_at = GetParam();
+        auto init_fn = [this] { _initialized.fetch_add(1); };
+        EXPECT_EQ(-1, Initialize(init_fn));
+        EXPECT_EQ(EAGAIN, errno);
+        EXPECT_EQ(GetParam() + 1, g_poller_start_count.load());
+        ExpectStopped();
+        EXPECT_EQ(0, _initialized.load());
+        EXPECT_EQ(0, _released.load());
+        EXPECT_EQ(0, _callbacks.load());
+        EXPECT_EQ(rdma::RqConnection::PollerGroup::ABORTED,
+                  rdma::RqConnection::_poller_groups[0].startup_result->load());
+
+        g_poller_fail_at = -1;
+        EXPECT_EQ(-1, Initialize(init_fn));
+        EXPECT_EQ(EAGAIN, errno);
+        rdma::RdmaEndpoint::PollingModeRelease(BTHREAD_TAG_DEFAULT);
+        EXPECT_EQ(-1, Initialize(init_fn));
+        EXPECT_EQ(EAGAIN, errno);
+        EXPECT_EQ(GetParam() + 1, g_poller_start_count.load());
+    }
+}
+
+class RdmaPollingConcurrencyTest : public RdmaPollingTest {};
+
+TEST_F(RdmaPollingConcurrencyTest, initialize_waits_for_rollback_result) {
+    for (bool disable_bthread : {false, true}) {
+        SCOPED_TRACE(disable_bthread);
+        ResetGroups();
+        rdma::FLAGS_rdma_disable_bthread = disable_bthread;
+        auto init_fn = [this] { _initialized.fetch_add(1); };
+        g_poller_fail_at = 1;
+        bthread::CountdownEvent creation_paused;
+        bthread::CountdownEvent resume_creation;
+        std::atomic<int> before_start_calls{0};
+        rdma::g_before_rdma_poller_start_for_test = [&] {
+            if (before_start_calls.fetch_add(1) == 0) {
+                creation_paused.signal();
+                resume_creation.wait();
+            }
+        };
+        int rc = 0;
+        int competing_rc = 0;
+        int competing_errno = 0;
+        std::thread initializer([&] { rc = Initialize(init_fn); });
+        EXPECT_EQ(0, creation_paused.timed_wait(butil::seconds_from_now(5)));
+        auto& group = rdma::RqConnection::_poller_groups[0];
+        std::thread competing_initializer([&] {
+            competing_rc = Initialize(init_fn);
+            competing_errno = errno;
+        });
+        // The competing call must wait for rollback instead of returning
+        // success while its poller is about to be stopped.
+        ASSERT_FALSE(group.lifecycle_mutex.try_lock());
+        resume_creation.signal();
+        initializer.join();
+        competing_initializer.join();
+        EXPECT_EQ(-1, rc);
+        EXPECT_EQ(-1, competing_rc);
+        EXPECT_EQ(EAGAIN, competing_errno);
+        EXPECT_EQ(-1, Initialize());
+        EXPECT_EQ(EAGAIN, errno);
+        ExpectStopped();
+        EXPECT_EQ(0, _initialized.load());
+        EXPECT_EQ(0, _released.load());
+    }
+}
+
+TEST_F(RdmaPollingConcurrencyTest, release_waits_before_first_poller_created) {
+    for (bool disable_bthread : {false, true}) {
+        SCOPED_TRACE(disable_bthread);
+        ResetGroups();
+        rdma::FLAGS_rdma_disable_bthread = disable_bthread;
+        auto init_fn = [this] { _initialized.fetch_add(1); };
+        bthread::CountdownEvent creation_paused;
+        bthread::CountdownEvent resume_creation;
+        rdma::g_before_rdma_poller_start_for_test = [&] {
+            creation_paused.signal();
+            resume_creation.wait();
+        };
+        int rc = -1;
+        std::thread initializer([&] { rc = Initialize(init_fn); });
+        EXPECT_EQ(0, creation_paused.timed_wait(butil::seconds_from_now(5)));
+        auto& group = rdma::RqConnection::_poller_groups[0];
+        bthread::CountdownEvent releasing;
+        std::thread releaser([&] {
+            releasing.signal();
+            rdma::RdmaEndpoint::PollingModeRelease(BTHREAD_TAG_DEFAULT);
+        });
+        releasing.wait();
+        // Final shutdown waits behind creation even if no tid exists yet.
+        ASSERT_FALSE(group.lifecycle_mutex.try_lock());
+        resume_creation.signal();
+        initializer.join();
+        releaser.join();
+        EXPECT_EQ(0, rc);
+        ExpectStopped();
+        EXPECT_EQ(3, _initialized.load());
+        EXPECT_EQ(3, _released.load());
+        EXPECT_EQ(-1, Initialize());
+        EXPECT_EQ(ESHUTDOWN, errno);
+    }
+}
+
+TEST_F(RdmaPollingConcurrencyTest, failed_batch_skips_callbacks) {
+    rdma::FLAGS_rdma_disable_bthread = true;
+    bthread::CountdownEvent poller_entered;
+    bthread::CountdownEvent release_callback;
+    g_poller_fail_at = 1;
+    std::thread initializer([&] {
+        EXPECT_EQ(-1, Initialize([&] {
+            poller_entered.signal();
+            release_callback.wait();
+        }));
+    });
+    EXPECT_EQ(ETIMEDOUT,
+              poller_entered.timed_wait(butil::milliseconds_from_now(100)));
+    release_callback.signal();
+    initializer.join();
+    ExpectStopped();
+    EXPECT_EQ(0, _released.load());
+}
+
+TEST_F(RdmaPollingConcurrencyTest, startup_does_not_switch_to_poller) {
+    rdma::FLAGS_rdma_disable_bthread = false;
+    rdma::FLAGS_rdma_poller_num = 2;
+    ResetGroups();
+    rdma::g_start_rdma_poller_for_test = [](bthread_t* tid,
+                                            const bthread_attr_t* attr,
+                                            void* (*fn)(void*), void* arg) {
+        // Run the first poller immediately so it can park at the startup gate
+        // before the initializer publishes success.
+        if (g_poller_start_count.fetch_add(1) == 0) {
+            bthread_attr_t urgent_attr = *attr | BTHREAD_NOSIGNAL;
+            return bthread_start_urgent(tid, &urgent_attr, fn, arg);
+        }
+        return bthread_start_background(tid, attr, fn, arg);
+    };
+
+    pthread_t initializer_worker{};
+    rdma::g_before_rdma_poller_start_for_test = [&] {
+        if (g_poller_start_count.load() == 1) {
+            // The first start may have moved the initializer to another worker.
+            initializer_worker = pthread_self();
+        }
+    };
+    std::atomic<bool> initialize_returned{false};
+    std::function<void()> initialize = [&] {
+        EXPECT_EQ(0, Initialize([&] {
+            if (pthread_equal(pthread_self(), initializer_worker)) {
+                EXPECT_TRUE(initialize_returned.load())
+                    << "Startup wake switched directly to a poller";
+            }
+        }));
+        initialize_returned.store(true);
+    };
+    bthread_t initializer;
+    ASSERT_EQ(0, bthread_start_background(
+                     &initializer, &BTHREAD_ATTR_NORMAL,
+                     [](void* arg) -> void* {
+                         (*static_cast<std::function<void()>*>(arg))();
+                         return nullptr;
+                     }, &initialize));
+    EXPECT_EQ(0, bthread_join(initializer, nullptr));
+    rdma::RdmaEndpoint::PollingModeRelease(BTHREAD_TAG_DEFAULT);
+    ExpectStopped();
+}
+
+TEST_P(RdmaPollingTest, successful_batch_starts_once_and_releases_finally) {
+    auto init_fn = [this] { _initialized.fetch_add(1); };
+    ASSERT_EQ(0, Initialize(init_fn));
+    ASSERT_TRUE(WaitUntil([this] { return _initialized.load() == 3; }));
+    EXPECT_EQ(3, _initialized.load());
+    EXPECT_EQ(0, Initialize(init_fn));
+    EXPECT_EQ(3, g_poller_start_count.load());
+    rdma::RdmaEndpoint::PollingModeRelease(BTHREAD_TAG_DEFAULT);
+    ExpectStopped();
+    EXPECT_EQ(3, _released.load());
+    EXPECT_EQ(-1, Initialize(init_fn));
+    EXPECT_EQ(ESHUTDOWN, errno);
+    EXPECT_EQ(3, g_poller_start_count.load());
+}
+
+TEST_P(RdmaPollingTest, callbacks_can_wait_for_each_other) {
+    bthread::Mutex mutex;
+    bthread::ConditionVariable all_initialized;
+    const int poller_count = rdma::FLAGS_rdma_poller_num;
+    int arrived = 0;
+    ASSERT_EQ(0, Initialize([&] {
+        std::unique_lock<bthread::Mutex> lock(mutex);
+        if (++arrived == poller_count) {
+            all_initialized.notify_all();
+        } else {
+            all_initialized.wait(lock, [&] { return arrived == poller_count; });
+        }
+    }));
+    rdma::RdmaEndpoint::PollingModeRelease(BTHREAD_TAG_DEFAULT);
+    EXPECT_EQ(poller_count, arrived);
+    ExpectStopped();
+}
+
+TEST_F(RdmaPollingTest, tag_lifecycles_are_independent) {
+    std::vector<rdma::RqConnection::PollerGroup> groups(2);
+    rdma::RqConnection::_poller_groups.swap(groups);
+    // The fixture has one bthread tag; this tests RDMA group isolation.
+    g_poller_fail_at = 0;
+    rdma::g_start_rdma_poller_for_test = [](bthread_t* tid,
+                                            const bthread_attr_t* attr,
+                                            void* (*fn)(void*), void* arg) {
+        if (g_poller_start_count.fetch_add(1) == g_poller_fail_at) {
+            return EAGAIN;
+        }
+        bthread_attr_t default_attr = *attr;
+        default_attr.tag = BTHREAD_TAG_DEFAULT;
+        return bthread_start_background(tid, &default_attr, fn, arg);
+    };
+    ASSERT_EQ(-1, rdma::RdmaEndpoint::PollingModeInitialize(
+                      1, nullptr, nullptr, nullptr));
+    EXPECT_EQ(EAGAIN, errno);
+    rdma::RdmaEndpoint::PollingModeRelease(1);
+    ASSERT_EQ(0, Initialize());
+    EXPECT_EQ(-1, rdma::RdmaEndpoint::PollingModeInitialize(
+                      1, nullptr, nullptr, nullptr));
+    EXPECT_EQ(EAGAIN, errno);
+    rdma::RdmaEndpoint::PollingModeRelease(BTHREAD_TAG_DEFAULT);
+    ExpectStopped();
+}
+
+TEST_F(RdmaPollingTest, release_without_initialization_is_final) {
+    rdma::RdmaEndpoint::PollingModeRelease(BTHREAD_TAG_DEFAULT);
+    EXPECT_EQ(-1, Initialize());
+    EXPECT_EQ(ESHUTDOWN, errno);
+    ExpectStopped();
+}
+
+INSTANTIATE_TEST_SUITE_P(FailureAtEachPoller, RdmaPollingTest,
+                         ::testing::Values(0, 1, 2));
 
 #endif  // if BRPC_WITH_RDMA
 

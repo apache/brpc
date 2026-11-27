@@ -23,6 +23,7 @@
 #include <vector>
 #include "butil/atomicops.h"
 #include "butil/containers/mpsc_queue.h"
+#include "bthread/mutex.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/rdma_async_event.h"
 #include "brpc/rdma/rdma_connection.h"
@@ -238,11 +239,22 @@ private:
     };
     // Poller group
     struct BAIDU_CACHELINE_ALIGNMENT PollerGroup {
-        PollerGroup() : pollers(FLAGS_rdma_poller_num), running(false) {}
+        enum State { UNINITIALIZED, STARTED, FAILED, RELEASED };
+        enum StartupResult { PENDING, SUCCEEDED, ABORTED };
+
+        PollerGroup();
+        ~PollerGroup();
         // Pollers belonging to this bthread scheduling tag.
         std::vector<Poller> pollers;
+        // Serialize initialization, rollback and final shutdown for this tag.
+        bthread::Mutex lifecycle_mutex;
+        State state;
+        int error;
         // Stops all poller loops in this tag when cleared.
         butil::atomic<bool> running;
+        // Separate from running: successful batches must execute all init_fn
+        // callbacks even if shutdown begins before a poller is scheduled.
+        butil::atomic<int>* startup_result;
     };
     // Independent polling groups indexed by bthread tag.
     static std::vector<PollerGroup> _poller_groups;
