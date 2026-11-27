@@ -861,10 +861,20 @@ TEST_F(ServerTest, restful_service_added_in_init_fn_is_rejected) {
     opt.bthread_init_fn = AddRestfulServiceInInit;
     opt.bthread_init_args = &server;
     opt.bthread_init_count = 1;
-    LogSinkScope log_scope;
-    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
-    ASSERT_NE(std::string::npos,
-              log_scope.sink().find("enables neither http nor h2"));
+    {
+        LogSinkScope log_scope;
+        ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+        ASSERT_NE(std::string::npos,
+                  log_scope.sink().find("enables neither http nor h2"));
+    }
+    // The rejected registration is rolled back, so a retry with http enabled
+    // can add the same service again.
+    ASSERT_EQ(0u, server.service_count());
+    opt.enabled_protocols = "baidu_std http";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(1u, server.service_count());
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
 }
 
 TEST_F(ServerTest, enabled_protocols_must_include_http_for_restful_services) {

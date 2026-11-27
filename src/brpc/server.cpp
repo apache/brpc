@@ -1715,6 +1715,9 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                            << "': ServerOptions.enabled_protocols=`"
                            << _options.enabled_protocols
                            << "' enables neither http nor h2";
+                // The service is already registered, undo it like the
+                // RESTful mapping failures below.
+                RemoveService(service);
                 return -1;
             }
         }
