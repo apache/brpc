@@ -36,8 +36,8 @@
 
 #include <cerrno>
 #include <cstring>
-#include <future>
 #include <string>
+#include <thread>
 
 #include "brpc/channel.h"
 #include "brpc/controller.h"

@@ -386,6 +386,27 @@ TEST(MysqlCachingSha2RsaTest, RoundTripRecoversObfuscatedPlaintext) {
     EXPECT_EQ(recovered, password + '\0');
 }
 
+TEST(MysqlCachingSha2RsaTest, RoundTripWithPkcs1PubKeyPem) {
+    const std::string salt(20, '\x5A');
+    const std::string password = "hunter2";
+
+    // The PKCS#1 form of the same key must encrypt just like the
+    // SubjectPublicKeyInfo form.
+    const std::string ciphertext = CachingSha2PasswordRsaEncrypt(
+        butil::StringPiece(kTestPkcs1PubKeyPem),
+        butil::StringPiece(salt),
+        butil::StringPiece(password));
+    ASSERT_FALSE(ciphertext.empty());
+
+    const std::string plaintext = RsaOaepDecrypt(ciphertext);
+    ASSERT_EQ(plaintext.size(), password.size() + 1);
+    std::string recovered(plaintext.size(), '\0');
+    for (size_t i = 0; i < plaintext.size(); ++i) {
+        recovered[i] = static_cast<char>(plaintext[i] ^ salt[i % salt.size()]);
+    }
+    EXPECT_EQ(recovered, password + '\0');
+}
+
 TEST(MysqlCachingSha2RsaTest, EmptyPasswordEncryptsNulTerminator) {
     const std::string salt(20, '\x11');
     const std::string ciphertext = CachingSha2PasswordRsaEncrypt(

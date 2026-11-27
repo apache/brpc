@@ -105,30 +105,39 @@ std::string WrapRsaPublicKeyAsSubjectPublicKeyInfo(const std::string& pkcs1) {
     return spki;
 }
 
-// Parses a PEM-encoded public key and returns its SubjectPublicKeyInfo DER
-// encoding, or an empty string when |pem| is not a parseable public key.
-// Both "BEGIN PUBLIC KEY" (SubjectPublicKeyInfo) and "BEGIN RSA PUBLIC KEY"
-// (PKCS#1) are accepted, and both are re-encoded as SubjectPublicKeyInfo so
-// that they compare equal.
-std::string PublicKeyDer(const butil::StringPiece& pem) {
+// Parses a PEM-encoded public key.  Both "BEGIN PUBLIC KEY"
+// (SubjectPublicKeyInfo) and "BEGIN RSA PUBLIC KEY" (PKCS#1) are accepted.
+// Returns nullptr when |pem| is not a parseable public key.
+EVP_PKEY* ReadPublicKeyPem(const butil::StringPiece& pem) {
     if (pem.empty()) {
-        return std::string();
+        return nullptr;
     }
     // PEM_read_bio_PUBKEY() does not read the PKCS#1 form on every supported
-    // OpenSSL version, so handle that form explicitly.
+    // OpenSSL version, so normalize that form to SubjectPublicKeyInfo and
+    // decode it uniformly.
     if (pem.find("-----BEGIN RSA PUBLIC KEY-----") != butil::StringPiece::npos) {
         std::string pkcs1;
         if (!DecodePemBody(pem, "RSA PUBLIC KEY", &pkcs1)) {
-            return std::string();
+            return nullptr;
         }
-        return WrapRsaPublicKeyAsSubjectPublicKeyInfo(pkcs1);
+        const std::string spki = WrapRsaPublicKeyAsSubjectPublicKeyInfo(pkcs1);
+        const unsigned char* p = reinterpret_cast<const unsigned char*>(spki.data());
+        return d2i_PUBKEY(nullptr, &p, static_cast<long>(spki.size()));
     }
     BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
     if (bio == nullptr) {
-        return std::string();
+        return nullptr;
     }
     EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
     BIO_free(bio);
+    return pkey;
+}
+
+// Returns the SubjectPublicKeyInfo DER encoding of a PEM-encoded public key,
+// or an empty string when |pem| is not a parseable public key.  Both accepted
+// PEM forms are normalized to SubjectPublicKeyInfo so that they compare equal.
+std::string PublicKeyDer(const butil::StringPiece& pem) {
+    EVP_PKEY* pkey = ReadPublicKeyPem(pem);
     if (pkey == nullptr) {
         return std::string();
     }
@@ -224,9 +233,6 @@ std::string CachingSha2PasswordRsaEncrypt(
     if (salt.size() != kSaltLen) {
         return std::string();
     }
-    if (server_pubkey_pem.empty()) {
-        return std::string();
-    }
 
     std::string plaintext;
     plaintext.resize(password.size() + 1);
@@ -237,13 +243,7 @@ std::string CachingSha2PasswordRsaEncrypt(
     plaintext[password.size()] = static_cast<char>(
         '\0' ^ salt.data()[password.size() % kSaltLen]);
 
-    BIO* bio = BIO_new_mem_buf(server_pubkey_pem.data(),
-                               static_cast<int>(server_pubkey_pem.size()));
-    if (bio == nullptr) {
-        return std::string();
-    }
-    EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
-    BIO_free(bio);
+    EVP_PKEY* pkey = ReadPublicKeyPem(server_pubkey_pem);
     if (pkey == nullptr) {
         return std::string();
     }
