@@ -20,6 +20,7 @@
 #include <cstring>
 
 #include <openssl/bio.h>
+#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
@@ -39,25 +40,48 @@ bool Sha256Bytes(const unsigned char* data, size_t len, unsigned char out[32]) {
         && digest_len == 32;
 }
 
-// Parses a PEM-encoded public key and returns its DER encoding, or an empty
-// string when |pem| is not a parseable public key.
+// Parses a PEM-encoded public key and returns its SubjectPublicKeyInfo DER
+// encoding, or an empty string when |pem| is not a parseable public key.
+// Both "BEGIN PUBLIC KEY" (SubjectPublicKeyInfo) and "BEGIN RSA PUBLIC KEY"
+// (PKCS#1) are accepted, and both are re-encoded as SubjectPublicKeyInfo so
+// that they compare equal.
 std::string PublicKeyDer(const butil::StringPiece& pem) {
     if (pem.empty()) {
         return std::string();
     }
-    BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
-    if (bio == nullptr) {
-        return std::string();
-    }
-    EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
-    BIO_free(bio);
-    if (pkey == nullptr) {
-        return std::string();
-    }
     unsigned char* der = nullptr;
-    const int len = i2d_PUBKEY(pkey, &der);
-    EVP_PKEY_free(pkey);
+    int len = 0;
+    {
+        BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
+        if (bio == nullptr) {
+            return std::string();
+        }
+        EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
+        BIO_free(bio);
+        if (pkey != nullptr) {
+            len = i2d_PUBKEY(pkey, &der);
+            EVP_PKEY_free(pkey);
+        }
+    }
+#if !defined(OPENSSL_IS_BORINGSSL) && OPENSSL_VERSION_NUMBER < 0x30000000L
+    // Before OpenSSL 3.0, PEM_read_bio_PUBKEY() only reads
+    // SubjectPublicKeyInfo; fall back to the PKCS#1 reader there.
+    if (len <= 0) {
+        ERR_clear_error();
+        BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
+        if (bio == nullptr) {
+            return std::string();
+        }
+        RSA* rsa = PEM_read_bio_RSAPublicKey(bio, nullptr, nullptr, nullptr);
+        BIO_free(bio);
+        if (rsa != nullptr) {
+            len = i2d_RSA_PUBKEY(rsa, &der);
+            RSA_free(rsa);
+        }
+    }
+#endif
     if (len <= 0 || der == nullptr) {
+        OPENSSL_free(der);  // no-op when |der| was never set
         return std::string();
     }
     std::string out(reinterpret_cast<const char*>(der), static_cast<size_t>(len));

@@ -64,6 +64,17 @@ const char kTestPubKeyPem[] =
     "pwIDAQAB\n"
     "-----END PUBLIC KEY-----\n";
 
+// The same key as kTestPubKeyPem, in the PKCS#1 "RSA PUBLIC KEY" form.
+const char kTestPkcs1PubKeyPem[] =
+    "-----BEGIN RSA PUBLIC KEY-----\n"
+    "MIIBCgKCAQEA6XJ3ie6w10PTa5AVMgnh2RYvLZ6Ti/2zsUNETYuNyozYb+ziF4sZ\n"
+    "vPFGpL1vl7rznmCYTQV4dQ6QbzAFDv9vfQLD+ZT2bMl7zpIMJf3aI1dbLR1VB5gT\n"
+    "a7TIpEIGlZq3yR+1UPrh8y1/L/MJvrOWMcNkRjHA12QJS5/KTIZkqhjYRnnxvtJS\n"
+    "JAz+S5RrdumSEIxsFQOknhWEZ5hzn52l4LwVaLV264wA8+ytbHl3dmC5LmTnD9tJ\n"
+    "nMxvV8NjcLknU2f3VIrrGnLZxA2tEm7jBLseYuXleXKB4B/DjMbbxjEb7bzWPVlg\n"
+    "iHax/30r2bBKNgOCrk32OWxA1Tsw/p2vpwIDAQAB\n"
+    "-----END RSA PUBLIC KEY-----\n";
+
 const char kTestPrivKeyPem[] =
     "-----BEGIN PRIVATE KEY-----\n"
     "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDpcneJ7rDXQ9Nr\n"
@@ -527,27 +538,12 @@ TEST(MysqlServerPublicKeyMatchesTest, SameKeyMatches) {
 // PKCS#1 ("RSA PUBLIC KEY") and SubjectPublicKeyInfo ("PUBLIC KEY")
 // encode the same key differently; the comparison is on the parsed key.
 TEST(MysqlServerPublicKeyMatchesTest, Pkcs1AndSpkiEncodingsOfSameKeyMatch) {
-    BIO* bio = BIO_new_mem_buf(kTestPrivKeyPem,
-                               static_cast<int>(sizeof(kTestPrivKeyPem) - 1));
-    ASSERT_NE(nullptr, bio);
-    EVP_PKEY* pkey = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
-    BIO_free(bio);
-    ASSERT_NE(nullptr, pkey);
-    RSA* rsa = EVP_PKEY_get1_RSA(pkey);
-    ASSERT_NE(nullptr, rsa);
-    BIO* out = BIO_new(BIO_s_mem());
-    ASSERT_NE(nullptr, out);
-    ASSERT_EQ(1, PEM_write_bio_RSAPublicKey(out, rsa));
-    char* data = nullptr;
-    const long len = BIO_get_mem_data(out, &data);
-    const std::string pkcs1_pem(data, len);
     EXPECT_TRUE(ServerPublicKeyMatches(
-        butil::StringPiece(kTestPubKeyPem), butil::StringPiece(pkcs1_pem)));
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece(kTestPkcs1PubKeyPem)));
     EXPECT_TRUE(ServerPublicKeyMatches(
-        butil::StringPiece(pkcs1_pem), butil::StringPiece(kTestPubKeyPem)));
-    BIO_free(out);
-    RSA_free(rsa);
-    EVP_PKEY_free(pkey);
+        butil::StringPiece(kTestPkcs1PubKeyPem),
+        butil::StringPiece(kTestPubKeyPem)));
 }
 
 TEST(MysqlServerPublicKeyMatchesTest, InvalidKeysDoNotMatch) {
