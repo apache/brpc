@@ -207,8 +207,10 @@ private:
     // return -1 if encounter other errno
     int WriteToFd(void* data, size_t len);
 
-    // Poll inbound and outbound UBRing events of `ring', which belongs to `s'.
-    static void PollIn(Socket* s, UBRing* ring, uint32_t ep_event);
+    // Poll inbound and outbound UBRing events of `ring', which belongs to `s'
+    // and `ep'.
+    static void PollIn(UBShmEndpoint* ep, Socket* s, UBRing* ring,
+                       uint32_t ep_event);
 
     static void PollOut(Socket* s, UBRing* ring);
 

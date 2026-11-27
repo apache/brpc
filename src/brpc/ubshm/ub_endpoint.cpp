@@ -977,9 +977,17 @@ void UBShmEndpoint::DeallocateResources() {
     delete ring;
 }
 
-void UBShmEndpoint::PollIn(Socket* s, UBRing* ring, uint32_t ep_event) {
+void UBShmEndpoint::PollIn(UBShmEndpoint* ep, Socket* s, UBRing* ring,
+                           uint32_t ep_event) {
     InputMessageClosure last_msg;
     while (true) {
+        // A busy peer may keep the ring readable for a long time and this loop
+        // drains it until it is empty. Leave as soon as the endpoint is being
+        // released, otherwise the teardown would wait for the peer to stop
+        // sending.
+        if (BAIDU_UNLIKELY(ep->_ring_closed.load(butil::memory_order_seq_cst))) {
+            return;
+        }
         int ret = ring->IsUbrTrxReadable(ep_event);
         if (ret < 0) {
             return;
@@ -988,6 +996,10 @@ void UBShmEndpoint::PollIn(Socket* s, UBRing* ring, uint32_t ep_event) {
         InputMessengerProcessor& processor = s->fd_input_processor();
         bool read_eof = false;
         while (!read_eof) {
+            if (BAIDU_UNLIKELY(
+                    ep->_ring_closed.load(butil::memory_order_seq_cst))) {
+                return;
+            }
             const int64_t received_us = butil::cpuwide_time_us();
             const int64_t base_realtime = butil::gettimeofday_us() - received_us;
 
@@ -1082,13 +1094,20 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
                     poller_sids.emplace(op);
                 }
             }
+            // Sids to forget after the iteration: an ADD/MOD and the REMOVE of
+            // a teardown come from different producers, so an op of a released
+            // endpoint can be applied after its REMOVE. Such an id must not
+            // stay in the set and be resolved again on every poll.
+            std::vector<SocketId> released_sids;
             for (const auto& poller_sid : poller_sids) {
                 SocketUniquePtr poller_socket;
                 if (Socket::Address(poller_sid.sid, &poller_socket) < 0) {
+                    released_sids.push_back(poller_sid.sid);
                     continue;
                 }
                 auto* user = static_cast<PollerUser*>(poller_socket->user());
                 if (user == nullptr) {
+                    released_sids.push_back(poller_sid.sid);
                     continue;
                 }
                 // Resolve the endpoint from the owning Socket and keep that
@@ -1096,6 +1115,7 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
                 // by Reset() and must not be dereferenced directly.
                 SocketUniquePtr owner;
                 if (Socket::Address(user->owner_id, &owner) < 0) {
+                    released_sids.push_back(poller_sid.sid);
                     continue;
                 }
                 auto* transport =
@@ -1103,17 +1123,22 @@ int UBShmEndpoint::PollingModeInitialize(bthread_tag_t tag,
                 UBShmEndpoint* ep = transport->GetUBShmEp();
                 UBRing* ring = nullptr;
                 if (!ep->AcquireRing(&ring)) {
+                    released_sids.push_back(poller_sid.sid);
                     continue;
                 }
 
                 if (poller_sid.events & EPOLLIN) {
-                    PollIn(owner.get(), ring, poller_sid.events);
+                    PollIn(ep, owner.get(), ring, poller_sid.events);
                 }
 
                 if (poller_sid.events & EPOLLOUT) {
                     PollOut(owner.get(), ring);
                 }
                 ep->ReleaseRing();
+            }
+            for (size_t i = 0; i < released_sids.size(); ++i) {
+                poller_sids.erase(
+                    PollerSidOp{released_sids[i], 0, PollerSidOp::REMOVE});
             }
             if (poller->callback) {
                 poller->callback();
@@ -1160,6 +1185,14 @@ void UBShmEndpoint::PollingModeRelease(bthread_tag_t tag) {
 void UBShmEndpoint::PollerRegisterEvent(PollerSidOp::OpType op,
                                         uint32_t events) {
     if (INVALID_SOCKET_ID == _poller_sid) {
+        return;
+    }
+    // A sender may register EPOLLOUT after DeallocateResources() stopped
+    // handing out the ring. Such an op must not reach the poller: it can be
+    // queued behind the REMOVE of the teardown, which would put the socket id
+    // back into the poller set for ever.
+    if (op != PollerSidOp::REMOVE &&
+        _ring_closed.load(butil::memory_order_seq_cst)) {
         return;
     }
     if (op == PollerSidOp::ADD && _poller == nullptr) {

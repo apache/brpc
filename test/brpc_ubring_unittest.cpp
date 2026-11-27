@@ -1140,6 +1140,45 @@ TEST_F(UBShmEndpointOneTrxTest, ring_lifetime_is_bounded_by_its_users) {
     EXPECT_NE(INT_MIN, user.writable.load());
 }
 
+// A sender may register EPOLLOUT after the endpoint stopped handing out the
+// ring. Such an op must not reach the poller: it can be applied after the
+// REMOVE of the teardown, which puts the socket id back into the poller set
+// and keeps it there.
+TEST_F(UBShmEndpointTest, late_registration_after_release_is_dropped) {
+    GFLAGS_NAMESPACE::FlagSaver flag_saver;
+    brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
+    brpc::ubring::SHM local_trx_shm =
+        {nullptr, 4 * 1024 * 1024, 0, {0}, (uint32_t)_socket->fd()};
+    ASSERT_EQ(0, _ep->AllocateClientResources(&local_trx_shm, "UBRING_ut_late"));
+    auto* poller = _ep->_poller;
+    ASSERT_NE(nullptr, poller);
+    brpc::ubring::UBShmEndpoint::PollerSidOp op;
+    while (poller->op_queue.Dequeue(op)) {
+    }
+
+    _ep->_ring_closed.store(true);
+    _ep->PollerRegisterEpollOut(false);  // ADD
+    _ep->PollerRegisterEpollOut(true);   // MOD
+    EXPECT_FALSE(poller->op_queue.TryDequeue(op));
+
+    // The REMOVE of the teardown itself still goes through.
+    _ep->PollerRegisterEvent(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE);
+    ASSERT_TRUE(poller->op_queue.Dequeue(op));
+    EXPECT_EQ(brpc::ubring::UBShmEndpoint::PollerSidOp::REMOVE, op.type);
+    _ep->Reset();
+}
+
+// PollIn() drains the ring until it is empty, which a busy peer can postpone
+// for a long time. It must stop as soon as the endpoint is released, because
+// the teardown waits for the poller to leave the ring.
+TEST_F(UBShmEndpointTest, polling_stops_when_the_endpoint_is_released) {
+    _ep->_ring_closed.store(true);
+    // Returns before the ring is touched: a ring that must not be used is
+    // passed to prove that the closed flag is checked first.
+    _ep->PollIn(_ep, _socket, nullptr, EPOLLET);
+    _ep->_ring_closed.store(false);
+}
+
 // The poller of an endpoint is chosen when the event is added. Later ops must
 // use the same poller even when they run in a bthread of another poller group,
 // otherwise the stale socket id stays in the original poller set.
