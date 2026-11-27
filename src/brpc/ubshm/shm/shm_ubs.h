@@ -44,8 +44,6 @@ void *UbsShmCallback(void* args);
 RETURN_CODE UbsShmAddTimer(ShmList *shm_list);
 RETURN_CODE InitShmTimer(ShmList **shm_list);
 RETURN_CODE DestroyShmTimer(ShmList *shm_list);
-RETURN_CODE AddShmToList(ShmList *shm_list, SHM *shm);
-RETURN_CODE IsExistInShmList(ShmList *shm_list, const SHM *shm);
 }
 }
 #endif //BRPC_SHM_UBS_H

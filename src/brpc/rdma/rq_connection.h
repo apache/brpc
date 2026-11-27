@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include "bthread/condition_variable.h"
 #include "butil/atomicops.h"
 #include "butil/containers/mpsc_queue.h"
 #include "brpc/socket.h"
@@ -243,6 +244,11 @@ private:
         std::vector<Poller> pollers;
         // Stops all poller loops in this tag when cleared.
         butil::atomic<bool> running;
+        bthread::Mutex mutex;
+        bool stopping{false};
+        bthread::ConditionVariable stopped;
+
+        void Stop(std::unique_lock<bthread::Mutex>& lock);
     };
     // Independent polling groups indexed by bthread tag.
     static std::vector<PollerGroup> _poller_groups;

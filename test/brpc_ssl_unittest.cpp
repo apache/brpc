@@ -38,6 +38,7 @@
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
 #include "brpc/details/ssl_helper.h"
+#include "brpc/handshake/rdma_handshake_constants.h"
 #include "echo.pb.h"
 
 namespace brpc {
@@ -96,6 +97,47 @@ static void MarkCertificateFreed(void*, void* ptr, CRYPTO_EX_DATA*,
     if (ptr != nullptr) {
         *static_cast<bool*>(ptr) = true;
     }
+}
+
+TEST_F(SSLTest, disabled_rdma_hello_is_sent_over_tls) {
+    brpc::Server server;
+    brpc::ServerOptions options;
+    auto& cert = options.mutable_ssl_options()->default_cert;
+    cert.certificate = "cert1.crt";
+    cert.private_key = "cert1.key";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &options));
+    butil::fd_guard fd(butil::tcp_connect(server.listen_address(), nullptr));
+    ASSERT_GE(fd, 0);
+    const timeval timeout{3, 0};
+    ASSERT_EQ(0, setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO,
+                           &timeout, sizeof(timeout)));
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> ctx(
+        SSL_CTX_new(SSLv23_method()), SSL_CTX_free);
+    ASSERT_TRUE(ctx);
+    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(ctx.get()), SSL_free);
+    ASSERT_TRUE(ssl);
+    ASSERT_EQ(1, SSL_set_fd(ssl.get(), fd));
+    ASSERT_EQ(1, SSL_connect(ssl.get()));
+
+    const auto& spec = brpc::rdma::RdmaHelloFrameSpec(2);
+    std::string payload(spec.min_frame_len - spec.magic_len - sizeof(uint16_t),
+                        '\0');
+    std::string hello;
+    ASSERT_EQ(brpc::handshake::FRAME_OK,
+              brpc::handshake::FrameCodec::Encode(spec, payload, &hello));
+    ASSERT_EQ(static_cast<int>(hello.size()),
+              SSL_write(ssl.get(), hello.data(), hello.size()));
+    char reply[brpc::rdma::HELLO_V2_MSG_LEN_MIN];
+    size_t received = 0;
+    while (received < sizeof(reply)) {
+        const int n = SSL_read(ssl.get(), reply + received,
+                               sizeof(reply) - received);
+        ASSERT_GT(n, 0);
+        received += n;
+    }
+    EXPECT_EQ(0, memcmp(reply, "RDMA", spec.magic_len));
+    EXPECT_EQ(0xff, static_cast<unsigned char>(reply[6]));
+    EXPECT_EQ(0xff, static_cast<unsigned char>(reply[7]));
 }
 
 TEST_F(SSLTest, diagnostic_print_releases_peer_certificate) {

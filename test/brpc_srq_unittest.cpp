@@ -30,7 +30,6 @@
 #include "brpc/policy/baidu_rpc_meta.pb.h"
 #include "brpc/rdma/rdma_connection.h"
 #include "brpc/rdma/rdma_endpoint.h"
-#include "brpc/rdma/rdma_handshake.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma/srq_receive_pool.h"
 #include "brpc/rdma/srq_worker.h"

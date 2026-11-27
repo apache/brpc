@@ -1524,14 +1524,17 @@ int Socket::HandleEpollOutRequest(int error_code, EpollOutRequest* req) {
 
 void Socket::AfterAppConnected(int err, void* data) {
     WriteRequest* req = static_cast<WriteRequest*>(data);
+    Socket* const socket = req->get_socket();
+    if (err == 0 && socket->Failed()) {
+        err = EFAILEDSOCKET;
+    }
     if (err == 0) {
-        Socket* const s = req->get_socket();
-        SharedPart* sp = s->GetSharedPart();
+        SharedPart* sp = socket->GetSharedPart();
         if (sp) {
             sp->num_continuous_connect_timeouts.store(0, butil::memory_order_relaxed);
         }
         // requests are not setup yet. check the comment on Setup() in Write()
-        req->Setup(s);
+        req->Setup(socket);
         bthread_t th;
         bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
         bthread_attr_set_name(&attr, "KeepWrite");
@@ -1541,7 +1544,7 @@ void Socket::AfterAppConnected(int err, void* data) {
             KeepWrite(req);
         }
     } else {
-        SocketUniquePtr s(req->get_socket());
+        SocketUniquePtr s(socket);
         if (err == ETIMEDOUT) {
             SharedPart* sp = s->GetOrNewSharedPart();
             if (sp->num_continuous_connect_timeouts.fetch_add(
@@ -1846,7 +1849,7 @@ void* Socket::KeepWrite(void* void_arg) {
     // returning directly otherwise _write_head is permantly non-nullptr which
     // makes later Write() abnormal.
     WriteRequest* cur_tail = nullptr;
-    do {
+    while (!s->Failed()) {
         // req was written, skip it.
         bool need_shutdown = false;
         if (req->next.load(butil::memory_order_relaxed) != nullptr &&
@@ -1919,7 +1922,7 @@ void* Socket::KeepWrite(void* void_arg) {
             s->ReturnSuccessfulWriteRequest(req);
             return nullptr;
         }
-    } while (1);
+    }
 
     // Error occurred, release all requests until no new requests.
     s->ReleaseAllFailedWriteRequests(req);
@@ -2619,7 +2622,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     }
 #endif
 
-    os << "\nrdma={\n";
+    os << "\ntransport={\n";
     ptr->_transport->Debug(os);
     os << "}\n";
 
