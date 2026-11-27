@@ -73,6 +73,13 @@ struct SocketSSLContext;
 struct ServerOptions {
     ServerOptions();  // Constructed with default options.
 
+    // NOTE: pointers in this struct are owned by the caller until they are
+    // adopted by a Server. A Server::Start() rejected by the validation of
+    // this struct (e.g. an invalid enabled_protocols) adopts nothing, so the
+    // caller still owns and must free them. Once Start() gets past that
+    // validation, the Server owns them and frees them in its destructor even
+    // if Start() fails later, e.g. when the port cannot be bound.
+
     // connections without data transmission for so many seconds will be closed
     // Default: -1 (disabled)
     int idle_timeout_sec;
@@ -284,10 +291,14 @@ struct ServerOptions {
 
     // Only enable these protocols, separated by spaces.
     // All names inside must be valid, check protocols name in global.cpp
-    // http/h2 and rdma_handshake are served whatever this field says:
-    // the builtin services are only reachable over http/h2, and
-    // rdma_handshake is a transport level handshake dispatching no request.
-    // Naming them here is allowed and changes nothing.
+    // When this field is non-empty, only the listed protocols are served.
+    // rdma_handshake is always served as it is a transport level handshake
+    // dispatching no request; naming it here is allowed and changes nothing.
+    // Builtin and restful services as well as http_master_service are served
+    // through http/h2, so if any of them is enabled, http or h2 must be listed
+    // as well, otherwise Server::Start() fails.
+    // The value is applied by the first Start() of a Server; restarting it
+    // with a different value fails, use a new Server instead.
     // Default: empty (all protocols)
     std::string enabled_protocols;
 
@@ -713,6 +724,11 @@ friend struct RevertServerStatus;
 
     int InitALPNOptions(const ServerSSLOptions* options);
 
+    // Fails if ServerOptions.enabled_protocols has unknown names, or excludes
+    // both http and h2 while features served through http/h2 (builtin
+    // services, restful services and http_master_service) are enabled.
+    int ValidateEnabledProtocols(const ServerOptions& options) const;
+
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();
 
@@ -829,6 +845,15 @@ friend struct RevertServerStatus;
     bool _failed_to_set_ignore_eovercrowded;
     Acceptor* _am;
     Acceptor* _internal_am;
+    // ServerOptions.enabled_protocols used to build `_am'. Acceptors cache
+    // their protocol handlers, so a different value cannot be applied by
+    // restarting this Server.
+    std::string _built_enabled_protocols;
+
+    // True while StartInternal() is running, so that services added during it
+    // (e.g. from bthread_init_fn) are still checked against the protocols to
+    // serve.
+    bool _in_start;
 
     // Declared whatever BRPC_WITH_FLATBUFFERS is, so the layout does not
     // depend on it. Always null when the option is OFF.

@@ -509,6 +509,7 @@ Server::Server(ProfilerLinker)
     , _failed_to_set_ignore_eovercrowded(false)
     , _am(nullptr)
     , _internal_am(nullptr)
+    , _in_start(false)
     , _first_service(nullptr)
     , _tab_info_list(nullptr)
     , _global_restful_map(nullptr)
@@ -686,24 +687,120 @@ int Server::AddBuiltinServices() {
     return 0;
 }
 
-BUTIL_FORCE_INLINE bool is_http_protocol(const char* name) {
-    if (name[0] != 'h') {
-        return false;
-    }
-    return strcmp(name, "http") == 0 || strcmp(name, "h2") == 0;
-}
-
 BUTIL_FORCE_INLINE bool is_rdma_handshake_protocol(const char* name) {
     return strcmp(name, "rdma_handshake") == 0;
 }
 
+// Restful services are served through http/h2 requests. Empty maps may be
+// left by RemoveService(), so check the number of mappings instead of the
+// existence of the map.
+static bool HasRestfulServices(const Server::ServiceMap& services,
+                               const RestfulMap* global_restful_map) {
+    if (global_restful_map != nullptr && global_restful_map->size() != 0) {
+        return true;
+    }
+    for (Server::ServiceMap::const_iterator it = services.begin();
+         it != services.end(); ++it) {
+        if (it->second.restful_map != nullptr &&
+            it->second.restful_map->size() != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static std::string JoinWithAnd(const std::vector<std::string>& strs) {
+    std::string out;
+    for (size_t i = 0; i < strs.size(); ++i) {
+        if (i != 0) {
+            out.append(i + 1 == strs.size() ? " and " : ", ");
+        }
+        out.append(strs[i]);
+    }
+    return out;
+}
+
+static void ParseEnabledProtocols(const std::string& enabled_protocols,
+                                  std::unordered_set<std::string>* whitelist) {
+    for (butil::StringSplitter sp(enabled_protocols.c_str(), ' '); sp; ++sp) {
+        whitelist->insert(std::string(sp.field(), sp.length()));
+    }
+}
+
+// Returns true if `a' and `b' list the same set of protocols, in which case the
+// handlers built from one of them also match the other.
+static bool SameEnabledProtocols(const std::string& a, const std::string& b) {
+    std::unordered_set<std::string> wa;
+    std::unordered_set<std::string> wb;
+    ParseEnabledProtocols(a, &wa);
+    ParseEnabledProtocols(b, &wb);
+    return wa == wb;
+}
+
+int Server::ValidateEnabledProtocols(const ServerOptions& options) const {
+    std::unordered_set<std::string> whitelist;
+    ParseEnabledProtocols(options.enabled_protocols, &whitelist);
+    if (whitelist.empty()) {
+        return 0;
+    }
+    const bool http_in_whitelist =
+        whitelist.count("http") != 0 || whitelist.count("h2") != 0;
+    std::vector<Protocol> protocols;
+    ListProtocols(&protocols);
+    for (size_t i = 0; i < protocols.size(); ++i) {
+        if (protocols[i].process_request != nullptr) {
+            whitelist.erase(protocols[i].name);
+        }
+    }
+    if (!whitelist.empty()) {
+        std::ostringstream err;
+        err << "ServerOptions.enabled_protocols has unknown protocols=`";
+        for (const auto& protocol : whitelist) {
+            err << protocol << ' ';
+        }
+        err << '\'';
+        LOG(ERROR) << err.str();
+        errno = EINVAL;
+        return -1;
+    }
+    if (http_in_whitelist) {
+        return 0;
+    }
+    std::vector<std::string> features;
+    std::vector<std::string> fixes;
+    if (_builtin_service_count > 0) {
+        // Builtin services added by a previous Start() stay registered, so the
+        // configuration cannot get rid of them anymore.
+        features.push_back("builtin services are already registered");
+        fixes.push_back("create a new Server with "
+                        "ServerOptions.has_builtin_services=false");
+    } else if (options.has_builtin_services) {
+        features.push_back("ServerOptions.has_builtin_services is true");
+        fixes.push_back("set ServerOptions.has_builtin_services=false");
+    }
+    if (HasRestfulServices(_fullname_service_map, _global_restful_map)) {
+        features.push_back("restful services are added");
+        fixes.push_back("remove the restful mappings");
+    }
+    if (options.http_master_service != nullptr) {
+        features.push_back("ServerOptions.http_master_service is set");
+        fixes.push_back("clear ServerOptions.http_master_service");
+    }
+    if (features.empty()) {
+        return 0;
+    }
+    LOG(ERROR) << "ServerOptions.enabled_protocols=`"
+               << options.enabled_protocols << "' enables neither http nor "
+               << "h2, but " << JoinWithAnd(features)
+               << ". They are served through http/h2, add `http' (or `h2') to "
+               << "enabled_protocols, or " << JoinWithAnd(fixes) << '.';
+    errno = EINVAL;
+    return -1;
+}
+
 Acceptor* Server::BuildAcceptor() {
     std::unordered_set<std::string> whitelist;
-    for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
-         sp; ++sp) {
-        std::string protocol(sp.field(), sp.length());
-        whitelist.insert(protocol);
-    }
+    ParseEnabledProtocols(_options.enabled_protocols, &whitelist);
     const bool has_whitelist = !whitelist.empty();
     Acceptor* acceptor = new Acceptor(_keytable_pool);
     InputMessageHandler handler;
@@ -714,14 +811,10 @@ Acceptor* Server::BuildAcceptor() {
             // The protocol does not support server-side.
             continue;
         }
-        // Erase whatever the exemptions below say. http, h2 and
-        // rdma_handshake are always served, but they are still
-        // valid names for the whitelist.
-        bool in_whitelist = (whitelist.erase(protocols[i].name) != 0);
-        if (has_whitelist && !in_whitelist &&
-            !is_http_protocol(protocols[i].name) &&
+        if (has_whitelist && whitelist.count(protocols[i].name) == 0 &&
             !is_rdma_handshake_protocol(protocols[i].name)) {
-            // the protocol is not allowed to serve.
+            // rdma_handshake is always served since it only handles the
+            // transport level handshake and dispatches no request.
             RPC_VLOG << "Skip protocol=" << protocols[i].name;
             continue;
         }
@@ -737,17 +830,6 @@ Acceptor* Server::BuildAcceptor() {
             delete acceptor;
             return nullptr;
         }
-    }
-    if (!whitelist.empty()) {
-        std::ostringstream err;
-        err << "ServerOptions.enabled_protocols has unknown protocols=`";
-        for (const auto& protocol : whitelist) {
-            err << protocol << ' ';
-        }
-        err << '\'';
-        delete acceptor;
-        LOG(ERROR) << err.str();
-        return nullptr;
     }
     return acceptor;
 }
@@ -782,6 +864,17 @@ int Server::InitALPNOptions(const ServerSSLOptions* options) {
         const Protocol* protocol = FindProtocol(protocol_type);
         if (protocol == nullptr || !protocol->support_server()) {
             LOG(ERROR) << "Server does not support alpn=" << alpn;
+            return -1;
+        }
+        // Negotiating a protocol without an installed handler makes the client
+        // fail on its first request, reject the configuration instead.
+        std::unordered_set<std::string> whitelist;
+        ParseEnabledProtocols(_options.enabled_protocols, &whitelist);
+        if (!whitelist.empty() && whitelist.count(protocol->name) == 0) {
+            LOG(ERROR) << "alpn=" << alpn << " is not in "
+                       << "ServerOptions.enabled_protocols=`"
+                       << _options.enabled_protocols << '\'';
+            errno = EINVAL;
             return -1;
         }
         raw_protocol.append(ALPNProtocolToString(protocol_type));
@@ -962,6 +1055,26 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                    << FLAGS_task_group_ntags << ")";
         return -1;
     }
+    // Validate `enabled_protocols' before copy_and_fill_server_options below
+    // adopts the pointers in the user-provided options, so that a rejected
+    // configuration does not transfer their ownership to this server.
+    if (ValidateEnabledProtocols(real_opt) != 0) {
+        return -1;
+    }
+    // Acceptors keep the handlers built from the options of the first Start(),
+    // so a different `enabled_protocols' cannot be applied by restarting.
+    if (_am != nullptr &&
+        !SameEnabledProtocols(real_opt.enabled_protocols,
+                              _built_enabled_protocols)) {
+        LOG(ERROR) << "ServerOptions.enabled_protocols cannot be changed from `"
+                   << _built_enabled_protocols << "' to `"
+                   << real_opt.enabled_protocols
+                   << "' after the Server is started, create a new Server "
+                   << "instead";
+        errno = EINVAL;
+        return -1;
+    }
+
     int ret = TransportFactory::ContextInitOrDie(real_opt.socket_mode, true, &real_opt);
     if (ret != 0) {
         LOG(ERROR) << "Fail to initialize transport context for server, ret=" << ret;
@@ -969,6 +1082,15 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
     }
 
     copy_and_fill_server_options(_options, real_opt);
+
+    // Services added while the rest of Start() runs (e.g. from
+    // bthread_init_fn) are not seen by the validation above, mark the server
+    // as starting so that their restful mappings are checked as well.
+    struct InStartGuard {
+        explicit InStartGuard(bool* in_start) : ptr(in_start) { *ptr = true; }
+        ~InStartGuard() { *ptr = false; }
+        bool* ptr;
+    } in_start_guard(&_in_start);
 
     if (_options.http_master_service) {
         // Check requirements for http_master_service:
@@ -1242,6 +1364,7 @@ int Server::StartInternal(const butil::EndPoint& endpoint,
                 LOG(ERROR) << "Fail to build acceptor";
                 return -1;
             }
+            _built_enabled_protocols = _options.enabled_protocols;
             _am->_socket_mode = _options.socket_mode;
             _am->_bthread_tag = _options.bthread_tag;
         }
@@ -1580,6 +1703,24 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
     butil::StringPiece restful_mappings = svc_opt.restful_mappings;
     restful_mappings.trim_spaces();
     if (!restful_mappings.empty()) {
+        // Services added while Start() is running (e.g. from bthread_init_fn)
+        // were not seen by the validation of the user-provided options, so
+        // check that their restful mappings can be served as well.
+        if (_in_start) {
+            std::unordered_set<std::string> whitelist;
+            ParseEnabledProtocols(_options.enabled_protocols, &whitelist);
+            if (!whitelist.empty() && whitelist.count("http") == 0 &&
+                whitelist.count("h2") == 0) {
+                LOG(ERROR) << "Fail to add restful service=`" << sd->full_name()
+                           << "': ServerOptions.enabled_protocols=`"
+                           << _options.enabled_protocols
+                           << "' enables neither http nor h2";
+                // The service is already registered, undo it like the
+                // RESTful mapping failures below.
+                RemoveService(service);
+                return -1;
+            }
+        }
         // Parse the mappings.
         std::vector<RestfulMapping> mappings;
         if (!ParseRestfulMappings(restful_mappings, &mappings)) {
@@ -2063,6 +2204,8 @@ void Server::ClearServices() {
     _fullname_service_map.clear();
     _service_map.clear();
     _method_map.clear();
+    delete _global_restful_map;
+    _global_restful_map = nullptr;
     _builtin_service_count = 0;
     _virtual_service_count = 0;
     _first_service = nullptr;

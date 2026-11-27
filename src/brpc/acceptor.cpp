@@ -192,7 +192,9 @@ void Acceptor::Join() {
         return;
     }
     // `_listened_fd' will be set to -1 once it has been recycled
-    while (_listened_fd > 0 || !_socket_map.empty()) {
+    // `_listened_fd' is set to -1 once it has been recycled. fd 0 is a valid
+    // listened fd, so compare against the sentinel instead of 0.
+    while (_listened_fd >= 0 || !_socket_map.empty()) {
         _empty_cond.Wait();
     }
     const int saved_idle_timeout_sec = _idle_timeout_sec;

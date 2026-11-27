@@ -30,6 +30,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_guard.h"
+#include "butil/logging.h"
 #include "butil/files/scoped_file.h"
 #include "bthread/countdown_event.h"
 #include "brpc/socket.h"
@@ -120,6 +121,21 @@ public:
     }
 private:
     const bool _saved;
+};
+
+// Captures logs and restores the previous sink when leaving the scope, so a
+// failing assertion cannot leave the global sink pointing at a destroyed
+// object.
+class LogSinkScope {
+public:
+    LogSinkScope() : _old_sink(logging::SetLogSink(&_sink)) {}
+    ~LogSinkScope() { logging::SetLogSink(_old_sink); }
+
+    const logging::StringSink& sink() const { return _sink; }
+
+private:
+    logging::StringSink _sink;
+    logging::LogSink* _old_sink;
 };
 
 class MyAuthenticator : public brpc::Authenticator {
@@ -472,10 +488,22 @@ TEST_F(ServerTest, failed_start_keeps_keytable_pool_for_init_bthreads) {
 TEST_F(ServerTest, invalid_protocol_in_enabled_protocols) {
     butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
-    brpc::Server server;
-    brpc::ServerOptions opt;
-    opt.enabled_protocols = "hehe baidu_std";
-    ASSERT_EQ(-1, server.Start(ep, &opt));
+    // The second case has http, so it cannot be rejected by the http/h2
+    // requirement of builtin services. The first one has both problems and
+    // must report the unknown name, i.e. unknown names are checked first.
+    const char* cases[] = {"hehe baidu_std", "http hehe"};
+    for (size_t i = 0; i < arraysize(cases); ++i) {
+        brpc::Server server;
+        brpc::ServerOptions opt;
+        opt.enabled_protocols = cases[i];
+        LogSinkScope log_scope;
+        ASSERT_EQ(-1, server.Start(ep, &opt));
+        ASSERT_NE(std::string::npos,
+                  log_scope.sink().find("unknown protocols=`hehe '"))
+            << cases[i];
+        ASSERT_EQ(EINVAL, errno) << cases[i];
+        ASSERT_EQ(0u, server._builtin_service_count) << cases[i];
+    }
 }
 
 class EchoServiceV1 : public v1::EchoService {
@@ -595,6 +623,25 @@ TEST_F(ServerTest, empty_enabled_protocols) {
     ASSERT_EQ(0, server.Join());
 }
 
+// Sends an HTTP request on a raw connection and expects the server to close
+// the connection without replying, i.e. http is not served.
+static void ExpectHttpNotServed(const butil::EndPoint& ep) {
+    butil::fd_guard sockfd(tcp_connect(ep, nullptr));
+    ASSERT_GE(sockfd, 0);
+    const char request[] = "GET /version HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    ASSERT_EQ((ssize_t)strlen(request),
+              send(sockfd, request, strlen(request), 0));
+    const struct timeval timeout = {1, 0};
+    ASSERT_EQ(0, setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO,
+                            &timeout, sizeof(timeout)));
+    char buf[128];
+    ssize_t nr;
+    do {
+        nr = recv(sockfd, buf, sizeof(buf), 0);
+    } while (nr < 0 && errno == EINTR);
+    ASSERT_EQ(0, nr);
+}
+
 TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
@@ -603,27 +650,21 @@ TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     ASSERT_EQ(0, server.AddService(
                   &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
     opt.enabled_protocols = "hulu_pbrpc";
     ASSERT_EQ(0, server.Start(ep, &opt));
 
-    brpc::ChannelOptions copt;
-    brpc::Controller cntl;
-
-    // http is always allowed.
-    brpc::Channel http_channel;
-    copt.protocol = "http";
-    ASSERT_EQ(0, http_channel.Init(ep, &copt));
-    cntl.Reset();
-    http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << cntl.response_attachment();
+    // http is not allowed since it's not in the whitelist.
+    ExpectHttpNotServed(ep);
 
     // Unmatched protocols are not allowed.
+    brpc::ChannelOptions copt;
     brpc::Channel chan;
     copt.protocol = "baidu_std";
     ASSERT_EQ(0, chan.Init(ep, &copt));
     test::EchoRequest req;
     test::EchoResponse res;
-    cntl.Reset();
+    brpc::Controller cntl;
     req.set_message(EXP_REQUEST);
     test::EchoService_Stub stub(&chan);
     stub.Echo(&cntl, &req, &res, nullptr);
@@ -634,16 +675,73 @@ TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     ASSERT_EQ(0, server.Join());
 }
 
-// http, h2 and rdma_handshake are served whatever enabled_protocols says, but
-// naming them in it used to make Start() fail: the exemption was tested
-// before whitelist.erase() and `&&' short-circuited it, so the names survived
-// into the leftover check and came back as "unknown protocols=`http '".
-TEST_F(ServerTest, enabled_protocols_can_name_always_enabled_protocols) {
-    std::string cases[] = {
-        "baidu_std http",
-        "baidu_std h2",
-        "baidu_std rdma_handshake",
-        "baidu_std http h2 rdma_handshake",
+// The whitelist is authoritative: http is not served unless it's listed.
+TEST_F(ServerTest, enabled_protocols_without_http_rejects_http) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(
+                  &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    const butil::EndPoint ep = server.listen_address();
+
+    // The whitelisted protocol still serves.
+    brpc::ChannelOptions copt;
+    brpc::Channel chan;
+    copt.protocol = "baidu_std";
+    ASSERT_EQ(0, chan.Init(ep, &copt));
+    test::EchoRequest req;
+    test::EchoResponse res;
+    brpc::Controller cntl;
+    req.set_message(EXP_REQUEST);
+    test::EchoService_Stub stub(&chan);
+    stub.Echo(&cntl, &req, &res, nullptr);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+
+    // http is neither served nor able to reach builtin services.
+    ExpectHttpNotServed(ep);
+
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// Acceptors keep the handlers built from the options of the first Start(), so
+// a different whitelist is rejected instead of being silently ignored.
+TEST_F(ServerTest, restart_rejects_changed_enabled_protocols) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(
+                  &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+
+    opt.enabled_protocols = "hulu_pbrpc";
+    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(EINVAL, errno);
+
+    // Restarting with the same protocols is still allowed.
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// http (or h2) in the whitelist keeps builtin services reachable, and naming
+// rdma_handshake is allowed since it is a transport level handshake.
+TEST_F(ServerTest, enabled_protocols_with_http_serves_builtin_services) {
+    struct {
+        const char* enabled;
+        const char* http_client;
+    } cases[] = {
+        {"baidu_std http", "http"},
+        {"baidu_std http rdma_handshake", "http"},
+        {"baidu_std h2", "h2"},
     };
     for (size_t i = 0; i < arraysize(cases); ++i) {
         brpc::Server server;
@@ -651,46 +749,193 @@ TEST_F(ServerTest, enabled_protocols_can_name_always_enabled_protocols) {
         ASSERT_EQ(0, server.AddService(
                       &echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
         brpc::ServerOptions opt;
-        opt.enabled_protocols = cases[i];
-        ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt)) << cases[i];
-        butil::EndPoint ep = server.listen_address();
+        opt.enabled_protocols = cases[i].enabled;
+        ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt)) << cases[i].enabled;
+        const butil::EndPoint ep = server.listen_address();
 
+        // Builtin services are reachable over the whitelisted http protocol.
         brpc::ChannelOptions copt;
+        copt.protocol = cases[i].http_client;
+        brpc::Channel http_channel;
+        ASSERT_EQ(0, http_channel.Init(ep, &copt));
         brpc::Controller cntl;
-        test::EchoRequest req;
-        test::EchoResponse res;
-        req.set_message(EXP_REQUEST);
+        cntl.http_request().uri() = "/version";
+        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+        ASSERT_FALSE(cntl.Failed()) << cases[i].enabled << ": "
+                                    << cntl.ErrorText();
 
-        // The protocol that actually needed whitelisting still serves.
+        // baidu_std is whitelisted as well.
         copt.protocol = "baidu_std";
         brpc::Channel chan;
         ASSERT_EQ(0, chan.Init(ep, &copt));
+        test::EchoRequest req;
+        test::EchoResponse res;
+        req.set_message(EXP_REQUEST);
+        cntl.Reset();
         test::EchoService_Stub stub(&chan);
         stub.Echo(&cntl, &req, &res, nullptr);
-        ASSERT_FALSE(cntl.Failed()) << cases[i] << ": " << cntl.ErrorText();
+        ASSERT_FALSE(cntl.Failed()) << cases[i].enabled << ": "
+                                    << cntl.ErrorText();
 
-        // And so does http, as it does for any whitelist.
-        copt.protocol = "http";
-        brpc::Channel http_channel;
-        ASSERT_EQ(0, http_channel.Init(ep, &copt));
-        cntl.Reset();
-        cntl.http_request().uri() = "/version";
-        http_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
-        ASSERT_FALSE(cntl.Failed()) << cases[i] << ": " << cntl.ErrorText();
-
-        // A protocol left out of the whitelist is still refused.
+        // A protocol left out of the whitelist is refused.
         copt.protocol = "hulu_pbrpc";
         brpc::Channel hulu_channel;
         ASSERT_EQ(0, hulu_channel.Init(ep, &copt));
         cntl.Reset();
         test::EchoService_Stub hulu_stub(&hulu_channel);
         hulu_stub.Echo(&cntl, &req, &res, nullptr);
-        ASSERT_TRUE(cntl.Failed()) << cases[i];
+        ASSERT_TRUE(cntl.Failed()) << cases[i].enabled;
         LOG(INFO) << "Expected error: " << cntl.ErrorText();
 
         ASSERT_EQ(0, server.Stop(0));
         ASSERT_EQ(0, server.Join());
     }
+}
+
+// Builtin services are served through http/h2, so enabling them while a
+// whitelist disables both protocols is a misconfiguration.
+TEST_F(ServerTest, enabled_protocols_must_include_http_for_builtin_services) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    ASSERT_TRUE(opt.has_builtin_services);
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+}
+
+// A port occupied by another listener makes Start() fail after builtin
+// services are registered; the error must not suggest disabling them on this
+// Server, which cannot work.
+TEST_F(ServerTest, registered_builtin_services_hint_to_use_new_server) {
+    butil::fd_guard sockfd(
+        butil::tcp_listen(butil::EndPoint(butil::IP_ANY, 0)));
+    ASSERT_GE(sockfd, 0);
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::get_local_side(sockfd, &ep));
+
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    ASSERT_EQ(-1, server.Start(ep, &opt));
+    ASSERT_GT(server._builtin_service_count, 0);
+
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    LogSinkScope log_scope;
+    ASSERT_EQ(-1, server.Start(ep, &opt));
+    ASSERT_NE(std::string::npos, log_scope.sink().find("already registered"));
+    ASSERT_EQ(EINVAL, errno);
+}
+
+// ALPN must not negotiate a protocol whose handler is not installed.
+TEST_F(ServerTest, enabled_protocols_must_include_alpn_protocols) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "h2";
+    opt.mutable_ssl_options()->alpns = "http,h2";
+    LogSinkScope log_scope;
+    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+    ASSERT_NE(std::string::npos, log_scope.sink().find(
+        "is not in ServerOptions.enabled_protocols"));
+    ASSERT_EQ(EINVAL, errno);
+}
+
+EchoServiceImpl* g_restful_service_in_init = nullptr;
+
+bool AddRestfulServiceInInit(void* args) {
+    brpc::Server* server = static_cast<brpc::Server*>(args);
+    return server->AddService(g_restful_service_in_init,
+                              brpc::SERVER_DOESNT_OWN_SERVICE,
+                              "/echo => Echo") == 0;
+}
+
+// bthread_init_fn runs after the user options are validated and may add
+// services with restful mappings; such services are rejected because they
+// could not be served, and the failing callback fails Start().
+TEST_F(ServerTest, restful_service_added_in_init_fn_is_rejected) {
+    EchoServiceImpl echo_svc;
+    g_restful_service_in_init = &echo_svc;
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    opt.bthread_init_fn = AddRestfulServiceInInit;
+    opt.bthread_init_args = &server;
+    opt.bthread_init_count = 1;
+    {
+        LogSinkScope log_scope;
+        ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+        ASSERT_NE(std::string::npos,
+                  log_scope.sink().find("enables neither http nor h2"));
+    }
+    // The rejected registration is rolled back, so a retry with http enabled
+    // can add the same service again.
+    ASSERT_EQ(0u, server.service_count());
+    opt.enabled_protocols = "baidu_std http";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(1u, server.service_count());
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+TEST_F(ServerTest, enabled_protocols_must_include_http_for_restful_services) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                                   "/echo => Echo"));
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+}
+
+// RemoveService() keeps the (now empty) restful maps, which must not be
+// mistaken for restful services still requiring http.
+TEST_F(ServerTest, removed_restful_services_do_not_require_http) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                                   "*.flv => Echo, /v1/echo => Echo"));
+    ASSERT_EQ(0, server.RemoveService(&echo_svc));
+    ASSERT_TRUE(server._global_restful_map);
+    ASSERT_EQ(0u, server._global_restful_map->size());
+
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// The validation runs before builtin services are added, so a rejected
+// Start() can be retried on the same Server with fixed options.
+TEST_F(ServerTest, can_retry_start_after_protocols_rejection) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+    opt.has_builtin_services = false;
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
+}
+
+// ClearServices() must clear the global restful map as well, otherwise the
+// emptied server is still treated as having restful services.
+TEST_F(ServerTest, cleared_restful_services_do_not_require_http) {
+    brpc::Server server;
+    EchoServiceImpl echo_svc;
+    ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                                   "*.flv => Echo, /v1/echo => Echo"));
+    server.ClearServices();
+    ASSERT_FALSE(server._global_restful_map);
+
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(0, server.Start("127.0.0.1:0", &opt));
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
 }
 
 TEST_F(ServerTest, services_in_different_ns) {
@@ -3022,6 +3267,17 @@ void CallEchoByHttpWithoutPb(const butil::EndPoint& ep, brpc::Controller* cntl) 
     ASSERT_EQ(0, chan.Init(ep, &copt));
     cntl->http_request().uri() = "/EchoService/Echo";
     chan.CallMethod(nullptr, cntl, nullptr, nullptr, nullptr);
+}
+
+TEST_F(ServerTest, enabled_protocols_must_include_http_for_http_master_service) {
+    brpc::Server server;
+    brpc::ServerOptions opt;
+    opt.has_builtin_services = false;
+    opt.http_master_service = new HttpMasterServiceImpl;
+    opt.enabled_protocols = "baidu_std";
+    ASSERT_EQ(-1, server.Start("127.0.0.1:0", &opt));
+    // The rejected Start() did not adopt the pointer, the caller still owns it.
+    delete opt.http_master_service;
 }
 
 TEST_F(ServerTest, master_services_are_not_served_on_internal_port) {

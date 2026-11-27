@@ -351,6 +351,18 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 
 如果你有更多的协议需求，可以联系我们。
 
+`ServerOptions.enabled_protocols`用于限制server提供的协议。它是一个以空格分隔的协议名列表，非空时server只提供列表中的协议，列表中出现未知的协议名会导致`Server::Start()`失败。`rdma_handshake`总是会被提供，因为它是传输层握手且不派发任何请求，将它写入列表是合法的，但不会有任何影响。内置服务、restful服务和`ServerOptions.http_master_service`都通过http/h2提供，因此当它们被启用时（`ServerOptions.has_builtin_services`默认为true），列表中必须同时包含`http`或`h2`，否则`Server::Start()`会失败并给出如何修正配置的提示。`ServerOptions.ssl_options.alpns`中的每个协议也必须被提供，并且该列表在`Server`第一次`Start()`时生效：用不同的列表重启同一个`Server`会失败，需要改用新的`Server`。例如：
+
+```c++
+ServerOptions options;
+// 提供baidu_std协议和http协议，后者保证内置服务可访问。
+options.enabled_protocols = "baidu_std http";
+...
+// 关闭内置服务后，可以不提供http。
+options.has_builtin_services = false;
+options.enabled_protocols = "baidu_std";
+```
+
 # fork without exec
 一般来说，[fork](https://linux.die.net/man/3/fork)出的子进程应尽快调用[exec](https://linux.die.net/man/3/exec)以重置所有状态，中间只应调用满足async-signal-safe的函数。这么使用fork的brpc程序在之前的版本也不会有问题。
 
