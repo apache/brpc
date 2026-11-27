@@ -190,11 +190,10 @@ private:
     // Mark the ring in use so that it is not destroyed while it is read or
     // written. Return false when the endpoint has no usable ring, i.e. it is
     // not allocated yet or it is being released. Each successful call must be
-    // paired with ReleaseRing().
+    // paired with ReleaseRing(). DeallocateResources() waits for the users.
     bool AcquireRing(UBRing** ring);
 
-    // Stop using the ring returned by AcquireRing(). A ring that the endpoint
-    // has already given up is destroyed by its last user.
+    // Stop using the ring returned by AcquireRing().
     void ReleaseRing();
 
     // Read at most len bytes from fd in _socket to data
@@ -227,12 +226,11 @@ private:
     // may run concurrently with them, so it is reference counted: see
     // AcquireRing() and ReleaseRing().
     butil::atomic<UBRing*> _ub_ring{nullptr};
-    // Number of threads currently using _ub_ring.
-    butil::atomic<int> _ring_ref{0};
-    // Set while the endpoint does not hand out _ub_ring.
+    // Number of threads currently using _ub_ring. It is a butex as well, so
+    // that DeallocateResources() can sleep until the last user is gone.
+    butil::atomic<int>* _ring_ref;
+    // Set while the endpoint does not hand out _ub_ring. See AcquireRing().
     butil::atomic<bool> _ring_closed{false};
-    // The ring taken out of _ub_ring, destroyed by its last user.
-    butil::atomic<UBRing*> _ring_retired{nullptr};
 
     // Synthetic SocketId registered with the UBRing poller.
     SocketId _poller_sid;

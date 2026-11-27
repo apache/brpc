@@ -900,16 +900,50 @@ bool WaitForTrxRelease() {
     return false;
 }
 
+// A trx slot that is free means the ring that owned it was closed. Unlike
+// WaitForTrxRelease() this does not wait, which lets a test check that a ring
+// was already closed when a call returned.
+bool TrxIsFree() {
+    UbrTrx* trx = nullptr;
+    if (UBRingManager::AcquireUbrTrxFromMgr(&trx) != 0) {
+        return false;
+    }
+    UBRingManager::ReleaseUbrTrxFromMgr(trx);
+    return true;
+}
+
 // Returns the endpoint of a Socket created in SOCKET_MODE_UBRING. The Socket
 // keeps the endpoint alive.
 UBShmEndpoint* EndpointOf(Socket* s) {
     return static_cast<UBShmTransport*>(s->_transport.get())->GetUBShmEp();
 }
 
-// Creates and releases ubring endpoints from another bthread, so that the
+// Holds the ring of an endpoint for a while, across the release of the
+// endpoint, like a poller or a sender does.
+struct RingUser {
+    UBShmEndpoint* ep{nullptr};
+    butil::atomic<bool> acquired{false};
+    butil::atomic<bool> released{false};
+    butil::atomic<int> writable{INT_MIN};
+};
+
+void HoldRing(RingUser* user) {
+    UBRing* ring = nullptr;
+    if (!user->ep->AcquireRing(&ring)) {
+        return;
+    }
+    user->acquired.store(true);
+    // The endpoint is released concurrently from the test thread: the ring must
+    // stay usable until it is returned below.
+    bthread_usleep(20000);
+    user->writable.store(ring->IsUbrTrxWriteable(EPOLLET));
+    user->ep->ReleaseRing();
+    user->released.store(true);
+}
+
+// Creates and releases ubring endpoints from another thread, so that the
 // poller polls an endpoint while it is released.
-void* ChurnEndpoints(void* arg) {
-    int* failures = static_cast<int*>(arg);
+void ChurnEndpoints(int* failures) {
     static std::atomic<uint32_t> name_sequence(0);
     for (int i = 0; i < 200 && *failures == 0; ++i) {
         if (!WaitForTrxRelease()) {
@@ -954,7 +988,6 @@ void* ChurnEndpoints(void* arg) {
         }
         s->SetFailed();
     }
-    return nullptr;
 }
 }  // namespace ubring
 }  // namespace brpc
@@ -1067,7 +1100,7 @@ TEST(UBRingRecvChunkHeaderTest, crafted_chunk_is_rejected) {
 
 // The ring is read by the poller and written by the sender while Reset() may
 // run in a health-check bthread, so the endpoint only hands it out until it is
-// released, and the ring is destroyed by its last user.
+// released and closes it only after its last user returns it.
 TEST_F(UBShmEndpointOneTrxTest, ring_lifetime_is_bounded_by_its_users) {
     GFLAGS_NAMESPACE::FlagSaver flag_saver;
     brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
@@ -1088,14 +1121,23 @@ TEST_F(UBShmEndpointOneTrxTest, ring_lifetime_is_bounded_by_its_users) {
     EXPECT_EQ(ring, _ep->_ub_ring.load(butil::memory_order_relaxed));
     _ep->ReleaseRing();
 
-    // Reset() while the ring is in use must not destroy it, and must stop the
-    // endpoint from handing it out again.
-    ASSERT_TRUE(_ep->AcquireRing(&ring));
+    // Reset() must wait for the user of the ring: it returns only after the
+    // user returned the ring, and the ring is closed by then.
+    // A thread of its own: this thread blocks in Reset() below, which waits
+    // for the user, so both must be able to run at the same time.
+    brpc::ubring::RingUser user;
+    user.ep = _ep;
+    std::thread holder(brpc::ubring::HoldRing, &user);
+    while (!user.acquired.load()) {
+        bthread_usleep(1000);
+    }
     _ep->Reset();
+    EXPECT_TRUE(user.released.load());
+    EXPECT_TRUE(brpc::ubring::TrxIsFree());
     EXPECT_FALSE(_ep->AcquireRing(&ring));
     EXPECT_FALSE(_ep->IsWritable());
-    _ep->ReleaseRing();
-    EXPECT_TRUE(brpc::ubring::WaitForTrxRelease());
+    holder.join();
+    EXPECT_NE(INT_MIN, user.writable.load());
 }
 
 // The poller of an endpoint is chosen when the event is added. Later ops must
@@ -1136,14 +1178,17 @@ TEST_F(UBShmEndpointTest, poller_of_add_serves_later_operations) {
 TEST_F(UBShmEndpointOneTrxTest, poller_survives_endpoint_teardown) {
     GFLAGS_NAMESPACE::FlagSaver flag_saver;
     brpc::ubring::FLAGS_ub_disconnect_timeout_s = 0;
-    ASSERT_EQ(0, brpc::ubring::UBShmEndpoint::PollingModeInitialize(
-                     bthread_self_tag(), nullptr, nullptr, nullptr));
+    // Start the poller from a plain thread so that it runs on a worker
+    // pthread. Started from this thread it would join this thread's task group
+    // and only run while the test sleeps.
+    std::thread poller([] {
+        EXPECT_EQ(0, brpc::ubring::UBShmEndpoint::PollingModeInitialize(
+                         bthread_self_tag(), nullptr, nullptr, nullptr));
+    });
+    poller.join();
     int failures = 0;
-    bthread_t tid;
-    ASSERT_EQ(0, bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
-                                          brpc::ubring::ChurnEndpoints,
-                                          &failures));
-    ASSERT_EQ(0, bthread_join(tid, nullptr));
+    std::thread churn(brpc::ubring::ChurnEndpoints, &failures);
+    churn.join();
     EXPECT_EQ(0, failures);
     EXPECT_TRUE(brpc::ubring::WaitForTrxRelease());
 }

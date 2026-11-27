@@ -185,16 +185,19 @@ UBShmEndpoint::UBShmEndpoint(Socket* s)
     , _poller_sid(INVALID_SOCKET_ID)
 {
     _read_butex = bthread::butex_create_checked<butil::atomic<int>>();
+    _ring_ref = bthread::butex_create_checked<butil::atomic<int>>();
+    // butex_create() does not initialize the value.
+    _ring_ref->store(0, butil::memory_order_relaxed);
 }
 
 UBShmEndpoint::~UBShmEndpoint() {
     Reset();
     bthread::butex_destroy(_read_butex);
+    bthread::butex_destroy(_ring_ref);
 }
 
 void UBShmEndpoint::Reset() {
-    // The ring is destroyed by DeallocateResources() or by the poller that
-    // still uses it.
+    // DeallocateResources() closes the ring once its users are gone.
     DeallocateResources();
 
     _poller_sid = INVALID_SOCKET_ID;
@@ -203,47 +206,21 @@ void UBShmEndpoint::Reset() {
     _state = UNINIT;
 }
 
-// `ring' is not used any more, either because the endpoint never handed it to
-// a poller or because its last user just returned it.
-static void DestroyRing(UBRing* ring) {
-    if (ring == nullptr) {
-        return;
-    }
-    ring->UbrTrxClose();
-    delete ring;
-}
-
-static void* DestroyRingInBthread(void* arg) {
-    DestroyRing(static_cast<UBRing*>(arg));
-    return nullptr;
-}
-
-// Closing the trx may wait for the peer to acknowledge the close, which must
-// not happen in the poller or in a callback of the ring: hand the ring to a
-// bthread instead.
-static void DestroyRingLater(UBRing* ring) {
-    if (ring == nullptr) {
-        return;
-    }
-    bthread_t tid;
-    bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
-    bthread_attr_set_name(&attr, "UBDestroyRing");
-    if (bthread_start_background(&tid, &attr, DestroyRingInBthread, ring) != 0) {
-        PLOG(WARNING) << "Fail to start bthread to destroy the ring";
-        DestroyRing(ring);
-    }
-}
-
+// _ring_ref and _ring_closed implement one protocol that keeps DeallocateResources()
+// from closing the ring while a poller or a sender is using it:
+//   user:   _ring_ref++ (seq_cst), then check _ring_closed (seq_cst)
+//   owner:  _ring_closed = true (seq_cst), then read _ring_ref (seq_cst)
+// Both sides access the two variables with sequential consistency, so either
+// the teardown sees the counter of a new user, or the user sees the closed
+// flag. Mixing in a weaker order would let a user return a ring that the
+// teardown already destroyed.
 bool UBShmEndpoint::AcquireRing(UBRing** ring) {
-    _ring_ref.fetch_add(1, butil::memory_order_seq_cst);
-    // The acquire load pairs with the release store in
-    // AllocateClientResources()/AllocateServerResources(), which publish the
-    // ring before they hand it out.
-    if (_ring_closed.load(butil::memory_order_acquire)) {
+    _ring_ref->fetch_add(1, butil::memory_order_seq_cst);
+    if (_ring_closed.load(butil::memory_order_seq_cst)) {
         ReleaseRing();
         return false;
     }
-    *ring = _ub_ring.load(butil::memory_order_acquire);
+    *ring = _ub_ring.load(butil::memory_order_seq_cst);
     if (BAIDU_UNLIKELY(*ring == nullptr)) {
         ReleaseRing();
         return false;
@@ -252,19 +229,15 @@ bool UBShmEndpoint::AcquireRing(UBRing** ring) {
 }
 
 void UBShmEndpoint::ReleaseRing() {
-    if (_ring_ref.fetch_sub(1, butil::memory_order_seq_cst) != 1) {
+    if (_ring_ref->fetch_sub(1, butil::memory_order_seq_cst) != 1) {
         return;
     }
-    // The seq_cst load pairs with the seq_cst store of _ring_retired in
-    // DeallocateResources(): when it sees the retired ring, the ring is not
-    // destroyed by the endpoint.
-    if (_ring_retired.load(butil::memory_order_seq_cst) == nullptr) {
-        return;
+    // Wake up DeallocateResources() if it is waiting for the ring. It always
+    // sets the closed flag first, so the flag also tells whether anybody may
+    // be waiting.
+    if (_ring_closed.load(butil::memory_order_seq_cst)) {
+        bthread::butex_wake_all(_ring_ref);
     }
-    // The endpoint gave up the ring and nobody uses it now. Closing the trx
-    // may wait for the peer, so it must not be done here: this is called by
-    // the poller and by the sending path.
-    DestroyRingLater(_ring_retired.exchange(nullptr, butil::memory_order_seq_cst));
 }
 
 void UBConnect::StartConnect(const Socket* socket,
@@ -912,22 +885,26 @@ int UBShmEndpoint::AllocateClientResources(ubring::SHM* local_trx_shm, const cha
     CHECK(_ub_ring.load(butil::memory_order_relaxed) == nullptr);
     // TODO: Pooling management
     UBRing* ring = new UBRing();
-    _ub_ring.store(ring, butil::memory_order_relaxed);
+    _ub_ring.store(ring, butil::memory_order_seq_cst);
 
     SocketOptions options;
-    // The poller resolves the endpoint from the owning Socket, see PollerUser.
-    options.user = new PollerUser(_socket_id);
     options.keytable_pool = _socket->_keytable_pool;
     if (Socket::Create(options, &_poller_sid) < 0) {
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
+    // The poller resolves the endpoint from the owning Socket, see PollerUser.
+    // Attach the user only now: Socket::Create() may fail before it takes
+    // ownership of the user, which would leak it.
+    SocketUniquePtr poller_socket;
+    CHECK_EQ(0, Socket::Address(_poller_sid, &poller_socket));
+    poller_socket->set_user(new PollerUser(_socket_id));
     int ret = ring->UbrAllocateLocalShm(local_trx_shm, shm_name);
     if (ret != 0) {
         return ret;
     }
     // Publish the ring to the poller before the ADD below reaches it.
-    _ring_closed.store(false, butil::memory_order_release);
+    _ring_closed.store(false, butil::memory_order_seq_cst);
     PollerRegisterEvent(PollerSidOp::ADD, EPOLLIN);
     return 0;
 }
@@ -943,23 +920,27 @@ int UBShmEndpoint::AllocateServerResources(ubring::SHM* remote_trx_shm,
     CHECK(_ub_ring.load(butil::memory_order_relaxed) == nullptr);
     // TODO: Pooling management
     UBRing* ring = new UBRing();
-    _ub_ring.store(ring, butil::memory_order_relaxed);
+    _ub_ring.store(ring, butil::memory_order_seq_cst);
 
     SocketOptions options;
-    // The poller resolves the endpoint from the owning Socket, see PollerUser.
-    options.user = new PollerUser(_socket_id);
     options.keytable_pool = _socket->_keytable_pool;
     if (Socket::Create(options, &_poller_sid) < 0) {
         PLOG(WARNING) << "Fail to create socket for UBRing poller";
         return -1;
     }
+    // The poller resolves the endpoint from the owning Socket, see PollerUser.
+    // Attach the user only now: Socket::Create() may fail before it takes
+    // ownership of the user, which would leak it.
+    SocketUniquePtr poller_socket;
+    CHECK_EQ(0, Socket::Address(_poller_sid, &poller_socket));
+    poller_socket->set_user(new PollerUser(_socket_id));
     int ret = ring->UbrAllocateServerShm(
         remote_trx_shm, local_trx_shm, format);
     if (ret != 0) {
         return ret;
     }
     // Publish the ring to the poller before the ADD below reaches it.
-    _ring_closed.store(false, butil::memory_order_release);
+    _ring_closed.store(false, butil::memory_order_seq_cst);
     PollerRegisterEvent(PollerSidOp::ADD, EPOLLIN);
     return ret;
 }
@@ -970,8 +951,8 @@ void UBShmEndpoint::DeallocateResources() {
     if (ring == nullptr) {
         return;
     }
-    // The poller may be inside PollIn() of this endpoint right now, so the
-    // ring is not destroyed here but by its last user.
+    // Stop handing the ring out and remove _poller_sid from the poller set, so
+    // that the poller stops polling this endpoint.
     _ring_closed.store(true, butil::memory_order_seq_cst);
     PollerRegisterEvent(PollerSidOp::REMOVE);
     if (INVALID_SOCKET_ID != _poller_sid) {
@@ -981,15 +962,19 @@ void UBShmEndpoint::DeallocateResources() {
             s->SetFailed();
         }
     }
-    _ring_retired.store(ring, butil::memory_order_seq_cst);
-    if (_ring_ref.load(butil::memory_order_seq_cst) != 0) {
-        return;
+    // A poller or a sender may be inside the ring right now: closing the trx
+    // invalidates the shared memory it reads, so wait for it to leave. Such a
+    // user never releases the endpoint by itself (the poller keeps the owning
+    // Socket referenced and the other users do not touch it), so the wait
+    // ends.
+    int ref = _ring_ref->load(butil::memory_order_seq_cst);
+    while (ref != 0) {
+        // Returns early when the counter changed or on a signal: re-check.
+        bthread::butex_wait(_ring_ref, ref, nullptr);
+        ref = _ring_ref->load(butil::memory_order_seq_cst);
     }
-    ring = _ring_retired.exchange(nullptr, butil::memory_order_seq_cst);
-    // DestroyRing() may wait for the peer to acknowledge the close, which is
-    // acceptable here: the caller is the thread that releases the endpoint,
-    // not the poller, because a poller in flight keeps a reference.
-    DestroyRing(ring);
+    ring->UbrTrxClose();
+    delete ring;
 }
 
 void UBShmEndpoint::PollIn(Socket* s, UBRing* ring, uint32_t ep_event) {
