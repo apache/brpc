@@ -44,7 +44,7 @@ namespace policy {
 
 DEFINE_bool(mysql_verbose, false, "Print all mysql requests and responses");
 
-void MysqlParseAuthenticator(const butil::StringPiece& raw,
+bool MysqlParseAuthenticator(const butil::StringPiece& raw,
                              std::string* user,
                              std::string* password,
                              std::string* schema,
@@ -167,8 +167,11 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
     if (msg->response.reply(0).is_auth()) {
         std::string user, password, schema, collation, server_public_key, auth_cmd;
         const MysqlReply& reply = msg->response.reply(0);
-        MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation,
-                                &server_public_key);
+        if (!MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation,
+                                     &server_public_key)) {
+            parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+            goto END_OF_AUTH;
+        }
         if (MysqlPackAuthenticator(reply.auth(), user, password, schema, collation, &auth_cmd) ==
             0) {
             butil::IOBuf buf;
@@ -203,8 +206,11 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
         // we are awaiting the RSA public key (CACHE_SHA2_PUBKEY), in which
         // case the whole payload is the PEM public key.
         std::string user, password, schema, collation, server_public_key;
-        MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation,
-                                &server_public_key);
+        if (!MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation,
+                                     &server_public_key)) {
+            parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+            goto END_OF_AUTH;
+        }
         const MysqlReply::AuthMoreData& amd = msg->response.reply(0).auth_more_data();
         const butil::StringPiece data = amd.data();
         const uint8_t next_seq = (uint8_t)(amd.seq() + 1);

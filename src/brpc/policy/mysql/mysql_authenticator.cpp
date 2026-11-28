@@ -111,7 +111,7 @@ bool MysqlAuthenticator::SerializeToString(std::string* str) const {
     return true;
 }
 
-void MysqlParseAuthenticator(const butil::StringPiece& raw,
+bool MysqlParseAuthenticator(const butil::StringPiece& raw,
                              std::string* user,
                              std::string* password,
                              std::string* schema,
@@ -124,10 +124,12 @@ void MysqlParseAuthenticator(const butil::StringPiece& raw,
     schema->clear();
     collation->clear();
     server_public_key->clear();
-    if (fields.size() < 4) {
+    // MysqlAuthenticator::SerializeToString() always writes user, password,
+    // schema, collation and params, so anything shorter is malformed.
+    if (fields.size() < 5) {
         LOG(ERROR) << "malformed mysql authentication string, expected at least 4 '\\t' "
                       "delimiters but found " << (fields.size() - 1);
-        return;
+        return false;
     }
     user->assign(fields[0].data(), fields[0].size());
     password->assign(fields[1].data(), fields[1].size());
@@ -136,8 +138,9 @@ void MysqlParseAuthenticator(const butil::StringPiece& raw,
     if (fields.size() >= 6 && !fields[5].empty() &&
         !butil::Base64Decode(fields[5], server_public_key)) {
         LOG(ERROR) << "malformed base64 server public key in mysql authentication string";
-        server_public_key->clear();
+        return false;
     }
+    return true;
 }
 
 void MysqlParseParams(const butil::StringPiece& raw, std::string* params) {
