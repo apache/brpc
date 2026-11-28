@@ -12,27 +12,16 @@
 
 #include "butil/crc32c.h"
 
-#include <stdint.h>
 #include <string.h>
-
-#include "butil/build_config.h"
+#include <stdint.h>
 #ifdef __SSE4_2__
 #include <nmmintrin.h>
 #endif
-
-#if (defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
-     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) ||                  \
-    defined(__AARCH64EB__) || defined(__ARM_BIG_ENDIAN) ||       \
-    defined(__BIG_ENDIAN__)
-#define BUTIL_CRC32C_LITTLE_ENDIAN 0
-#elif defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
-#define BUTIL_CRC32C_LITTLE_ENDIAN 1
-#else
-#define BUTIL_CRC32C_LITTLE_ENDIAN 0
-#endif
-
-#if defined(__aarch64__) && BUTIL_CRC32C_LITTLE_ENDIAN && \
-    (defined(__clang__) || defined(__GNUC__))
+#if defined(__aarch64__) && (defined(__clang__) || defined(__GNUC__)) && \
+    defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) &&       \
+    (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) &&                       \
+    !defined(__AARCH64EB__) && !defined(__ARM_BIG_ENDIAN) &&             \
+    !defined(__BIG_ENDIAN__)
 #define BUTIL_ARM64_CRC32_ENABLED 1
 #if defined(__ARM_NEON)
 #define BUTIL_ARM64_PMULL_ENABLED 1
@@ -57,7 +46,8 @@
 #include <sys/sysctl.h>
 #undef ALIGN
 #endif
-#endif  // defined(__aarch64__) && BUTIL_CRC32C_LITTLE_ENDIAN && (clang || gcc)
+#endif  // little-endian __aarch64__ && (clang || gcc)
+#include "butil/build_config.h"
 
 namespace butil {
 namespace crc32c {
@@ -339,11 +329,11 @@ static inline uint16_t DecodeFixed16(const char* ptr) {
 #endif
 
 static inline uint32_t DecodeFixed32(const char* ptr) {
-#if BUTIL_CRC32C_LITTLE_ENDIAN
-  // Load the raw bytes
-  uint32_t result;
-  memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
-  return result;
+#if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
+    // Load the raw bytes
+    uint32_t result;
+    memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
+    return result;
 #else
     return ((static_cast<uint32_t>(static_cast<unsigned char>(ptr[0])))
         | (static_cast<uint32_t>(static_cast<unsigned char>(ptr[1])) << 8)
@@ -353,11 +343,11 @@ static inline uint32_t DecodeFixed32(const char* ptr) {
 }
 
 inline uint64_t DecodeFixed64(const char* ptr) {
-#if BUTIL_CRC32C_LITTLE_ENDIAN
-  // Load the raw bytes
-  uint64_t result;
-  memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
-  return result;
+#if defined(ARCH_CPU_LITTLE_ENDIAN) && ARCH_CPU_LITTLE_ENDIAN
+    // Load the raw bytes
+    uint64_t result;
+    memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
+    return result;
 #else
     uint64_t lo = DecodeFixed32(ptr);
     uint64_t hi = DecodeFixed32(ptr + 4);
@@ -1254,7 +1244,6 @@ bool IsFastCrc32Supported() {
   return false;
 }
 
-#undef BUTIL_CRC32C_LITTLE_ENDIAN
 #if defined(BUTIL_ARM64_CRC32_ENABLED)
 #undef BUTIL_ARM64_CRC32_ENABLED
 #endif
