@@ -53,6 +53,18 @@ public:
     const butil::StringPiece schema() const;
     const butil::StringPiece params() const;
     const butil::StringPiece collation() const;
+    const butil::StringPiece server_public_key() const;
+
+    // Pins the server's RSA public key (PEM) used by caching_sha2_password
+    // full authentication over a plain-TCP connection.  Without a pinned
+    // key such a connection is refused, because the key the server sends
+    // in-band is unauthenticated and a man-in-the-middle could substitute
+    // its own key and recover the password.  Use TLS instead, or read the
+    // server's public key once out of band and pin it here.
+    void set_server_public_key(const butil::StringPiece& pem) {
+        _server_public_key.assign(pem.data(), pem.size());
+    }
+
     bool SerializeToString(std::string* str) const;
 
 private:
@@ -63,6 +75,7 @@ private:
     const std::string _schema;
     const std::string _params;
     const std::string _collation;
+    std::string _server_public_key;
 };
 
 inline const butil::StringPiece MysqlAuthenticator::user() const {
@@ -83,6 +96,10 @@ inline const butil::StringPiece MysqlAuthenticator::params() const {
 
 inline const butil::StringPiece MysqlAuthenticator::collation() const {
     return _collation;
+}
+
+inline const butil::StringPiece MysqlAuthenticator::server_public_key() const {
+    return _server_public_key;
 }
 
 }  // namespace policy

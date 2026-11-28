@@ -35,6 +35,23 @@ namespace {
 const butil::StringPiece mysql_native_password("mysql_native_password");
 const butil::StringPiece caching_sha2_password("caching_sha2_password");
 const char* auth_param_delim = "\t";
+
+// Splits a serialized mysql auth string into its '\t'-separated fields.
+void MysqlSplitAuthFields(const butil::StringPiece& raw,
+                          std::vector<butil::StringPiece>* fields) {
+    fields->clear();
+    size_t pos = 0;
+    while (true) {
+        const size_t next = raw.find(auth_param_delim, pos);
+        if (next == butil::StringPiece::npos) {
+            fields->push_back(raw.substr(pos));
+            return;
+        }
+        fields->push_back(raw.substr(pos, next - pos));
+        pos = next + 1;
+    }
+}
+
 bool MysqlHandleParams(const butil::StringPiece& params, std::string* param_cmd) {
     if (params.empty()) {
         return true;
@@ -69,6 +86,11 @@ bool MysqlHandleParams(const butil::StringPiece& params, std::string* param_cmd)
 };  // namespace
 
 // user + "\t" + password + "\t" + schema + "\t" + collation + "\t" + param
+// + "\t" + base64(pinned server public key)
+//
+// The trailing pinned key is empty when it is not configured.  It is base64
+// encoded so that the PEM (multi-line, but also free of tabs in practice)
+// can never collide with the field delimiter.
 bool MysqlAuthenticator::SerializeToString(std::string* str) const {
     std::stringstream ss;
     ss << _user << auth_param_delim;
@@ -82,39 +104,52 @@ bool MysqlAuthenticator::SerializeToString(std::string* str) const {
         LOG(ERROR) << "handle mysql authentication params failed, ignore it";
         return false;
     }
+    std::string encoded_key;
+    butil::Base64Encode(_server_public_key, &encoded_key);
+    ss << auth_param_delim << encoded_key;
     *str = ss.str();
     return true;
 }
 
-void MysqlParseAuthenticator(const butil::StringPiece& raw,
+bool MysqlParseAuthenticator(const butil::StringPiece& raw,
                              std::string* user,
                              std::string* password,
                              std::string* schema,
-                             std::string* collation) {
-    std::vector<size_t> idx;
-    idx.reserve(4);
-    for (size_t p = raw.find(auth_param_delim); p != butil::StringPiece::npos;
-         p = raw.find(auth_param_delim, p + 1)) {
-        idx.push_back(p);
-    }
-    if (idx.size() < 4) {
+                             std::string* collation,
+                             std::string* server_public_key) {
+    std::vector<butil::StringPiece> fields;
+    MysqlSplitAuthFields(raw, &fields);
+    user->clear();
+    password->clear();
+    schema->clear();
+    collation->clear();
+    server_public_key->clear();
+    // MysqlAuthenticator::SerializeToString() always writes user, password,
+    // schema, collation and params, so anything shorter is malformed.
+    if (fields.size() < 5) {
         LOG(ERROR) << "malformed mysql authentication string, expected at least 4 '\\t' "
-                      "delimiters but found " << idx.size();
-        user->clear();
-        password->clear();
-        schema->clear();
-        collation->clear();
-        return;
+                      "delimiters but found " << (fields.size() - 1);
+        return false;
     }
-    user->assign(raw.data(), 0, idx[0]);
-    password->assign(raw.data(), idx[0] + 1, idx[1] - idx[0] - 1);
-    schema->assign(raw.data(), idx[1] + 1, idx[2] - idx[1] - 1);
-    collation->assign(raw.data(), idx[2] + 1, idx[3] - idx[2] - 1);
+    user->assign(fields[0].data(), fields[0].size());
+    password->assign(fields[1].data(), fields[1].size());
+    schema->assign(fields[2].data(), fields[2].size());
+    collation->assign(fields[3].data(), fields[3].size());
+    if (fields.size() >= 6 && !fields[5].empty() &&
+        !butil::Base64Decode(fields[5], server_public_key)) {
+        LOG(ERROR) << "malformed base64 server public key in mysql authentication string";
+        return false;
+    }
+    return true;
 }
 
 void MysqlParseParams(const butil::StringPiece& raw, std::string* params) {
-    size_t idx = raw.rfind(auth_param_delim);
-    params->assign(raw.data(), idx + 1, raw.size() - idx - 1);
+    std::vector<butil::StringPiece> fields;
+    MysqlSplitAuthFields(raw, &fields);
+    params->clear();
+    if (fields.size() >= 5) {
+        params->assign(fields[4].data(), fields[4].size());
+    }
 }
 
 int MysqlPackAuthenticator(const MysqlReply::Auth& auth,

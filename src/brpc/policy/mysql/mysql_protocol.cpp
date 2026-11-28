@@ -44,11 +44,12 @@ namespace policy {
 
 DEFINE_bool(mysql_verbose, false, "Print all mysql requests and responses");
 
-void MysqlParseAuthenticator(const butil::StringPiece& raw,
+bool MysqlParseAuthenticator(const butil::StringPiece& raw,
                              std::string* user,
                              std::string* password,
                              std::string* schema,
-                             std::string* collation);
+                             std::string* collation,
+                             std::string* server_public_key);
 void MysqlParseParams(const butil::StringPiece& raw, std::string* params);
 // pack mysql authentication_data
 int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
@@ -76,7 +77,8 @@ const char* auth_step[] = {"AUTH_OK", "PARAMS_OK"};
 //                       AuthMoreData (0x03 fast-auth / 0x04 full-auth) or OK.
 //   CACHE_SHA2_PUBKEY : on plain TCP full-auth, we requested the RSA public
 //                       key (sent 0x02); awaiting the AuthMoreData carrying
-//                       the PEM, after which we send the RSA-encrypted pw.
+//                       the PEM, which must match the pinned key before the
+//                       RSA-encrypted pw is sent.
 const char* kCacheSha2Sent = "CACHE_SHA2_SENT";
 const char* kCacheSha2Pubkey = "CACHE_SHA2_PUBKEY";
 
@@ -143,7 +145,11 @@ bool PackRequest(butil::IOBuf* buf,
     return true;
 }
 
-ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, PipelinedInfo* pi) {
+ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, PipelinedInfo* pi,
+                                const char** error_desc) {
+    // `*error_desc' is handed to MakeParseError(), so it must stay valid after
+    // this function returns: only string literals are assigned to it.
+    *error_desc = "Fail to authenticate with Mysql";
     const bthread_id_t cid = pi->id_wait;
     Controller* cntl = nullptr;
     if (bthread_id_lock(cid, (void**)&cntl) != 0) {
@@ -159,9 +165,13 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
         goto END_OF_AUTH;
     }
     if (msg->response.reply(0).is_auth()) {
-        std::string user, password, schema, collation, auth_cmd;
+        std::string user, password, schema, collation, server_public_key, auth_cmd;
         const MysqlReply& reply = msg->response.reply(0);
-        MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation);
+        if (!MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation,
+                                     &server_public_key)) {
+            parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+            goto END_OF_AUTH;
+        }
         if (MysqlPackAuthenticator(reply.auth(), user, password, schema, collation, &auth_cmd) ==
             0) {
             butil::IOBuf buf;
@@ -195,14 +205,29 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
         // first data byte after the 0x01 tag is a status marker, except when
         // we are awaiting the RSA public key (CACHE_SHA2_PUBKEY), in which
         // case the whole payload is the PEM public key.
-        std::string user, password, schema, collation;
-        MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation);
+        std::string user, password, schema, collation, server_public_key;
+        if (!MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation,
+                                     &server_public_key)) {
+            parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+            goto END_OF_AUTH;
+        }
         const MysqlReply::AuthMoreData& amd = msg->response.reply(0).auth_more_data();
         const butil::StringPiece data = amd.data();
         const uint8_t next_seq = (uint8_t)(amd.seq() + 1);
         if (ctx->group() == kCacheSha2Pubkey) {
-            // The payload is the server's PEM RSA public key.  Encrypt the
-            // password with it (plain-TCP full-auth) and send the ciphertext.
+            // The payload is the server's PEM RSA public key.  It arrived
+            // in-band over an unauthenticated channel, so it is only
+            // trusted when it matches the key pinned by the caller.
+            if (!mysql::ServerPublicKeyMatches(data, server_public_key)) {
+                parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+                LOG(ERROR) << "[MYSQL PARSE] caching_sha2 server public key does not match "
+                              "the pinned key, refusing to send the password";
+                *error_desc = "Fail to authenticate with Mysql: the server public key does not "
+                              "match the pinned key";
+                goto END_OF_AUTH;
+            }
+            // Encrypt the password with it (plain-TCP full-auth) and send
+            // the ciphertext.
             const std::string rsa = mysql::CachingSha2PasswordRsaEncrypt(
                 data, ctx->roles(), password);
             if (rsa.empty()) {
@@ -224,8 +249,23 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
                 WriteMysqlAuthPacket(socket->fd(), clear, next_seq);
                 const_cast<AuthContext*>(ctx)->set_group(kCacheSha2Sent);
             } else {
-                // Plain TCP: request the server's RSA public key (0x02), then
-                // wait for the AuthMoreData carrying the PEM.
+                // Plain TCP: the server's public key can only arrive in-band,
+                // so encrypting the password with it would hand the password
+                // to any man-in-the-middle.  Require an out-of-band pin.
+                if (server_public_key.empty()) {
+                    parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+                    LOG(ERROR) << "[MYSQL PARSE] caching_sha2_password full authentication "
+                                  "over a non-TLS connection requires a pinned server public "
+                                  "key; use TLS or MysqlAuthenticator::set_server_public_key()";
+                    *error_desc = "Fail to authenticate with Mysql: caching_sha2_password full "
+                                  "authentication over a non-TLS connection requires a pinned "
+                                  "server public key (use TLS or "
+                                  "MysqlAuthenticator::set_server_public_key)";
+                    goto END_OF_AUTH;
+                }
+                // Request the server's RSA public key (0x02), then wait for
+                // the AuthMoreData carrying the PEM and verify it against the
+                // pinned key before encrypting the password.
                 WriteMysqlAuthPacket(socket->fd(), std::string(1, (char)0x02), next_seq);
                 const_cast<AuthContext*>(ctx)->set_group(kCacheSha2Pubkey);
             }
@@ -383,9 +423,10 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
         return MakeParseError(err);
     }
     if (pi.auth_flags) {
-        ParseError err = HandleAuthentication(msg, socket, &pi);
+        const char* auth_error = nullptr;
+        ParseError err = HandleAuthentication(msg, socket, &pi, &auth_error);
         if (err != PARSE_OK) {
-            return MakeParseError(err, "Fail to authenticate with Mysql");
+            return MakeParseError(err, auth_error);
         }
         DestroyingPtr<InputResponse> auth_msg =
             static_cast<InputResponse*>(socket->release_parsing_context());

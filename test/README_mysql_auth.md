@@ -90,3 +90,22 @@ again.
 | `-mysql_port` | `13306` | server TCP port (running server, and the port the spawned server binds) |
 | `-mysql_user` | `root` | login user |
 | `-mysql_password` | (empty) | login password |
+
+## Plain-TCP full authentication via a fake server
+
+`brpc_mysql_full_auth_unittest` does not need a mysqld: it runs a fake
+MySQL server and drives a real brpc Channel through the
+`caching_sha2_password` full-authentication exchange.  It pins a server
+RSA public key on the `MysqlAuthenticator` and asserts that the client
+only ever sends the password encrypted under that key:
+
+| Test | What it checks |
+|---|---|
+| `PlainTcpWithoutPinnedKeyFails` | 0x04 on plain TCP without a pinned key fails before requesting a public key |
+| `PlainTcpWithMismatchedPinnedKeyFails` | a server key that differs from the pinned key is refused, no ciphertext is sent |
+| `PlainTcpWithPinnedKeySucceeds` | the matching pinned key is used, and the server recovers the password from the ciphertext |
+| `SecureTransportSendsCleartextRegardlessOfPin` | the TLS/secure-transport branch still sends the password in the clear, with or without a pin |
+
+```sh
+cd test && ./brpc_mysql_full_auth_unittest
+```

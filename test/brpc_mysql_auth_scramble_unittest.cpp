@@ -35,6 +35,7 @@ using brpc::policy::mysql::CachingSha2PasswordRsaEncrypt;
 using brpc::policy::mysql::CachingSha2PasswordScramble;
 using brpc::policy::mysql::CachingSha2PasswordSlowPath;
 using brpc::policy::mysql::NativePasswordScramble;
+using brpc::policy::mysql::ServerPublicKeyMatches;
 using brpc::policy::mysql::kCachingSha2PasswordResponseLen;
 using brpc::policy::mysql::kNativePasswordResponseLen;
 using brpc::policy::mysql::kSaltLen;
@@ -62,6 +63,17 @@ const char kTestPubKeyPem[] =
     "BLseYuXleXKB4B/DjMbbxjEb7bzWPVlgiHax/30r2bBKNgOCrk32OWxA1Tsw/p2v\n"
     "pwIDAQAB\n"
     "-----END PUBLIC KEY-----\n";
+
+// The same key as kTestPubKeyPem, in the PKCS#1 "RSA PUBLIC KEY" form.
+const char kTestPkcs1PubKeyPem[] =
+    "-----BEGIN RSA PUBLIC KEY-----\n"
+    "MIIBCgKCAQEA6XJ3ie6w10PTa5AVMgnh2RYvLZ6Ti/2zsUNETYuNyozYb+ziF4sZ\n"
+    "vPFGpL1vl7rznmCYTQV4dQ6QbzAFDv9vfQLD+ZT2bMl7zpIMJf3aI1dbLR1VB5gT\n"
+    "a7TIpEIGlZq3yR+1UPrh8y1/L/MJvrOWMcNkRjHA12QJS5/KTIZkqhjYRnnxvtJS\n"
+    "JAz+S5RrdumSEIxsFQOknhWEZ5hzn52l4LwVaLV264wA8+ytbHl3dmC5LmTnD9tJ\n"
+    "nMxvV8NjcLknU2f3VIrrGnLZxA2tEm7jBLseYuXleXKB4B/DjMbbxjEb7bzWPVlg\n"
+    "iHax/30r2bBKNgOCrk32OWxA1Tsw/p2vpwIDAQAB\n"
+    "-----END RSA PUBLIC KEY-----\n";
 
 const char kTestPrivKeyPem[] =
     "-----BEGIN PRIVATE KEY-----\n"
@@ -374,6 +386,27 @@ TEST(MysqlCachingSha2RsaTest, RoundTripRecoversObfuscatedPlaintext) {
     EXPECT_EQ(recovered, password + '\0');
 }
 
+TEST(MysqlCachingSha2RsaTest, RoundTripWithPkcs1PubKeyPem) {
+    const std::string salt(20, '\x5A');
+    const std::string password = "hunter2";
+
+    // The PKCS#1 form of the same key must encrypt just like the
+    // SubjectPublicKeyInfo form.
+    const std::string ciphertext = CachingSha2PasswordRsaEncrypt(
+        butil::StringPiece(kTestPkcs1PubKeyPem),
+        butil::StringPiece(salt),
+        butil::StringPiece(password));
+    ASSERT_FALSE(ciphertext.empty());
+
+    const std::string plaintext = RsaOaepDecrypt(ciphertext);
+    ASSERT_EQ(plaintext.size(), password.size() + 1);
+    std::string recovered(plaintext.size(), '\0');
+    for (size_t i = 0; i < plaintext.size(); ++i) {
+        recovered[i] = static_cast<char>(plaintext[i] ^ salt[i % salt.size()]);
+    }
+    EXPECT_EQ(recovered, password + '\0');
+}
+
 TEST(MysqlCachingSha2RsaTest, EmptyPasswordEncryptsNulTerminator) {
     const std::string salt(20, '\x11');
     const std::string ciphertext = CachingSha2PasswordRsaEncrypt(
@@ -515,6 +548,52 @@ TEST(MysqlCachingSha2SlowPathTest, IsSslFalseRejectsBadPubKey) {
         butil::StringPiece(salt),
         butil::StringPiece("not-a-pem-blob"),
         /*is_ssl=*/false).empty());
+}
+
+TEST(MysqlServerPublicKeyMatchesTest, SameKeyMatches) {
+    EXPECT_TRUE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece(kTestPubKeyPem)));
+}
+
+// PKCS#1 ("RSA PUBLIC KEY") and SubjectPublicKeyInfo ("PUBLIC KEY")
+// encode the same key differently; the comparison is on the parsed key.
+TEST(MysqlServerPublicKeyMatchesTest, Pkcs1AndSpkiEncodingsOfSameKeyMatch) {
+    EXPECT_TRUE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece(kTestPkcs1PubKeyPem)));
+    EXPECT_TRUE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPkcs1PubKeyPem),
+        butil::StringPiece(kTestPubKeyPem)));
+}
+
+TEST(MysqlServerPublicKeyMatchesTest, Pkcs1PemWithCrlfMatches) {
+    std::string crlf(kTestPkcs1PubKeyPem);
+    std::string::size_type pos = 0;
+    while ((pos = crlf.find('\n', pos)) != std::string::npos) {
+        crlf.insert(pos, "\r");
+        pos += 2;
+    }
+    EXPECT_TRUE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem), butil::StringPiece(crlf)));
+}
+
+TEST(MysqlServerPublicKeyMatchesTest, InvalidKeysDoNotMatch) {
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem), butil::StringPiece("")));
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(""), butil::StringPiece(kTestPubKeyPem)));
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece(kTestPrivKeyPem)));
+    // Malformed PKCS#1 block (bad base64 body, missing END line).
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece("-----BEGIN RSA PUBLIC KEY-----\n!!!!\n"
+                           "-----END RSA PUBLIC KEY-----\n")));
+    EXPECT_FALSE(ServerPublicKeyMatches(
+        butil::StringPiece(kTestPubKeyPem),
+        butil::StringPiece("-----BEGIN RSA PUBLIC KEY-----\nMIIBCgKCAQEA\n")));
 }
 
 }  // namespace

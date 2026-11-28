@@ -23,7 +23,9 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
+#include <openssl/x509.h>
 
+#include "butil/base64.h"
 #include "butil/sha1.h"
 
 namespace brpc {
@@ -36,6 +38,119 @@ bool Sha256Bytes(const unsigned char* data, size_t len, unsigned char out[32]) {
     unsigned int digest_len = 0;
     return EVP_Digest(data, len, out, &digest_len, EVP_sha256(), nullptr) == 1
         && digest_len == 32;
+}
+
+// Appends |len| in DER length encoding.
+void AppendDerLength(size_t len, std::string* out) {
+    if (len < 0x80) {
+        out->push_back(static_cast<char>(len));
+        return;
+    }
+    char bytes[sizeof(size_t)];
+    size_t n = 0;
+    while (len > 0) {
+        bytes[n++] = static_cast<char>(len & 0xff);
+        len >>= 8;
+    }
+    out->push_back(static_cast<char>(0x80 | n));
+    while (n > 0) {
+        out->push_back(bytes[--n]);
+    }
+}
+
+// Decodes the base64 body of the PEM block delimited by |label|.
+bool DecodePemBody(const butil::StringPiece& pem, const char* label,
+                   std::string* der) {
+    const std::string begin = std::string("-----BEGIN ") + label + "-----";
+    const std::string end = std::string("-----END ") + label + "-----";
+    const size_t b = pem.find(begin);
+    const size_t e = pem.find(end);
+    if (b == butil::StringPiece::npos || e == butil::StringPiece::npos ||
+        e < b + begin.size()) {
+        return false;
+    }
+    std::string body;
+    for (size_t i = b + begin.size(); i < e; ++i) {
+        const char c = pem[i];
+        if (c != '\r' && c != '\n' && c != ' ' && c != '\t') {
+            body.push_back(c);
+        }
+    }
+    return butil::Base64Decode(body, der);
+}
+
+// Wraps a PKCS#1 RSAPublicKey DER in a SubjectPublicKeyInfo DER:
+//   SEQUENCE {
+//     SEQUENCE { OID rsaEncryption, NULL },
+//     BIT STRING { unused-bits=0, RSAPublicKey }
+//   }
+std::string WrapRsaPublicKeyAsSubjectPublicKeyInfo(const std::string& pkcs1) {
+    static const char kRsaAlgorithmIdentifier[] =
+        "\x30\x0d"                                    // SEQUENCE, 13 bytes
+        "\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01"  // OID rsaEncryption
+        "\x05\x00";                                   // NULL
+    std::string bit_string;
+    bit_string.push_back('\0');  // no unused bits
+    bit_string.append(pkcs1);
+    std::string bit_string_tlv;
+    bit_string_tlv.push_back('\x03');
+    AppendDerLength(bit_string.size(), &bit_string_tlv);
+    bit_string_tlv.append(bit_string);
+
+    std::string spki;
+    spki.push_back('\x30');
+    AppendDerLength(sizeof(kRsaAlgorithmIdentifier) - 1 + bit_string_tlv.size(), &spki);
+    spki.append(kRsaAlgorithmIdentifier, sizeof(kRsaAlgorithmIdentifier) - 1);
+    spki.append(bit_string_tlv);
+    return spki;
+}
+
+// Parses a PEM-encoded public key.  Both "BEGIN PUBLIC KEY"
+// (SubjectPublicKeyInfo) and "BEGIN RSA PUBLIC KEY" (PKCS#1) are accepted.
+// Returns nullptr when |pem| is not a parseable public key.
+EVP_PKEY* ReadPublicKeyPem(const butil::StringPiece& pem) {
+    if (pem.empty()) {
+        return nullptr;
+    }
+    // PEM_read_bio_PUBKEY() does not read the PKCS#1 form on every supported
+    // OpenSSL version, so normalize that form to SubjectPublicKeyInfo and
+    // decode it uniformly.
+    if (pem.find("-----BEGIN RSA PUBLIC KEY-----") != butil::StringPiece::npos) {
+        std::string pkcs1;
+        if (!DecodePemBody(pem, "RSA PUBLIC KEY", &pkcs1)) {
+            return nullptr;
+        }
+        const std::string spki = WrapRsaPublicKeyAsSubjectPublicKeyInfo(pkcs1);
+        const unsigned char* p = reinterpret_cast<const unsigned char*>(spki.data());
+        return d2i_PUBKEY(nullptr, &p, static_cast<long>(spki.size()));
+    }
+    BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
+    if (bio == nullptr) {
+        return nullptr;
+    }
+    EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    return pkey;
+}
+
+// Returns the SubjectPublicKeyInfo DER encoding of a PEM-encoded public key,
+// or an empty string when |pem| is not a parseable public key.  Both accepted
+// PEM forms are normalized to SubjectPublicKeyInfo so that they compare equal.
+std::string PublicKeyDer(const butil::StringPiece& pem) {
+    EVP_PKEY* pkey = ReadPublicKeyPem(pem);
+    if (pkey == nullptr) {
+        return std::string();
+    }
+    unsigned char* der = nullptr;
+    const int len = i2d_PUBKEY(pkey, &der);
+    EVP_PKEY_free(pkey);
+    if (len <= 0 || der == nullptr) {
+        OPENSSL_free(der);  // no-op when |der| was never set
+        return std::string();
+    }
+    std::string out(reinterpret_cast<const char*>(der), static_cast<size_t>(len));
+    OPENSSL_free(der);
+    return out;
 }
 
 }  // namespace
@@ -118,9 +233,6 @@ std::string CachingSha2PasswordRsaEncrypt(
     if (salt.size() != kSaltLen) {
         return std::string();
     }
-    if (server_pubkey_pem.empty()) {
-        return std::string();
-    }
 
     std::string plaintext;
     plaintext.resize(password.size() + 1);
@@ -131,13 +243,7 @@ std::string CachingSha2PasswordRsaEncrypt(
     plaintext[password.size()] = static_cast<char>(
         '\0' ^ salt.data()[password.size() % kSaltLen]);
 
-    BIO* bio = BIO_new_mem_buf(server_pubkey_pem.data(),
-                               static_cast<int>(server_pubkey_pem.size()));
-    if (bio == nullptr) {
-        return std::string();
-    }
-    EVP_PKEY* pkey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
-    BIO_free(bio);
+    EVP_PKEY* pkey = ReadPublicKeyPem(server_pubkey_pem);
     if (pkey == nullptr) {
         return std::string();
     }
@@ -175,6 +281,12 @@ std::string CachingSha2PasswordRsaEncrypt(
     EVP_PKEY_CTX_free(ctx);
     EVP_PKEY_free(pkey);
     return out;
+}
+
+bool ServerPublicKeyMatches(const butil::StringPiece& server_pubkey_pem,
+                            const butil::StringPiece& pinned_pubkey_pem) {
+    const std::string server_der = PublicKeyDer(server_pubkey_pem);
+    return !server_der.empty() && server_der == PublicKeyDer(pinned_pubkey_pem);
 }
 
 std::string CachingSha2PasswordCleartext(const butil::StringPiece& password) {
